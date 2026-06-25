@@ -8,6 +8,8 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeAgentActivityDetail
+import ai.slock.compose.model.RealtimeAgentActivityEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -44,14 +46,16 @@ class SharedAgentDetailStoreTest {
     private fun activityEvent(
         status: AgentStatus?,
         detail: String? = null,
-        serverSeq: Long? = null
+        serverSeq: Long? = null,
+        activityEntries: List<RealtimeAgentActivityEntry> = emptyList()
     ) = MemberPresenceUpdated(
         memberId = testMemberId,
         presence = status?.presence ?: Presence.Offline,
         kind = MemberKind.Agent,
         agentStatus = status,
         statusLabel = detail,
-        serverSeq = serverSeq
+        serverSeq = serverSeq,
+        activityEntries = activityEntries
     )
 
     @Test
@@ -502,5 +506,52 @@ class SharedAgentDetailStoreTest {
         )
 
         assertEquals(1, s.state.value.detail?.activity?.size)
+    }
+
+    @Test
+    fun agentActivityUpdateAppendsSocketTrajectoryEntries() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(status = "Offline", activity = "Offline")
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(
+                    AgentStatus.Working,
+                    detail = "Run command",
+                    serverSeq = 11L,
+                    activityEntries = listOf(
+                        RealtimeAgentActivityEntry(
+                            id = "realtime:agent-1:seq:11:0:tool_start",
+                            type = "tool_start",
+                            title = "Run command",
+                            body = "Structured input: cmd",
+                            timestamp = "1782367200000",
+                            details = listOf(
+                                RealtimeAgentActivityDetail("Tool", "run_command"),
+                                RealtimeAgentActivityDetail("Input", "Structured input: cmd")
+                            ),
+                            toolName = "run_command",
+                            toolInput = "Structured input: cmd"
+                        )
+                    )
+                ),
+                observedAtMillis = 200L
+            )
+        )
+
+        val rows = s.state.value.detail?.activity.orEmpty()
+        assertEquals(listOf("realtime:agent-1:seq:11:0:tool_start"), rows.map { it.id })
+        assertEquals("tool_start", rows.single().type)
+        assertEquals("Run command", rows.single().title)
+        assertEquals("Structured input: cmd", rows.single().body)
+        assertEquals(listOf("Tool" to "run_command", "Input" to "Structured input: cmd"), rows.single().details)
+        assertEquals("run_command", rows.single().toolName)
+        assertEquals("1782367200000", rows.single().timestamp)
     }
 }

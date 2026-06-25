@@ -6,6 +6,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.RealtimeAgentActivityEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -526,6 +527,13 @@ private fun List<AgentActivityEntry>.withRealtimeAgentActivity(
     event: MemberPresenceUpdated,
     observedAtMillis: Long
 ): List<AgentActivityEntry> {
+    val entries = event.activityEntries
+        .map { it.toAgentActivityEntry(observedAtMillis) }
+    if (entries.isNotEmpty()) {
+        return (this + entries)
+            .dedupeAgentActivityEntries()
+            .takeLast(MaxAgentActivityEntries)
+    }
     val entry = event.toRealtimeAgentActivityEntry(observedAtMillis) ?: return this
     val last = lastOrNull()
     if (last != null && last.isDuplicateAgentStatusEntry(entry, observedAtMillis)) return this
@@ -551,6 +559,31 @@ private fun MemberPresenceUpdated.toRealtimeAgentActivityEntry(
         statusActivity = activityKey,
         statusDetail = detail,
         refTextEnabled = true
+    )
+}
+
+private fun RealtimeAgentActivityEntry.toAgentActivityEntry(
+    observedAtMillis: Long
+): AgentActivityEntry {
+    val activityId =
+        if (id.startsWith(RealtimeAgentActivityIdPrefix)) {
+            id
+        } else {
+            "$RealtimeAgentActivityIdPrefix$id"
+        }
+    return AgentActivityEntry(
+        id = activityId,
+        type = type,
+        title = title,
+        body = body,
+        timestamp = timestamp ?: observedAtMillis.toString(),
+        details = details.map { it.label to it.value },
+        toolName = toolName,
+        toolInput = toolInput,
+        statusActivity = statusActivity,
+        statusDetail = statusDetail,
+        expandable = expandable,
+        refTextEnabled = refTextEnabled
     )
 }
 

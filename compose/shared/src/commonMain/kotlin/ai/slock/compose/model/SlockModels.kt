@@ -436,13 +436,36 @@ data class TaskUpdated(val task: TaskSummary) : RealtimeEvent
 data class TaskDeleted(val taskId: TaskId) : RealtimeEvent
 
 @Serializable
+data class RealtimeAgentActivityDetail(
+    val label: String,
+    val value: String
+)
+
+@Serializable
+data class RealtimeAgentActivityEntry(
+    val id: String,
+    val type: String,
+    val title: String,
+    val body: String? = null,
+    val timestamp: String? = null,
+    val details: List<RealtimeAgentActivityDetail> = emptyList(),
+    val toolName: String? = null,
+    val toolInput: String? = null,
+    val statusActivity: String? = null,
+    val statusDetail: String? = null,
+    val expandable: Boolean = false,
+    val refTextEnabled: Boolean = false
+)
+
+@Serializable
 data class MemberPresenceUpdated(
     val memberId: MemberId,
     val presence: Presence,
     val kind: MemberKind? = null,
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
-    val serverSeq: Long? = null
+    val serverSeq: Long? = null,
+    val activityEntries: List<RealtimeAgentActivityEntry> = emptyList()
 ) : RealtimeEvent
 
 @Serializable

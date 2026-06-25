@@ -365,6 +365,52 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun agentActivityPreservesTrajectoryEntries() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-1",
+                  "activity": "working",
+                  "detail": "Running command",
+                  "timestamp": 1782367200000,
+                  "entries": [
+                    {
+                      "kind": "tool_start",
+                      "toolName": "run_command",
+                      "toolInput": {
+                        "cmd": "echo hello",
+                        "token": "secret"
+                      }
+                    },
+                    { "kind": "text", "text": "hello" },
+                    { "kind": "status", "activity": "working", "detail": "Running command" }
+                  ],
+                  "serverSeq": 44
+                }
+                """.trimIndent()
+            )
+
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals(AgentStatus.Working, presence.agentStatus)
+        assertEquals("Running command", presence.statusLabel)
+        val rows = presence.activityEntries
+        assertEquals(3, rows.size)
+        assertEquals("realtime:agent-1:seq:44:0:tool_start", rows[0].id)
+        assertEquals("tool_start", rows[0].type)
+        assertEquals("Run command", rows[0].title)
+        assertEquals("Structured input: cmd", rows[0].body)
+        assertEquals("run_command", rows[0].toolName)
+        assertEquals("1782367200000", rows[0].timestamp)
+        assertEquals("Output", rows[1].title)
+        assertEquals("hello", rows[1].body)
+        assertEquals("Working", rows[2].title)
+        assertEquals("Running command", rows[2].body)
+        assertEquals("working", rows[2].statusActivity)
+    }
+
+    @Test
     fun agentActivityStatusEntryProjectsWorkingStatus() {
         val event =
             RealtimeEventMapper().map(
