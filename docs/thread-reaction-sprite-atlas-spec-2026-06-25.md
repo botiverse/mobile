@@ -9,17 +9,39 @@ Task: #391
 
 Thread reactions currently render from the raw server reaction string. Known quick reactions are either text emoji or hand-drawn Canvas glyphs in `ThreadPage.kt`; unknown reactions fall back to text. This makes visual parity hard to maintain across Android/OHOS/iOS/H5 because emoji fonts differ by platform, while hand-drawn glyphs are embedded in code and do not carry product metadata such as localized names.
 
-We want reactions to render from a sprite atlas: one image contains all supported reaction icons, and a JSON manifest describes each icon's crop rectangle, stable name, server/API reaction value, aliases, and localized labels.
+We want reactions to render from a sprite atlas: one image contains all supported reaction icons, and a JSON manifest describes each icon placeholder's crop rectangle, stable icon name, exact reaction value, and localized labels.
+
+## Source Contract
+
+React and server both treat reaction identity as an exact reaction value, currently named `emoji`.
+
+React source facts:
+
+- `third_party/slock-source/packages/web/src/components/message/reactionConstants.ts` defines quick reactions as raw values: `["👍", "❤️", "🎉", "👀", "🔥", "😂", "✅"]`.
+- `MessageItem.tsx` optimistic update finds rows by exact value: `reaction.emoji === emoji`.
+- `MessageItem.tsx` selected-state checks exact value: `reaction.emoji === emoji && reaction.reactorIds.includes(viewerUserId)`.
+- `MessageItem.tsx` pending state is `pendingReactionEmojisRef: Set<string>` keyed by the exact value.
+- `MessageItem.tsx` toggles with `data: { emoji }` and `method: alreadyReacted ? "delete" : "post"`.
+- Existing chips render with `key={reaction.emoji}`, `ReactionGlyph emoji={reaction.emoji}`, and click `handleToggleReaction(reaction.emoji)`.
+
+Server source facts:
+
+- `packages/server/src/db/schema.ts` defines `messageReactions` with primary key `(messageId, reactorType, reactorId, emoji)`.
+- `packages/server/drizzle/0061_big_thunderbolt_ross.sql` creates the same primary key.
+- `packages/server/src/routes/internal.ts` and `internalAgentApi.ts` parse `req.body.emoji` as a trimmed string, then insert/delete by exact `messageReactions.emoji`.
+- DELETE does not normalize or expand values. A request to delete `✅` does not delete `☑️`.
+
+Therefore the Android/KMP sprite atlas must not invent value grouping, canonicalization, or equivalent-reaction semantics. A supported reaction placeholder is one exact value. If product wants `☑️`, `✔️`, or `✓`, each is a separate manifest entry and separate reaction identity unless the backend contract changes.
 
 ## Goals
 
 - Replace the presentation of supported reaction icons with a shared sprite atlas lookup.
-- Keep server/API/storage identity stable: current reaction add/remove payloads still use the existing emoji value unless the backend contract changes.
+- Keep server/API/storage identity stable: reaction add/remove payloads still use the exact current reaction value.
 - Define a manifest schema that includes:
   - atlas image metadata;
   - per-icon `x`, `y`, `w`, `h`;
   - stable icon `name`;
-  - API value / emoji aliases;
+  - exact reaction `value`;
   - localized labels for supported languages.
 - Use the same reaction catalog for quick reaction menu buttons and existing reaction chips.
 - Provide deterministic fallback for unsupported or malformed reactions.
@@ -31,9 +53,10 @@ We want reactions to render from a sprite atlas: one image contains all supporte
 - Do not redesign reaction chip layout, counts, selected state, or task/comment reaction semantics.
 - Do not add animated reactions.
 - Do not generate atlas artwork in code; artwork is an asset supplied to the repo.
+- Do not merge, normalize, alias, or canonicalize reaction values.
 - Do not move message reaction count/selection into the manifest. Counts and selection remain message state.
 
-## Current State
+## Current KMP State
 
 Current Thread code has these relevant pieces:
 
@@ -93,8 +116,7 @@ Use one JSON file per atlas version:
   "reactions": [
     {
       "name": "thumbs_up",
-      "apiValue": "👍",
-      "aliases": ["👍", "+1", "like"],
+      "value": "👍",
       "rect": { "x": 0, "y": 0, "w": 72, "h": 72 },
       "labels": {
         "en": "Thumbs up",
@@ -104,8 +126,7 @@ Use one JSON file per atlas version:
     },
     {
       "name": "heart",
-      "apiValue": "❤️",
-      "aliases": ["❤️", "❤", "heart"],
+      "value": "❤️",
       "rect": { "x": 72, "y": 0, "w": 72, "h": 72 },
       "labels": {
         "en": "Heart",
@@ -126,16 +147,16 @@ Field contract:
 | `atlas.width` / `atlas.height` | yes | Pixel dimensions of the PNG. Used for bounds validation. |
 | `atlas.pixelRatio` | yes | Source asset scale. Used only for diagnostics/export validation; UI still receives explicit dp size. |
 | `atlas.defaultDisplaySizeDp` | yes | Default quick reaction glyph size. Chips may override with their current 15dp size. |
-| `reactions[].name` | yes | Stable lowercase snake_case product name. Unique. |
-| `reactions[].apiValue` | yes | Value sent to existing reaction API and stored in message state. Initially this is the canonical emoji. |
-| `reactions[].aliases` | yes | Alternative incoming values that should resolve to this icon. Must include `apiValue`. |
+| `reactions[].name` | yes | Stable lowercase snake_case icon name. Unique. Used only for catalog/art/debug identity. |
+| `reactions[].value` | yes | Exact reaction value sent to the existing API, stored in message state, and used as chip/toggle identity. Unique. |
 | `reactions[].rect` | yes | Pixel crop rectangle in the atlas coordinate space. Must be positive and inside atlas bounds. |
 | `reactions[].labels` | yes | BCP-47-like locale map for accessible names and future picker copy. Must include `en`. |
 
 Validation rules:
 
 - `name` must match `^[a-z0-9_]+$`.
-- `apiValue` and every alias must map to at most one reaction.
+- `value` must be non-blank, contain no whitespace, and be at most the server's current reaction length limit.
+- Each `value` maps to exactly one manifest entry.
 - Rectangles must be within atlas bounds.
 - Rectangles should not overlap unless explicitly allowed by a future `sharedRectGroup` field.
 - Missing locale labels fall back by exact locale, language prefix, `en`, then `name`.
@@ -143,19 +164,19 @@ Validation rules:
 
 ## Initial Catalog
 
-The first manifest should cover every current quick reaction and current Canvas alias:
+The first manifest should cover every current quick reaction. Current Canvas glyph cases that are not quick reactions should not be silently treated as equivalent values; add them only if product wants those exact placeholders supported.
 
-| Name | API value | Aliases | English label | zh-Hans label |
-| --- | --- | --- | --- | --- |
-| `thumbs_up` | `👍` | `👍`, `+1`, `like` | Thumbs up | 点赞 |
-| `heart` | `❤️` | `❤️`, `❤`, `heart` | Heart | 爱心 |
-| `party` | `🎉` | `🎉`, `party` | Celebrate | 庆祝 |
-| `eyes` | `👀` | `👀`, `eyes` | Eyes | 关注 |
-| `fire` | `🔥` | `🔥`, `fire` | Fire | 火 |
-| `laugh` | `😂` | `😂`, `laugh` | Laugh | 大笑 |
-| `done` | `✅` | `✅`, `☑`, `☑️`, `✔`, `✔️`, `✓`, `done` | Done | 完成 |
+| Name | Exact value | English label | zh-Hans label |
+| --- | --- | --- | --- |
+| `thumbs_up` | `👍` | Thumbs up | 点赞 |
+| `heart` | `❤️` | Heart | 爱心 |
+| `party` | `🎉` | Celebrate | 庆祝 |
+| `eyes` | `👀` | Eyes | 关注 |
+| `fire` | `🔥` | Fire | 火 |
+| `laugh` | `😂` | Laugh | 大笑 |
+| `done` | `✅` | Done | 完成 |
 
-The quick reaction row should be derived from catalog order, not a hard-coded emoji list. If product wants different quick reactions later, update manifest order or add an explicit `quickOrder` array.
+The quick reaction row should be derived from catalog order, not a hard-coded emoji list. If product wants different quick reactions later, update manifest order or add an explicit `quickOrder` array of exact `value` strings.
 
 ## Catalog Loading Boundary
 
@@ -190,19 +211,9 @@ data class ThreadReactionSpriteCatalog(
 
 data class ThreadReactionSprite(
     val name: String,
-    val apiValue: String,
-    val aliases: Set<String>,
+    val value: String,
     val rect: IntRect,
     val labels: Map<String, String>
-)
-
-data class ThreadReactionChipModel(
-    val spriteName: String?,
-    val displayValue: String,
-    val rawValues: Set<String>,
-    val selectedRawValues: Set<String>,
-    val count: Int,
-    val selected: Boolean
 )
 ```
 
@@ -211,22 +222,13 @@ Use this boundary:
 - UI input: `KuiklyThreadReactionItem.emoji` or quick menu selected sprite.
 - Lookup: `catalog.resolve(reaction.emoji)`.
 - Render: if lookup succeeds, draw the atlas crop; otherwise use existing fallback.
-- Toggle: resolved catalog reactions use the alias normalization rule below; unknown reactions keep current raw `reaction.emoji` behavior.
+- Toggle: always send and track the exact reaction value:
+  - quick reaction buttons call `setMessageReaction(messageId, sprite.value, selected)`;
+  - existing chips call `setMessageReaction(messageId, reaction.emoji, selected)`;
+  - pending keys stay `(messageId, exactValue)` or the existing `$messageId:$emoji` equivalent;
+  - rollback reconciles by exact value.
 
-Alias normalization rule:
-
-- `ThreadReactionSprite.name` is the presentation grouping key.
-- Incoming message reactions that resolve to the same `name` must be merged into one visible chip.
-- The merged chip model must preserve `rawValues` and `selectedRawValues`; `selectedRawValues` is required for optimistic removal.
-- The visible chip count is the sum of alias-equivalent reaction counts.
-- The visible chip `selected` state is true if any alias-equivalent raw reaction is selected by the current user.
-- Quick reaction selected-state detection must compare by `name`, not raw emoji.
-- Quick reaction toggle payload should use `apiValue`.
-- If a visible alias group contains selected raw aliases and the user taps to remove their reaction, issue DELETE for every value in `selectedRawValues`.
-- If `selectedRawValues` is empty or ambiguous while the visible merged chip is selected, do not optimistically deselect and do not guess the canonical `apiValue`; refresh the message or temporarily fall back to raw chip rendering for that group.
-- Pending/rollback keys must be based on `(messageId, sprite.name)` for resolved catalog reactions, not `(messageId, rawEmoji)`. Unknown reactions keep the existing `(messageId, rawEmoji)` key.
-
-This rule prevents a message with both `☑️` and `✅` from rendering two identical Done chips after atlas migration. It also prevents the quick row from adding canonical `✅` while an alias-equivalent selected `☑️` is already present. It also prevents UI/server divergence where the app visually removes `✅` while the server still stores the selected alias `☑️`.
+No presentation grouping is allowed. If a message contains both `☑️` and `✅`, Android must show two chips if both have `count > 0`, exactly as React would for two distinct `reaction.emoji` rows. The atlas may draw them with different art or fall one back to text, but it must not merge their counts or selected state.
 
 ## Rendering Contract
 
@@ -245,7 +247,7 @@ fun ThreadReactionSpriteIcon(
 Expected behavior:
 
 1. Load/remember the generated catalog once per process or app shell. If runtime JSON loading is chosen, read and validate the manifest through the explicit common bridge from the Catalog Loading Boundary section.
-2. Resolve `value` through alias map.
+2. Resolve `value` through exact `value` map.
 3. Draw the atlas region into the given bounds with `ContentScale.Fit`.
 4. Use transparent background; chip/menu background remains owned by existing components.
 5. On unavailable manifest/image/crop support, call `fallback(value)`.
@@ -280,7 +282,7 @@ Suggested accessible labels:
 - Existing chip with count: `<label>, <count> reaction(s)`.
 - Selected chip: `You reacted with <label>, <count> reaction(s)`.
 
-KMM string resources can still own generic grammar such as "reaction" or "You reacted with"; the manifest owns the reaction names themselves.
+KMM string resources can still own generic grammar such as "reaction" or "You reacted with"; the manifest owns the reaction labels themselves.
 
 ## Migration Steps
 
@@ -291,38 +293,34 @@ KMM string resources can still own generic grammar such as "reaction" or "You re
    - `resolve(value)`;
    - `quickReactions()`;
    - `label(value, locale)`.
-5. Add alias-equivalent merge logic for message reaction chips and quick-row selected detection.
-6. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
-7. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.apiValue }` or a typed quick reaction model.
-8. Replace `ThreadQuickReactionGlyph` internals:
+5. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
+6. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.value }` or a typed quick reaction model.
+7. Replace `ThreadQuickReactionGlyph` internals:
    - supported sprite -> atlas crop;
    - unsupported/missing asset -> current fallback.
-9. Keep existing chip layout, counts, selected state, and click handling.
-10. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
+8. Keep existing exact-value chip layout, counts, selected state, pending state, rollback, and click handling.
+9. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
 
 ## Tests
 
 Unit tests:
 
-- Manifest parser rejects duplicate `name`, duplicate alias, missing `en`, out-of-bounds rect, and unsupported `schemaVersion`.
-- Current quick reactions resolve to the expected `name` and `apiValue`.
-- Existing aliases (`❤`, `☑️`, `✔️`, `✓`) resolve to the intended sprite.
-- Alias-equivalent incoming reactions merge into one visible chip by `ThreadReactionSprite.name`.
-- Quick reaction selected detection treats alias-equivalent selected reactions as already selected.
-- Removing a selected merged chip sends DELETE for every `selectedRawValues` entry and never guesses canonical `apiValue` when selected raw identity is unknown.
-- Pending and rollback keys use `(messageId, sprite.name)` for resolved catalog reactions and do not duplicate alias/canonical toggles.
-- Locale lookup falls back exact -> script -> language -> `en` -> `name`.
+- Manifest parser rejects duplicate `name`, duplicate `value`, missing `en`, out-of-bounds rect, blank value, whitespace value, and unsupported `schemaVersion`.
+- Current quick reactions resolve to the expected `name` and exact `value`.
 - Quick reaction order is stable.
 - Unknown reaction values fall back without crashing.
+- `☑️` and `✅` remain separate exact values if both appear in message reactions.
+- Pending and rollback keys use exact reaction value and do not group by catalog `name`.
+- Locale lookup falls back exact -> script -> language -> `en` -> `name`.
 
 Rendering / smoke tests:
 
 - Thread long-press menu renders atlas icons for all quick reactions.
 - Existing reaction chips render atlas icons plus counts without changing chip dimensions.
 - Selected chip background and count text remain unchanged.
-- Missing/corrupt manifest falls back to text/legacy glyphs and reaction toggles still call the existing API.
+- Missing/corrupt manifest falls back to text/legacy glyphs and reaction toggles still call the existing API with the exact value.
 - Missing OHOS `resfile/reactions/*` assets fall back and emit a diagnostic that identifies the missing asset path without crashing.
-- A message containing both alias and canonical values, e.g. `☑️` plus `✅`, renders one Done chip with merged count/selected state.
+- A message containing `☑️` plus `✅` renders two separate chips if both have count, or one sprite chip plus one text fallback if only `✅` is in the atlas.
 - Android and OHOS shared compile pass after introducing the resource path and source-rect primitive.
 - OHOS packaging check or HAP smoke proves both atlas PNG and catalog are available from `resfile/reactions/`; Kotlin compile alone is not enough.
 
@@ -338,18 +336,17 @@ cd compose
 ## Acceptance Criteria
 
 - A checked-in spec defines the atlas and manifest contract.
-- Future implementation has one JSON manifest with stable names, crop rectangles, aliases, API values, and labels.
+- Future implementation has one JSON manifest with stable icon names, exact reaction values, crop rectangles, and labels.
 - Runtime catalog access is explicit: either generated commonMain Kotlin catalog from JSON source of truth, or a common `readAssetText` bridge implemented on Android and OHOS.
 - Android and OHOS resolve the same `assets://reactions/...` URI convention, with OHOS packaging under `resfile/reactions/`.
-- UI reaction add/remove behavior remains compatible with existing server emoji payloads.
-- Alias-equivalent reactions use one visible chip and quick-row selected/toggle logic is keyed by catalog `name`.
-- Quick reaction menu and reaction chips use the same catalog.
+- UI reaction add/remove behavior remains compatible with existing server emoji payloads and exact-value React behavior.
+- Quick reaction menu and reaction chips use the same exact-value catalog.
 - Unsupported reactions still render and remain clickable.
 - No per-icon coordinates are hard-coded in `ThreadPage.kt`.
 
 ## Open Questions
 
-- Should the backend eventually accept stable reaction `name` instead of emoji `apiValue`? Initial answer: no, keep API stable.
-- Should `labels` live entirely in JSON or reference KMM string resource keys? Initial answer: JSON owns reaction names because the catalog may grow with art assets; generic sentence grammar remains in KMM strings.
-- Should the catalog include skin-tone variants? Initial answer: not for the first atlas; add explicit entries only if product supports them.
+- Should the backend eventually accept stable reaction `name` instead of exact value? Initial answer: no, keep API stable.
+- Should `labels` live entirely in JSON or reference KMM string resource keys? Initial answer: JSON owns reaction labels because the catalog may grow with art assets; generic sentence grammar remains in KMM strings.
+- Should the catalog include skin-tone variants? Initial answer: not for the first atlas; add explicit entries only if product supports them as exact values.
 - Should atlas version be server-driven? Initial answer: not yet; static app asset keeps offline and cross-platform behavior deterministic.
