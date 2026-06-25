@@ -976,6 +976,72 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadHeaderProjectionInputKeepsLastAcceptedProjectionWhenCurrentIsEmpty() {
+        val routePayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint"
+            )
+        val input = routePayload.threadHeaderProjectionInput()
+        val acceptedProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                title = "raft-mobile",
+                subtitle = "Mobile work"
+            )
+
+        val stableProjection = input.stableProjection(current = null, previous = acceptedProjection)
+        val headerDisplay = input.displayModel(stableProjection)
+
+        assertEquals(acceptedProjection, stableProjection)
+        assertEquals("raft-mobile", headerDisplay.title)
+        assertEquals("joint", headerDisplay.channelKind)
+    }
+
+    @Test
+    fun dmHeaderProjectionInputKeepsLastAcceptedAvatarWhenCurrentIsEmpty() {
+        val routePayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-dm-1",
+                title = "",
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm"
+            )
+        val input = routePayload.threadHeaderProjectionInput()
+        val acceptedProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "dm-1",
+                aliases = setOf("dm-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                title = "artin",
+                avatarWireValue = "pixel:crown",
+                avatarLabel = "AR",
+                peerMemberId = "member-artin"
+            )
+
+        val stableProjection = input.stableProjection(current = null, previous = acceptedProjection)
+        val headerDisplay = input.displayModel(stableProjection)
+
+        assertEquals(acceptedProjection, stableProjection)
+        assertEquals("artin", headerDisplay.title)
+        assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
+        assertEquals("member-artin", headerDisplay.dmPeerMemberId)
+    }
+
+    @Test
     fun jointPayloadIgnoresGenericChannelDirectoryProjection() {
         val payload =
             KuiklyThreadScreenPayload(

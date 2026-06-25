@@ -2221,23 +2221,24 @@ internal fun SharedThreadRouteContent(
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
-    val conversationDirectoryLookupIds =
-        remember(payload.sourceThreadId, payload.streamChannelId, payload.parentChannelId) {
-            payload.conversationHeaderLookupIds()
+    val headerProjectionInput =
+        remember(initialPayload) {
+            initialPayload.threadHeaderProjectionInput()
         }
+    val conversationDirectoryLookupIds = headerProjectionInput.lookupIds
     val emptyConversationDirectoryProjectionFlow =
         remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
     val directoryConversationProjections by remember(
         conversationDirectoryStore,
         currentSession?.currentServerId,
-        payload.surfaceKind,
+        headerProjectionInput.surfaceKind,
         conversationDirectoryLookupIds
     ) {
         val serverId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         if (
             conversationDirectoryStore != null &&
             serverId != null &&
-            payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
+            headerProjectionInput.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
             conversationDirectoryLookupIds.isNotEmpty()
         ) {
             conversationDirectoryStore
@@ -2247,19 +2248,33 @@ internal fun SharedThreadRouteContent(
         }
     }.collectAsState(emptyMap())
     val directoryConversationProjection =
-        remember(payload, conversationDirectoryLookupIds, directoryConversationProjections) {
+        remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds
                 .firstNotNullOfOrNull { id ->
                     directoryConversationProjections[id]?.takeIf { projection ->
-                        payload.acceptsConversationHeaderProjection(projection)
+                        headerProjectionInput.accepts(projection)
                     }
                 }
         }
-    val headerDisplayModel =
-        remember(payload, directoryConversationProjection) {
-            payload.threadHeaderDisplayModelFromDirectory(
-                projection = directoryConversationProjection
+    var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
+        mutableStateOf<SharedConversationDirectoryProjection?>(null)
+    }
+    val stableHeaderProjection =
+        remember(headerProjectionInput, directoryConversationProjection, lastAcceptedHeaderProjection) {
+            headerProjectionInput.stableProjection(
+                current = directoryConversationProjection,
+                previous = lastAcceptedHeaderProjection
             )
+        }
+    LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
+        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::accepts)
+        if (accepted != null) {
+            lastAcceptedHeaderProjection = accepted
+        }
+    }
+    val headerDisplayModel =
+        remember(headerProjectionInput, stableHeaderProjection) {
+            headerProjectionInput.displayModel(stableHeaderProjection)
         }
     val renderedPayload = remember(payload) {
         payload

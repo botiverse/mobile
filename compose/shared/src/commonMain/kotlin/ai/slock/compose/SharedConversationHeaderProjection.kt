@@ -31,6 +31,85 @@ internal data class ThreadHeaderDisplayModel(
     val dmPeerGravatarUrl: String? = null
 )
 
+internal sealed interface ThreadHeaderProjectionInput {
+    val lookupIds: List<String>
+    val surfaceKind: String
+
+    fun accepts(projection: SharedConversationDirectoryProjection): Boolean
+
+    fun displayModel(projection: SharedConversationDirectoryProjection?): ThreadHeaderDisplayModel
+}
+
+internal fun KuiklyThreadScreenPayload.threadHeaderProjectionInput(): ThreadHeaderProjectionInput =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage ->
+            DirectMessageThreadHeaderProjectionInput(
+                routePayload = this,
+                lookupIds = conversationHeaderLookupIds()
+            )
+        KuiklyThreadSurfaceKind.Channel ->
+            ChannelThreadHeaderProjectionInput(
+                routePayload = this,
+                lookupIds = conversationHeaderLookupIds()
+            )
+        else ->
+            ReplyThreadHeaderProjectionInput(
+                routePayload = this,
+                lookupIds = conversationHeaderLookupIds()
+            )
+    }
+
+internal fun ThreadHeaderProjectionInput.stableProjection(
+    current: SharedConversationDirectoryProjection?,
+    previous: SharedConversationDirectoryProjection?
+): SharedConversationDirectoryProjection? =
+    current?.takeIf(::accepts) ?: previous?.takeIf(::accepts)
+
+private data class DirectMessageThreadHeaderProjectionInput(
+    private val routePayload: KuiklyThreadScreenPayload,
+    override val lookupIds: List<String>
+) : ThreadHeaderProjectionInput {
+    override val surfaceKind: String = KuiklyThreadSurfaceKind.DirectMessage
+
+    override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
+        routePayload.acceptsConversationHeaderProjection(projection)
+
+    override fun displayModel(projection: SharedConversationDirectoryProjection?): ThreadHeaderDisplayModel =
+        routePayload.threadHeaderDisplayModelFromDirectory(
+            projection = projection?.takeIf(::accepts)
+        )
+}
+
+private data class ChannelThreadHeaderProjectionInput(
+    private val routePayload: KuiklyThreadScreenPayload,
+    override val lookupIds: List<String>
+) : ThreadHeaderProjectionInput {
+    override val surfaceKind: String = KuiklyThreadSurfaceKind.Channel
+
+    override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
+        routePayload.acceptsConversationHeaderProjection(projection)
+
+    override fun displayModel(projection: SharedConversationDirectoryProjection?): ThreadHeaderDisplayModel =
+        routePayload.threadHeaderDisplayModelFromDirectory(
+            projection = projection?.takeIf(::accepts)
+        )
+}
+
+private data class ReplyThreadHeaderProjectionInput(
+    private val routePayload: KuiklyThreadScreenPayload,
+    override val lookupIds: List<String>
+) : ThreadHeaderProjectionInput {
+    override val surfaceKind: String = KuiklyThreadSurfaceKind.ReplyThread
+
+    override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
+        routePayload.acceptsConversationHeaderProjection(projection)
+
+    override fun displayModel(projection: SharedConversationDirectoryProjection?): ThreadHeaderDisplayModel =
+        routePayload.threadHeaderDisplayModelFromDirectory(
+            projection = projection?.takeIf(::accepts)
+        )
+}
+
 internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
     entry: SharedConversationHeaderEntry?
 ): ThreadHeaderDisplayModel {
