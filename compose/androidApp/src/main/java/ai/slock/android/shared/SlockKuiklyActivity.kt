@@ -1352,12 +1352,6 @@ internal class SlockKuiklyBridgeModule(
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
                 SlockAndroidBuglyDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
-                when (level) {
-                    SlockBridgeLogLevel.DEBUG -> Unit
-                    SlockBridgeLogLevel.INFO -> Log.i("SlockKuikly", content)
-                    SlockBridgeLogLevel.WARN -> Log.w("SlockKuikly", content)
-                    SlockBridgeLogLevel.ERROR -> Log.e("SlockKuikly", content)
-                }
                 null
             }
             "copyToPasteboard" -> {

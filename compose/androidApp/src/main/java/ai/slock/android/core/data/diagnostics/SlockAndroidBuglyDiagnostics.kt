@@ -127,11 +127,22 @@ object SlockAndroidBuglyDiagnostics {
     fun recordLog(level: String, tag: String, message: String) {
         val cleanTag = tag.buglyValueOrNull() ?: return
         val cleanMessage = DiagnosticsSanitizer.sanitize(message).buglyValueOrNull() ?: return
-        writeFallbackLog(level, cleanTag, cleanMessage)
-        // Keep Logcat single-sourced through SlockDiagnosticsLogger/direct host logs.
-        // TDLog and BuglyCustomLog mirror app logs back into Logcat on some devices,
-        // which turns one diagnostic event into duplicate plain/bracketed entries.
-        // The fallback log files written above are still attached to feedback archives.
+        if (!diagnoseInitialized.get()) {
+            writeFallbackLog(level, cleanTag, cleanMessage)
+            return
+        }
+        runCatching {
+            when (level.lowercase()) {
+                "verbose" -> TDLog.v(cleanTag, cleanMessage)
+                "debug" -> TDLog.d(cleanTag, cleanMessage)
+                "info" -> TDLog.i(cleanTag, cleanMessage)
+                "warn" -> TDLog.w(cleanTag, cleanMessage)
+                "error" -> TDLog.e(cleanTag, cleanMessage)
+                else -> TDLog.i(cleanTag, cleanMessage)
+            }
+        }.onFailure {
+            writeFallbackLog(level, cleanTag, cleanMessage)
+        }
     }
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
