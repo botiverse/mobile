@@ -342,3 +342,70 @@ For the first implementation branch after this spec:
    a throwaway consumer branch before changing Slock's committed pins.
 5. Only after that, change `KotlinBuildVar.kt` and the OHOS render dependency
    in a separate consumer branch.
+
+## First Kuikly Publish Implementation
+
+The initial publish path is implemented by:
+
+- `scripts/publish_kuikly_fork_github.sh`
+- `.github/workflows/publish-kuikly-fork.yml`
+
+The script avoids patching `third_party/kuikly-ui` for the first remote publish.
+Instead it generates a temporary Gradle init script that:
+
+1. Adds a `GitHubPackages` Maven repository to every Kuikly subproject with the
+   `maven-publish` plugin.
+2. Overrides every `MavenPublication.version` with
+   `SLOCK_KUIKLY_PUBLICATION_VERSION`.
+3. Leaves the fork's existing local `mavenLocal()` helper path untouched.
+
+This is necessary because the current fork build files only publish to
+`mavenLocal()` when no username/password is provided, but their built-in remote
+repository URL is empty. Passing `username`/`password` directly to the fork would
+select that empty URL path. The init script adds a usable GitHub Packages
+repository without modifying the fork.
+
+Manual local dry-run example:
+
+```bash
+GITHUB_PACKAGES_OWNER=bytemain \
+GITHUB_PACKAGES_REPOSITORY=slock \
+GITHUB_ACTOR=<github-user> \
+GITHUB_TOKEN=<token-with-packages-write> \
+SLOCK_PUBLISH_DRY_RUN=1 \
+SLOCK_PUBLISH_FAMILY=all \
+scripts/publish_kuikly_fork_github.sh
+```
+
+Real publish example:
+
+```bash
+GITHUB_PACKAGES_OWNER=bytemain \
+GITHUB_PACKAGES_REPOSITORY=slock \
+GITHUB_ACTOR=<github-user> \
+GITHUB_TOKEN=<token-with-packages-write> \
+KUIKLY_FORK_REF=<expected-kuikly-commit-or-ref> \
+KUIKLY_VERSION=2.21.0 \
+KUIKLY_VERSION_SUFFIX=raft.2 \
+SLOCK_PUBLISH_FAMILY=all \
+scripts/publish_kuikly_fork_github.sh
+```
+
+The default remote coordinates are:
+
+- Android/KMP: `2.21.0-2.1.21-raft.2`
+- OHOS: `2.21.0-2.0.21-ohos-raft.2`
+
+CI usage:
+
+1. Start `.github/workflows/publish-kuikly-fork.yml` manually.
+2. Set `dry_run=true` first.
+3. Confirm the workflow resolves the intended Kuikly source ref and lists
+   `publish...ToGitHubPackagesRepository` tasks.
+4. Re-run with `dry_run=false` only after the target package namespace is
+   confirmed and package write access is available.
+
+Important prerequisite: the Kuikly fork ref used in CI must be reachable from
+`https://github.com/bytemain/KuiklyUI.git`. Local-only submodule commits cannot
+be published by GitHub Actions until they are pushed to a branch or tag in that
+fork.

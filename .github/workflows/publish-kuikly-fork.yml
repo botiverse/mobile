@@ -1,0 +1,81 @@
+name: Publish Kuikly fork artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      github_packages_owner:
+        description: Lowercase GitHub owner/org for maven.pkg.github.com
+        required: true
+        type: string
+      github_packages_repository:
+        description: Repository that owns the GitHub Packages Maven namespace
+        required: true
+        type: string
+      kuikly_fork_ref:
+        description: Expected third_party/kuikly-ui commit/ref to publish
+        required: true
+        type: string
+      kuikly_version:
+        description: Kuikly base version
+        required: true
+        default: "2.21.0"
+        type: string
+      version_suffix:
+        description: Internal Slock suffix
+        required: true
+        default: "raft.2"
+        type: string
+      family:
+        description: Artifact family to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ohos
+      dry_run:
+        description: Run Gradle with --dry-run
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-kuikly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Slock
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Checkout Kuikly fork ref
+        run: |
+          set -euo pipefail
+          mkdir -p third_party
+          git clone --no-checkout https://github.com/bytemain/KuiklyUI.git third_party/kuikly-ui
+          git -C third_party/kuikly-ui fetch --depth=1 origin "${{ inputs.kuikly_fork_ref }}"
+          git -C third_party/kuikly-ui checkout --detach FETCH_HEAD
+          git -C third_party/kuikly-ui describe --tags --always --dirty
+
+      - name: Publish Kuikly fork artifacts
+        env:
+          GITHUB_PACKAGES_OWNER: ${{ inputs.github_packages_owner }}
+          GITHUB_PACKAGES_REPOSITORY: ${{ inputs.github_packages_repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KUIKLY_FORK_REF: HEAD
+          KUIKLY_VERSION: ${{ inputs.kuikly_version }}
+          KUIKLY_VERSION_SUFFIX: ${{ inputs.version_suffix }}
+          SLOCK_PUBLISH_FAMILY: ${{ inputs.family }}
+          SLOCK_PUBLISH_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: scripts/publish_kuikly_fork_github.sh
