@@ -2226,10 +2226,17 @@ internal fun SharedThreadRouteContent(
         remember(conversationHeaderState, directoryConversationHeaderState) {
             conversationHeaderState.withDirectoryOverride(directoryConversationHeaderState)
         }
-    val renderedPayload = remember(payload, effectiveConversationHeaderState) {
+    val conversationHeaderEntry =
+        remember(payload, effectiveConversationHeaderState) {
+            effectiveConversationHeaderState.entryFor(payload)
+        }
+    val headerDisplayModel =
+        remember(payload, conversationHeaderEntry) {
+            payload.threadHeaderDisplayModel(conversationHeaderEntry)
+        }
+    val renderedPayload = remember(payload) {
         payload
             .withSharedShellEventCapabilities()
-            .withConversationHeader(effectiveConversationHeaderState.entryFor(payload))
     }
     val payloadRouteIdentity = remember(payload) {
         payload.resolveThreadRouteIdentity()
@@ -2441,7 +2448,7 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
         val composer =
             renderedPayload
-                .resolveThreadComposer()
+                .resolveThreadComposer(displayName = headerDisplayModel.title)
                 .copy(streamChannelId = resolvedAuxiliaryThreadId)
         val draftKey =
             composer
@@ -2562,7 +2569,7 @@ internal fun SharedThreadRouteContent(
         remember(
             renderedPayload.composer,
             renderedPayload.instanceId,
-            renderedPayload.title,
+            headerDisplayModel.title,
             renderedPayload.surfaceKind,
             renderedPayload.sourceThreadId,
             renderedPayload.streamChannelId,
@@ -2571,7 +2578,7 @@ internal fun SharedThreadRouteContent(
             renderedPayload.originParentMessageId,
             renderedPayload.canSend
         ) {
-            renderedPayload.resolveThreadComposer()
+            renderedPayload.resolveThreadComposer(displayName = headerDisplayModel.title)
         }
     val scopedBaseComposerState =
         remember(baseComposerState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
@@ -2585,14 +2592,14 @@ internal fun SharedThreadRouteContent(
             scopedBaseComposerState,
             resolvedAuxiliaryThreadId,
             renderedPayload.parentChannelId,
-            renderedPayload.title,
-            renderedPayload.subtitle,
+            headerDisplayModel.title,
+            headerDisplayModel.subtitle,
             renderedPayload.surfaceKind
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
-                mentionChannelLabel = renderedPayload.threadComposerMentionScopeChannelLabel()
+                mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel()
             )
         }
     fun currentComposerPayload(): KuiklyThreadComposerPayload =
@@ -3194,6 +3201,7 @@ internal fun SharedThreadRouteContent(
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
+            headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
             composerDraftViewModel = composerDraftViewModel,
@@ -5232,18 +5240,6 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
         ?: parentChannelId.nonBlank()
 }
 
-private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelLabel(): String? =
-    when (surfaceKind) {
-        KuiklyThreadSurfaceKind.ReplyThread ->
-            existingThreadChannelHeaderSubtitle(subtitle)
-                ?: threadChannelHeaderSubtitle(title)
-        KuiklyThreadSurfaceKind.DirectMessage ->
-            title.takeIf { it.isNotBlank() }?.let { raw ->
-                if (raw.startsWith("@")) raw else "@${raw.removePrefix("@")}"
-            }
-        else -> title.takeIf { it.isNotBlank() }
-    }
-
 private fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
     memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
 
@@ -5402,6 +5398,7 @@ private fun ThreadTasksJoinResultLogger(
 private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
+    headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
@@ -5564,6 +5561,7 @@ private fun ThreadPageContent(
         ) {
             ThreadPageHeader(
                 payload = payload,
+                headerDisplay = headerDisplay,
                 onBack = onBack,
                 onOpenInChannel = {
                     onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
@@ -5677,8 +5675,8 @@ private fun ThreadPageContent(
                 )
             "settings" ->
                 ThreadSettingsModal(
-                    channelName = payload.title,
-                    subtitle = payload.subtitle,
+                    channelName = headerDisplay.title,
+                    subtitle = headerDisplay.subtitle,
                     actions = payload.settingsActions,
                     onDismiss = { activeModal = null },
                     onOpenAction = { actionId ->
@@ -5693,13 +5691,13 @@ private fun ThreadPageContent(
 @Composable
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
+    headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
-    val displayTitle = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)
     Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -5714,14 +5712,14 @@ private fun ThreadPageHeader(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
-            if (payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
-                    avatarWireValue = payload.dmPeerAvatarUrl,
-                    avatarLabel = payload.dmPeerAvatarLabel ?: payload.dmPeerName ?: "",
-                    gravatarUrl = payload.dmPeerGravatarUrl
+                    avatarWireValue = headerDisplay.dmPeerAvatarWireValue,
+                    avatarLabel = headerDisplay.dmPeerAvatarLabel,
+                    gravatarUrl = headerDisplay.dmPeerGravatarUrl
                 )
             } else if (payload.showModeTabs) {
-                ThreadChannelTile(payload.channelKind)
+                ThreadChannelTile(headerDisplay.channelKind)
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
@@ -5730,7 +5728,7 @@ private fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = displayTitle,
+                        text = headerDisplay.title,
                         style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -5738,7 +5736,7 @@ private fun ThreadPageHeader(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
-                payload.subtitle?.takeIf { it.isNotBlank() }?.let {
+                headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),

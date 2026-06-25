@@ -442,7 +442,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun contentPatchPreservesDirectMessageHeaderWhenPatchOmitsDisplayMetadata() {
+    fun contentPatchDoesNotOwnDirectMessageHeaderMetadata() {
         val current =
             directMessagePayload().copy(
                 status = "content",
@@ -469,17 +469,35 @@ class SharedThreadStoreTest {
             )
 
         val payload = current.withContentPatchFrom(networkPatch)
+        val headerDisplay =
+            payload.threadHeaderDisplayModel(
+                sharedConversationHeaderState(
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "artin",
+                            avatar = AvatarReference.Pixel("crown"),
+                            gravatarUrl = "https://www.gravatar.com/avatar/artin"
+                        )
+                    )
+                ).entryFor(payload)
+            )
 
-        assertEquals("artin", payload.title)
-        assertEquals("artin", payload.dmPeerName)
-        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
-        assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("Direct Message", payload.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerAvatarLabel)
+        assertEquals(null, payload.dmPeerGravatarUrl)
+        assertEquals("artin", headerDisplay.title)
+        assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
         assertEquals("network body", payload.messages.single().body)
     }
 
     @Test
-    fun memoryCachedDirectMessageSnapshotKeepsLaunchHeaderWhenSnapshotOmitsDisplayMetadata() = runBlocking {
+    fun memoryCachedDirectMessageSnapshotCanRemainSparseWhenSnapshotOmitsDisplayMetadata() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
@@ -501,18 +519,20 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(directMessagePayload()))
 
         val payload = store.state.value.payload
+        val headerDisplay = payload.threadHeaderDisplayModel(null)
         assertEquals("content", payload.status)
-        assertEquals("artin", payload.title)
-        assertEquals("artin", payload.dmPeerName)
-        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
-        assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("Direct Message", payload.title)
+        assertEquals("Direct Message", headerDisplay.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerAvatarLabel)
+        assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("cached body", payload.messages.single().body)
         scope.cancel()
     }
 
     @Test
-    fun contentPatchDoesNotReplaceAgentDirectMessagePixelAvatarWithGravatar() {
+    fun contentPatchDoesNotProtectAgentDirectMessageHeaderFromIncomingPatch() {
         val current =
             directMessagePayload().copy(
                 title = "Product-UX-Designer",
@@ -550,9 +570,9 @@ class SharedThreadStoreTest {
 
         assertEquals("Product-UX-Designer", payload.title)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
-        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
         assertEquals("PU", payload.dmPeerAvatarLabel)
-        assertEquals(null, payload.dmPeerGravatarUrl)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerGravatarUrl)
         assertEquals("network body", payload.messages.single().body)
     }
 
@@ -1748,7 +1768,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun directMessageCachedSnapshotPreservesLaunchPeerHeader() = runBlocking {
+    fun directMessageCachedSnapshotDoesNotCopyLaunchPeerHeader() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -1758,7 +1778,7 @@ class SharedThreadStoreTest {
                         threadId = ThreadId("dm-1"),
                         channelId = ChannelId("dm-1"),
                         kind = ConversationKind.DirectMessage,
-                        name = "b2cddd71-75a9-4cfc-b3e0"
+                        name = "b2cddd71-75a9-4cfc-b3e0-02485b50900d"
                     ),
                 messages =
                     listOf(
@@ -1784,12 +1804,14 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(directMessagePayload()))
 
         val payload = store.state.value.payload
+        val headerDisplay = payload.threadHeaderDisplayModel(null)
         assertEquals("content", payload.status)
-        assertEquals("artin", payload.title)
-        assertEquals("artin", payload.dmPeerName)
-        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
-        assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("Direct Message", payload.title)
+        assertEquals("Direct Message", headerDisplay.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerAvatarLabel)
+        assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("cached dm body", payload.messages.single().body)
         scope.cancel()
     }

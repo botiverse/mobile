@@ -585,7 +585,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         hookLabels = hookLabels
     )
 
-internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComposerPayload {
+internal fun KuiklyThreadScreenPayload.resolveThreadComposer(displayName: String = title): KuiklyThreadComposerPayload {
     val resolvedSurfaceKind =
         if (composer.surfaceKind == KuiklyThreadSurfaceKind.Channel && surfaceKind != KuiklyThreadSurfaceKind.Channel) {
             surfaceKind
@@ -620,7 +620,7 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
         if (composer.placeholder == "Message") {
             threadSurfaceComposerPlaceholder(
                 surfaceKind = resolvedSurfaceKind,
-                displayName = title,
+                displayName = displayName,
                 fallbackId = sourceThreadId ?: instanceId
             )
         } else {
