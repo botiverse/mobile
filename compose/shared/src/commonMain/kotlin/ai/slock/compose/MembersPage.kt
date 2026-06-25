@@ -2259,6 +2259,11 @@ private fun MembersDetailContent(
                 )
         }
     }
+    fun openRestartResetDialog() {
+        restartResetSelection = MembersAgentLifecycleAction.Restart
+        actionState = null
+        restartResetDialogOpen = true
+    }
     fun saveAvatar(avatarUrl: String?) {
         val callback = onUpdateAgentProfile
         if (!canManage || deleted || callback == null) {
@@ -2405,6 +2410,12 @@ private fun MembersDetailContent(
                                         agentDetailActions = agentDetailActions,
                                         onUpdateAgentProfile = onUpdateAgentProfile,
                                         onUnavailableAction = onUnavailableAction,
+                                        lifecycleInFlight = lifecycleInFlight,
+                                        diagnosticActionState = effectiveDiagnosticActionState,
+                                        onRunLifecycleAction = { runLifecycleAction(it) },
+                                        onOpenRestartReset = { openRestartResetDialog() },
+                                        onCopyDiagnostics = { copyDiagnostics() },
+                                        onReportIssue = { reportIssue() },
                                         timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -2482,11 +2493,7 @@ private fun MembersDetailContent(
                     handleMembersManagementMenuSelection(
                         id = id,
                         primaryAction = menuPrimary,
-                        openRestartResetDialog = {
-                            restartResetSelection = MembersAgentLifecycleAction.Restart
-                            actionState = null
-                            restartResetDialogOpen = true
-                        },
+                        openRestartResetDialog = { openRestartResetDialog() },
                         runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
@@ -3508,6 +3515,12 @@ private fun MembersAgentProfileTab(
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUnavailableAction: (String) -> Unit,
+    lifecycleInFlight: String? = null,
+    diagnosticActionState: MembersAgentDiagnosticActionState? = null,
+    onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
+    onOpenRestartReset: () -> Unit = {},
+    onCopyDiagnostics: () -> Unit = {},
+    onReportIssue: () -> Unit = {},
     timeContext: SlockTimeContext,
     modifier: Modifier = Modifier
 ) {
@@ -4159,8 +4172,113 @@ private fun MembersAgentProfileTab(
         // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
         MembersAgentCreatedAgentsSection(detail)
         MembersAgentSkillsSection(detail)
+        MembersAgentProfileActionsSection(
+            member = member,
+            detail = detail,
+            canManage = canManage,
+            lifecycleInFlight = lifecycleInFlight,
+            diagnosticActionState = diagnosticActionState,
+            onRunLifecycleAction = onRunLifecycleAction,
+            onOpenRestartReset = onOpenRestartReset,
+            onCopyDiagnostics = onCopyDiagnostics,
+            onReportIssue = onReportIssue
+        )
     }
 }
+
+@Composable
+private fun MembersAgentProfileActionsSection(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    canManage: Boolean,
+    lifecycleInFlight: String?,
+    diagnosticActionState: MembersAgentDiagnosticActionState?,
+    onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
+    onOpenRestartReset: () -> Unit,
+    onCopyDiagnostics: () -> Unit,
+    onReportIssue: () -> Unit
+) {
+    val summary = detail?.summary
+    val deleted = summary?.deletedAt?.isNotBlank() == true
+    if (!canManage || deleted) return
+
+    val status = member.membersAgentStatusDisplayState(summary?.status, summary?.activity).status
+    val primaryAction = membersPrimaryLifecycleAction(status, deleted = false)
+    val primaryLabel =
+        when (primaryAction) {
+            MembersAgentLifecycleAction.Start -> "Start Agent"
+            MembersAgentLifecycleAction.Stop -> "Stop Agent"
+            null -> "Start Agent"
+            else -> primaryAction.label
+        }
+    val primaryBusy = lifecycleInFlight == primaryAction?.actionKey
+    val copyState = diagnosticActionState?.takeIf { it.actionKey == "copy" }
+    val reportState = diagnosticActionState?.takeIf { it.actionKey == "report" }
+    val diagnosticBusy = diagnosticActionState?.inProgress == true
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle("ACTIONS")
+        if (primaryAction != null) {
+            SlockBrutalActionButton(
+                label = if (primaryBusy) primaryAction.profileActionBusyLabel() else primaryLabel,
+                leadingIcon = primaryAction.iconName,
+                enabled = lifecycleInFlight == null,
+                minHeight = 42.dp,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onRunLifecycleAction(primaryAction) }
+            )
+        }
+        SlockBrutalActionButton(
+            label = "Restart / Reset",
+            leadingIcon = SlockLucideIconName.RotateCcw,
+            enabled = lifecycleInFlight == null,
+            minHeight = 42.dp,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenRestartReset
+        )
+        SlockBrutalActionButton(
+            label = copyState?.successLabel ?: "Copy Diagnostic Info",
+            leadingIcon = if (copyState?.successLabel != null) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
+            enabled = !diagnosticBusy,
+            minHeight = 42.dp,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onCopyDiagnostics
+        )
+        SlockBrutalActionButton(
+            label = if (reportState?.inProgress == true) "Reporting..." else "Report Issue",
+            leadingIcon = SlockLucideIconName.Bug,
+            enabled = !diagnosticBusy,
+            backgroundColor = SlockColor.AccentOrange,
+            minHeight = 42.dp,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onReportIssue
+        )
+        SlockBrutalActionButton(
+            label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) "Deleting..." else "Delete Agent",
+            leadingIcon = SlockLucideIconName.Trash2,
+            enabled = lifecycleInFlight == null,
+            backgroundColor = SlockColor.AccentRed,
+            minHeight = 42.dp,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { onRunLifecycleAction(MembersAgentLifecycleAction.Delete) }
+        )
+    }
+}
+
+private fun MembersAgentLifecycleAction.profileActionBusyLabel(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Start -> "Starting..."
+        MembersAgentLifecycleAction.Stop -> "Stopping..."
+        MembersAgentLifecycleAction.Delete -> "Deleting..."
+        MembersAgentLifecycleAction.Restart -> "Restarting..."
+        MembersAgentLifecycleAction.ResetSession -> "Resetting..."
+        MembersAgentLifecycleAction.ResetFull -> "Resetting..."
+        MembersAgentLifecycleAction.UnassignMachine -> "Unassigning..."
+    }
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
