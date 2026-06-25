@@ -226,6 +226,100 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun latestLocalSendBottomAnchor_revealsFirstLocalSendBeforeInitialAnchor() {
+        val pendingContext =
+            KuiklyThreadPendingSendContext(
+                channelId = "parent-channel",
+                body = "reply",
+                parentMessageId = "origin-message",
+                streamChannelId = "thread-channel"
+            )
+        val replyThreadPayload =
+            payload(
+                originStatus = "loaded",
+                messages =
+                    listOf(
+                        message(
+                            "local-send-1",
+                            body = "reply",
+                            deliveryState = ThreadMessageDeliverySending,
+                            pendingSendContext = pendingContext
+                        )
+                    )
+            )
+
+        assertEquals(
+            true,
+            shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+                initialBottomAnchorReady = false,
+                latestLocalSendBottomAnchorKey = replyThreadPayload.latestLocalSendBottomAnchorKeyPublic(),
+                latestItemIndex = replyThreadPayload.latestMessageListItemIndexPublic(),
+                messageCount = replyThreadPayload.messages.size
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+                initialBottomAnchorReady = true,
+                latestLocalSendBottomAnchorKey = replyThreadPayload.latestLocalSendBottomAnchorKeyPublic(),
+                latestItemIndex = replyThreadPayload.latestMessageListItemIndexPublic(),
+                messageCount = replyThreadPayload.messages.size
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+                initialBottomAnchorReady = false,
+                latestLocalSendBottomAnchorKey = null,
+                latestItemIndex = replyThreadPayload.latestMessageListItemIndexPublic(),
+                messageCount = replyThreadPayload.messages.size
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+                initialBottomAnchorReady = false,
+                latestLocalSendBottomAnchorKey = replyThreadPayload.latestLocalSendBottomAnchorKeyPublic(),
+                latestItemIndex = -1,
+                messageCount = replyThreadPayload.messages.size
+            )
+        )
+    }
+
+    @Test
+    fun latestLocalSendBottomAnchor_keepsInitialLoadingForNonFirstLocalSend() {
+        val pendingContext =
+            KuiklyThreadPendingSendContext(
+                channelId = "channel-1",
+                body = "second",
+                streamChannelId = "channel-1"
+            )
+        val threadPayload =
+            payload(
+                messages =
+                    listOf(
+                        message("m1"),
+                        message(
+                            "local-send-2",
+                            body = "second",
+                            deliveryState = ThreadMessageDeliverySending,
+                            pendingSendContext = pendingContext
+                        )
+                    )
+            )
+
+        assertEquals(
+            false,
+            shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+                initialBottomAnchorReady = false,
+                latestLocalSendBottomAnchorKey = threadPayload.latestLocalSendBottomAnchorKeyPublic(),
+                latestItemIndex = threadPayload.latestMessageListItemIndexPublic(),
+                messageCount = threadPayload.messages.size
+            )
+        )
+    }
+
+    @Test
     fun latestLocalSendBottomAnchor_continuesUntilRenderedBottomWithoutUserScroll() {
         assertEquals(
             true,

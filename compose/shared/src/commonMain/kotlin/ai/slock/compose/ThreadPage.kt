@@ -6396,11 +6396,6 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
-    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
-        if (initialBottomAnchorReady || latestItemIndex < 0) {
-            onThreadContentReady()
-        }
-    }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var userScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -6432,6 +6427,18 @@ private fun ThreadMessagesList(
         payload.messages.lastOrNull()?.pendingSendContext?.attachmentIds?.size
     ) {
         payload.latestLocalSendBottomAnchorKey()
+    }
+    val revealLatestLocalSendBeforeInitialAnchor =
+        shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+            initialBottomAnchorReady = initialBottomAnchorReady,
+            latestLocalSendBottomAnchorKey = latestLocalSendBottomAnchorKey,
+            latestItemIndex = latestItemIndex,
+            messageCount = payload.messages.size
+        )
+    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady, revealLatestLocalSendBeforeInitialAnchor) {
+        if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
+            onThreadContentReady()
+        }
     }
     val currentPayloadState = rememberUpdatedState(payload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
@@ -6728,7 +6735,13 @@ private fun ThreadMessagesList(
                             userScrollGeneration += 1
                         }
                     }
-                    .alpha(if (initialBottomAnchorReady || latestItemIndex < 0) 1f else 0f)
+                    .alpha(
+                        if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
+                            1f
+                        } else {
+                            0f
+                        }
+                    )
                     .bouncesEnable(false),
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
@@ -6928,7 +6941,7 @@ private fun ThreadMessagesList(
                 }
             }
         }
-        if (!initialBottomAnchorReady && latestItemIndex >= 0) {
+        if (!initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor) {
             ThreadStateMessage("Loading...", null)
         }
         if (shouldShowThreadBackToBottomButton(
@@ -7237,6 +7250,17 @@ internal fun shouldAnchorLatestLocalSendToBottom(
     latestItemIndex: Int
 ): Boolean =
     latestLocalSendBottomAnchorKey != null && latestItemIndex >= 0
+
+internal fun shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
+    initialBottomAnchorReady: Boolean,
+    latestLocalSendBottomAnchorKey: String?,
+    latestItemIndex: Int,
+    messageCount: Int
+): Boolean =
+    !initialBottomAnchorReady &&
+        latestLocalSendBottomAnchorKey != null &&
+        latestItemIndex >= 0 &&
+        messageCount == 1
 
 internal fun shouldContinueLatestLocalSendBottomAnchor(
     activeAnchorKey: String?,
