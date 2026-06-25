@@ -254,10 +254,27 @@ internal data class CreateAgentDropdownItem(
 
 private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
 
-internal fun createAgentRuntimeDropdownItems(): List<CreateAgentDropdownItem> =
-    RUNTIMES.filter { it.supported }.map { runtime ->
-        CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
+internal fun createAgentRuntimeDropdownItems(
+    machineRuntimeIds: List<String> = emptyList()
+): List<CreateAgentDropdownItem> {
+    val knownSupportedRuntimes = RUNTIMES.filter { it.supported }
+    val machineRuntimeIdsNormalized =
+        machineRuntimeIds
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    val sourceIds =
+        machineRuntimeIdsNormalized
+            .takeIf { it.isNotEmpty() }
+            ?: knownSupportedRuntimes.map { it.id }
+    return sourceIds.map { runtimeId ->
+        val knownRuntime = knownSupportedRuntimes.firstOrNull { it.id == runtimeId }
+        CreateAgentDropdownItem(
+            id = runtimeId,
+            label = knownRuntime?.displayName ?: getRuntimeDisplayName(runtimeId)
+        )
     }
+}
 
 internal fun createAgentMachineDropdownItems(
     machines: List<SharedCreateAgentMachineOption>,
@@ -436,6 +453,13 @@ internal fun SharedCreateAgentDialog(
     val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
+    val selectedMachineRuntimeIds =
+        selectedMachine
+            ?.runtimes
+            .orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
     val selectedMachineBlocked = !external &&
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
@@ -448,6 +472,13 @@ internal fun SharedCreateAgentDialog(
         !submitting &&
         !selectedMachineBlocked
     val showMachinePicker = !external
+
+    LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
+        val machineId = selectedMachineId ?: return@LaunchedEffect
+        if (!external && selectedMachineRuntimeIds.isNotEmpty() && runtime !in selectedMachineRuntimeIds) {
+            resetRuntimeForMachine(machineId)
+        }
+    }
 
     SlockUnifiedDialog(
         title = if (external) "CREATE EXTERNAL AGENT" else "CREATE AGENT",
@@ -591,6 +622,7 @@ internal fun SharedCreateAgentDialog(
                             customModelName = customModelName,
                             onCustomModelNameChange = { customModelName = it },
                             runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
+                            machineRuntimeIds = selectedMachineRuntimeIds,
                             enabled = !submitting,
                             providerMode = providerMode,
                             onProviderModeChange = { providerMode = it },
@@ -783,6 +815,7 @@ internal fun AdvancedRuntimeSection(
     customModelName: String,
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
+    machineRuntimeIds: List<String> = emptyList(),
     enabled: Boolean,
     providerMode: RuntimeProviderMode,
     onProviderModeChange: (RuntimeProviderMode) -> Unit,
@@ -804,7 +837,7 @@ internal fun AdvancedRuntimeSection(
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
     val modelOptions = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
-    val runtimeOptions = createAgentRuntimeDropdownItems()
+    val runtimeOptions = createAgentRuntimeDropdownItems(machineRuntimeIds)
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())

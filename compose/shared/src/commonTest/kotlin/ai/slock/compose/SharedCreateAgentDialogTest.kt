@@ -24,6 +24,18 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun runtimeDropdownUsesSelectedMachineRuntimesWhenAvailable() {
+        val items =
+            createAgentRuntimeDropdownItems(
+                listOf("codex", "claude", "custom-runtime", "codex", " ")
+            )
+
+        assertEquals(listOf("codex", "claude", "custom-runtime"), items.map { it.id })
+        assertEquals(listOf("Codex CLI", "Claude Code", "custom-runtime"), items.map { it.label })
+        assertFalse(items.any { it.custom })
+    }
+
+    @Test
     fun machineDropdownDisablesOfflineAndNonRequiredComputers() {
         val items =
             createAgentMachineDropdownItems(
