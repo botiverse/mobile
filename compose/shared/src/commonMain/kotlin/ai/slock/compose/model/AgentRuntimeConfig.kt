@@ -1,7 +1,10 @@
 package ai.slock.compose.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
@@ -24,30 +27,42 @@ import kotlinx.serialization.json.jsonPrimitive
 
 const val RUNTIME_CONFIG_VERSION: Int = 1
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
+@JsonClassDiscriminator("kind")
 sealed class RuntimeProviderConfig {
     @Serializable
+    @SerialName("default")
     data object Default : RuntimeProviderConfig()
 
     @Serializable
+    @SerialName("custom")
     data class Custom(val apiUrl: String, val apiKey: String) : RuntimeProviderConfig()
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
+@JsonClassDiscriminator("kind")
 sealed class RuntimeModelConfig {
     @Serializable
+    @SerialName("preset")
     data class Preset(val id: String) : RuntimeModelConfig()
 
     @Serializable
+    @SerialName("custom")
     data class Custom(val name: String) : RuntimeModelConfig()
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
+@JsonClassDiscriminator("kind")
 sealed class RuntimeModeConfig {
     @Serializable
+    @SerialName("default")
     data object Default : RuntimeModeConfig()
 
     @Serializable
+    @SerialName("fast")
     data object Fast : RuntimeModeConfig()
 }
 

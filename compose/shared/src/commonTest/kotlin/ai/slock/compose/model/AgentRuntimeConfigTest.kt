@@ -233,9 +233,10 @@ class AgentRuntimeConfigTest {
         val json = Json.encodeToString(RuntimeConfig.serializer(), cfg)
         val decoded = Json.decodeFromString(RuntimeConfig.serializer(), json)
         assertEquals(cfg, decoded)
-        // kotlinx.serialization polymorphic encoding uses fully-qualified type name;
-        // verify Fast mode is present in the encoded form.
-        assertTrue(json.contains("RuntimeModeConfig.Fast"), "json should carry mode=Fast, was: $json")
+        // RuntimeConfig must mirror the TypeScript contract: tagged unions use
+        // a lowercase `kind`, not Kotlin class names.
+        assertTrue(json.contains(""""mode":{"kind":"fast"}"""), "json should carry mode=fast, was: $json")
+        assertTrue(json.contains(""""model":{"kind":"preset","id":"sonnet"}"""), "json should carry model preset, was: $json")
         assertTrue(json.contains("\"reasoningEffort\":\"high\""), "json should carry reasoningEffort=high")
     }
 }
