@@ -2025,11 +2025,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     val pos = coordinates.positionInRoot()
                     rowTopLeft.update(Offset(x = pos.x, y = pos.y))
                 }
-                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
                 .then(hoverableModifier)
         ) {
-        if (selected || pressed) {
+        if (pressed) {
             Box(
                 modifier =
                     Modifier
