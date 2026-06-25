@@ -153,6 +153,28 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun conversationSummaryThreadRouteIdentityIgnoresParentChannelEchoAsTimeline() {
+        val identity =
+            ConversationSummary(
+                threadId = ThreadId("reply-thread-1"),
+                channelId = ChannelId("parent-channel-1"),
+                thread =
+                    ThreadConversation(
+                        parentChannelId = ChannelId("parent-channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        streamChannelId = ChannelId("reply-thread-1")
+                    ),
+                kind = ConversationKind.Thread,
+                name = "Thread"
+            ).resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, identity.surfaceKind)
+        assertEquals("reply-stream:reply-thread-1", identity.instanceKey)
+        assertEquals("reply-thread-1", identity.timelineKey)
+        assertTrue(identity.canRenderTimelineCandidates)
+    }
+
+    @Test
     fun threadRouteTimelineChannelIdOwnsMemoryCacheKey() {
         val dataSource =
             SharedThreadDataSource(

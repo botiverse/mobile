@@ -1,5 +1,9 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.messageStreamChannelId
+
 internal data class ThreadRouteIdentity(
     val surfaceKind: String,
     val instanceKey: String,
@@ -11,9 +15,45 @@ internal data class ThreadRouteIdentity(
 }
 
 internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
+    val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
+    return resolveThreadRouteIdentity(
+        surfaceKind = surfaceKind,
+        instanceId = instanceId,
+        sourceThreadId = sourceThreadId,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessage
+    )
+}
+
+internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdentity {
+    val surface =
+        when (kind) {
+            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+            else -> KuiklyThreadSurfaceKind.Channel
+        }
+    return resolveThreadRouteIdentity(
+        surfaceKind = surface,
+        instanceId = null,
+        sourceThreadId = threadId.value,
+        streamChannelId = messageStreamChannelId().value,
+        parentChannelId = thread?.parentChannelId?.value,
+        parentMessageId = thread?.parentMessageId?.value
+    )
+}
+
+private fun resolveThreadRouteIdentity(
+    surfaceKind: String,
+    instanceId: String?,
+    sourceThreadId: String?,
+    streamChannelId: String?,
+    parentChannelId: String?,
+    parentMessageId: String?
+): ThreadRouteIdentity {
     val surface = surfaceKind.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
     val parentChannel = parentChannelId.nonBlank()
-    val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
+    val parentMessage = parentMessageId.nonBlank()
     val isReplyThread =
         surface == KuiklyThreadSurfaceKind.ReplyThread ||
             (parentChannel != null && parentMessage != null)

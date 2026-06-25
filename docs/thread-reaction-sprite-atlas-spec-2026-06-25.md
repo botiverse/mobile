@@ -52,7 +52,7 @@ Therefore the Android/KMP sprite atlas must not invent value grouping, canonical
 - Do not change the backend reaction API route or payload shape.
 - Do not redesign reaction chip layout, counts, selected state, or task/comment reaction semantics.
 - Do not add animated reactions.
-- Do not generate atlas artwork in code; artwork is an asset supplied to the repo.
+- Do not redraw or approximate reaction artwork from screenshots. Source art must come from the existing checked-in path data or React's real production SVGs.
 - Do not merge, normalize, alias, or canonicalize reaction values.
 - Do not move message reaction count/selection into the manifest. Counts and selection remain message state.
 
@@ -72,13 +72,53 @@ The sprite work should replace `ThreadQuickReactionGlyph` internals and quick-re
 
 ## Asset Layout
 
+### Source Artwork
+
+The atlas PNG is generated output. The artwork source of truth is a set of
+checked-in SVG files, one file per reaction icon. These SVGs must be extracted
+from one of the existing product sources:
+
+- current KMP/Android code paths that are hard-coded in reaction Canvas/vector
+  drawing; or
+- React's real production SVG assets for the same reaction placeholder.
+
+Do not create a new hand-drawn combined atlas SVG as the source. The generator
+may compose an intermediate SVG internally, but reviewers must be able to trace
+each atlas cell back to an individual source SVG file that matches the existing
+product path/SVG.
+
+Recommended source layout:
+
+```text
+scripts/assets/thread-reactions/sources/thumbs_up.svg
+scripts/assets/thread-reactions/sources/heart.svg
+scripts/assets/thread-reactions/sources/party.svg
+scripts/assets/thread-reactions/sources/eyes.svg
+scripts/assets/thread-reactions/sources/fire.svg
+scripts/assets/thread-reactions/sources/laugh.svg
+scripts/assets/thread-reactions/sources/done.svg
+scripts/generate_thread_reaction_atlas.mjs
+```
+
+Each source SVG must:
+
+- use a transparent background;
+- keep product path geometry intact except for deterministic viewBox/size
+  normalization needed for atlas packing;
+- include no screenshot-derived raster traces;
+- be regenerated into the atlas by script, not manually pasted into the PNG.
+
+The generation script should fail if a quick reaction in the manifest has no
+matching source SVG, if a source SVG is not parseable, or if the generated PNG
+and manifest differ from checked-in output after rerun.
+
 Use KMM Resource as the source-of-truth asset pipeline. The project already applies
 `com.tencent.kuiklybase.resource.generator` in `compose/shared/build.gradle.kts`,
 with input rooted at `compose/shared/src/commonMain/resources/MR`; the reaction
 atlas must extend that existing pipeline instead of adding a separate
 `commonMain/assets` + per-platform copy path.
 
-Add the atlas PNG and JSON manifest under shared MR assets:
+Add generated atlas outputs under shared MR assets:
 
 ```text
 compose/shared/src/commonMain/resources/MR/assets/reactions/reaction_atlas_v1.png
@@ -320,26 +360,29 @@ KMM string resources can still own generic grammar such as "reaction" or "You re
 
 ## Migration Steps
 
-1. Add the atlas PNG and JSON manifest under `commonMain/resources/MR/assets/reactions/`.
-2. Run the KMM Resource spike and document the generated accessors for PNG and JSON on Android/OHOS.
-3. Add a `ThreadReactionAtlasResource` adapter that maps the generated KMM resource to the renderer's image/asset input on Android/OHOS.
-4. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime KMM-resource text reader before using a common parser on device.
-5. Add a `ThreadReactionCatalogProvider` that exposes:
+1. Extract each quick reaction's real source SVG from existing hard-coded paths or React production SVG assets. Check them in as per-icon source files under `scripts/assets/thread-reactions/sources/`.
+2. Add or update `scripts/generate_thread_reaction_atlas.mjs` so it composes those source SVGs into a transparent PNG atlas and emits/validates the JSON manifest.
+3. Add the generated atlas PNG and JSON manifest under `commonMain/resources/MR/assets/reactions/`.
+4. Run the KMM Resource spike and document the generated accessors for PNG and JSON on Android/OHOS.
+5. Add a `ThreadReactionAtlasResource` adapter that maps the generated KMM resource to the renderer's image/asset input on Android/OHOS.
+6. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime KMM-resource text reader before using a common parser on device.
+7. Add a `ThreadReactionCatalogProvider` that exposes:
    - `resolve(value)`;
    - `quickReactions()`;
    - `label(value, locale)`.
-6. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
-7. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.value }` or a typed quick reaction model.
-8. Replace `ThreadQuickReactionGlyph` internals:
+8. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
+9. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.value }` or a typed quick reaction model.
+10. Replace `ThreadQuickReactionGlyph` internals:
    - supported sprite -> atlas crop;
    - unsupported/missing asset -> current fallback.
-9. Keep existing exact-value chip layout, counts, selected state, pending state, rollback, and click handling.
-10. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
+11. Keep existing exact-value chip layout, counts, selected state, pending state, rollback, and click handling.
+12. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
 
 ## Tests
 
 Unit tests:
 
+- Generator/source tests prove every quick reaction manifest entry has a per-icon source SVG and that rerunning the generator produces no tracked diff.
 - Manifest parser rejects duplicate `name`, duplicate `value`, missing `en`, out-of-bounds rect, blank value, whitespace value, and unsupported `schemaVersion`.
 - Current quick reactions resolve to the expected `name` and exact `value`.
 - Quick reaction order is stable.
@@ -371,7 +414,9 @@ cd compose
 ## Acceptance Criteria
 
 - A checked-in spec defines the atlas and manifest contract.
-- Future implementation has one JSON manifest with stable icon names, exact reaction values, crop rectangles, and labels.
+- Future implementation has traceable per-icon source SVG files extracted from current hard-coded paths or React production SVGs; it must not use a hand-redrawn screenshot-derived atlas.
+- Future implementation has one generated transparent PNG atlas and one JSON manifest with stable icon names, exact reaction values, crop rectangles, and labels.
+- The atlas generator can be rerun locally with no tracked diff after outputs are committed.
 - Runtime catalog access is explicit: generated commonMain Kotlin catalog from JSON source of truth, or a common KMM-resource text bridge implemented on Android and OHOS.
 - Android and OHOS consume the same checked-in KMM Resource source files under `commonMain/resources/MR/assets/reactions/`; no checked-in double-copy under app-specific resource folders is required.
 - Any platform URI/path conversion is centralized in `ThreadReactionAtlasResource` or an equivalent adapter, not scattered through Thread UI code.

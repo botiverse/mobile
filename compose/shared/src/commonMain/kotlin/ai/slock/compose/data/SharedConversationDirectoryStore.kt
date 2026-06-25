@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.KuiklyThreadSurfaceKind
+import ai.slock.compose.resolveThreadRouteIdentity
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
@@ -328,11 +329,12 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
 
 private fun ConversationSummary.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
     buildSet {
+        val routeIdentity = resolveThreadRouteIdentity()
         add(ConversationDirectoryAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
         channelId
             ?.value
             ?.takeIf { it.isNotBlank() }
-            ?.takeIf { kind != ConversationKind.Thread || it == canonicalChannelId }
+            ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
             ?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Channel)) }
         threadId.value.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Thread)) }
         thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Stream)) }
