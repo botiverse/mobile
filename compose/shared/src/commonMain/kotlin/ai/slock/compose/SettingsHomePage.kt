@@ -171,7 +171,6 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivityStateCache
-import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
@@ -1499,13 +1498,11 @@ private fun SlockAppShellContent() {
             homeViewModel,
             appShellCoroutineScope
         ) {
-            SharedActivityStore(
-                authStore = authStore,
+            sharedStores.getOrCreateHomeActivityStore(
                 inboxRepository = homeActivityRepository,
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                serverMembersStore = sharedStores.serverMembersStore,
                 localWriteThrough = localWriteThrough,
                 activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
