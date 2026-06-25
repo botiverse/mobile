@@ -8462,6 +8462,7 @@ private fun AppShellServerGateContent(
 
     AuthScaffold(
         contentTopPadding = 72.dp,
+        contentScrollable = true,
         topLeadingContent = onBack?.let { back ->
             {
                 SlockBrutalIconButton(
