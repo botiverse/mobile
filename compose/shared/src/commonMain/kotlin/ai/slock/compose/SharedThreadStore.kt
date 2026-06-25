@@ -56,6 +56,7 @@ import ai.slock.compose.data.withExecutedAgent
 import ai.slock.compose.data.withExecutedChannel
 import ai.slock.compose.data.withExecutedChannelMembers
 import ai.slock.compose.data.realtime.RealtimeVisibleStreamGapPolicy
+import ai.slock.compose.data.realtime.RealtimeVisibleStreamGapRequest
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -2526,6 +2527,21 @@ internal class SharedThreadStore(
                         cached.originDiagnostics()
                 )
             }
+            val replyCountGap =
+                stableSelected.realtimeReplyCountGap(
+                    event = event,
+                    previous = existing,
+                    activeReplyParentMessageId = activeReplyParentMessageId
+                )
+            if (replyCountGap != null) {
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_reply_count_gap_detected threadId=${stableSelected.sourceThreadId.orEmpty()} " +
+                        "visibleMaxSeq=${stableSelected.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                        "loadedReplies=${stableSelected.loadedReplyTimelineCount()} " +
+                        "replyCount=${replyCountGap.replyCount}"
+                )
+                recoverRealtimeGapFromVisibleTail(replyCountGap)
+            }
         } else {
             val stableMerged =
                 merged.preserveStableTimelineFrom(
@@ -2608,6 +2624,66 @@ internal class SharedThreadStore(
             pendingSendContext == direct.pendingSendContext &&
             pendingSendErrorCode == direct.pendingSendErrorCode &&
             pendingSendErrorMessage == direct.pendingSendErrorMessage
+
+    private data class ReplyCountRealtimeGap(
+        val replyCount: Int
+    )
+
+    private fun KuiklyThreadScreenPayload.realtimeReplyCountGap(
+        event: RealtimeEvent,
+        previous: KuiklyThreadScreenPayload,
+        activeReplyParentMessageId: MessageId? = null
+    ): ReplyCountRealtimeGap? {
+        if (event !is ThreadUpdated) return null
+        if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+        if (canLoadMoreAfter || newerMessagesStatus == "loading") return null
+        val visibleMaxSeq = messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
+        if (visibleMaxSeq <= 0L) return null
+        val replyThreadContentChannelId = replyThreadContentChannelId() ?: return null
+        val originParentId = originParentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+        val matchesThread =
+            event.threadChannelId.value == replyThreadContentChannelId &&
+                (
+                    originParentId == null ||
+                        event.parentMessageId == originParentId ||
+                        event.parentMessageId == activeReplyParentMessageId
+                    )
+        if (!matchesThread) return null
+        val loadedReplies = loadedReplyTimelineCount()
+        val previousLoadedReplies = previous.loadedReplyTimelineCount()
+        val loadedReplyDelta = (loadedReplies - previousLoadedReplies).coerceAtLeast(0)
+        val previousReplyCount =
+            previous.knownReplyCountFor(event, activeReplyParentMessageId)
+                ?: previousLoadedReplies
+        val replyDelta = event.replyCount - previousReplyCount
+        if (replyDelta <= 0 || loadedReplyDelta >= replyDelta) return null
+        return ReplyCountRealtimeGap(replyCount = event.replyCount)
+    }
+
+    private fun KuiklyThreadScreenPayload.loadedReplyTimelineCount(): Int =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            val parentId = originParentMessageId?.takeIf { it.isNotBlank() }
+            messages.count { message -> message.id != parentId }
+        } else {
+            messages.size
+        }
+
+    private fun KuiklyThreadScreenPayload.knownReplyCountFor(
+        event: ThreadUpdated,
+        activeReplyParentMessageId: MessageId?
+    ): Int? {
+        val parentIds =
+            listOfNotNull(
+                originParentMessageId?.takeIf { it.isNotBlank() },
+                parentMessageId?.takeIf { it.isNotBlank() },
+                activeReplyParentMessageId?.value,
+                event.parentMessageId.value
+            ).toSet()
+        return (listOfNotNull(originMessage) + messages)
+            .filter { message -> message.id in parentIds }
+            .map { message -> message.replyCount }
+            .maxOrNull()
+    }
 
     private suspend fun markVisibleReadAll() {
         val marker = _state.value.payload.readAllMarker() ?: return
@@ -2767,6 +2843,37 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = initial.newerMessagesStatus == "loading"
             ) ?: return
+        recoverRealtimeGap(initial, nextRequest)
+    }
+
+    private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
+        val initial = _state.value.payload
+        val streamChannelId =
+            initial.sourceThreadId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ChannelId)
+                ?: initial.streamChannelId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::ChannelId)
+                ?: return
+        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
+        if (initial.newerMessagesStatus == "loading") return
+        recoverRealtimeGap(
+            initial = initial,
+            initialRequest =
+                RealtimeVisibleStreamGapRequest(
+                    channelId = streamChannelId,
+                    sinceSeq = sinceSeq,
+                    serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
+                )
+        )
+    }
+
+    private suspend fun recoverRealtimeGap(
+        initial: KuiklyThreadScreenPayload,
+        initialRequest: RealtimeVisibleStreamGapRequest
+    ) {
+        var nextRequest = initialRequest
         reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
         while (true) {
             val result = dataSource.fetchRealtimeGapThreadPayload(_state.value.payload, nextRequest.sinceSeq)
