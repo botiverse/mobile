@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.components.SegmentedControl
+import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.InboxFilter
@@ -416,14 +418,16 @@ private fun SharedActivityFilterBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SlockTopTabBar(
-                items = InboxFilter.entries.map { it.toSlockTabSpec().toTopTabBarItem() },
-                selectedKey = selectedFilter.toString(),
-                onSelectedKeyChange = { key ->
-                    InboxFilter.entries.firstOrNull { it.toString() == key }?.let(onFilterSelected)
+            SegmentedControl(
+                selectedValue = selectedFilter.wireValue,
+                options =
+                    InboxFilter.entries.map { filter ->
+                        SegmentedControlOption(value = filter.wireValue, label = filter.label)
+                    },
+                onValueSelected = { value ->
+                    InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
                 },
-                modifier = Modifier.weight(1f),
-                itemKeyPrefix = "activity-filter-tab"
+                modifier = Modifier.weight(1f)
             )
             if (totalUnreadCount > 0) {
                 SlockBrutalActionButton(
@@ -919,30 +923,6 @@ private val InboxFilter.label: String
             InboxFilter.Unread -> "Unread"
             InboxFilter.Mentions -> "Mentions"
         }
-
-private val InboxFilter.iconName: SlockLucideIconName
-    get() =
-        when (this) {
-            InboxFilter.All -> SlockLucideIconName.Activity
-            InboxFilter.Unread -> SlockLucideIconName.Mail
-            InboxFilter.Mentions -> SlockLucideIconName.AtSign
-        }
-
-private val InboxFilter.tabWidth: Dp
-    get() =
-        when (this) {
-            InboxFilter.All -> 82.dp
-            InboxFilter.Unread -> 108.dp
-            InboxFilter.Mentions -> 118.dp
-        }
-
-private fun InboxFilter.toSlockTabSpec(): SlockTabSpec<InboxFilter> =
-    SlockTabSpec(
-        key = this,
-        label = label,
-        iconName = iconName,
-        width = tabWidth
-    )
 
 private fun InboxFilter.emptyCopy(): String =
     when (this) {
