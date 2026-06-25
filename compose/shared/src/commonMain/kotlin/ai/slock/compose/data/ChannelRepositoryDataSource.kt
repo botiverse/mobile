@@ -7,6 +7,7 @@ import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.isGenericDisplayName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -631,4 +632,4 @@ private fun ConversationSummary.withDirectMessageFallback(previous: Conversation
     )
 
 private fun String.isGenericConversationName(conversation: ConversationSummary): Boolean =
-    isBlank() || this == conversation.threadId.value || this == conversation.channelId?.value
+    conversation.isGenericDisplayName(this)

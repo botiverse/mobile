@@ -1004,6 +1004,31 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun cachedPayloadDoesNotPersistHeaderFallbackTitleAsConversationName() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val route =
+            basePayload().copy(
+                title = threadHeaderFallbackTitle(KuiklyThreadSurfaceKind.Channel),
+                sourceThreadId = "joint-1",
+                streamChannelId = "joint-1",
+                channelKind = "joint"
+            )
+        val payload = contentPayloadForRoute(route, "body", channelId = "joint-1")
+
+        dataSource.writeCachedPayload(payload)
+
+        val cached = localStore.readThread(ThreadId("joint-1"))
+        assertEquals("joint-1", cached?.conversation?.name)
+        assertEquals(ConversationKind.Channel, cached?.conversation?.kind)
+    }
+
+    @Test
     fun localSendFailurePersistsFailedBubbleWithRetryContext() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

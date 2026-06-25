@@ -448,7 +448,7 @@ internal class ComposeChannelAddMemberPanelVisualPage : ai.slock.compose.base.Ba
 @Serializable
 internal data class KuiklyThreadScreenPayload(
     val instanceId: String = "",
-    val title: String = "Thread",
+    val title: String = "",
     val subtitle: String? = null,
     val status: String = "loading",
     val backgroundRefreshing: Boolean = false,

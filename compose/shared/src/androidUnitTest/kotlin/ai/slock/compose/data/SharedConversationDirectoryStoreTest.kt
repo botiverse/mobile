@@ -39,6 +39,46 @@ class SharedConversationDirectoryStoreTest {
     }
 
     @Test
+    fun freshGenericChannelSummaryDoesNotOverwriteStoredJointTitleOrKind() = runBlocking {
+        val store = createStore()
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = jointSummary(id = "joint-1", name = "raft-mobile"),
+            source = SharedConversationDirectorySource.RouteSeed
+        )
+        store.upsertConversation(
+            serverId = serverId,
+            conversation =
+                channelSummary(
+                    id = "joint-1",
+                    name = "Channel",
+                    channelType = "channel"
+                ),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        val projection = assertNotNull(store.resolveProjection(serverId, "joint-1"))
+        assertEquals("raft-mobile", projection.title)
+        assertEquals("joint", projection.channelKind)
+    }
+
+    @Test
+    fun freshGenericChannelSummaryStoresIdentityPlaceholderWhenTitleIsUnknown() = runBlocking {
+        val store = createStore()
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = channelSummary(id = "channel-1", name = "Channel"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        val projection = assertNotNull(store.resolveProjection(serverId, "channel-1"))
+        assertEquals("channel-1", projection.title)
+        assertEquals("channel", projection.channelKind)
+    }
+
+    @Test
     fun aliasesResolveToCanonicalChannelProjection() = runBlocking {
         val store = createStore()
 
@@ -202,11 +242,25 @@ class SharedConversationDirectoryStoreTest {
         return SlockSqlDatabase(driver)
     }
 
-    private fun channelSummary(id: String, name: String): ConversationSummary =
+    private fun channelSummary(
+        id: String,
+        name: String,
+        channelType: String? = null
+    ): ConversationSummary =
         ConversationSummary(
             threadId = ThreadId(id),
             channelId = ChannelId(id),
+            channelType = channelType,
             kind = ConversationKind.Channel,
+            name = name
+        )
+
+    private fun jointSummary(id: String, name: String): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId(id),
+            channelId = ChannelId(id),
+            channelType = "joint",
+            kind = ConversationKind.Joint,
             name = name
         )
 

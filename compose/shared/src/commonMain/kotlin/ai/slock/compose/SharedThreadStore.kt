@@ -5026,6 +5026,22 @@ private fun ConversationSummary.headerFallbackIds(): Set<String> =
         thread?.streamChannelId?.value
     ).filter { it.isNotBlank() }.toSet()
 
+private fun KuiklyThreadScreenPayload.snapshotConversationName(threadIdValue: String): String {
+    val candidate = threadHeaderCandidateTitle(title)
+    val identityIds = conversationHeaderFallbackIds() + threadIdValue
+    val isGeneric =
+        candidate == null ||
+            candidate.isThreadHeaderFallbackLabel() ||
+            threadHeaderIdentityLikeTitle(candidate, identityIds)
+    return if (isGeneric) threadIdValue else candidate
+}
+
+private fun String.isThreadHeaderFallbackLabel(): Boolean =
+    equals("Channel", ignoreCase = true) ||
+        equals("Direct Message", ignoreCase = true) ||
+        equals("Thread", ignoreCase = true) ||
+        equals(ThreadReplyPageTitle, ignoreCase = true)
+
 private fun KuiklyThreadScreenPayload.toThreadSnapshot(
     currentUserId: String? = null,
     currentUserName: String? = null
@@ -5063,7 +5079,7 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(
                     null
                 },
             kind = snapshotKind,
-            name = title,
+            name = snapshotConversationName(threadIdValue),
             subtitle = subtitle,
             joined = joined,
             memberCount = membersCount.takeIf { it > 0 },

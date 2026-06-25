@@ -39,6 +39,25 @@ fun ConversationSummary.headerIdentityIds(): Set<String> =
 fun ConversationSummary.safeDisplayNameOrNull(): String? =
     conversationSafeDisplayTitleOrNull(name, headerIdentityIds())
 
+fun ConversationSummary.genericDisplayTitleFallback(): String =
+    when (kind) {
+        ConversationKind.DirectMessage -> "Direct Message"
+        ConversationKind.Thread -> "Thread"
+        ConversationKind.Channel,
+        ConversationKind.Joint,
+        ConversationKind.Inbox,
+        ConversationKind.System -> "Channel"
+    }
+
+fun ConversationSummary.isGenericDisplayName(
+    rawName: String = name,
+    additionalIdentityIds: Set<String> = emptySet()
+): Boolean {
+    val candidate = conversationDisplayTitleCandidate(rawName) ?: return true
+    if (conversationIdentityLikeTitle(candidate, headerIdentityIds() + additionalIdentityIds)) return true
+    return candidate.equals(genericDisplayTitleFallback(), ignoreCase = true)
+}
+
 fun ConversationSummary.nameIsBlankOrIdentity(
     rawName: String = name,
     additionalIdentityIds: Set<String> = emptySet()

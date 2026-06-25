@@ -1660,7 +1660,8 @@ class ThreadPayloadTest {
                 parentMessageId = null
             )
 
-        assertEquals("Channel", context.title)
+        assertEquals("", context.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(context.title, KuiklyThreadSurfaceKind.Channel))
     }
 
     @Test
@@ -2133,7 +2134,8 @@ class ThreadPayloadTest {
 
         assertEquals(ThreadId("channel-1"), conversation.threadId)
         assertEquals(ConversationKind.Channel, conversation.kind)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals(null, payload.originParentMessageId)
         assertEquals("latest-channel-message", payload.focusedMessageId)
@@ -2158,7 +2160,8 @@ class ThreadPayloadTest {
                 )
             )
 
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(null, payload.subtitle)
     }
 

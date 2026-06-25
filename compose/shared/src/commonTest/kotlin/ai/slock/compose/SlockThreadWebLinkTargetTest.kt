@@ -44,7 +44,8 @@ class SlockThreadWebLinkTargetTest {
                 canSend = false
             ).webLinkLoadingPayload(SlockThreadWebLinkTarget(channelId = "channel-123", messageId = "message-456"))
 
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("channel-123", payload.sourceThreadId)

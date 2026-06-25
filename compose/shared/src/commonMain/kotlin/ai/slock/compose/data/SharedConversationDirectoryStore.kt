@@ -9,6 +9,7 @@ import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.avatarSlotResolution
+import ai.slock.compose.model.isGenericDisplayName
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.shared.data.local.ChannelEntity
@@ -228,12 +229,32 @@ internal class SharedConversationDirectoryStore(
         canonicalChannelId: String
     ): ChannelEntityDraft {
         val incomingDraft = incoming.toChannelEntityDraft(canonicalChannelId)
-        if (existing == null || source.rank >= SharedConversationDirectorySource.FreshApi.rank) {
+        if (existing == null) {
             return incomingDraft
         }
+        val shouldKeepExistingName =
+            incomingDraft.name.isGenericDirectoryTitle(incoming, canonicalChannelId) &&
+                !existing.name.isGenericDirectoryTitle(incoming, canonicalChannelId)
+        val shouldKeepExistingType =
+            incomingDraft.type.isGenericDirectoryChannelType() &&
+                !existing.type.isGenericDirectoryChannelType()
+        val shouldUseIncomingType =
+            !incomingDraft.type.isGenericDirectoryChannelType() &&
+                existing.type.isGenericDirectoryChannelType()
+        if (source.rank >= SharedConversationDirectorySource.FreshApi.rank) {
+            return incomingDraft.copy(
+                type = if (shouldKeepExistingType) existing.type else incomingDraft.type,
+                name = if (shouldKeepExistingName) existing.name else incomingDraft.name
+            )
+        }
         return incomingDraft.copy(
-            type = existing.type.ifBlank { incomingDraft.type },
-            name = incomingDraft.name.takeUnless { it.isGenericDirectoryTitle(incoming, canonicalChannelId) } ?: existing.name,
+            type =
+                when {
+                    shouldKeepExistingType -> existing.type
+                    shouldUseIncomingType -> incomingDraft.type
+                    else -> existing.type.ifBlank { incomingDraft.type }
+                },
+            name = if (shouldKeepExistingName) existing.name else incomingDraft.name,
             description = incomingDraft.description ?: existing.description,
             parentChannelId = incomingDraft.parentChannelId ?: existing.parentChannelId,
             parentMessageId = incomingDraft.parentMessageId ?: existing.parentMessageId,
@@ -303,7 +324,10 @@ private data class ChannelEntityDraft(
 private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String): ChannelEntityDraft =
     ChannelEntityDraft(
         type = toDirectoryChannelType(),
-        name = safeDisplayNameOrNull() ?: name.takeIf { it.isNotBlank() } ?: canonicalChannelId,
+        name =
+            safeDisplayNameOrNull()
+                ?.takeUnless { isGenericDisplayName(it, additionalIdentityIds = setOf(canonicalChannelId)) }
+                ?: canonicalChannelId,
         description = subtitle?.takeIf { it.isNotBlank() },
         parentChannelId = thread?.parentChannelId?.value,
         parentMessageId = thread?.parentMessageId?.value,
@@ -419,7 +443,11 @@ private fun String.isGenericDirectoryTitle(
     canonicalChannelId: String
 ): Boolean =
     isBlank() ||
+        conversation.isGenericDisplayName(this, additionalIdentityIds = setOf(canonicalChannelId)) ||
         this == canonicalChannelId ||
         this == conversation.threadId.value ||
         this == conversation.channelId?.value ||
         this == conversation.thread?.streamChannelId?.value
+
+private fun String.isGenericDirectoryChannelType(): Boolean =
+    isBlank() || equals("channel", ignoreCase = true)

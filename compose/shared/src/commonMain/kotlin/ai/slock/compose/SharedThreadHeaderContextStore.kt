@@ -20,7 +20,7 @@ internal object SharedThreadHeaderContextStore {
         dmPeerName: String? = null
     ): SharedThreadHeaderContext =
         SharedThreadHeaderContext(
-            title = dmTitleFor(surfaceKind, dmPeerName),
+            title = launchTitleFor(surfaceKind, dmPeerName),
             subtitle = null,
             originMessage = null,
             originPreview = null,
@@ -63,10 +63,10 @@ internal object SharedThreadHeaderContextStore {
         return SharedThreadHeaderContext(
             title =
                 when (surfaceKind) {
-                    KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
+                    KuiklyThreadSurfaceKind.ReplyThread -> ""
                     KuiklyThreadSurfaceKind.DirectMessage ->
-                        dmTitleFor(surfaceKind, dmPeerName ?: safeConversationTitle(conversation, surfaceKind))
-                    else -> safeConversationTitle(conversation, surfaceKind)
+                        launchTitleFor(surfaceKind, dmPeerName ?: safeConversationTitle(conversation))
+                    else -> safeConversationTitle(conversation)
                 },
             subtitle =
                 when (surfaceKind) {
@@ -90,20 +90,17 @@ internal object SharedThreadHeaderContextStore {
         )
     }
 
-    private fun fallbackTitle(surfaceKind: String): String = threadHeaderFallbackTitle(surfaceKind)
-
-    private fun dmTitleFor(surfaceKind: String, dmPeerName: String?): String =
+    private fun launchTitleFor(surfaceKind: String, dmPeerName: String?): String =
         if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
-            threadHeaderSafeTitleOrNull(dmPeerName) ?: fallbackTitle(surfaceKind)
+            threadHeaderSafeTitleOrNull(dmPeerName) ?: ""
         } else {
-            fallbackTitle(surfaceKind)
+            ""
         }
 
     private fun safeConversationTitle(
-        conversation: ConversationSummary,
-        surfaceKind: String
+        conversation: ConversationSummary
     ): String =
-        conversation.safeDisplayNameOrNull() ?: threadHeaderFallbackTitle(surfaceKind)
+        conversation.safeDisplayNameOrNull().orEmpty()
 }
 
 internal fun KuiklyThreadScreenPayload.withHeaderContext(
