@@ -4193,8 +4193,17 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     val matchesTimeline = messages.any { it.id == incoming.id }
     val matchesOrigin = originMessage?.id == incoming.id
     val replyThreadContentChannelId = replyThreadContentChannelId()
+    val matchesReplyOrigin =
+        replyThreadContentChannelId != null &&
+            (
+                matchesOrigin ||
+                    parentMessageId?.takeIf { it.isNotBlank() } == incoming.id ||
+                    originParentMessageId?.takeIf { it.isNotBlank() } == incoming.id
+                )
     val matchesThreadContent =
-        if (replyThreadContentChannelId != null) {
+        if (matchesReplyOrigin) {
+            false
+        } else if (replyThreadContentChannelId != null) {
             message.belongsToReplyThreadContent(replyThreadContentChannelId)
         } else {
             message.matchesSharedThread(this, activeReplyParentMessageId)

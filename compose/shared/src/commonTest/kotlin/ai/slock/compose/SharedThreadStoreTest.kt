@@ -4507,7 +4507,8 @@ class SharedThreadStoreTest {
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageUpdated(
                     message(
-                        threadId = "channel-1",
+                        threadId = "thread-m1",
+                        channelId = "channel-1",
                         id = "m1",
                         seq = 1,
                         body = "parent edited",
@@ -6826,6 +6827,7 @@ class SharedThreadStoreTest {
 
         private fun message(
             threadId: String = "channel-1",
+            channelId: String = threadId,
             id: String,
             seq: Long,
             body: String,
@@ -6838,7 +6840,7 @@ class SharedThreadStoreTest {
             Message(
                 id = MessageId(id),
                 threadId = ThreadId(threadId),
-                channelId = ChannelId(threadId),
+                channelId = ChannelId(channelId),
                 threadChannelId = threadChannelId?.let(::ChannelId),
                 author =
                     MemberProfile(
