@@ -44,6 +44,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -95,6 +96,8 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -161,8 +164,6 @@ internal fun SharedHomeActivityScreen(
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
-    val listState = rememberLazyListState()
-
     SharedActivityPanelContent(
         state = state,
         onOpenMessage = onOpenMessage,
@@ -172,6 +173,7 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         listState = listState,
+        onTitleClick = onTitleClick,
         modifier = modifier
     )
 }
@@ -187,6 +189,7 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     SharedActivityPanelContent(
@@ -198,6 +201,7 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         listState = listState,
+        onTitleClick = onTitleClick,
         modifier = modifier
     )
 }
@@ -212,13 +216,14 @@ internal fun SharedHomeActivityPanel(
     includeTopSafeArea: Boolean = false,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
     // recomposed on every state snapshot change; this marker tells us how much
     // wall-time the panel render itself costs on the UI thread (excluding
     // inner List measure which we'd add separately if this shows hot).
-    val listState = rememberLazyListState()
     traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
         SharedActivityPanelContent(
             state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
@@ -229,6 +234,7 @@ internal fun SharedHomeActivityPanel(
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
             listState = listState,
+            onTitleClick = onTitleClick,
             modifier = modifier
         )
     }
@@ -244,6 +250,7 @@ private fun SharedActivityPanelContent(
     topSafeAreaPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState,
+    onTitleClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -254,7 +261,8 @@ private fun SharedActivityPanelContent(
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
-            refreshing = state.refreshing && !state.pullRefreshing
+            refreshing = state.refreshing && !state.pullRefreshing,
+            onTitleClick = onTitleClick
         )
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
@@ -332,7 +340,8 @@ private fun SharedActivityHeader(
     totalUnreadCount: Int,
     onClose: (() -> Unit)?,
     topSafeAreaPadding: Dp,
-    refreshing: Boolean
+    refreshing: Boolean,
+    onTitleClick: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().height(SlockSize.PageHeaderHeight + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
@@ -349,7 +358,13 @@ private fun SharedActivityHeader(
             if (onClose != null) {
                 SlockBrutalIconButton(iconName = SlockLucideIconName.ArrowLeft, onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
                     text = "Activity",
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),

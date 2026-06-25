@@ -686,6 +686,8 @@ private fun HomeSecondaryRouterContent(destination: String) {
 
 @Composable
 private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment) {
+    val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
@@ -702,7 +704,9 @@ private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment
         onClose = { environment.pager.closeHomeSecondaryPage() },
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
-        shellScope = environment.shellScope
+        shellScope = environment.shellScope,
+        listState = listState,
+        onTitleClick = { scrollScope.launch { listState.scrollToItem(0) } }
     )
 }
 
@@ -737,6 +741,7 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
@@ -762,7 +767,8 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = listState
+        listState = listState,
+        onTitleClick = { scrollScope.launch { listState.scrollToItem(0) } }
     )
 }
 
@@ -771,6 +777,7 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
@@ -789,6 +796,7 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
         listState = listState,
+        onTitleClick = { scrollScope.launch { listState.scrollToItem(0) } },
         onCopyLink = { item ->
             copyScope.launch {
                 val serverSlug = environment.authStore.readSession()?.currentServerSlug()
@@ -9783,6 +9791,7 @@ private fun SharedHomeSearchPanel(
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
@@ -9826,7 +9835,8 @@ private fun SharedHomeSearchPanel(
                 onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                 onClose = onClose,
                 interactive = interactiveSearchField,
-                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+                onTitleClick = onTitleClick
             )
             SharedHomeSearchDivider()
             SharedHomeSearchFilters(
@@ -10069,7 +10079,8 @@ private fun SharedHomeSearchToolbar(
     onClear: () -> Unit,
     onClose: (() -> Unit)?,
     interactive: Boolean = true,
-    topSafeAreaPadding: Dp = 0.dp
+    topSafeAreaPadding: Dp = 0.dp,
+    onTitleClick: (() -> Unit)? = null
 ) {
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
@@ -10086,7 +10097,7 @@ private fun SharedHomeSearchToolbar(
             size = 38.dp,
             iconSize = 18.dp,
             background = SlockColor.BrandYellow,
-            onClick = null
+            onClick = onTitleClick
         )
         SharedHomeSearchInput(
             query = query,
@@ -10202,6 +10213,7 @@ private fun SharedHomeSavedPanel(
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
     onCopyLink: (InboxItem) -> Unit = {},
     onCopyMarkdown: (InboxItem) -> Unit = {}
 ) {
@@ -10232,7 +10244,8 @@ private fun SharedHomeSavedPanel(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
                 onClose = onClose,
                 refreshing = state.refreshing && !state.pullRefreshing,
-                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+                onTitleClick = onTitleClick
             )
             SlockCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
         }
@@ -10249,7 +10262,8 @@ private fun SharedHomeSavedPanel(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
                 onClose = onClose,
                 refreshing = state.refreshing && !state.pullRefreshing,
-                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+                onTitleClick = onTitleClick
             )
             LazyColumn(
                 state = listState,
@@ -10404,7 +10418,8 @@ private fun SharedHomeSavedHeader(
     count: Int,
     onClose: (() -> Unit)?,
     refreshing: Boolean,
-    topSafeAreaPadding: Dp = 0.dp
+    topSafeAreaPadding: Dp = 0.dp,
+    onTitleClick: (() -> Unit)? = null
 ) {
     Column(
         modifier =
@@ -10428,7 +10443,13 @@ private fun SharedHomeSavedHeader(
                     shadowOffset = 3.dp
                 )
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
                     "Saved",
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
