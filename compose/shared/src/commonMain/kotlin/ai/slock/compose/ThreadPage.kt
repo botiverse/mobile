@@ -6848,15 +6848,13 @@ private fun ThreadMessagesList(
             }
             if (payload.canLoadMoreAfter) {
                 item(key = ThreadNewerMessagesListItemKey) {
+                    val actionSpec = threadNewerMessagesActionSpec(payload.newerMessagesStatus)
                     ThreadInlineActionRow(
-                        label = when (payload.newerMessagesStatus) {
-                            "loading" -> "Loading new messages…"
-                            "error" -> "Retry new messages"
-                            else -> "Load new messages"
-                        },
+                        label = actionSpec.label,
+                        leadingIcon = actionSpec.leadingIcon,
                         onClick = {
                             onThreadEvent(
-                                if (payload.newerMessagesStatus == "error") "retryLoadNewer" else "loadNewer",
+                                actionSpec.event,
                                 null,
                                 null,
                                 null
@@ -6964,6 +6962,19 @@ private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadOriginListItemKey = "thread-page:origin"
+
+internal data class ThreadInlineActionSpec(
+    val label: String,
+    val event: String,
+    val leadingIcon: SlockLucideIconName? = null
+)
+
+internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
+    when (newerMessagesStatus) {
+        "loading" -> ThreadInlineActionSpec(label = "Loading new messages…", event = "loadNewer")
+        "error" -> ThreadInlineActionSpec(label = "Retry new messages", event = "retryLoadNewer")
+        else -> ThreadInlineActionSpec(label = "Load new messages", event = "loadNewer")
+    }
 
 internal fun threadMessagesLazyItemCount(
     originStatus: String,
@@ -7691,7 +7702,11 @@ private fun ThreadSystemMessageRow(
 }
 
 @Composable
-private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
+private fun ThreadInlineActionRow(
+    label: String,
+    leadingIcon: SlockLucideIconName? = null,
+    onClick: () -> Unit
+) {
     SlockBrutalActionButton(
         label = label,
         onClick = onClick,
@@ -7699,6 +7714,7 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
         backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 36.dp,
+        leadingIcon = leadingIcon,
         shadowOffset = 2.dp,
         textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
     )
