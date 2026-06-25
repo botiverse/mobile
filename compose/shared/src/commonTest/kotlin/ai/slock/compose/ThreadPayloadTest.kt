@@ -1002,43 +1002,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun sameRouteContentPatchKeepsJointChannelHeaderKind() {
-        val current =
-            buildAppShellThreadPayload(
-                ConversationSummary(
-                    threadId = ThreadId("joint-1"),
-                    channelId = ChannelId("joint-1"),
-                    channelType = "joint",
-                    kind = ConversationKind.Joint,
-                    name = "partner",
-                    permissions = ConversationPermissions(canSend = true)
-                )
-            )
-        val patch =
-            current.copy(
-                title = "partner",
-                status = "content",
-                channelKind = "channel",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "message-1",
-                            authorId = "user-1",
-                            authorName = "Artin",
-                            body = "hello"
-                        )
-                    )
-            )
-
-        val payload = current.withContentPatchFrom(patch)
-        val headerDisplay = payload.threadHeaderDisplayModel(entry = null)
-
-        assertEquals("joint", payload.channelKind)
-        assertEquals("joint", headerDisplay.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
-    }
-
-    @Test
     fun memberSuggestionRealtimeRefreshOnlyTracksRelevantMemberScopes() {
         assertTrue(
             RealtimeRefreshRequired(

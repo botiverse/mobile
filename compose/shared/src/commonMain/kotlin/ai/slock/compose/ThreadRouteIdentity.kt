@@ -6,18 +6,28 @@ import ai.slock.compose.model.messageStreamChannelId
 
 internal data class ThreadRouteIdentity(
     val surfaceKind: String,
+    val channelKind: String? = null,
     val instanceKey: String,
     val timelineKey: String?,
     val canRenderTimelineCandidates: Boolean
 ) {
     val timelineChannelId: String?
         get() = timelineKey?.takeIf { it.isNotBlank() }
+
+    val routeKind: String
+        get() =
+            if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                channelKind.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+            } else {
+                surfaceKind
+            }
 }
 
 internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
     return resolveThreadRouteIdentity(
         surfaceKind = surfaceKind,
+        channelKind = channelKind,
         instanceId = instanceId,
         sourceThreadId = sourceThreadId,
         streamChannelId = streamChannelId,
@@ -35,6 +45,7 @@ internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdenti
         }
     return resolveThreadRouteIdentity(
         surfaceKind = surface,
+        channelKind = conversationThreadChannelKind(),
         instanceId = null,
         sourceThreadId = threadId.value,
         streamChannelId = messageStreamChannelId().value,
@@ -45,6 +56,7 @@ internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdenti
 
 private fun resolveThreadRouteIdentity(
     surfaceKind: String,
+    channelKind: String?,
     instanceId: String?,
     sourceThreadId: String?,
     streamChannelId: String?,
@@ -52,6 +64,12 @@ private fun resolveThreadRouteIdentity(
     parentMessageId: String?
 ): ThreadRouteIdentity {
     val surface = surfaceKind.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
+    val routeKind =
+        if (surface == KuiklyThreadSurfaceKind.Channel) {
+            channelKind.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+        } else {
+            surface
+        }
     val parentChannel = parentChannelId.nonBlank()
     val parentMessage = parentMessageId.nonBlank()
     val isReplyThread =
@@ -67,6 +85,7 @@ private fun resolveThreadRouteIdentity(
             resolvedStream != null ->
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    channelKind = null,
                     instanceKey = "reply-stream:$resolvedStream",
                     timelineKey = resolvedStream,
                     canRenderTimelineCandidates = true
@@ -74,6 +93,7 @@ private fun resolveThreadRouteIdentity(
             parentChannel != null && parentMessage != null ->
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    channelKind = null,
                     instanceKey = "reply-parent:$parentChannel:$parentMessage",
                     timelineKey = null,
                     canRenderTimelineCandidates = false
@@ -81,6 +101,7 @@ private fun resolveThreadRouteIdentity(
             else ->
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    channelKind = null,
                     instanceKey = instanceId.nonBlank() ?: "reply-pending",
                     timelineKey = null,
                     canRenderTimelineCandidates = false
@@ -90,7 +111,8 @@ private fun resolveThreadRouteIdentity(
         val timelineKey = streamCandidate
         ThreadRouteIdentity(
             surfaceKind = surface,
-            instanceKey = timelineKey?.let { "$surface:$it" } ?: instanceId.nonBlank() ?: "$surface:pending",
+            channelKind = routeKind.takeIf { surface == KuiklyThreadSurfaceKind.Channel },
+            instanceKey = timelineKey?.let { "$routeKind:$it" } ?: instanceId.nonBlank() ?: "$routeKind:pending",
             timelineKey = timelineKey,
             canRenderTimelineCandidates = timelineKey != null
         )
@@ -99,3 +121,15 @@ private fun resolveThreadRouteIdentity(
 
 private fun String?.nonBlank(): String? =
     this?.takeIf { it.isNotBlank() }
+
+private fun ConversationSummary.conversationThreadChannelKind(): String? =
+    channelType.normalizedThreadChannelKind()
+        ?: when (kind) {
+            ConversationKind.Channel -> KuiklyThreadSurfaceKind.Channel
+            ConversationKind.Joint -> "joint"
+            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            else -> null
+        }
+
+private fun String?.normalizedThreadChannelKind(): String? =
+    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
