@@ -7073,7 +7073,7 @@ private fun ThreadMessagesList(
             )
         ) {
             ThreadBackToBottomButton(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SlockSpacing.Md),
                 onClick = {
                     coroutineScope.launch {
                         allowBottomAutoAnchor = true
