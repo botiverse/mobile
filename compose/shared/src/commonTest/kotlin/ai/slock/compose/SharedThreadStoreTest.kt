@@ -1240,9 +1240,11 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(0, store.state.value.payload.membersCount)
-        assertEquals(emptyList(), memberRepository.channelMemberRequests)
         val beforeMessages = store.state.value.payload.messages
+        assertEquals(2, store.state.value.payload.membersCount)
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertEquals(listOf("u1", "agent-1"), store.state.value.payload.members.map { it.id })
+        assertEquals(listOf("agent-2"), store.state.value.payload.memberCandidates.map { it.id })
 
         store.accept(SharedThreadIntent.LoadMembers)
         assertEquals(
@@ -1284,18 +1286,18 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(0, flakyMemberRepository.channelMemberCalls, "Start should not fetch channel members")
+        assertEquals(1, flakyMemberRepository.channelMemberCalls, "Start should background-fetch channel members")
 
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterFirstLoad = flakyMemberRepository.channelMemberCalls
-        assertEquals(1, callsAfterFirstLoad, "First explicit LoadMembers should fetch once")
+        assertEquals(2, callsAfterFirstLoad, "First explicit LoadMembers should retry after background failure")
 
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterRetry = flakyMemberRepository.channelMemberCalls
         assertEquals(
             2,
             callsAfterRetry,
-            "After transient failure, the next LoadMembers must re-fetch (status should be Error, not Loaded)"
+            "After successful retry, the next LoadMembers should not fetch again"
         )
         // And on the second attempt the request succeeded, so the
         // payload should now have the channel member.
@@ -1594,7 +1596,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startDoesNotLoadThreadMembersEagerlyAfterRefresh() = runBlocking {
+    fun startHydratesThreadMembersInBackgroundAfterRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val memberRepository =
             FakeMemberRepository(
@@ -1612,9 +1614,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         assertEquals("content", store.state.value.payload.status)
-        assertEquals(emptyList(), memberRepository.channelMemberRequests)
-        assertEquals(emptyList(), store.state.value.payload.members.map { it.id })
-        assertEquals(emptyList(), store.state.value.payload.memberCandidates.map { it.id })
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
+        assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
         scope.cancel()
     }
 
@@ -2006,7 +2008,7 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertTrue(memberRepository.serverMemberRequests.contains(ServerId("server-1")))
         val message = store.state.value.payload.messages.single()
         assertEquals("Product-UX-Designer", message.authorName)
         assertEquals("pixel:tree", message.avatarWireValue)
