@@ -6,7 +6,6 @@ import android.os.Build
 import com.tencent.bugly.library.Bugly
 import com.tencent.bugly.library.BuglyAppVersionMode
 import com.tencent.bugly.library.BuglyBuilder
-import com.tencent.bugly.library.BuglyCustomLog
 import com.tencent.bugly.library.BuglyConstants
 import com.tencent.bugly.library.BuglyLogLevel
 import com.tencent.bugly.launch.AppLaunchProxy
@@ -129,29 +128,10 @@ object SlockAndroidBuglyDiagnostics {
         val cleanTag = tag.buglyValueOrNull() ?: return
         val cleanMessage = DiagnosticsSanitizer.sanitize(message).buglyValueOrNull() ?: return
         writeFallbackLog(level, cleanTag, cleanMessage)
-        if (diagnoseInitialized.get()) {
-            runCatching {
-                when (level.lowercase()) {
-                    "verbose" -> TDLog.v(cleanTag, cleanMessage)
-                    "debug" -> TDLog.d(cleanTag, cleanMessage)
-                    "info" -> TDLog.i(cleanTag, cleanMessage)
-                    "warn" -> TDLog.w(cleanTag, cleanMessage)
-                    "error" -> TDLog.e(cleanTag, cleanMessage)
-                    else -> TDLog.i(cleanTag, cleanMessage)
-                }
-            }
-        }
-        if (!initialized.get()) return
-        runCatching {
-            when (level.lowercase()) {
-                "verbose" -> BuglyCustomLog.v(cleanTag, cleanMessage)
-                "debug" -> BuglyCustomLog.d(cleanTag, cleanMessage)
-                "info" -> BuglyCustomLog.i(cleanTag, cleanMessage)
-                "warn" -> BuglyCustomLog.w(cleanTag, cleanMessage)
-                "error" -> BuglyCustomLog.e(cleanTag, cleanMessage)
-                else -> BuglyCustomLog.i(cleanTag, cleanMessage)
-            }
-        }
+        // Keep Logcat single-sourced through SlockDiagnosticsLogger/direct host logs.
+        // TDLog and BuglyCustomLog mirror app logs back into Logcat on some devices,
+        // which turns one diagnostic event into duplicate plain/bracketed entries.
+        // The fallback log files written above are still attached to feedback archives.
     }
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
