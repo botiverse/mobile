@@ -810,6 +810,63 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun jointPayloadIgnoresGenericChannelDirectoryProjection() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-joint-1",
+                title = "partner",
+                sourceThreadId = "joint-1",
+                streamChannelId = "joint-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint"
+            )
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "joint-1",
+                aliases = setOf("joint-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "partner",
+                subtitle = "Generic projection"
+            )
+
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
+
+        assertFalse(payload.acceptsConversationHeaderProjection(projection))
+        assertEquals("joint", headerDisplay.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
+    fun genericChannelPayloadAcceptsSpecificDirectoryChannelKind() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-private-1",
+                title = "ops",
+                sourceThreadId = "private-1",
+                streamChannelId = "private-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel"
+            )
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "private-1",
+                aliases = setOf("private-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "private",
+                title = "ops"
+            )
+
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
+
+        assertTrue(payload.acceptsConversationHeaderProjection(projection))
+        assertEquals("private", headerDisplay.channelKind)
+        assertEquals(SlockLucideIconName.Lock, headerDisplay.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
     fun directoryProjectionDrivesDmHeaderAvatarWithoutChangingRouteIdentity() {
         val payload =
             KuiklyThreadScreenPayload(

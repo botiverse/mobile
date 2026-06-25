@@ -2239,7 +2239,7 @@ internal fun SharedThreadRouteContent(
             conversationDirectoryLookupIds
                 .firstNotNullOfOrNull { id ->
                     directoryConversationProjections[id]?.takeIf { projection ->
-                        projection.surfaceKind == payload.surfaceKind
+                        payload.acceptsConversationHeaderProjection(projection)
                     }
                 }
         }

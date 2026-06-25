@@ -75,7 +75,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
     projection: SharedConversationDirectoryProjection?,
     fallbackEntry: SharedConversationHeaderEntry? = null
 ): ThreadHeaderDisplayModel {
-    val directory = projection?.takeIf { it.surfaceKind == surfaceKind }
+    val directory = projection?.takeIf(::acceptsConversationHeaderProjection)
     if (directory == null) return threadHeaderDisplayModel(fallbackEntry)
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
@@ -100,6 +100,18 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
             )
         else -> threadHeaderDisplayModel(fallbackEntry)
     }
+}
+
+internal fun KuiklyThreadScreenPayload.acceptsConversationHeaderProjection(
+    projection: SharedConversationDirectoryProjection
+): Boolean {
+    if (projection.surfaceKind != surfaceKind) return false
+    if (surfaceKind != KuiklyThreadSurfaceKind.Channel) return true
+    val payloadChannelKind =
+        resolveThreadRouteIdentity().channelKind.normalizedHeaderChannelKind()
+            ?: channelKind.normalizedHeaderChannelKind()
+    if (payloadChannelKind == null || payloadChannelKind == KuiklyThreadSurfaceKind.Channel) return true
+    return projection.channelKind.normalizedHeaderChannelKind() == payloadChannelKind
 }
 
 internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =
@@ -226,3 +238,6 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
         gravatarUrl = avatar.gravatarHash?.toGravatarAvatarUrl()
     )
 }
+
+private fun String?.normalizedHeaderChannelKind(): String? =
+    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
