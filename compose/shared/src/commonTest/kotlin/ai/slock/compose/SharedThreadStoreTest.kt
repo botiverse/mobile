@@ -2599,6 +2599,10 @@ class SharedThreadStoreTest {
         assertEquals(0, api.channelMessageCalls)
         assertEquals("joint", payload.channelKind)
         assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
+        assertEquals(false, payload.showTaskOpenActions)
+        assertEquals(false, payload.showTaskStatusActions)
+        assertEquals(false, payload.composer.showAsTaskToggle)
+        assertEquals(false, payload.supportsChannelTasks())
         assertEquals("repository body", payload.messages.single().body)
     }
 

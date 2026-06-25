@@ -4863,6 +4863,19 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         } else {
             base.composer
         }
+    val taskChannelKind =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            parentChannelKind
+        } else {
+            channelKind
+        }
+    val supportsChannelTasks =
+        conversation.permissions.canCreateTask &&
+            !taskChannelKind.equals("joint", ignoreCase = true)
+    val resolvedCapabilityComposer =
+        resolvedComposer.copy(
+            showAsTaskToggle = resolvedComposer.showAsTaskToggle && supportsChannelTasks
+        )
     return base.copy(
         title = headerContext.title,
         subtitle = headerContext.subtitle,
@@ -4884,7 +4897,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         originErrorCode = headerContext.originErrorCode,
         emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyTitle else base.emptyTitle,
         emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyDetail else base.emptyDetail,
-        composer = resolvedComposer,
+        composer = resolvedCapabilityComposer,
+        showTaskOpenActions = base.showTaskOpenActions && supportsChannelTasks,
+        showTaskStatusActions = base.showTaskStatusActions && supportsChannelTasks,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
