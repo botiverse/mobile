@@ -2930,13 +2930,13 @@ internal class SharedThreadStore(
     }
 
     private fun applyMessageReactionSelection(messageId: String, emoji: String, selected: Boolean) {
-        reducePayloadPatch(cachePayload = true) { payload ->
+        reducePayloadPatch { payload ->
             payload.withMessageReaction(messageId, emoji, selected)
         }
     }
 
     private fun applyMessageReactions(messageId: String, reactions: List<KuiklyThreadReactionItem>) {
-        reducePayloadPatch(cachePayload = true) { payload ->
+        reducePayloadPatch { payload ->
             payload.withMessageReactions(messageId, reactions)
         }
     }
@@ -2949,10 +2949,23 @@ internal class SharedThreadStore(
 
     private suspend fun applyMessageMutation(summary: MessageMutationSummary) {
         val currentUserId = dataSource.readSession()?.user?.id
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { payload -> payload.withMessageMutationSummary(summary, currentUserId) }
+        val currentPayload = _state.value.payload
+        val canonicalPayload = currentPayload.withMessageMutationSummary(summary, currentUserId)
+        val selected =
+            dataSource
+                .writeCanonicalPayloadAndRead(
+                    basePayload = currentPayload,
+                    payload = canonicalPayload,
+                    trimToLatestThreadWindow = false
+                )
+                .withRouteContext(currentPayload)
+                .preserveStableTimelineFrom(currentPayload, preserveSelectedReactions = false)
+        reducePayloadPatch { payload ->
+            if (!routeStillCurrent(currentPayload, "thread_reaction", "mutation_apply", payload)) {
+                return@reducePayloadPatch payload
+            }
+            payload.withContentPatchFrom(selected)
+        }
     }
 
     private suspend fun applyActionCard(messageId: String, card: ThreadActionCard) {
