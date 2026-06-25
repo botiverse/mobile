@@ -3,12 +3,15 @@ package ai.slock.compose
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -19,10 +22,26 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+
+internal enum class SlockSelectionChangeSource {
+    Click,
+    Swipe,
+    Availability
+}
+
+internal data class SlockTabSpec<T>(
+    val key: T,
+    val label: String,
+    val iconName: SlockLucideIconName,
+    val width: Dp = SlockTopTabBarDefaults.TabWidth,
+    val swipeEnabled: Boolean = true
+)
 
 internal data class SlockTopTabBarItem(
     val key: String,
@@ -35,6 +54,96 @@ internal object SlockTopTabBarDefaults {
     val Height = 32.dp
     val TabWidth = 98.dp
 }
+
+@Composable
+internal fun <T> SlockTabbedScaffold(
+    tabs: List<SlockTabSpec<T>>,
+    selectedKey: T,
+    onSelectedKeyChange: (T, SlockSelectionChangeSource) -> Unit,
+    modifier: Modifier = Modifier,
+    itemKeyPrefix: String = "top-tab",
+    swipeEnabled: Boolean = false,
+    canSwipe: () -> Boolean = { true },
+    content: @Composable (T, Modifier) -> Unit
+) {
+    Column(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopTabBar(
+            items = tabs.map { it.toTopTabBarItem() },
+            selectedKey = selectedKey.toString(),
+            onSelectedKeyChange = { key ->
+                tabs.firstOrNull { it.key.toString() == key }?.let { tab ->
+                    onSelectedKeyChange(tab.key, SlockSelectionChangeSource.Click)
+                }
+            },
+            itemKeyPrefix = itemKeyPrefix
+        )
+        val selectedTab = tabs.firstOrNull { it.key == selectedKey }
+        val contentModifier =
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .slockSwipeSelection(
+                    items = tabs.filter { it.swipeEnabled }.map { it.key },
+                    selected = selectedKey,
+                    enabled = swipeEnabled && selectedTab?.swipeEnabled == true,
+                    canSwipe = canSwipe,
+                    onSelectedChange = { next ->
+                        onSelectedKeyChange(next, SlockSelectionChangeSource.Swipe)
+                    }
+                )
+        content(selectedKey, contentModifier)
+    }
+}
+
+@Composable
+internal fun <T> Modifier.slockSwipeSelection(
+    items: List<T>,
+    selected: T,
+    enabled: Boolean,
+    swipeThreshold: Dp = 72.dp,
+    canSwipe: () -> Boolean = { true },
+    onSelectedChange: (T) -> Unit
+): Modifier {
+    if (!enabled || items.size < 2) return this
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { swipeThreshold.toPx() }
+    val itemsState = rememberUpdatedState(items)
+    val selectedState = rememberUpdatedState(selected)
+    val canSwipeState = rememberUpdatedState(canSwipe)
+    val onSelectedChangeState = rememberUpdatedState(onSelectedChange)
+    return this.pointerInput(enabled, thresholdPx) {
+        var dragDistance = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { dragDistance = 0f },
+            onDragEnd = {
+                if (canSwipeState.value()) {
+                    val currentItems = itemsState.value
+                    val currentIndex = currentItems.indexOf(selectedState.value)
+                    if (currentIndex >= 0) {
+                        when {
+                            dragDistance <= -thresholdPx ->
+                                currentItems.getOrNull(currentIndex + 1)?.let(onSelectedChangeState.value)
+                            dragDistance >= thresholdPx ->
+                                currentItems.getOrNull(currentIndex - 1)?.let(onSelectedChangeState.value)
+                        }
+                    }
+                }
+                dragDistance = 0f
+            },
+            onDragCancel = { dragDistance = 0f }
+        ) { _, dragAmount ->
+            dragDistance += dragAmount
+        }
+    }
+}
+
+internal fun <T> SlockTabSpec<T>.toTopTabBarItem(): SlockTopTabBarItem =
+    SlockTopTabBarItem(
+        key = key.toString(),
+        label = label,
+        iconName = iconName,
+        width = width
+    )
 
 @Composable
 internal fun SlockTopTabBar(

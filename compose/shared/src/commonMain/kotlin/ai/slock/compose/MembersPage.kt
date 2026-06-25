@@ -3109,7 +3109,7 @@ private fun MembersAgentTabBar(
     modifier: Modifier = Modifier
 ) {
     SlockTopTabBar(
-        items = tabs.map { it.toMembersTopTabBarItem() },
+        items = tabs.map { it.toSlockTabSpec().toTopTabBarItem() },
         selectedKey = selectedTab.name,
         onSelectedKeyChange = { key ->
             tabs.firstOrNull { it.name == key }?.let(onSelectedTabChange)
@@ -3119,9 +3119,9 @@ private fun MembersAgentTabBar(
     )
 }
 
-private fun MembersAgentDetailTab.toMembersTopTabBarItem(): SlockTopTabBarItem =
-    SlockTopTabBarItem(
-        key = name,
+private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
+    SlockTabSpec(
+        key = this,
         label = label,
         iconName = iconName,
         width =

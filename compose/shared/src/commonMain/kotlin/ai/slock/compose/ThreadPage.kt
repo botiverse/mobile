@@ -1451,6 +1451,13 @@ private val KuiklyThreadTab.icon: SlockLucideIconName
             KuiklyThreadTab.Files -> SlockLucideIconName.Paperclip
         }
 
+private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
+    SlockTabSpec(
+        key = this,
+        label = label,
+        iconName = icon
+    )
+
 @Composable
 private fun ThreadPageScreen() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -5374,6 +5381,69 @@ private fun ThreadPageContent(
         remember(payload.knownMarkdownChannelNames) {
             payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
         }
+    val selectThreadTab: (KuiklyThreadTab, SlockSelectionChangeSource) -> Unit = { tab, _ ->
+        selectedTab = tab
+        onThreadEvent("selectTab", null, null, tab.wireValue)
+    }
+    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier) -> Unit = { tab, contentModifier ->
+        Box(
+            modifier = contentModifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+        ) {
+            if (renderEarlyLoadingShell) {
+                ThreadStateMessage("Loading...", null)
+            } else when (tab) {
+                KuiklyThreadTab.Chat ->
+                    ThreadChatTabWithLinkedTasksProjection(
+                        threadInstanceKey = threadInstanceKey,
+                        payload = payload,
+                        activeDraftRecords = activeDraftRecords,
+                        tasksViewModel = tasksViewModel,
+                        tasksDataStore = tasksDataStore,
+                        currentServerId = currentServerId,
+                        taskChannelId = taskChannelId,
+                        composerKeyboardInsetDp = composerKeyboardInsetDp,
+                        highlightedMentions = highlightedMentions,
+                        pendingActionCardIds = pendingActionCardIds,
+                        attachmentOpenStates = attachmentOpenStates,
+                        attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        currentServerSlug = currentServerSlug,
+                        contentExtrasVisible = contentExtrasVisible,
+                        onThreadEvent = onThreadEvent,
+                        onOpenMember = onOpenMemberProfile,
+                        onMentionAuthor = { handle ->
+                            if (showComposerForSelectedTab) {
+                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
+                            }
+                        },
+                        onOpenMarkdownTag = openMarkdownTag,
+                        onOpenMarkdownUrl = openMarkdownUrl,
+                        diagnosticsLogger = diagnosticsLogger,
+                        onThreadContentReady = {
+                            threadContentReadyForComposer = true
+                        }
+                    )
+                KuiklyThreadTab.Tasks ->
+                    ThreadTasksTab(
+                        tasksViewModel = tasksViewModel,
+                        channelId = taskPanelChannelId,
+                        openTaskEnabled = payload.showTaskOpenActions,
+                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                        onIntent = onTasksIntent
+                    )
+                KuiklyThreadTab.Files ->
+                    ThreadFilesTab(
+                        threadInstanceKey = threadInstanceKey,
+                        filesViewModel = filesViewModel,
+                        attachmentOpenStates = attachmentOpenStates,
+                        onAuthRequired = onFilesAuthRequired,
+                        onOpenAttachment = onOpenFilesAttachment,
+                        onDownloadAttachment = onDownloadFilesAttachment
+                    )
+            }
+        }
+    }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
@@ -5393,69 +5463,21 @@ private fun ThreadPageContent(
                 }
             )
             if (payload.showModeTabs) {
-                ThreadPageTabs(
-                    selectedTab = selectedTab,
-                    tabs = availableTabs,
-                    onSelect = { tab ->
-                        selectedTab = tab
-                        onThreadEvent("selectTab", null, null, tab.wireValue)
-                    }
+                SlockTabbedScaffold(
+                    tabs = availableTabs.map { it.toSlockTabSpec() },
+                    selectedKey = selectedTab,
+                    onSelectedKeyChange = selectThreadTab,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    itemKeyPrefix = "thread-tab",
+                    swipeEnabled = true,
+                    canSwipe = { activeModal == null },
+                    content = renderThreadTabContent
                 )
-            }
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
-            ) {
-                if (renderEarlyLoadingShell) {
-                    ThreadStateMessage("Loading...", null)
-                } else when (selectedTab) {
-                    KuiklyThreadTab.Chat ->
-                        ThreadChatTabWithLinkedTasksProjection(
-                            threadInstanceKey = threadInstanceKey,
-                            payload = payload,
-                            activeDraftRecords = activeDraftRecords,
-                            tasksViewModel = tasksViewModel,
-                            tasksDataStore = tasksDataStore,
-                            currentServerId = currentServerId,
-                            taskChannelId = taskChannelId,
-                            composerKeyboardInsetDp = composerKeyboardInsetDp,
-                            highlightedMentions = highlightedMentions,
-                            pendingActionCardIds = pendingActionCardIds,
-                            attachmentOpenStates = attachmentOpenStates,
-                            attachmentCommentsEnabled = attachmentCommentsEnabled,
-                            currentServerSlug = currentServerSlug,
-                            contentExtrasVisible = contentExtrasVisible,
-                            onThreadEvent = onThreadEvent,
-                            onOpenMember = onOpenMemberProfile,
-                            onMentionAuthor = { handle ->
-                                if (showComposerForSelectedTab) {
-                                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
-                                }
-                            },
-                            onOpenMarkdownTag = openMarkdownTag,
-                            onOpenMarkdownUrl = openMarkdownUrl,
-                            diagnosticsLogger = diagnosticsLogger,
-                            onThreadContentReady = {
-                                threadContentReadyForComposer = true
-                            }
-                        )
-                    KuiklyThreadTab.Tasks ->
-                        ThreadTasksTab(
-                            tasksViewModel = tasksViewModel,
-                            channelId = taskPanelChannelId,
-                            openTaskEnabled = payload.showTaskOpenActions,
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onIntent = onTasksIntent
-                        )
-                    KuiklyThreadTab.Files ->
-                        ThreadFilesTab(
-                            threadInstanceKey = threadInstanceKey,
-                            filesViewModel = filesViewModel,
-                            attachmentOpenStates = attachmentOpenStates,
-                            onAuthRequired = onFilesAuthRequired,
-                            onOpenAttachment = onOpenFilesAttachment,
-                            onDownloadAttachment = onDownloadFilesAttachment
-                        )
-                }
+            } else {
+                renderThreadTabContent(
+                    selectedTab,
+                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
+                )
             }
             if (!payload.joined) {
                 ThreadJoinFooter(
@@ -5853,16 +5875,10 @@ private fun ThreadPageTabs(
     onSelect: (KuiklyThreadTab) -> Unit
 ) {
     SlockTopTabBar(
-        items = tabs.map { tab ->
-            SlockTopTabBarItem(
-                key = tab.wireValue,
-                label = tab.label,
-                iconName = tab.icon
-            )
-        },
-        selectedKey = selectedTab.wireValue,
+        items = tabs.map { it.toSlockTabSpec().toTopTabBarItem() },
+        selectedKey = selectedTab.toString(),
         onSelectedKeyChange = { key ->
-            tabs.firstOrNull { it.wireValue == key }?.let(onSelect)
+            tabs.firstOrNull { it.toString() == key }?.let(onSelect)
         },
         itemKeyPrefix = "thread-tab"
     )
