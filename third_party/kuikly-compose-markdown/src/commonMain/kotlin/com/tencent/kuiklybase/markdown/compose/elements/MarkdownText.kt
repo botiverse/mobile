@@ -115,7 +115,7 @@ fun MarkdownText(
     content: AnnotatedString,
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     style: TextStyle = LocalMarkdownTypography.current.text,
     onTextLayout: ((TextLayoutResult, Color?) -> Unit)?,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),

@@ -127,7 +127,7 @@ fun MarkdownTableHeader(
     style: TextStyle,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
     columnWidths: MutableMap<Int, Dp>,
     rowWidths: MutableState<Dp>
@@ -167,7 +167,7 @@ fun MarkdownTableContent(
     style: TextStyle,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
     columnWidths: MutableMap<Int, Dp>,
     rowWidths: MutableState<Dp>
@@ -206,7 +206,7 @@ private fun MarkdownTableRow(
     style: TextStyle,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
     columnWidths: MutableMap<Int, Dp>,
 ) {
@@ -261,7 +261,7 @@ private fun MarkdownTableCell(
     index: Int,
     style: TextStyle,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
     columnWidths: MutableMap<Int, Dp>,
     onSizeChanged: (IntSize) -> Unit = {}
@@ -313,7 +313,7 @@ fun MarkdownTableBasicText(
     style: TextStyle,
     modifier: Modifier,
     maxLines: Int,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
     val str = content.buildMarkdownAnnotatedString(

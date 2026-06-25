@@ -11,6 +11,7 @@ import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -79,6 +80,13 @@ class SlockMarkdownTest {
 
         assertFalse(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 90.dp, maxWidth = Dp.Unspecified))
         assertEquals(96.dp, widths[1])
+    }
+
+    @Test
+    fun markdownContentNeverUsesEllipsisOverflow() {
+        assertEquals(TextOverflow.Clip, slockMarkdownContentOverflow(TextOverflow.Ellipsis))
+        assertEquals(TextOverflow.Clip, slockMarkdownContentOverflow(TextOverflow.Clip))
+        assertEquals(TextOverflow.Visible, slockMarkdownContentOverflow(TextOverflow.Visible))
     }
 
     @Test
