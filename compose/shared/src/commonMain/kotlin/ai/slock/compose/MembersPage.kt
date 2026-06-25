@@ -156,6 +156,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -2394,6 +2400,7 @@ private fun MembersDetailContent(
             .background(SlockColor.SurfaceWhite)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            val runtimeErrorText = member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
             MembersDetailHeader(
                 member = member,
                 detail = detail,
@@ -2409,6 +2416,19 @@ private fun MembersDetailContent(
                     managementMenuOpen = true
                 }
             )
+            if (runtimeErrorText != null) {
+                MembersAgentRuntimeErrorBanner(
+                    errorText = runtimeErrorText,
+                    canViewPrivate = canViewPrivate,
+                    onViewLogs = { selectedTab = MembersAgentDetailTab.Activity },
+                    onCopyInfo = { copyDiagnostics() },
+                    modifier = Modifier.padding(
+                        start = MembersPageInset,
+                        top = SlockSpacing.Sm,
+                        end = MembersPageInset
+                    )
+                )
+            }
             if (member.kind == MemberKind.Agent) {
                 MembersAgentTabBar(
                     tabs = visibleTabs,
@@ -2764,7 +2784,6 @@ private fun MembersDetailHeader(
                 statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
                 statusIndicatorState = agentStatusIndicatorState,
-                showStatusOverlay = false,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
                 } else {
@@ -3272,6 +3291,73 @@ private fun MembersAgentDetailStateNotice(
             .border(SlockStroke.Default, SlockColor.BorderBlack)
             .padding(SlockSpacing.Sm)
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MembersAgentRuntimeErrorBanner(
+    errorText: String,
+    canViewPrivate: Boolean,
+    onViewLogs: () -> Unit,
+    onCopyInfo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.AccentOrange)
+            .background(SlockColor.SurfaceCream)
+            .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockStatusIndicator(
+                color = SlockColor.AccentOrange,
+                size = 9.dp,
+                pulsing = false
+            )
+            Text(
+                text = if (canViewPrivate) errorText else "Agent encountered an error",
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        if (canViewPrivate) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                SlockBrutalActionButton(
+                    label = "View logs",
+                    leadingIcon = SlockLucideIconName.FileText,
+                    minWidth = 92.dp,
+                    minHeight = 30.dp,
+                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    shadowOffset = 2.dp,
+                    onClick = onViewLogs
+                )
+                SlockBrutalActionButton(
+                    label = "Copy info",
+                    leadingIcon = SlockLucideIconName.Copy,
+                    minWidth = 92.dp,
+                    minHeight = 30.dp,
+                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    shadowOffset = 2.dp,
+                    onClick = onCopyInfo
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -6555,6 +6641,66 @@ private fun MemberProfile.membersResolvedAgentStatus(
     AgentStatus.fromWireValue(summaryActivity)
         ?: AgentStatus.fromWireValue(summaryStatus)
         ?: agentStatus
+
+private fun MemberProfile.membersAgentRuntimeErrorText(
+    detail: AgentDetailSnapshot?,
+    statusIndicatorState: SlockAgentStatusIndicatorState?
+): String? {
+    if (kind != MemberKind.Agent) return null
+    val summary = detail?.summary
+    val status = statusIndicatorState?.status ?: membersResolvedAgentStatus(summary?.status, summary?.activity)
+    return if (status == AgentStatus.Error) {
+        membersAgentActivityErrorText(summary?.activityDetail)
+    } else {
+        null
+    }
+}
+
+internal fun membersAgentActivityErrorText(detail: String?): String {
+    val displayDetail = membersAgentActivityErrorDisplayDetail(detail)
+    return if (displayDetail.isBlank()) "Error" else "Error: $displayDetail"
+}
+
+internal fun membersAgentActivityErrorDisplayDetail(detail: String?): String {
+    val trimmed = detail?.trim().orEmpty()
+    if (trimmed.isBlank()) return ""
+    val parsed =
+        if (trimmed.firstOrNull() in setOf('{', '[', '"')) {
+            runCatching { MembersAgentActivityErrorJson.parseToJsonElement(trimmed) }.getOrNull()
+        } else {
+            null
+        }
+    return parsed?.membersAgentActivityErrorMessage()?.takeIf { it.isNotBlank() } ?: trimmed
+}
+
+private val MembersAgentActivityErrorJson = Json { ignoreUnknownKeys = true }
+
+private fun JsonElement.membersAgentActivityErrorMessage(): String? =
+    when (this) {
+        is JsonObject -> membersAgentActivityErrorMessage()
+        is JsonArray -> firstNotNullOfOrNull { it.membersAgentActivityErrorMessage() }
+        is JsonPrimitive -> contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+        else -> null
+    }
+
+private fun JsonObject.membersAgentActivityErrorMessage(): String? {
+    listOf("message", "error_description").forEach { key ->
+        this[key].membersAgentActivityStringOrNull()?.let { return it }
+    }
+    val error = this["error"]
+    error.membersAgentActivityStringOrNull()?.let { return it }
+    error?.membersAgentActivityErrorMessage()?.let { return it }
+    (this["errors"] as? JsonArray)
+        ?.firstNotNullOfOrNull { it.membersAgentActivityErrorMessage() }
+        ?.let { return it }
+    return null
+}
+
+private fun JsonElement?.membersAgentActivityStringOrNull(): String? =
+    (this as? JsonPrimitive)
+        ?.contentOrNull
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
 
 internal fun buildMembersAgentDiagnostics(
     member: MemberProfile,

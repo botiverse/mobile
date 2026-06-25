@@ -352,6 +352,52 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentStatusDisplayStateUsesOrangeForErrorWithoutPulse() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Cindy",
+                handle = "@Cindy",
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online
+            )
+
+        val displayState =
+            member.membersAgentStatusDisplayState(
+                summaryStatus = "active",
+                summaryActivity = "error"
+            )
+
+        assertEquals(AgentStatus.Error, displayState.status)
+        assertEquals(SlockColor.AccentOrange, displayState.color)
+        assertEquals(false, displayState.pulsing)
+    }
+
+    @Test
+    fun agentActivityErrorDisplayDetailExtractsReactErrorFields() {
+        assertEquals(
+            "Runtime crashed",
+            membersAgentActivityErrorDisplayDetail("""{"message":"Runtime crashed"}""")
+        )
+        assertEquals(
+            "Provider rejected request",
+            membersAgentActivityErrorDisplayDetail("""{"error":{"message":"Provider rejected request"}}""")
+        )
+        assertEquals(
+            "Tool failed",
+            membersAgentActivityErrorDisplayDetail("""{"errors":[{"message":"Tool failed"}]}""")
+        )
+        assertEquals(
+            "plain runtime error",
+            membersAgentActivityErrorDisplayDetail("plain runtime error")
+        )
+        assertEquals(
+            "Error: Runtime crashed",
+            membersAgentActivityErrorText("""{"message":"Runtime crashed"}""")
+        )
+    }
+
+    @Test
     fun agentStatusDisplayStateFallsBackToMemberStatusAndPresence() {
         val agent =
             MemberProfile(
