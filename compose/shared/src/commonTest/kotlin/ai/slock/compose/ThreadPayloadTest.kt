@@ -3861,13 +3861,21 @@ class ThreadPayloadTest {
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
-                status = "loading"
+                status = "loading",
+                showTaskStatusActions = true
             )
-        val contentPayload = loadingPayload.copy(status = "content")
+        val contentPayload = loadingPayload.copy(status = "content", selectedTab = "chat")
 
         assertFalse(shouldStartThreadTasksJoin(loadingPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertTrue(
+            shouldStartThreadTasksJoin(
+                contentPayload.copy(selectedTab = "tasks"),
+                startedThreadId = null,
+                taskChannelId = taskChannelId
+            )
+        )
         assertFalse(
             shouldStartThreadTasksJoin(
                 contentPayload.copy(sourceThreadId = null),
@@ -3956,13 +3964,15 @@ class ThreadPayloadTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                status = "loading"
+                status = "loading",
+                showTaskStatusActions = true
             )
         val resolvedPayload =
             launchPayload.copy(
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
-                status = "content"
+                status = "content",
+                selectedTab = "chat"
             )
         val resolvedTaskChannelId = resolvedPayload.resolvedTaskLookupChannelId()?.let(::ChannelId)
 
