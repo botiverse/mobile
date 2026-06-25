@@ -451,6 +451,33 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun taskStatusUpdateSuccessRefreshesScopedProjectionTask() {
+        val staleTask = task("task-1", TaskStatus.Todo)
+        val canonicalTask = staleTask.copy(status = TaskStatus.Done)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(staleTask)
+                        )
+                    ),
+                statusUpdatingTaskId = "task-1",
+                statusUpdateErrorCode = "previous_error"
+            )
+
+        val next = state.reduce(SharedTasksIntent.TaskStatusUpdateSucceeded(canonicalTask))
+
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
+        assertEquals(TaskStatus.Done, content.tasks.single().status)
+        assertEquals(1, content.summaryCounts[TaskStatus.Done])
+        assertEquals(0, content.summaryCounts[TaskStatus.Todo])
+        assertEquals(null, next.statusUpdatingTaskId)
+        assertEquals(null, next.statusUpdateErrorCode)
+    }
+
+    @Test
     fun taskStatusUpdateSkipReasonRejectsAlreadyAppliedAndStaleActions() {
         val currentTask = task("task-1", TaskStatus.InProgress)
         val staleTask = currentTask.copy(status = TaskStatus.Todo)

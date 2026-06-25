@@ -2608,6 +2608,9 @@ internal fun SharedThreadRouteContent(
         if (signal.event is MemberPresenceUpdated) {
             serverMembersStore?.applyPresence(signal.event)
         }
+        if (signal.event is TaskUpdated) {
+            tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(signal.event.task))
+        }
         if (signal.event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
             currentServerId?.let { serverId ->
                 serverMembersStore?.ensureMemberSuggestionsForServer(
@@ -3872,22 +3875,30 @@ internal fun SharedThreadRouteContent(
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, status.name))
+                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, status))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
                                     threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                         }
@@ -3897,22 +3908,30 @@ internal fun SharedThreadRouteContent(
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Done.name))
+                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Done))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
                                     threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                         }
@@ -3922,22 +3941,30 @@ internal fun SharedThreadRouteContent(
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Todo.name))
+                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Todo))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
                                     threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
+                                }
                                 bridge.toast("Unable to update task")
                             }
                         }

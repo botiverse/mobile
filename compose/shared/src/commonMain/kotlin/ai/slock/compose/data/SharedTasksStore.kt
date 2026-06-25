@@ -104,6 +104,8 @@ sealed interface SharedTasksRouteIntent {
     data object Refresh : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
+    data class ApplyTaskStatus(val taskId: String, val status: TaskStatus) : SharedTasksRouteIntent
+    data class ApplyTaskUpdate(val task: TaskSummary) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
@@ -197,6 +199,16 @@ internal class SharedTasksViewModel(
                     viewModelScope.launch {
                         updateStatus(action.task, action.status)
                     }
+            }
+            is SharedTasksRouteIntent.ApplyTaskStatus -> {
+                store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))
+            }
+            is SharedTasksRouteIntent.ApplyTaskUpdate -> {
+                if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
+                    viewModelScope.launch {
+                        publishSharedTaskUpdate(action.task, "external_task_update")
+                    }
+                }
             }
             is SharedTasksRouteIntent.CreateTasks -> {
                 createJob?.cancel()
@@ -484,6 +496,8 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         SharedTasksRouteIntent.Refresh -> "manual"
         is SharedTasksRouteIntent.SelectFilter -> "filter"
         is SharedTasksRouteIntent.UpdateStatus -> "status"
+        is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
+        is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
