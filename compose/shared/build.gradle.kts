@@ -88,7 +88,9 @@ kotlin {
         }
         val androidMain by getting {
             dependencies {
-                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
+                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
+                    isChanging = true
+                }
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
             }
