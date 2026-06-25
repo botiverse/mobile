@@ -1378,6 +1378,7 @@ private const val SlockMarkdownInlineCodeMinHeightSp = 24f
 private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 private const val SlockMarkdownMeasuredWidthSafetySp = 6f
+private val SlockMarkdownMentionUnderlineInset = 3.dp
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
@@ -1454,12 +1455,14 @@ private fun SlockMarkdownMentionText(label: String) {
                 modifier =
                     Modifier
                         .fillMaxWidth()
+                        .padding(horizontal = SlockMarkdownMentionUnderlineInset)
                         .height(2.dp)
                         .background(SlockColor.EmptyStateGray)
                         .align(Alignment.BottomCenter)
             )
             KuiklyText(
                 text = label,
+                modifier = Modifier.fillMaxWidth(),
                 style =
                     SlockType.Body
                         .withSlockFontWeight(FontWeight.SemiBold)
@@ -1469,6 +1472,7 @@ private fun SlockMarkdownMentionText(label: String) {
                             color = SlockColor.TextBlack
                         ),
                 color = SlockColor.TextBlack,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Clip
             )
