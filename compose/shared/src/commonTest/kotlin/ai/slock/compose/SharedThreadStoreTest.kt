@@ -988,6 +988,7 @@ class SharedThreadStoreTest {
                 deliveryState = ThreadMessageDeliverySending,
                 pendingSendContext =
                     KuiklyThreadPendingSendContext(
+                        channelId = "channel-1",
                         body = "pending reply",
                         asTask = false,
                         attachmentIds = emptyList(),
