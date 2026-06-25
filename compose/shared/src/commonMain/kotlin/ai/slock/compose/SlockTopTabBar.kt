@@ -23,11 +23,13 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.input.pointer.positionChange
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import kotlin.math.abs
 
 internal enum class SlockSelectionChangeSource {
     Click,
@@ -100,7 +102,8 @@ internal fun <T> Modifier.slockSwipeSelection(
     items: List<T>,
     selected: T,
     enabled: Boolean,
-    swipeThreshold: Dp = 72.dp,
+    swipeThreshold: Dp = 96.dp,
+    horizontalDominanceRatio: Float = 1.45f,
     canSwipe: () -> Boolean = { true },
     onSelectedChange: (T) -> Unit
 ): Modifier {
@@ -111,12 +114,16 @@ internal fun <T> Modifier.slockSwipeSelection(
     val selectedState = rememberUpdatedState(selected)
     val canSwipeState = rememberUpdatedState(canSwipe)
     val onSelectedChangeState = rememberUpdatedState(onSelectedChange)
-    return this.pointerInput(enabled, thresholdPx) {
+    return this.pointerInput(enabled, thresholdPx, horizontalDominanceRatio) {
         var dragDistance = 0f
+        var verticalDistance = 0f
         detectHorizontalDragGestures(
-            onDragStart = { dragDistance = 0f },
+            onDragStart = {
+                dragDistance = 0f
+                verticalDistance = 0f
+            },
             onDragEnd = {
-                if (canSwipeState.value()) {
+                if (canSwipeState.value() && isClearHorizontalSwipe(dragDistance, verticalDistance, thresholdPx, horizontalDominanceRatio)) {
                     val currentItems = itemsState.value
                     val currentIndex = currentItems.indexOf(selectedState.value)
                     if (currentIndex >= 0) {
@@ -129,12 +136,28 @@ internal fun <T> Modifier.slockSwipeSelection(
                     }
                 }
                 dragDistance = 0f
+                verticalDistance = 0f
             },
-            onDragCancel = { dragDistance = 0f }
-        ) { _, dragAmount ->
+            onDragCancel = {
+                dragDistance = 0f
+                verticalDistance = 0f
+            }
+        ) { change, dragAmount ->
             dragDistance += dragAmount
+            verticalDistance += change.positionChange().y
         }
     }
+}
+
+internal fun isClearHorizontalSwipe(
+    horizontalDistance: Float,
+    verticalDistance: Float,
+    thresholdPx: Float,
+    horizontalDominanceRatio: Float
+): Boolean {
+    val horizontal = abs(horizontalDistance)
+    val vertical = abs(verticalDistance)
+    return horizontal >= thresholdPx && horizontal >= vertical * horizontalDominanceRatio
 }
 
 internal fun <T> SlockTabSpec<T>.toTopTabBarItem(): SlockTopTabBarItem =
