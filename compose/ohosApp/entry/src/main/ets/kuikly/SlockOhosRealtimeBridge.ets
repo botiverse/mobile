@@ -5,6 +5,7 @@ import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 
 const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
+const REALTIME_ROOMS_EVENT_NAME = 'slockRealtimeRooms';
 const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
@@ -26,9 +27,11 @@ export class SlockOhosRealtimeBridge {
   private lastHeartbeatAtMillis?: number;
   private lastInboundEventAtMillis?: number;
   private authRefreshInFlight: boolean = false;
+  private roomNotifyCallback?: Callback<emitter.EventData>;
 
   setController(controller?: KRNativeRenderController): void {
     this.controller = controller;
+    this.installRealtimeRoomsNotifyListener();
     this.socketIo.setListener({
       onConnected: () => {
         this.markInbound();
@@ -64,9 +67,6 @@ export class SlockOhosRealtimeBridge {
         break;
       case 'disconnect':
         this.disconnect((params['reason'] as string) ?? 'shared_disconnect');
-        break;
-      case 'joinChannel':
-        this.joinChannel((params['channelId'] as string) ?? '');
         break;
       case 'syncResume':
         this.syncResume(Number(params['lastSeq'] ?? 0));
@@ -173,6 +173,10 @@ export class SlockOhosRealtimeBridge {
       return;
     }
     this.joinedChannels.add(channelId);
+    this.emitJoinChannel(channelId);
+  }
+
+  private emitJoinChannel(channelId: string): void {
     if (!this.socketIo.emit('join:channel', channelId)) {
       console.info('[SlockOhosRealtime] join_channel_deferred');
     }
@@ -183,6 +187,30 @@ export class SlockOhosRealtimeBridge {
       console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
       this.socketIo.emit('join:channel', channelId);
     });
+  }
+
+  private installRealtimeRoomsNotifyListener(): void {
+    if (this.roomNotifyCallback !== undefined) {
+      return;
+    }
+    this.roomNotifyCallback = (event: emitter.EventData) => {
+      const data = event.data as Record<string, string>;
+      const stringify = data.stringify ?? '{}';
+      try {
+        this.handleRealtimeRoomsNotify(JSON.parse(stringify) as KRRecord);
+      } catch (error) {
+        console.warn(`[SlockOhosRealtime] room_notify_parse_failed message=${JSON.stringify(error)}`);
+      }
+    };
+    emitter.on(REALTIME_ROOMS_EVENT_NAME, this.roomNotifyCallback);
+    console.info('[SlockOhosRealtime] room_notify_listener_installed');
+  }
+
+  private handleRealtimeRoomsNotify(params: KRRecord): void {
+    const action = (params['action'] as string) ?? '';
+    if (action === 'joinChannel') {
+      this.joinChannel((params['channelId'] as string) ?? '');
+    }
   }
 
   private syncResume(lastSeq: number): void {

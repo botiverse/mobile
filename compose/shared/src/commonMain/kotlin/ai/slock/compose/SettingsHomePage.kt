@@ -2285,7 +2285,7 @@ private fun SlockAppShellContent() {
                     membersAgentDetailRefreshKey += 1
                 },
                 joinChannel = { channelId ->
-                    bridge.realtimeJoinChannel(channelId)
+                    realtimeEvents.joinChannel(channelId)
                 },
                 emitRouteMarker = { event ->
                     if (event.shouldEmitAppShellRouteMarker()) {

@@ -568,13 +568,6 @@ internal class BridgeModule : Module() {
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
-    fun realtimeJoinChannel(channelId: String) {
-        val methodArgs = JSONObject()
-        methodArgs.put("action", "joinChannel")
-        methodArgs.put("channelId", channelId)
-        callNativeMethod(REPORT_REALTIME, methodArgs, null)
-    }
-
     fun realtimeAuthRefreshFinished(reason: String, success: Boolean) {
         val methodArgs = JSONObject()
         methodArgs.put("action", "authRefreshFinished")
