@@ -974,6 +974,26 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appShellJointChannelPayloadUsesBranchHeaderKindWhenRawTypeIsGenericChannel() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("joint-1"),
+                channelId = ChannelId("joint-1"),
+                channelType = "channel",
+                kind = ConversationKind.Joint,
+                name = "partner",
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val payload = buildAppShellThreadPayload(conversation)
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("joint", payload.channelKind)
+        assertEquals("joint", headerDisplay.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
     fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
         val payload =
             buildAppShellThreadPayload(
@@ -989,6 +1009,22 @@ class ThreadPayloadTest {
 
         assertEquals(true, payload.memberScopedMentions)
         assertEquals("joint-1", payload.resolveThreadComposer().streamChannelId)
+    }
+
+    @Test
+    fun wireThreadLaunchPayloadCarriesChannelKindIntoInitialPayload() {
+        val payload =
+            WireThreadLaunchPayload(
+                instanceId = "joint-thread",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                sourceThreadId = "joint-1",
+                streamChannelId = "joint-1"
+            ).toInitialPayload("fallback")
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("joint", payload.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
     }
 
     @Test

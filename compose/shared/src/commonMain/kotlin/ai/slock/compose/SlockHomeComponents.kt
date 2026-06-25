@@ -400,6 +400,12 @@ internal fun buildHomeConversationThreadLaunchPayload(
     return WireThreadLaunchPayload(
         instanceId = "${payload.instanceId}:$conversationId",
         surfaceKind = surfaceKind,
+        channelKind =
+            if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                conversation.homeChannelKind()
+            } else {
+                null
+            },
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,
@@ -1205,8 +1211,12 @@ internal fun homeConversationSectionForSelection(
 }
 
 internal fun SlockHomeConversationItem.homeChannelKind(): String =
-    channelType?.takeIf { it.isNotBlank() }?.lowercase()
-        ?: kind.lowercase()
+    if (kind.equals("joint", ignoreCase = true)) {
+        "joint"
+    } else {
+        channelType?.takeIf { it.isNotBlank() }?.lowercase()
+            ?: kind.lowercase()
+    }
 
 internal fun SlockHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toSlockChannelSymbol()

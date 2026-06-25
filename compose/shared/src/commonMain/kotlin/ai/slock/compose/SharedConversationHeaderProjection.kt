@@ -218,7 +218,7 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,
-        channelKind = channelType?.takeIf { it.isNotBlank() } ?: kind.name.lowercase(),
+        channelKind = resolveThreadRouteIdentity().channelKind ?: channelType?.takeIf { it.isNotBlank() } ?: kind.name.lowercase(),
         title = displayName,
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = avatar.effectiveAvatarWireValue,

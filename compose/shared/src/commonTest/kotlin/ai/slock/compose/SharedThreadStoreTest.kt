@@ -175,6 +175,23 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun conversationSummaryThreadRouteIdentityLetsJointKindOverrideGenericChannelType() {
+        val identity =
+            ConversationSummary(
+                threadId = ThreadId("joint-1"),
+                channelId = ChannelId("joint-1"),
+                channelType = "channel",
+                kind = ConversationKind.Joint,
+                name = "partner"
+            ).resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, identity.surfaceKind)
+        assertEquals("joint", identity.channelKind)
+        assertEquals("joint", identity.routeKind)
+        assertEquals("joint:joint-1", identity.instanceKey)
+    }
+
+    @Test
     fun conversationSummaryThreadRouteIdentityIgnoresParentChannelEchoAsTimeline() {
         val identity =
             ConversationSummary(

@@ -123,13 +123,12 @@ private fun String?.nonBlank(): String? =
     this?.takeIf { it.isNotBlank() }
 
 private fun ConversationSummary.conversationThreadChannelKind(): String? =
-    channelType.normalizedThreadChannelKind()
-        ?: when (kind) {
-            ConversationKind.Channel -> KuiklyThreadSurfaceKind.Channel
-            ConversationKind.Joint -> "joint"
-            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            else -> null
-        }
+    when (kind) {
+        ConversationKind.Joint -> "joint"
+        ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        else -> channelType.normalizedThreadChannelKind()
+    }
 
 private fun String?.normalizedThreadChannelKind(): String? =
     this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }

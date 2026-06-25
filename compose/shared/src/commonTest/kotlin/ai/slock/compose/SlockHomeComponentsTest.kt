@@ -185,6 +185,7 @@ class SlockHomeComponentsTest {
         assertEquals("#", SlockHomeConversationItem(kind = "channel").homeChannelSymbol())
         assertEquals("lock", SlockHomeConversationItem(kind = "channel", channelType = "private").homeChannelSymbol())
         assertEquals("git-branch", SlockHomeConversationItem(kind = "channel", channelType = "joint").homeChannelSymbol())
+        assertEquals("git-branch", SlockHomeConversationItem(kind = "joint", channelType = "channel").homeChannelSymbol())
     }
 
     @Test
@@ -538,6 +539,30 @@ class SlockHomeComponentsTest {
         assertEquals("dm-agent-1", launch?.streamChannelId)
         assertEquals(null, launch?.parentChannelId)
         assertEquals(null, launch?.parentMessageId)
+    }
+
+    @Test
+    fun homeJointChannelLaunchCarriesChannelKind() {
+        val payload =
+            SlockHomePayload(
+                instanceId = "home-page",
+                channels =
+                    listOf(
+                        SlockHomeConversationItem(
+                            id = "joint-1",
+                            name = "partner",
+                            kind = "joint",
+                            channelType = "channel"
+                        )
+                    )
+            )
+
+        val launch = buildHomeConversationThreadLaunchPayload(payload, "joint-1")
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch?.surfaceKind)
+        assertEquals("joint", launch?.channelKind)
+        assertEquals("joint-1", launch?.sourceThreadId)
+        assertEquals("joint-1", launch?.streamChannelId)
     }
 
     private fun testMember(

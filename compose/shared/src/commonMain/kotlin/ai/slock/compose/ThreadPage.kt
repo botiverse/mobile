@@ -552,6 +552,7 @@ internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
 internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val channelKind: String? = null,
     val threadId: String? = null,
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
@@ -618,6 +619,12 @@ internal data class WireThreadLaunchPayload(
             subtitle = null,
             status = "loading",
             surfaceKind = surfaceKind,
+            channelKind =
+                if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                    channelKind?.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
+                } else {
+                    KuiklyThreadSurfaceKind.Channel
+                },
             sourceThreadId = resolvedSourceId,
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
@@ -675,6 +682,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
     WireThreadLaunchPayload(
         instanceId = instanceId,
         surfaceKind = surfaceKind,
+        channelKind = channelKind.takeIf { it.isNotBlank() },
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,

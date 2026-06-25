@@ -11994,6 +11994,7 @@ internal fun buildAppShellThreadPayload(
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val routeChannelKind = conversation.resolveThreadRouteIdentity().channelKind
     val parentSurfaceKind =
         if (isReplyThread) {
             conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel
@@ -12009,7 +12010,7 @@ internal fun buildAppShellThreadPayload(
     val canSend = conversation.joined && conversation.permissions.canSend
     val supportsChannelTasks =
         conversation.permissions.canCreateTask &&
-            !conversation.channelType.equals("joint", ignoreCase = true)
+            !routeChannelKind.equals("joint", ignoreCase = true)
     val composer =
         KuiklyThreadComposerPayload(
             surfaceKind = surfaceKind,
@@ -12025,7 +12026,7 @@ internal fun buildAppShellThreadPayload(
         subtitle = null,
         status = "loading",
         surfaceKind = surfaceKind,
-        channelKind = conversation.channelType?.takeIf { it.isNotBlank() } ?: conversation.kind.name.lowercase(),
+        channelKind = routeChannelKind ?: conversation.channelType?.takeIf { it.isNotBlank() } ?: conversation.kind.name.lowercase(),
         sourceThreadId = streamChannelId,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
@@ -12213,6 +12214,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
+        channelKind = conversation.resolveThreadRouteIdentity().channelKind,
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,

@@ -381,10 +381,10 @@ private fun ChannelEntity.toProjection(
 }
 
 private fun ConversationSummary.toDirectoryChannelType(): String =
-    channelType?.takeIf { it.isNotBlank() } ?: when (kind) {
+    when (kind) {
         ConversationKind.Thread -> "thread"
         ConversationKind.Joint -> "joint"
-        ConversationKind.Channel -> "channel"
+        ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: "channel"
         ConversationKind.DirectMessage -> "dm"
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
