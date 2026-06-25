@@ -4,6 +4,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.network.MultipartFile
 import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -335,7 +336,9 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<Unit>>(api.unsaveMessage("msg-1"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.addReaction("msg-1", "rocket"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.removeReaction("msg-1", "rocket"))
-        assertIs<ThreadApiResult.Success<Unit>>(api.updateTaskStatus("task-1", TaskStatus.InReview))
+        val taskStatusResult =
+            assertIs<ThreadApiResult.Success<TaskSummary?>>(api.updateTaskStatus("task-1", TaskStatus.InReview))
+        assertEquals("task-1", taskStatusResult.data?.id?.value)
         assertIs<ThreadApiResult.Success<ThreadActionResult>>(api.createOrOpenThread("channel-1", "parent-1"))
         assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(
             api.executePendingMentionActions("notify", listOf("res-1"))

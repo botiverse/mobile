@@ -1171,7 +1171,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<Unit> {
+    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<TaskSummary?> {
         if (taskId.isBlank()) {
             return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
         }
@@ -1184,7 +1184,7 @@ internal class SharedThreadDataSource(
                 return DataResult.Error(ScreenError(code = "thread_task_status_network", retryable = true))
             }
         return when (response) {
-            is ThreadApiResult.Success -> DataResult.Content(Unit)
+            is ThreadApiResult.Success -> DataResult.Content(response.data)
             is ThreadApiResult.Failure -> response.toThreadDataError("thread_task_status_network")
         }
     }

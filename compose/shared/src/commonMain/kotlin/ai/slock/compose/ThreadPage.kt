@@ -94,6 +94,7 @@ import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.SlockTimeFormat24Hour
@@ -3854,6 +3855,9 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
                             is DataResult.Content -> {
+                                result.data?.let { task ->
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
@@ -3876,6 +3880,9 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
                             is DataResult.Content -> {
+                                result.data?.let { task ->
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
@@ -3898,6 +3905,9 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
                             is DataResult.Content -> {
+                                result.data?.let { task ->
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
+                                }
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,

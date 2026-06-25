@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +63,7 @@ internal interface SlockThreadApi {
     suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<Unit>
+    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?>
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult>
 }
 
@@ -189,8 +190,8 @@ internal class SlockThreadApiClient(
                 wire.toMessageMutationSummary()
             }
 
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<Unit> =
-        transport.updateTaskStatus(taskId, status).mapThreadUnit()
+    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
+        transport.updateTaskStatus(taskId, status).mapThreadTaskMutation()
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
@@ -510,6 +511,15 @@ private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): Thr
 
 private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
     if (isSuccessful) ThreadApiResult.Success(Unit) else toThreadApiFailure()
+
+private fun HomeNetworkResponse.mapThreadTaskMutation(): ThreadApiResult<TaskSummary?> {
+    if (!isSuccessful) return toThreadApiFailure()
+    val body = bodyText?.takeIf { it.isNotBlank() } ?: return ThreadApiResult.Success(null)
+    val envelope = runCatching { threadApiJson.decodeFromString(TaskEnvelope.serializer(), body) }.getOrNull()
+    envelope?.task?.let { return ThreadApiResult.Success(it.toTaskSummary()) }
+    val directTask = runCatching { threadApiJson.decodeFromString(TaskWireDto.serializer(), body) }.getOrNull()
+    return ThreadApiResult.Success(directTask?.toTaskSummary())
+}
 
 // ── Wire DTOs ──
 

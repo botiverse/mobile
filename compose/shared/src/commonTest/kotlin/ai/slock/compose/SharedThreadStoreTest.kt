@@ -5171,7 +5171,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun updateTaskStatusCallsThreadApiWithoutWritingPayload() = runBlocking {
+    fun updateTaskStatusReturnsPatchTaskWithoutWritingPayload() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi()
         val dataSource =
@@ -5184,6 +5184,8 @@ class SharedThreadStoreTest {
         val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
 
         assertTrue(result is DataResult.Content)
+        assertEquals("task-1", result.data?.id?.value)
+        assertEquals(TaskStatus.Done, result.data?.status)
         assertEquals(listOf("task-1" to TaskStatus.Done), api.updatedTaskStatuses)
         assertEquals(null, localStore.readThread(ThreadId("channel-1")))
     }
