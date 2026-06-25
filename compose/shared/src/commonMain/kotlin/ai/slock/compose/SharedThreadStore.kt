@@ -220,7 +220,13 @@ internal class SharedThreadDataSource(
             } else {
                 payload
             }
-        return if (session == null) windowedPayload else windowedPayload.withKnownMarkdownChannelNames(session)
+        return if (session == null) {
+            windowedPayload
+        } else {
+            windowedPayload
+                .withKnownMarkdownChannelNames(session)
+                .withCachedSenderProfiles(session)
+        }
     }
 
     suspend fun withConversationHeaderFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -2302,7 +2308,7 @@ internal class SharedThreadStore(
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
-        if (emitted && visiblePayload != null) {
+        if (visiblePayload != null && nextPayload.hasRenderableThreadContent()) {
             launchSecondaryTimelineRefresh(basePayload)
         }
     }
@@ -2341,9 +2347,9 @@ internal class SharedThreadStore(
                 .withRouteContext(routePayload)
                 .preserveStableTimelineFrom(latest)
         val emitted =
-            reducePayloadPatch(cachePayload = true) { currentPayload ->
+            reducePayloadPatchAndWriteCache(cachePayload = true, writeCachedPayload = true) { currentPayload ->
                 if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)) {
-                    return@reducePayloadPatch currentPayload
+                    return@reducePayloadPatchAndWriteCache currentPayload
                 }
                 currentPayload.withContentPatchFrom(patch)
             }
