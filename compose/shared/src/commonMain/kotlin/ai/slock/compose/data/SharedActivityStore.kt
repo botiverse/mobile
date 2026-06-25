@@ -35,6 +35,7 @@ class SharedActivityStore(
     private val readReceiptRepository: ReadReceiptRepository,
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val activityStateCache: SharedActivityStateCache? = null,
     private val onUnreadCountsChanged: () -> Unit = {},
@@ -427,7 +428,11 @@ class SharedActivityStore(
 
     private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
-            when (val result = memberRepository?.getMembers(DataRequestPriority.Visible, serverId)) {
+            when (
+                val result =
+                    serverMembersStore?.loadMembers(serverId, DataRequestPriority.Visible)
+                        ?: memberRepository?.getMembers(DataRequestPriority.Visible, serverId)
+            ) {
                 is DataResult.Content ->
                     result.data.members.associateBy(
                         keySelector = { it.id.value },

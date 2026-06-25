@@ -38,6 +38,7 @@ class SharedHomeDataSource(
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
     computersApi: SlockComputersApi? = null,
     private val memberRepository: MemberRepository? = null,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
     private val diagnosticsLogger: (String) -> Unit = {}
@@ -148,10 +149,11 @@ class SharedHomeDataSource(
         serverId: ServerId,
         priority: DataRequestPriority
     ): HomeSnapshot {
-        val repository = memberRepository ?: return this
         val membersResult =
             try {
-                repository.getMembers(priority, serverId)
+                serverMembersStore?.loadMembers(serverId, priority)
+                    ?: memberRepository?.getMembers(priority, serverId)
+                    ?: return this
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {

@@ -250,6 +250,8 @@ import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsServerTranslationSnapshot
 import ai.slock.compose.data.SettingsServerSystemChannelSnapshot
 import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
+import ai.slock.compose.data.SharedServerMembersStore
+import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
@@ -593,6 +595,7 @@ private data class HomeSecondaryRouteEnvironment(
     val authStore: SlockAuthSessionStore,
     val networkClient: KuiklySlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
+    val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -646,6 +649,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         networkClient,
         localWriteThrough,
         settingsCapabilities,
+        sharedStores.serverMembersStore,
         sharedStores.activityStateCache,
         sharedStores.homeSavedStateCache,
         timeContext,
@@ -658,6 +662,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             authStore = authStore,
             networkClient = networkClient,
             localWriteThrough = localWriteThrough,
+            serverMembersStore = sharedStores.serverMembersStore,
             settingsCapabilities = settingsCapabilities,
             activityStateCache = sharedStores.activityStateCache,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
@@ -858,6 +863,7 @@ private fun rememberHomeSearchSavedViewModel(
             savedRepository = savedRepository,
             searchRepository = searchRepository,
             memberRepository = memberRepository,
+            serverMembersStore = environment.serverMembersStore,
             savedStateCache = environment.homeSavedStateCache,
             timeRangeBoundsProvider = { range -> environment.timeContext.toSearchIsoBounds(range) }
         )
@@ -1307,13 +1313,14 @@ private fun SlockAppShellContent() {
             )
         }
     val homeDataSource =
-        remember(memberRepository) {
+        remember(memberRepository, sharedStores.serverMembersStore) {
             SharedHomeDataSource(
                 sessionStore = authStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
                 memberRepository = memberRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
@@ -1450,6 +1457,7 @@ private fun SlockAppShellContent() {
             homeReadReceiptRepository,
             conversationRepository,
             memberRepository,
+            sharedStores.serverMembersStore,
             localWriteThrough,
             sharedStores.activityStateCache,
             homeViewModel,
@@ -1461,6 +1469,7 @@ private fun SlockAppShellContent() {
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 localWriteThrough = localWriteThrough,
                 activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
@@ -1528,6 +1537,7 @@ private fun SlockAppShellContent() {
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) }
             )
@@ -1976,7 +1986,7 @@ private fun SlockAppShellContent() {
                     return@launch
                 }
                 createChannelMembers =
-                    when (val result = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))) {
+                    when (val result = sharedStores.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Visible)) {
                         is DataResult.Content -> result.data.members
                         is DataResult.Empty,
                         is DataResult.Error,
@@ -2340,6 +2350,7 @@ private fun SlockAppShellContent() {
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
                             agentDetailStore = sharedStores.agentDetailStore,
+                            serverMembersStore = sharedStores.serverMembersStore,
                             membersRefreshKey = membersListRefreshKey,
                             currentServerId = readyServerId,
                             initialContent =
@@ -8526,6 +8537,7 @@ private fun SharedMembersScreen(
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
     agentDetailStore: SharedAgentDetailStore,
+    serverMembersStore: SharedServerMembersStore,
     membersRefreshKey: Int,
     currentServerId: String?,
     initialContent: SharedMembersUiState.Content?,
@@ -8548,6 +8560,7 @@ private fun SharedMembersScreen(
                 sharedMembersCachedContentForServer(state as? SharedMembersUiState.Content, serverId)
                     ?: sharedMembersCachedContentForServer(initialContent, serverId)
             if (previousContent != null) {
+                serverMembersStore.seed(MemberSnapshot(previousContent.server, previousContent.members))
                 state = previousContent
                 refreshing = true
             } else {
@@ -8558,7 +8571,7 @@ private fun SharedMembersScreen(
                 state = previousContent ?: SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
-            val response = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
+            val response = serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Visible)
             state =
                 when (response) {
                     is DataResult.Content -> {
@@ -8620,10 +8633,11 @@ private fun SharedMembersScreen(
             // on the fly from the host memberRepository + settingsRepository,
             // then expose loadJoinLinks/ensureJoinLink/sendInvite to the
             // dialog via MembersRouteContent invite params.
-            val settingsMembersDataSource = remember(memberRepository, settingsRepository, serverId) {
+            val settingsMembersDataSource = remember(memberRepository, settingsRepository, serverMembersStore, serverId) {
                 SharedMembersDataSource(
                     memberRepository = memberRepository,
-                    settingsRepository = settingsRepository
+                    settingsRepository = settingsRepository,
+                    serverMembersStore = serverMembersStore
                 )
             }
             val inviteScope = rememberCoroutineScope()

@@ -19,6 +19,7 @@ import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.data.SharedActivityState
 import ai.slock.compose.data.SharedActivityStateCache
 import ai.slock.compose.data.SharedActivityStore
+import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.model.ChannelId
@@ -101,6 +102,7 @@ internal fun SharedHomeActivityScreen(
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
     val networkClient =
         remember(authStore, pager) {
             KuiklySlockNetworkClient(
@@ -146,13 +148,23 @@ internal fun SharedHomeActivityScreen(
         }
     val scope = rememberCoroutineScope()
     val activityStore =
-        remember(authStore, repository, readReceiptRepository, conversationRepository, memberRepository, activityStateCache, scope) {
+        remember(
+            authStore,
+            repository,
+            readReceiptRepository,
+            conversationRepository,
+            memberRepository,
+            sharedStores.serverMembersStore,
+            activityStateCache,
+            scope
+        ) {
             SharedActivityStore(
                 authStore = authStore,
                 inboxRepository = repository,
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 activityStateCache = activityStateCache,
                 scope = scope
             )
