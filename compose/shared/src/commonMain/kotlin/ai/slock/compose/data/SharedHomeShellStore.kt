@@ -73,7 +73,7 @@ class SharedHomeShellStore(
                     observedHomeServerId = nextServerId ?: previousServerId
                     _state.value = _state.value.copy(home = home)
                     if (previousServerId != null && nextServerId != null && previousServerId != nextServerId) {
-                        refreshBadgeSummaries()
+                        refreshBadgeSummaries(clearBeforeRefresh = true)
                     }
                 }
             },
@@ -174,7 +174,11 @@ class SharedHomeShellStore(
         dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
     }
 
-    private fun refreshBadgeSummaries() {
+    private fun refreshBadgeSummaries(clearBeforeRefresh: Boolean = false) {
+        if (clearBeforeRefresh) {
+            dispatchActivity(SharedActivityIntent.ClearSummary)
+            dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
+        }
         dispatchActivity(SharedActivityIntent.Refresh)
         dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
     }
