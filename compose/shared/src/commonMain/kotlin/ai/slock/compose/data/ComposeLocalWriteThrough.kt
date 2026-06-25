@@ -20,6 +20,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
@@ -933,31 +934,32 @@ private fun ThreadSnapshot.withThreadMetadata(event: ThreadUpdated): ThreadSnaps
     )
 }
 
-private fun List<ai.slock.compose.model.TaskSummary>.mergeThreadTasks(
-    incoming: List<ai.slock.compose.model.TaskSummary>
-): List<ai.slock.compose.model.TaskSummary> {
+private fun List<TaskSummary>.mergeThreadTasks(
+    incoming: List<TaskSummary>
+): List<TaskSummary> {
     if (incoming.isEmpty()) return this
     val incomingById = incoming.associateBy { it.id }
+    val incomingTaskNumbers = incoming.mapNotNull { it.taskNumber }.toSet()
+    val incomingMessageIds = incoming.flatMap { task -> task.linkedMessageIds() }.toSet()
     val replacedIds = mutableSetOf<TaskId>()
     val merged =
-        map { task ->
-            incomingById[task.id]?.also { replacedIds += task.id } ?: task
+        mapNotNull { task ->
+            incomingById[task.id]?.also { replacedIds += it.id }
+                ?: task.takeUnless { existing ->
+                    existing.matchesAnyIncomingReference(
+                        incomingTaskNumbers = incomingTaskNumbers,
+                        incomingMessageIds = incomingMessageIds
+                    )
+                }
         } + incoming.filterNot { it.id in replacedIds }
     return merged.distinctBy { it.id }
 }
 
 private fun ThreadSnapshot.withRealtimeTasks(
-    incoming: List<ai.slock.compose.model.TaskSummary>
+    incoming: List<TaskSummary>
 ): ThreadSnapshot {
-    val incomingByTaskId = incoming.associateBy { it.id }
-    val incomingByMessageId = incoming.associateByMessageIdentity()
     fun Message.withTaskPatch(): Message {
-        val task = task
-        val updatedTask =
-            when {
-                task != null -> incomingByTaskId[task.id] ?: incomingByMessageId[id]
-                else -> incomingByMessageId[id]
-            } ?: return this
+        val updatedTask = incoming.firstOrNull { task -> task.matchesMessageIdentity(this) } ?: return this
         return copy(task = updatedTask)
     }
     return copy(
@@ -968,31 +970,36 @@ private fun ThreadSnapshot.withRealtimeTasks(
 }
 
 private fun ThreadSnapshot.containsRealtimeTaskIdentity(
-    task: ai.slock.compose.model.TaskSummary
+    task: TaskSummary
 ): Boolean {
-    val messageId = task.messageId
-    return tasks.any { existing -> existing.id == task.id } ||
-        parentMessage?.matchesTaskIdentity(task.id, messageId) == true ||
-        messages.any { message -> message.matchesTaskIdentity(task.id, messageId) }
+    return tasks.any { existing -> existing.matchesTaskReference(task) } ||
+        parentMessage?.matchesTaskIdentity(task) == true ||
+        messages.any { message -> message.matchesTaskIdentity(task) }
 }
 
-private fun Message.matchesTaskIdentity(taskId: TaskId, messageId: MessageId?): Boolean =
-    task?.id == taskId ||
-        id.value == taskId.value ||
-        (messageId != null && id == messageId)
+private fun Message.matchesTaskIdentity(task: TaskSummary): Boolean =
+    task.matchesMessageIdentity(this)
 
-private fun List<ai.slock.compose.model.TaskSummary>.associateByMessageIdentity(): Map<MessageId, ai.slock.compose.model.TaskSummary> =
-    buildMap {
-        this@associateByMessageIdentity.forEach { task ->
-            task.messageId?.let { messageId -> put(messageId, task) }
-        }
-        this@associateByMessageIdentity.forEach { task ->
-            val fallbackMessageId = MessageId(task.id.value)
-            if (!containsKey(fallbackMessageId)) {
-                put(fallbackMessageId, task)
-            }
-        }
-    }
+private fun TaskSummary.matchesMessageIdentity(message: Message): Boolean =
+    message.task?.id == id ||
+        message.id.value == id.value ||
+        linkedMessageIds().any { messageId -> message.id == messageId } ||
+        (taskNumber != null && message.task?.taskNumber == taskNumber)
+
+private fun TaskSummary.matchesTaskReference(incoming: TaskSummary): Boolean =
+    id == incoming.id ||
+        linkedMessageIds().any { messageId -> messageId in incoming.linkedMessageIds() } ||
+        (taskNumber != null && taskNumber == incoming.taskNumber)
+
+private fun TaskSummary.matchesAnyIncomingReference(
+    incomingTaskNumbers: Set<Int>,
+    incomingMessageIds: Set<MessageId>
+): Boolean =
+    linkedMessageIds().any { messageId -> messageId in incomingMessageIds } ||
+        (taskNumber != null && taskNumber in incomingTaskNumbers)
+
+private fun TaskSummary.linkedMessageIds(): List<MessageId> =
+    listOfNotNull(messageId, parentMessageId, MessageId(id.value)).distinct()
 
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(

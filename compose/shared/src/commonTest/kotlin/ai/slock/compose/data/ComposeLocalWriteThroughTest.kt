@@ -628,6 +628,49 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
+    fun realtimeTaskPatchReplacesStaleTaskReferenceByTaskNumber() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        val staleTask =
+            TaskSummary(
+                id = TaskId("local-stale-task"),
+                title = "Cached task",
+                status = TaskStatus.Todo,
+                taskNumber = 77,
+                messageId = MessageId("message-1"),
+                channelId = ChannelId("channel-1"),
+                updatedAtLabel = "12:00"
+            )
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(message("message-1", "channel-1", "channel-1", seq = 1).copy(task = staleTask)),
+                tasks = listOf(staleTask),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeRealtimeEvent(
+            serverId,
+            TaskUpdated(
+                TaskSummary(
+                    id = TaskId("server-task"),
+                    title = "Server task",
+                    status = TaskStatus.Done,
+                    taskNumber = 77,
+                    channelId = ChannelId("channel-1"),
+                    updatedAtLabel = "12:05"
+                )
+            )
+        )
+
+        val cached = store.readThread(ThreadId("channel-1"))
+        assertEquals("server-task", cached?.messages?.single()?.task?.id?.value)
+        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
+        assertEquals(listOf("server-task"), cached?.tasks?.map { it.id.value })
+    }
+
+    @Test
     fun realtimeBatchMergesSameThreadMessagesMetadataAndTasks() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()

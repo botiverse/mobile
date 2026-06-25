@@ -4184,7 +4184,7 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
         if (id == event.parentMessageId.value) {
             copy(
                 threadChannelId = event.threadChannelId.value,
-                replyCount = maxOf(replyCount, event.replyCount),
+                replyCount = event.replyCount,
                 unreadReplyCount = event.unreadCount ?: unreadReplyCount,
                 firstUnreadReplyMessageId =
                     when {
@@ -4755,6 +4755,9 @@ private fun KuiklyThreadTaskItem.matchesMessage(message: KuiklyThreadMessageItem
 
 private fun KuiklyThreadTaskItem.matchesTaskReference(referenceTask: KuiklyThreadTaskItem): Boolean =
     id == referenceTask.id ||
+        (messageId != null && messageId == referenceTask.messageId) ||
+        (messageId != null && messageId == referenceTask.id) ||
+        (referenceTask.messageId != null && id == referenceTask.messageId) ||
         (taskNumber != null && taskNumber == referenceTask.taskNumber)
 
 private fun KuiklyThreadTaskItem.mergeTaskReference(incomingTask: KuiklyThreadTaskItem): KuiklyThreadTaskItem =

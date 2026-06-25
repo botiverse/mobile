@@ -4485,6 +4485,97 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeTaskUpdatedReplacesStaleVisibleTaskReferenceByTaskNumber() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val initial =
+            contentPayload("task body").copy(
+                messages =
+                    listOf(
+                        contentPayload("task body").messages.single().copy(
+                            taskId = "local-stale-task",
+                            taskNumber = 77,
+                            taskStatus = "Todo"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "local-stale-task",
+                            title = "Cached task",
+                            status = "Todo",
+                            taskNumber = 77,
+                            messageId = "m1"
+                        )
+                    )
+            )
+        dataSource.cachePayload(initial)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                TaskUpdated(
+                    TaskSummary(
+                        id = TaskId("server-task"),
+                        title = "Server task",
+                        status = TaskStatus.Done,
+                        taskNumber = 77,
+                        updatedAtLabel = "2026-05-19T16:12:00Z"
+                    )
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        val message = payload.messages.single()
+        assertEquals("server-task", message.taskId)
+        assertEquals("Done", message.taskStatus)
+        assertEquals(listOf("server-task"), payload.tasks.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeThreadUpdatedCanDecreaseAuthoritativeReplyCount() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        dataSource.cachePayload(
+            contentPayload("parent").copy(
+                messages =
+                    listOf(
+                        contentPayload("parent").messages.single().copy(
+                            replyCount = 5,
+                            unreadReplyCount = 3,
+                            firstUnreadReplyMessageId = "reply-old"
+                        )
+                    )
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("m1"),
+                    threadChannelId = ChannelId("reply-thread"),
+                    replyCount = 1,
+                    lastReplyAt = "2026-05-19T16:13:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = 0,
+                    firstUnreadMessageId = null
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals(1, message.replyCount)
+        assertEquals(0, message.unreadReplyCount)
+        assertNull(message.firstUnreadReplyMessageId)
+        scope.cancel()
+    }
+
+    @Test
     fun visibleReadAllMarksChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
