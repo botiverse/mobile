@@ -481,6 +481,66 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentSliceDoesNotOwnRouteIdentityWhenNetworkPayloadChangesIt() {
+        val current =
+            contentPayload("cached body").copy(
+                instanceId = "shared-shell-thread-channel-1",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                parentChannelId = null,
+                parentMessageId = null,
+                memberScopedMentions = true
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                instanceId = "shared-shell-thread-channel-2",
+                sourceThreadId = "channel-2",
+                streamChannelId = "channel-2",
+                parentChannelId = "parent-2",
+                parentMessageId = "message-2",
+                memberScopedMentions = false
+            )
+
+        val payload = current.withContentSliceFrom(networkPatch)
+
+        assertEquals("shared-shell-thread-channel-1", payload.instanceId)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
+        assertEquals(true, payload.memberScopedMentions)
+        assertEquals("network body", payload.messages.single().body)
+    }
+
+    @Test
+    fun threadContentProjectionCanResolveReplyThreadIdentityOutsideContentSlice() {
+        val current =
+            unresolvedReplyPayload(parentMessageId = "m1")
+                .copy(instanceId = "shared-shell-thread-pending-m1")
+        val networkPatch =
+            replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                .copy(
+                    instanceId = "shared-shell-thread-thread-m1",
+                    messages = listOf(KuiklyThreadMessageItem(id = "reply-1", body = "network body"))
+                )
+
+        val contentOnly = current.withContentSliceFrom(networkPatch)
+        val projected = current.withThreadContentProjectionFrom(networkPatch)
+
+        assertEquals("shared-shell-thread-pending-m1", contentOnly.instanceId)
+        assertEquals(null, contentOnly.sourceThreadId)
+        assertEquals(null, contentOnly.streamChannelId)
+        assertEquals("channel-1", contentOnly.parentChannelId)
+        assertEquals("m1", contentOnly.parentMessageId)
+        assertEquals("shared-shell-thread-thread-m1", projected.instanceId)
+        assertEquals("thread-m1", projected.sourceThreadId)
+        assertEquals("thread-m1", projected.streamChannelId)
+        assertEquals("channel-1", projected.parentChannelId)
+        assertEquals("m1", projected.parentMessageId)
+        assertEquals("network body", projected.messages.single().body)
+    }
+
+    @Test
     fun contentSliceDoesNotOwnDirectMessageHeaderMetadata() {
         val current =
             directMessagePayload().copy(
@@ -812,6 +872,44 @@ class SharedThreadStoreTest {
         assertEquals(false, payload.showTaskOpenActions)
         assertEquals(false, payload.showTaskStatusActions)
         assertEquals("JOIN CURRENT", payload.joinLabel)
+    }
+
+    @Test
+    fun contentSliceDoesNotOwnAccessOrComposerState() {
+        val current =
+            contentPayload("cached body").copy(
+                showComposer = false,
+                joined = false,
+                canSend = false,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        enabled = false,
+                        placeholder = "Current composer",
+                        seedText = "draft"
+                    )
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                showComposer = true,
+                joined = true,
+                canSend = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        enabled = true,
+                        placeholder = "Network composer",
+                        seedText = ""
+                    )
+            )
+
+        val payload = current.withContentSliceFrom(networkPatch)
+
+        assertEquals("network body", payload.messages.single().body)
+        assertEquals(false, payload.showComposer)
+        assertEquals(false, payload.joined)
+        assertEquals(false, payload.canSend)
+        assertEquals(false, payload.composer.enabled)
+        assertEquals("Current composer", payload.composer.placeholder)
+        assertEquals("draft", payload.composer.seedText)
     }
 
     @Test
