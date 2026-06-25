@@ -4223,10 +4223,10 @@ internal fun KuiklyThreadScreenPayload.withMessageReactions(
     if (cleanMessageId.isBlank()) return this
     return copy(
         messages = messages.map { message ->
-            if (message.id == cleanMessageId) message.copy(reactions = reactions) else message
+            if (message.id == cleanMessageId) message.copy(reactions = reactions.orderedLike(message.reactions)) else message
         },
         originMessage = originMessage?.let { message ->
-            if (message.id == cleanMessageId) message.copy(reactions = reactions) else message
+            if (message.id == cleanMessageId) message.copy(reactions = reactions.orderedLike(message.reactions)) else message
         }
     )
 }
@@ -4391,7 +4391,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         taskStatus = update.taskStatus ?: taskStatus,
         taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
-        reactions = reactionUpdate ?: update.reactions.ifEmpty { reactions },
+        reactions = reactionUpdate?.orderedLike(reactions) ?: update.reactions.ifEmpty { reactions },
         attachments = mergeAttachmentCommentMetadata(update.attachments),
         commentRef = update.commentRef ?: commentRef
     )

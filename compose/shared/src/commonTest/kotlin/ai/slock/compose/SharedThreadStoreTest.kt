@@ -4056,6 +4056,59 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdatedKeepsVisibleReactionOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val initialMessage =
+            contentPayload("cached body").messages.single().copy(
+                reactions =
+                    listOf(
+                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
+                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                    )
+            )
+        dataSource.cachePayload(contentPayload("cached body").copy(messages = listOf(initialMessage)))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Cindy"),
+                        timestampLabel = "",
+                        body = "cached body",
+                        reactions =
+                            listOf(
+                                MessageReaction(
+                                    emoji = "🔥",
+                                    count = 2,
+                                    reactorIds = listOf("u2", "u3"),
+                                    reactorNames = listOf("Cindy", "Artin")
+                                ),
+                                MessageReaction(
+                                    emoji = "👍",
+                                    count = 1,
+                                    reactorIds = listOf("u1"),
+                                    reactorNames = listOf("Artin")
+                                )
+                            )
+                    )
+                )
+            )
+        )
+
+        val reactions = store.state.value.payload.messages.single().reactions
+        assertEquals(listOf("👍", "🔥"), reactions.map { it.emoji })
+        assertEquals(2, reactions.single { it.emoji == "🔥" }.count)
+        assertEquals(listOf("u2", "u3"), reactions.single { it.emoji == "🔥" }.reactorIds)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeThreadUpdatedAndTaskUpdatedMergeIntoPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
@@ -4472,6 +4525,51 @@ class SharedThreadStoreTest {
         assertEquals(2, reactions.single { it.emoji == "🔥" }.count)
         assertEquals(listOf("u2", "u3"), reactions.single { it.emoji == "🔥" }.reactorIds)
         assertEquals(listOf("👍", "🔥"), dataSource.cachedPayload("channel-1")?.messages?.single()?.reactions?.map { it.emoji })
+        scope.cancel()
+    }
+
+    @Test
+    fun applyMessageReactionsKeepsVisibleReactionOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val initialMessage =
+            contentPayload("reactable body").messages.single().copy(
+                reactions =
+                    listOf(
+                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
+                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                    )
+            )
+        dataSource.cachePayload(contentPayload("reactable body").copy(messages = listOf(initialMessage)))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyMessageReactions(
+                "m1",
+                listOf(
+                    KuiklyThreadReactionItem(
+                        "🔥",
+                        count = 2,
+                        selected = true,
+                        reactorIds = listOf("u2", "u3"),
+                        reactorNames = listOf("Cindy", "Artin")
+                    ),
+                    KuiklyThreadReactionItem(
+                        "👍",
+                        count = 1,
+                        selected = true,
+                        reactorIds = listOf("u1"),
+                        reactorNames = listOf("Artin")
+                    )
+                )
+            )
+        )
+
+        val reactions = store.state.value.payload.messages.single().reactions
+        assertEquals(listOf("👍", "🔥"), reactions.map { it.emoji })
+        assertEquals(2, reactions.single { it.emoji == "🔥" }.count)
+        assertEquals(listOf("u2", "u3"), reactions.single { it.emoji == "🔥" }.reactorIds)
         scope.cancel()
     }
 
