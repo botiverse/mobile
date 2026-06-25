@@ -25,6 +25,7 @@ import ai.slock.compose.model.validateAgentName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +48,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -333,15 +335,21 @@ internal fun createAgentModelDropdownItems(
         CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
 }
 
+internal fun createAgentModelPresetIds(
+    runtime: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): List<String> =
+    createAgentModelDropdownItems(runtime, runtimeModelsOverride)
+        .filterNot { it.custom }
+        .map { it.id }
+
 internal fun createAgentModelSelectionForValue(
     runtime: String,
     model: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
 ): Pair<Boolean, String> {
     val trimmed = model.trim()
-    val presetIds = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
-        .filterNot { it.custom }
-        .map { it.id }
+    val presetIds = createAgentModelPresetIds(runtime, runtimeModelsOverride)
     return if (trimmed.isNotBlank() && trimmed !in presetIds) {
         true to trimmed
     } else {
@@ -386,6 +394,7 @@ internal fun SharedCreateAgentDialog(
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
     runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
     external: Boolean = false,
@@ -419,6 +428,7 @@ internal fun SharedCreateAgentDialog(
     }
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
+    val runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty()
 
     fun resetRuntimeForMachine(machineId: String) {
         val machine = machines.firstOrNull { it.id == machineId }
@@ -454,12 +464,19 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
-    // Reset model when runtime changes if current model not in new runtime's catalog.
-    LaunchedEffect(runtime) {
+    LaunchedEffect(selectedMachineId, runtime, external) {
+        val machineId = selectedMachineId ?: return@LaunchedEffect
+        if (!external && runtime.isNotBlank()) {
+            onRuntimeModelsRequest(machineId, runtime, false)
+        }
+    }
+
+    // Reset model when runtime changes or machine-specific model data arrives if current model is not available.
+    LaunchedEffect(runtime, runtimeModelsOverride) {
         if (!customModelMode) {
-            val currentModels = RUNTIME_MODELS[runtime].orEmpty().map { it.id }
+            val currentModels = createAgentModelPresetIds(runtime, runtimeModelsOverride)
             if (currentModels.isNotEmpty() && model !in currentModels) {
-                model = getDefaultModel(runtime)
+                model = currentModels.first()
             }
         }
     }
@@ -530,7 +547,7 @@ internal fun SharedCreateAgentDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
-                    item {
+                    item(key = "draft-hint") {
                         Text(
                             text = hint,
                             style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
@@ -544,10 +561,10 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 if (atLimit) {
-                    item { PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents) }
+                    item(key = "plan-limit") { PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents) }
                 }
                 if (showMachinePicker) {
-                    item {
+                    item(key = "machine-picker") {
                         MachinePicker(
                             machines = machines,
                             machinesLoading = machinesLoading,
@@ -565,7 +582,7 @@ internal fun SharedCreateAgentDialog(
                         )
                     }
                 }
-                item {
+                item(key = "name") {
                     SlockBrutalTextField(
                         label = "Name",
                         required = true,
@@ -577,7 +594,7 @@ internal fun SharedCreateAgentDialog(
                     )
                 }
                 if (inlineNameError != null) {
-                    item {
+                    item(key = "name-error") {
                         Text(
                             text = inlineNameError,
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
@@ -585,7 +602,7 @@ internal fun SharedCreateAgentDialog(
                         )
                     }
                 }
-                item {
+                item(key = "description") {
                     SlockBrutalTextField(
                         label = "Description",
                         optional = true,
@@ -601,7 +618,7 @@ internal fun SharedCreateAgentDialog(
                         fieldMinHeight = 82.dp
                     )
                 }
-                item {
+                item(key = "description-count") {
                     if (descriptionTooLong) {
                         Text(
                             text = "Description must be at most $DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH characters.",
@@ -620,7 +637,7 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 if (!external) {
-                    item {
+                    item(key = "runtime") {
                         AdvancedRuntimeSection(
                             runtime = runtime,
                             onRuntimeChange = { newRuntime ->
@@ -640,7 +657,12 @@ internal fun SharedCreateAgentDialog(
                             },
                             customModelName = customModelName,
                             onCustomModelNameChange = { customModelName = it },
-                            runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
+                            runtimeModelsOverride = runtimeModelsOverride,
+                            onRuntimeModelsRefresh = {
+                                selectedMachineId?.let { machineId ->
+                                    onRuntimeModelsRequest(machineId, runtime, true)
+                                }
+                            },
                             machineRuntimeIds = selectedMachineRuntimeIds,
                             runtimeAvailabilityError = runtimeAvailabilityError,
                             enabled = !submitting,
@@ -664,7 +686,7 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 errorMessage?.takeIf { it.isNotBlank() }?.let { error ->
-                    item {
+                    item(key = "submit-error") {
                         Text(
                             text = error,
                             style =
@@ -835,6 +857,7 @@ internal fun AdvancedRuntimeSection(
     customModelName: String,
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
+    onRuntimeModelsRefresh: () -> Unit = {},
     machineRuntimeIds: List<String> = emptyList(),
     runtimeAvailabilityError: String? = null,
     enabled: Boolean,
@@ -867,6 +890,7 @@ internal fun AdvancedRuntimeSection(
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
     val providerKeyInvalid = providerUrlRequired && providerApiKey.isBlank()
+    val focusManager = LocalFocusManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SlockBrutalSectionLabel(label = "Runtime")
@@ -956,7 +980,7 @@ internal fun AdvancedRuntimeSection(
             required = false,
             actionIcon = SlockLucideIconName.RefreshCw,
             actionEnabled = enabled,
-            onAction = {}
+            onAction = onRuntimeModelsRefresh
         )
         val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
         SlockBrutalSelectField(
@@ -973,28 +997,34 @@ internal fun AdvancedRuntimeSection(
             rowHeight = 36.dp,
             onSelect = { item ->
                 if (item.id == CREATE_AGENT_CUSTOM_MODEL_ID) {
+                    focusManager.clearFocus(force = true)
                     onCustomModelModeChange(true)
                 } else {
+                    if (customModelMode) {
+                        focusManager.clearFocus(force = true)
+                    }
                     onModelChange(item.id)
                     onCustomModelModeChange(false)
                 }
             }
         )
-        if (customModelMode) {
-            SlockBrutalTextField(
-                label = "Custom model",
-                required = true,
-                value = customModelName,
-                onValueChange = { onCustomModelNameChange(it) },
-                placeholder = "Enter model name",
-                enabled = enabled
-            )
-            if (customModelName.isBlank()) {
-                Text(
-                    text = "Custom model is required.",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
+        key(customModelMode) {
+            if (customModelMode) {
+                SlockBrutalTextField(
+                    label = "Custom model",
+                    required = true,
+                    value = customModelName,
+                    onValueChange = { onCustomModelNameChange(it) },
+                    placeholder = "Enter model name",
+                    enabled = enabled
                 )
+                if (customModelName.isBlank()) {
+                    Text(
+                        text = "Custom model is required.",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                        color = SlockColor.AccentRed
+                    )
+                }
             }
         }
         if (modelOptions.size == 1) {
