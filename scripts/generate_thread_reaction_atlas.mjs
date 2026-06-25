@@ -63,7 +63,7 @@ const atlasSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${atlas.width}"
 ${reactions
   .map((reaction) => {
     const rect = reaction.rect;
-    return `  <g transform="translate(${rect.x} ${rect.y}) scale(${rect.w / 24} ${rect.h / 24})">
+    return `  <g fill="none" transform="translate(${rect.x} ${rect.y}) scale(${rect.w / 24} ${rect.h / 24})">
 ${sourceBody(reaction.name)
   .split("\n")
   .map((line) => `    ${line}`)
