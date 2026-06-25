@@ -163,7 +163,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     override fun onPause() {
-        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = true)
+        detachRealtimeConsumerForPause()
         AndroidAppScopeRealtimeOwner.onAppHidden(source = "activity_on_pause")
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
@@ -686,6 +686,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
     }
 
+    private fun detachRealtimeConsumerForPause() {
+        if (pageName == PAGE_APP_SHELL) return
+        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = true)
+    }
+
     internal fun requestRealtimeConnect(
         serverId: String,
         accessToken: String,
@@ -737,7 +742,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun String.isRealtimeBridgeConsumerPage(): Boolean =
-            this == PAGE_APP_SHELL || this == PAGE_THREAD || this == PAGE_HOME
+            this == PAGE_APP_SHELL || this == PAGE_THREAD
 
     private fun sendAppShellLifecycleEvent(event: String) {
         if (pageSpec?.pageName != PAGE_APP_SHELL) return
