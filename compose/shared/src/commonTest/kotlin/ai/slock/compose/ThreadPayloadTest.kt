@@ -389,9 +389,11 @@ class ThreadPayloadTest {
         assertFalse(payload.showTaskOpenActions)
         assertEquals("Cindy", message.authorName)
         assertFalse(message.body.contains("```"))
-        assertEquals(2, message.body.count { it == '`' })
+        assertEquals(6, message.body.count { it == '`' })
         assertTrue(message.body.contains("reply/channel-markdown/msg-inline-visual"))
         assertTrue(message.body.contains("owner-key-consumes-thread-route-identity-only"))
+        assertTrue(message.body.contains("./gradlew :shared:testDebugUnitTest --tests ai.slock.compose.data.InboxUiStateTest"))
+        assertTrue(message.body.contains("compose/shared/src/commonTest/kotlin/ai/slock/compose/data/InboxUiStateTest.kt"))
     }
 
     @Test

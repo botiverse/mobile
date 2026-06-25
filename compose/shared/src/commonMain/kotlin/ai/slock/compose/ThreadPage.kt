@@ -5349,6 +5349,8 @@ internal fun threadVisualFixture(
                                 "Long inline code preview: `reply/channel-markdown/msg-inline-visual/" +
                                     "composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/" +
                                     "without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu` " +
+                                    "Command preview: `./gradlew :shared:testDebugUnitTest --tests ai.slock.compose.data.InboxUiStateTest` " +
+                                    "and file preview: `compose/shared/src/commonTest/kotlin/ai/slock/compose/data/InboxUiStateTest.kt` " +
                                     "should wrap as inline code with the same yellow box and black frame style as short inline code.",
                             threadChannelId = "thread-msg-long-inline-code-visual"
                         )
