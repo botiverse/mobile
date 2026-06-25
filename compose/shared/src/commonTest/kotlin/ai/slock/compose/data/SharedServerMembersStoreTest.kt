@@ -1,7 +1,11 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -101,6 +105,65 @@ class SharedServerMembersStoreTest {
         assertIs<DataResult.Content<MemberSnapshot>>(result)
         assertEquals(AgentStatus.Working, result.data.members.single { it.id.value == "agent-1" }.agentStatus)
         assertEquals(AgentStatus.Working.presence, result.data.members.single { it.id.value == "agent-1" }.presence)
+    }
+
+    @Test
+    fun memberStatusFlowEmitsOnlyForTargetMemberStatusChanges() = runBlocking {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent One").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active
+                    ),
+                    member("agent-2", "Agent Two").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Idle,
+                        presence = Presence.Away
+                    )
+                )
+            )
+        )
+        val emissions = mutableListOf<SharedServerMemberStatus?>()
+        val collectJob =
+            launch {
+                store.memberStatusFlow(ServerId("server-1"), "agent-1")
+                    .take(2)
+                    .toList(emissions)
+            }
+        yield()
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-2"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+        yield()
+        assertEquals(1, emissions.size)
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+        collectJob.join()
+
+        val expected: List<SharedServerMemberStatus?> =
+            listOf(
+                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active),
+                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active)
+            )
+        assertEquals(expected, emissions)
     }
 
     @Test

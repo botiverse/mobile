@@ -60,7 +60,6 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
-import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
@@ -808,12 +807,9 @@ internal fun MembersPageContent() {
         activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
-    val serverMembersState by sharedStores.serverMembersStore.state.collectAsState(SharedServerMembersState())
     val agentStatusResolver =
-        remember(serverMembersState, serverId) {
-            val lookup = ThreadAgentStatusLookup.from(serverMembersState, serverId)
-            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-            resolver
+        remember(sharedStores.serverMembersStore, serverId) {
+            slockAgentStatusResolver(sharedStores.serverMembersStore, serverId)
         }
     LaunchedEffect(sharedStores.serverMembersStore, serverId) {
         val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -1253,7 +1249,6 @@ private fun MemberDetailPageContent() {
         return
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
-    val serverMembersState by provider.serverMembersStore.state.collectAsState(SharedServerMembersState())
     var routeState by remember(payload.memberId) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
     }
@@ -1281,10 +1276,8 @@ private fun MemberDetailPageContent() {
             else -> null
         }
     val agentStatusResolver =
-        remember(serverMembersState, statusLookupServerId) {
-            val lookup = ThreadAgentStatusLookup.from(serverMembersState, statusLookupServerId)
-            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-            resolver
+        remember(provider.serverMembersStore, statusLookupServerId) {
+            slockAgentStatusResolver(provider.serverMembersStore, statusLookupServerId)
         }
 
     LaunchedEffect(payload.memberId, expectedKind, localAgentDetailRefreshKey) {
@@ -1713,7 +1706,7 @@ internal fun MembersRouteContent(
     refreshing: Boolean = false,
     onAddHuman: () -> Unit,
     onOpenMemberDetail: (MemberProfile) -> Unit,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     /**
      * Optional create-agent flow. When non-null, the agents section "+" opens a
      * SharedCreateAgentDialog and submit is forwarded to this host callback.
@@ -1774,7 +1767,7 @@ internal fun MembersListContent(
     refreshing: Boolean = false,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     canCreateAgents: Boolean = false,
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
@@ -2044,7 +2037,7 @@ private fun MembersDetailContent(
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
     agentPanelTabOrder: List<String> = emptyList(),
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
@@ -2055,7 +2048,7 @@ private fun MembersDetailContent(
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val agentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
-            agentStatusResolver(member.id.value)
+            rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
                 ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
         } else {
             null
@@ -3562,7 +3555,7 @@ private fun MembersAgentProfileTab(
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     showAvatarPicker: Boolean,
     onToggleAvatarPicker: () -> Unit,
     onSelectAvatar: (String) -> Unit,
@@ -4865,7 +4858,7 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
 @Composable
 private fun MembersAgentCreatedAgentsSection(
     detail: AgentDetailSnapshot?,
-    agentStatusResolver: SlockAgentStatusResolver = { null }
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver
 ) {
     val createdAgents = detail?.summary?.createdAgents.orEmpty()
     Column(
@@ -4911,10 +4904,10 @@ private fun MembersAgentCreatedAgentsSection(
 @Composable
 private fun MembersAgentCreatedAgentRow(
     agent: AgentCreatedSummary,
-    agentStatusResolver: SlockAgentStatusResolver = { null }
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver
 ) {
     val profile = remember(agent) { agent.toMemberProfile() }
-    val statusDisplayState = agentStatusResolver(profile.id.value)
+    val statusDisplayState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -6372,12 +6365,12 @@ private fun MembersPageHeader(
 private fun MembersListRow(
     member: MemberProfile,
     modifier: Modifier = Modifier,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     onClick: () -> Unit = {}
 ) {
     val agentStatusDisplayState =
         if (member.kind == MemberKind.Agent) {
-            agentStatusResolver(member.id.value)
+            rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
         } else {
             null
         }

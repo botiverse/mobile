@@ -252,7 +252,6 @@ import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsServerTranslationSnapshot
 import ai.slock.compose.data.SettingsServerSystemChannelSnapshot
 import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
-import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.markdown.SlockMarkdownBody
@@ -406,7 +405,6 @@ private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
 private val EmptyConversationDirectoryProjectionFlow =
     MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
-private val EmptyServerMembersStateFlow = MutableStateFlow(SharedServerMembersState())
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
@@ -490,7 +488,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     if (result.showPresence) {
                         result.memberId
                             ?.takeIf { it.isNotBlank() }
-                            ?.let(agentStatusResolver)
+                            ?.let { rememberSlockAgentStatusIndicatorState(agentStatusResolver, it) }
                             ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
                     } else {
                         null
@@ -773,12 +771,9 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
             ?.server
             ?.id
             ?.value
-    val serverMembersState by environment.serverMembersStore.state.collectAsState(SharedServerMembersState())
     val agentStatusResolver =
-        remember(serverMembersState, searchServerId) {
-            val lookup = ThreadAgentStatusLookup.from(serverMembersState, searchServerId)
-            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-            resolver
+        remember(environment.serverMembersStore, searchServerId) {
+            slockAgentStatusResolver(environment.serverMembersStore, searchServerId)
         }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -1822,7 +1817,7 @@ private fun SlockAppShellContent() {
                 is DataResult.Content -> {
                     val uploadedAttachments =
                         uploadResult.data.attachments.map { attachment ->
-                            KuiklyPendingAttachmentItem(
+                            SharedThreadComposerAttachment(
                                 id = attachment.id.value,
                                 fileName = attachment.name,
                                 sizeLabel = attachment.sizeLabel,
@@ -1844,9 +1839,12 @@ private fun SlockAppShellContent() {
                             timeContext = threadTimeContext,
                             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
                         ).withDiagnosticsFeedbackDraft(
-                            draft = draft,
-                            attachments = uploadedAttachments
+                            draft = draft
                         )
+                    composerDraftPersistSlice.stageUploadedAttachments(
+                        draftKey = launchPayload.threadComposerDraftKey(),
+                        attachments = uploadedAttachments
+                    )
                     pager.openStandaloneThreadLaunchPayload(launchPayload)
                     bridge.toast("Diagnostics draft ready")
                 }
@@ -8692,12 +8690,9 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Content -> {
             val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
             val serverId = current.server.id.value
-            val serverMembersState by serverMembersStore.state.collectAsState(SharedServerMembersState())
             val agentStatusResolver =
-                remember(serverMembersState, serverId) {
-                    val lookup = ThreadAgentStatusLookup.from(serverMembersState, serverId)
-                    val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-                    resolver
+                remember(serverMembersStore, serverId) {
+                    slockAgentStatusResolver(serverMembersStore, serverId)
                 }
             val computersSlice by computersStore
                 .computerPickerSliceFlow(serverId)
@@ -9147,13 +9142,9 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
-            val serverMembersState by (serverMembersStore?.state ?: EmptyServerMembersStateFlow)
-                .collectAsState(SharedServerMembersState())
             val agentStatusResolver =
-                remember(serverMembersState, snapshot.server.id.value) {
-                    val lookup = ThreadAgentStatusLookup.from(serverMembersState, snapshot.server.id.value)
-                    val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-                    resolver
+                remember(serverMembersStore, snapshot.server.id.value) {
+                    slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
                 }
             LaunchedEffect(serverMembersStore, snapshot.server.id) {
                 serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
@@ -9543,16 +9534,12 @@ private fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): Strin
     }
 
 private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
-    draft: SettingsDiagnosticsFeedbackDraft,
-    attachments: List<KuiklyPendingAttachmentItem>
+    draft: SettingsDiagnosticsFeedbackDraft
 ): WireThreadLaunchPayload =
     copy(
         composerSeedText = draft.diagnosticsComposerMessage(),
         composerSyncNonce = composerSyncNonce + 1,
-        composerFocusRequestNonce = composerFocusRequestNonce + 1,
-        composerPendingAttachments =
-            (composerPendingAttachments + attachments)
-                .distinctBy { attachment -> attachment.id }
+        composerFocusRequestNonce = composerFocusRequestNonce + 1
     )
 
 @Composable
@@ -9925,7 +9912,7 @@ private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificati
 private fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     interactiveSearchField: Boolean = true,

@@ -1,9 +1,11 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.avatarSlotResolution
@@ -61,7 +63,50 @@ data class SharedServerMembersState(
                 memberScopedMentions = memberScopedMentions
             )
         ] ?: SharedMembersMemberSuggestionSlice()
+
+    fun memberStatus(
+        serverId: ServerId?,
+        memberId: String?
+    ): SharedServerMemberStatus? {
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val entries =
+            if (cleanServerId != null) {
+                listOfNotNull(entriesByServerId[cleanServerId])
+            } else {
+                entriesByServerId.values.toList()
+            }
+        val member =
+            entries
+                .asSequence()
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+        val presenceFact = presenceByMemberId[cleanMemberId]
+        if (
+            presenceFact != null &&
+            (
+                presenceFact.kind == null ||
+                    presenceFact.kind == MemberKind.Agent ||
+                    member?.kind == MemberKind.Agent
+            )
+        ) {
+            return SharedServerMemberStatus(
+                status = presenceFact.agentStatus ?: member?.agentStatus,
+                presence = presenceFact.presence
+            )
+        }
+        if (member?.kind != MemberKind.Agent) return null
+        return SharedServerMemberStatus(
+            status = member.agentStatus,
+            presence = member.presence
+        )
+    }
 }
+
+data class SharedServerMemberStatus(
+    val status: AgentStatus?,
+    val presence: Presence
+)
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.
@@ -94,6 +139,14 @@ class SharedServerMembersStore(
                     memberScopedMentions = memberScopedMentions
                 )
             }
+            .distinctUntilChanged()
+
+    fun memberStatusFlow(
+        serverId: ServerId?,
+        memberId: String?
+    ): Flow<SharedServerMemberStatus?> =
+        state
+            .map { current -> current.memberStatus(serverId, memberId) }
             .distinctUntilChanged()
 
     fun seed(snapshot: MemberSnapshot) {

@@ -4,7 +4,6 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalPanel
 import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.Presence
@@ -311,12 +310,9 @@ private fun SlockHomePageContent() {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
     val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(pager, bridge) }
-    val serverMembersState by sharedStores.serverMembersStore.state.collectAsState(SharedServerMembersState())
     val agentStatusResolver =
-        remember(serverMembersState, payload.currentServerId) {
-            val lookup = ThreadAgentStatusLookup.from(serverMembersState, payload.currentServerId)
-            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
-            resolver
+        remember(sharedStores.serverMembersStore, payload.currentServerId) {
+            slockAgentStatusResolver(sharedStores.serverMembersStore, payload.currentServerId)
         }
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -583,7 +579,7 @@ internal fun SlockStructuralHomeShell(
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
     onCloseDirectMessage: (String) -> Unit = {},
     onArchiveChannel: (String) -> Unit = {},
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     onPinMenuDismiss: () -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
@@ -2009,7 +2005,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, agentStatusResolver: SlockAgentStatusResolver = { null }, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -2145,7 +2141,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             if (isAgent) {
                 memberId?.takeIf { it.isNotBlank() }?.let {
                     val status =
-                        agentStatusResolver(it)
+                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
                             ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
                     DirectMessageStatusDot(status)
                 }

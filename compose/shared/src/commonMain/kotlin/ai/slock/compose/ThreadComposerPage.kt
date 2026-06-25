@@ -705,7 +705,7 @@ internal fun ThreadComposerContent(
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null }
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -1082,7 +1082,7 @@ private fun KuiklyPendingMentionActionItem.targetInitial(): String =
 private fun ComposerMemberSuggestionPanel(
     title: String,
     members: List<KuiklyComposerMemberItem>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver,
     onClick: (KuiklyComposerMemberItem) -> Unit
 ) {
     val inChannel = members.filter { it.inMentionChannel }
@@ -1152,7 +1152,7 @@ private fun ComposerMemberSuggestionRow(
     member: KuiklyComposerMemberItem,
     inChannel: Boolean,
     selected: Boolean,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver,
     onClick: () -> Unit
 ) {
     val description =
@@ -1220,7 +1220,7 @@ private fun ComposerMemberSuggestionRow(
                 overflow = TextOverflow.Ellipsis
             )
             if (inChannel && member.kind == MemberKind.Agent) {
-                agentStatusResolver(member.memberId)?.let { status ->
+                rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
                     ComposerAgentStatusDot(status)
                 }
             }

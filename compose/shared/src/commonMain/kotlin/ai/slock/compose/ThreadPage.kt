@@ -577,8 +577,7 @@ internal data class WireThreadLaunchPayload(
     val timeFormat: String = SlockTimeFormat24Hour,
     val composerSeedText: String = "",
     val composerSyncNonce: Int = 0,
-    val composerFocusRequestNonce: Int = 0,
-    val composerPendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList()
+    val composerFocusRequestNonce: Int = 0
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -622,8 +621,7 @@ internal data class WireThreadLaunchPayload(
                 showAsTaskToggle = supportsChannelTasks,
                 mentionChannelId = parentChannelId.nonBlank(),
                 parentMessageId = parentMessageId.nonBlank(),
-                streamChannelId = resolvedStreamId,
-                pendingAttachments = composerPendingAttachments
+                streamChannelId = resolvedStreamId
             )
         return KuiklyThreadScreenPayload(
             instanceId = resolvedInstanceId,
@@ -722,9 +720,23 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         timeFormat = timeFormat,
         composerSeedText = composer.seedText,
         composerSyncNonce = composer.syncNonce,
-        composerFocusRequestNonce = composer.focusRequestNonce,
-        composerPendingAttachments = composer.pendingAttachments
+        composerFocusRequestNonce = composer.focusRequestNonce
     )
+
+internal fun WireThreadLaunchPayload.threadComposerDraftKey(
+    fallbackInstanceId: String = instanceId
+): String? {
+    val initialPayload = toInitialPayload(fallbackInstanceId)
+    val resolvedAuxiliaryThreadId = initialPayload.resolvedAuxiliaryThreadId()
+    return initialPayload
+        .resolveThreadComposer()
+        .copy(streamChannelId = resolvedAuxiliaryThreadId)
+        .toThreadComposerSurface(
+            channelId = resolvedAuxiliaryThreadId.orEmpty(),
+            parentChannelId = initialPayload.parentChannelId
+        )
+        .threadComposerDraftKey()
+}
 
 internal fun threadLaunchPageData(launchPayload: WireThreadLaunchPayload): JSONObject =
     JSONObject().apply {
@@ -2512,10 +2524,6 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
-    val emptyServerMembersStateFlow = remember { MutableStateFlow(SharedServerMembersState()) }
-    val serverMembersState by remember(serverMembersStore) {
-        serverMembersStore?.state ?: emptyServerMembersStateFlow
-    }.collectAsState(SharedServerMembersState())
     val filesViewModel: SharedThreadFilesViewModel =
         viewModel(key = "shared-thread-files-$threadInstanceKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
@@ -2738,12 +2746,9 @@ internal fun SharedThreadRouteContent(
     var deferredAttachmentSend by remember(threadInstanceKey) {
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
-    val threadAgentStatusLookup =
-        remember(serverMembersState, currentSession?.currentServerId) {
-            ThreadAgentStatusLookup.from(
-                serverMembersState = serverMembersState,
-                serverId = currentSession?.currentServerId
-            )
+    val agentStatusResolver =
+        remember(serverMembersStore, currentSession?.currentServerId) {
+            slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
         }
     val routeUiState =
         remember(renderedPayload, threadState.membersLoadStatus) {
@@ -3378,7 +3383,7 @@ internal fun SharedThreadRouteContent(
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
             onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
             highlightedMentions = threadState.highlightedMentions,
-            agentStatusResolver = threadAgentStatusLookup::indicatorStateForMemberId,
+            agentStatusResolver = agentStatusResolver,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
             attachmentOpenStates = attachmentOpenStates,
@@ -5566,7 +5571,7 @@ private fun ThreadPageContent(
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (String) -> Unit,
     highlightedMentions: Set<String>,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -5980,7 +5985,7 @@ private fun ThreadComposerRoute(
     surface: ThreadComposerSurface,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit
 ) {
@@ -6012,7 +6017,7 @@ private fun ThreadComposerContentWithSuggestions(
     state: ThreadComposerUiState,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
@@ -6178,7 +6183,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     taskChannelId: ChannelId?,
     composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -6256,7 +6261,7 @@ private fun ThreadChatTab(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -6367,7 +6372,7 @@ private fun ThreadMessagesList(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -7912,7 +7917,7 @@ private fun ThreadMessageCard(
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
     highlightedMentions: Set<String> = emptySet(),
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
     resolvedTaskAssigneeName: String? = null,
@@ -7949,7 +7954,12 @@ private fun ThreadMessageCard(
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
-    val agentStatus = if (message.showsAgentStatusIndicator()) agentStatusResolver(message.authorId) else null
+    val agentStatus =
+        if (message.showsAgentStatusIndicator()) {
+            rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
+        } else {
+            null
+        }
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
@@ -9517,7 +9527,7 @@ private fun ThreadOriginCard(
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
     onMentionAuthor: (String) -> Unit,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -10576,7 +10586,7 @@ private fun ThreadMembersModal(
     members: List<KuiklyThreadMemberItem>,
     membersCount: Int,
     canAddMembers: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     removeMemberStatus: String,
     removingMemberId: String?,
     removeMemberErrorCode: String?,
@@ -10687,7 +10697,7 @@ private fun ThreadAddMemberModal(
     members: List<KuiklyThreadMemberItem>,
     candidates: List<KuiklyThreadMemberItem>,
     canAddMembers: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = { null },
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     addMemberStatus: String,
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
@@ -10838,11 +10848,12 @@ private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
 private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
+@Composable
 private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
     agentStatusResolver: SlockAgentStatusResolver
 ): SlockAgentStatusIndicatorState? {
     if (!kind.equals("agent", ignoreCase = true)) return null
-    return agentStatusResolver(id)
+    return rememberSlockAgentStatusIndicatorState(agentStatusResolver, id)
         ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
 }
 
