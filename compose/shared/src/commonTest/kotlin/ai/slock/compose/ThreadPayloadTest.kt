@@ -1217,6 +1217,8 @@ class ThreadPayloadTest {
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
 
         assertEquals(ThreadReplyPageTitle, headerDisplay.title)
+        assertEquals("#general", headerDisplay.subtitle)
+        assertEquals(null, payload.subtitle)
         assertEquals("reply-thread-1", payload.sourceThreadId)
         assertEquals("reply-thread-1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
@@ -1248,7 +1250,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun replyThreadHeaderFallbackUsesMatchedParentChannelName() {
+    fun replyThreadHeaderUsesMatchedParentDirectoryProjectionForSubtitle() {
         val payload =
             KuiklyThreadScreenPayload(
                 title = ThreadReplyPageTitle,
@@ -1258,25 +1260,27 @@ class ThreadPayloadTest {
                 originParentMessageId = "message-1",
                 subtitle = null
             )
-        val fallback =
-            ConversationSummary(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                kind = ConversationKind.Channel,
-                name = "general",
-                subtitle = "General updates",
-                permissions = ConversationPermissions(canSend = true)
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general",
+                subtitle = "General updates"
             )
 
-        val renderedPayload = payload.withReplyThreadHeaderFallback(fallback)
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
 
-        assertEquals(ThreadReplyPageTitle, renderedPayload.title)
-        assertEquals("#general", renderedPayload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, renderedPayload.surfaceKind)
+        assertEquals(ThreadReplyPageTitle, headerDisplay.title)
+        assertEquals("#general", headerDisplay.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, headerDisplay.surfaceKind)
+        assertEquals(null, payload.subtitle)
     }
 
     @Test
-    fun replyThreadHeaderFallbackKeepsExistingSafeChannelSubtitle() {
+    fun replyThreadHeaderKeepsExistingSafeChannelSubtitleWithoutDirectoryProjection() {
         val payload =
             KuiklyThreadScreenPayload(
                 title = ThreadReplyPageTitle,
@@ -1285,18 +1289,10 @@ class ThreadPayloadTest {
                 parentMessageId = "message-1",
                 subtitle = "#product"
             )
-        val fallback =
-            ConversationSummary(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                kind = ConversationKind.Channel,
-                name = "general",
-                permissions = ConversationPermissions(canSend = true)
-            )
 
-        val renderedPayload = payload.withReplyThreadHeaderFallback(fallback)
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(null)
 
-        assertEquals("#product", renderedPayload.subtitle)
+        assertEquals("#product", headerDisplay.subtitle)
     }
 
     @Test

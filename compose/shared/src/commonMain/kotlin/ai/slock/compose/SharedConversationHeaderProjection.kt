@@ -194,7 +194,7 @@ private data class ReplyThreadHeaderProjectionInput(
     override val surfaceKind: String = KuiklyThreadSurfaceKind.ReplyThread
 
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
-        routePayload.acceptsConversationHeaderProjection(projection)
+        routePayload.acceptsThreadHeaderDirectoryProjection(projection)
 
     override fun displayModel(projection: SharedConversationDirectoryProjection?): ThreadHeaderDisplayModel =
         routePayload.threadHeaderDisplayModelFromDirectory(
@@ -246,7 +246,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
     projection: SharedConversationDirectoryProjection?,
     fallbackEntry: SharedConversationHeaderEntry? = null
 ): ThreadHeaderDisplayModel {
-    val directory = projection?.takeIf(::acceptsConversationHeaderProjection)
+    val directory = projection?.takeIf(::acceptsThreadHeaderDirectoryProjection)
     if (directory == null) return threadHeaderDisplayModel(fallbackEntry)
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
@@ -271,9 +271,28 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 surfaceKind = surfaceKind,
                 channelKind = directory.channelKind
             )
-        else -> threadHeaderDisplayModel(fallbackEntry)
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            ThreadHeaderDisplayModel(
+                title = threadHeaderDisplayTitle(null, surfaceKind),
+                subtitle = directory.replyThreadParentSubtitle(),
+                surfaceKind = surfaceKind,
+                channelKind = parentChannelKind.normalizedHeaderChannelKind()
+                    ?: directory.channelKind.normalizedHeaderChannelKind()
+                    ?: channelKind
+            )
+        else ->
+            threadHeaderDisplayModel(fallbackEntry)
     }
 }
+
+internal fun KuiklyThreadScreenPayload.acceptsThreadHeaderDirectoryProjection(
+    projection: SharedConversationDirectoryProjection
+): Boolean =
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        acceptsReplyThreadParentHeaderProjection(projection)
+    } else {
+        acceptsConversationHeaderProjection(projection)
+    }
 
 internal fun KuiklyThreadScreenPayload.acceptsConversationHeaderProjection(
     projection: SharedConversationDirectoryProjection
@@ -285,6 +304,45 @@ internal fun KuiklyThreadScreenPayload.acceptsConversationHeaderProjection(
             ?: channelKind.normalizedHeaderChannelKind()
     if (payloadChannelKind == null || payloadChannelKind == KuiklyThreadSurfaceKind.Channel) return true
     return projection.channelKind.normalizedHeaderChannelKind() == payloadChannelKind
+}
+
+private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
+    projection: SharedConversationDirectoryProjection
+): Boolean {
+    val resolvedParentSurfaceKind = parentSurfaceKind.normalizedReplyThreadParentSurfaceKind()
+    if (projection.surfaceKind != resolvedParentSurfaceKind) return false
+    val lookupIds = conversationHeaderLookupIds().toSet()
+    if (lookupIds.isNotEmpty() && projection.headerProjectionIds().none { it in lookupIds }) return false
+    if (resolvedParentSurfaceKind != KuiklyThreadSurfaceKind.Channel) return true
+    val parentKind = parentChannelKind.normalizedHeaderChannelKind()
+    if (parentKind == null || parentKind == KuiklyThreadSurfaceKind.Channel) return true
+    return projection.channelKind.normalizedHeaderChannelKind() == parentKind
+}
+
+private fun SharedConversationDirectoryProjection.headerProjectionIds(): Set<String> =
+    (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet()
+
+private fun String?.normalizedReplyThreadParentSurfaceKind(): String =
+    when (this?.trim()?.lowercase()) {
+        KuiklyThreadSurfaceKind.DirectMessage,
+        "direct_message",
+        "direct-message",
+        "directmessage" -> KuiklyThreadSurfaceKind.DirectMessage
+        else -> KuiklyThreadSurfaceKind.Channel
+    }
+
+private fun SharedConversationDirectoryProjection.replyThreadParentSubtitle(): String? =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> directMessageReplyThreadSubtitle(title)
+        else ->
+            existingThreadChannelHeaderSubtitle(subtitle)
+                ?: threadChannelHeaderSubtitle(title)
+    }
+
+private fun directMessageReplyThreadSubtitle(title: String?): String? {
+    val display = threadHeaderSafeTitleOrNull(title)?.removePrefix("@")
+        ?: return null
+    return "@$display"
 }
 
 internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =
@@ -323,19 +381,6 @@ internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
     } else {
         this
     }
-}
-
-internal fun KuiklyThreadScreenPayload.withReplyThreadHeaderFallback(
-    fallback: ConversationSummary?
-): KuiklyThreadScreenPayload {
-    fallback ?: return this
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return this
-    val fallbackSubtitle =
-        existingThreadChannelHeaderSubtitle(subtitle)
-            ?: existingThreadChannelHeaderSubtitle(fallback.subtitle)
-            ?: threadChannelHeaderSubtitle(fallback.name)
-            ?: return this
-    return if (fallbackSubtitle == subtitle) this else copy(subtitle = fallbackSubtitle)
 }
 
 internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =

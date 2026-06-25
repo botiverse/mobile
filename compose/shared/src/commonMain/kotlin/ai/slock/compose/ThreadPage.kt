@@ -2238,7 +2238,6 @@ internal fun SharedThreadRouteContent(
         if (
             conversationDirectoryStore != null &&
             serverId != null &&
-            headerProjectionInput.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
             conversationDirectoryLookupIds.isNotEmpty()
         ) {
             conversationDirectoryStore

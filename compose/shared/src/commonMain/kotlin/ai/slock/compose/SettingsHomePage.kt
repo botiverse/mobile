@@ -12188,11 +12188,7 @@ internal fun buildAppShellThreadPayload(
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
     ).withLaunchHeaderContext()
-    return if (isReplyThread) {
-        payload.withReplyThreadHeaderFallback(conversation)
-    } else {
-        payload
-    }
+    return payload
 }
 
 private fun Pager.openStandaloneTaskThreadPage(
