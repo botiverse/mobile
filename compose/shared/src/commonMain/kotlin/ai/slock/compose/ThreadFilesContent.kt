@@ -198,8 +198,8 @@ private fun ThreadFilesList(
         return
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Top
+        modifier = Modifier.fillMaxSize().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(payload.items.size, key = { payload.items[it].attachmentId }) { index ->
             ThreadFileRow(
@@ -235,9 +235,10 @@ private fun ThreadFileRow(
             .fillMaxWidth()
             .height(82.dp)
             .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(modifier = Modifier.clickable(onClick = openIfIdle)) {
             ThreadFileThumbnail(item)
@@ -257,17 +258,7 @@ private fun ThreadFileRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = listOf(item.sizeLabel, item.createdAtLabel).filter { it.isNotBlank() }.joinToString("  "),
-                style = SlockType.Input.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = SlockColor.TextMutedGray
-                ),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            ThreadFileMetaLine(item)
             if (item.sourceLabel.isNotBlank()) {
                 ThreadFileSourcePill(item.sourceLabel)
             }
@@ -285,7 +276,22 @@ private fun ThreadFileRow(
                 )
             }
         }
-        ThreadFileDownloadButton(isOpening = isOpening, onClick = downloadIfIdle)
+        Row(
+            modifier = Modifier.align(Alignment.CenterVertically),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ThreadFileIconActionButton(
+                iconName = SlockLucideIconName.ExternalLink,
+                enabled = !isOpening,
+                onClick = openIfIdle
+            )
+            ThreadFileIconActionButton(
+                iconName = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                enabled = !isOpening,
+                onClick = downloadIfIdle
+            )
+        }
     }
 }
 
@@ -295,8 +301,8 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
     val isImage = item.mimeType.startsWith("image/")
     Box(
         modifier = Modifier
-            .size(48.dp)
-            .background(SlockColor.SurfaceCream)
+            .size(56.dp)
+            .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
@@ -310,9 +316,54 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
         }
         if (!(isImage && thumbnailUrl != null)) {
             SlockLucideIcon(
-                name = if (isImage) "image" else "file",
-                modifier = Modifier.size(22.dp)
+                name = item.threadFileTypeIconName().wireName,
+                modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        item.sizeLabel.takeIf { it.isNotBlank() }?.let { label ->
+            Text(
+                text = label,
+                style = SlockType.Input.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = SlockColor.TextMutedGray
+                ),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        item.createdAtLabel.takeIf { it.isNotBlank() }?.let { label ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockLucideIcon(
+                    name = SlockLucideIconName.Clock3.wireName,
+                    modifier = Modifier.size(12.dp),
+                    color = SlockColor.TextMutedGrayArgb
+                )
+                Text(
+                    text = label,
+                    style = SlockType.Input.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = SlockColor.TextMutedGray
+                    ),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -339,14 +390,34 @@ private fun ThreadFileSourcePill(text: String) {
 }
 
 @Composable
-private fun ThreadFileDownloadButton(isOpening: Boolean, onClick: () -> Unit) {
+private fun ThreadFileIconActionButton(
+    iconName: SlockLucideIconName,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     SlockBrutalIconButton(
-        iconName = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+        iconName = iconName,
         onClick = onClick,
-        enabled = !isOpening,
-        size = 36.dp,
-        iconSize = 18.dp
+        enabled = enabled,
+        size = 28.dp,
+        iconSize = 14.dp
     )
+}
+
+private fun KuiklyThreadFileItem.threadFileTypeIconName(): SlockLucideIconName {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    val lowerName = name.lowercase()
+    return when {
+        normalizedMime.startsWith("image/") -> SlockLucideIconName.Image
+        normalizedMime.startsWith("video/") -> SlockLucideIconName.FileVideoCamera
+        normalizedMime == "application/pdf" || lowerName.endsWith(".pdf") -> SlockLucideIconName.FileText
+        normalizedMime.contains("zip") ||
+            normalizedMime.contains("archive") ||
+            lowerName.endsWith(".zip") ||
+            lowerName.endsWith(".tar") ||
+            lowerName.endsWith(".gz") -> SlockLucideIconName.Archive
+        else -> SlockLucideIconName.File
+    }
 }
 
 @Composable
