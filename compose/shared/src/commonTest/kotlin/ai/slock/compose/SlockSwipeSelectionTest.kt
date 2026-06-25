@@ -96,4 +96,50 @@ class SlockSwipeSelectionTest {
             absoluteTolerance = 0.001f
         )
     }
+
+    @Test
+    fun swipeDirectionMovesCurrentPageTowardNextTab() {
+        assertEquals(
+            expected = -1,
+            actual = slockSwipeDirectionSign(currentIndex = 0, nextIndex = 1)
+        )
+        assertEquals(
+            expected = 1,
+            actual = slockSwipeDirectionSign(currentIndex = 2, nextIndex = 1)
+        )
+    }
+
+    @Test
+    fun incomingOffsetContinuesFromCurrentDragGap() {
+        assertEquals(
+            expected = 236f,
+            actual =
+                slockSwipeIncomingOffset(
+                    currentOffsetPx = -84f,
+                    travelWidthPx = 320f,
+                    directionSign = -1
+                )
+        )
+        assertEquals(
+            expected = -236f,
+            actual =
+                slockSwipeIncomingOffset(
+                    currentOffsetPx = 84f,
+                    travelWidthPx = 320f,
+                    directionSign = 1
+                )
+        )
+    }
+
+    @Test
+    fun settleTargetMovesCurrentPageFullyOut() {
+        assertEquals(
+            expected = -320f,
+            actual = slockSwipeSettleTargetOffset(travelWidthPx = 320f, directionSign = -1)
+        )
+        assertEquals(
+            expected = 320f,
+            actual = slockSwipeSettleTargetOffset(travelWidthPx = 320f, directionSign = 1)
+        )
+    }
 }
