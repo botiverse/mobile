@@ -3506,7 +3506,8 @@ private fun KuiklyThreadMessageItem.withSelectedReactionsFrom(
     val selectedPrevious = previous.reactions.filter { it.selected && it.count > 0 }
     if (selectedPrevious.isEmpty()) return this
     val nextReactions = reactions.withSelectedReactionsFrom(selectedPrevious)
-    return if (nextReactions === reactions) this else copy(reactions = nextReactions)
+    val orderedReactions = nextReactions.orderedLike(previous.reactions)
+    return if (orderedReactions === reactions) this else copy(reactions = orderedReactions)
 }
 
 private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
@@ -3529,6 +3530,25 @@ private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
         }
     }
     return if (changed) byEmoji.values.toList() else this
+}
+
+private fun List<KuiklyThreadReactionItem>.orderedLike(
+    previous: List<KuiklyThreadReactionItem>
+): List<KuiklyThreadReactionItem> {
+    if (size <= 1 || previous.isEmpty()) return this
+    val previousOrder = previous.map { it.emoji }.filter { it.isNotBlank() }.distinct()
+    if (previousOrder.isEmpty()) return this
+    val currentByEmoji = associateBy { it.emoji }
+    val ordered =
+        buildList(size) {
+            previousOrder.forEach { emoji ->
+                currentByEmoji[emoji]?.let(::add)
+            }
+            this@orderedLike.forEach { reaction ->
+                if (reaction.emoji !in previousOrder) add(reaction)
+            }
+        }
+    return if (ordered == this) this else ordered
 }
 
 private fun List<KuiklyThreadTaskItem>.withReferencedThreadTasksFrom(
@@ -4355,10 +4375,10 @@ private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
     val reactions = summary.reactions.toThreadReactionItems(currentUserId)
     return copy(
         messages = messages.map { message ->
-            if (message.id == messageId) message.copy(reactions = reactions) else message
+            if (message.id == messageId) message.copy(reactions = reactions.orderedLike(message.reactions)) else message
         },
         originMessage = originMessage?.let { message ->
-            if (message.id == messageId) message.copy(reactions = reactions) else message
+            if (message.id == messageId) message.copy(reactions = reactions.orderedLike(message.reactions)) else message
         }
     )
 }

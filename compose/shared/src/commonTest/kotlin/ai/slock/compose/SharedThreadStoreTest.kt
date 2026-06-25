@@ -4384,6 +4384,59 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun applyMessageMutationKeepsVisibleReactionOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val message =
+            contentPayload("reactable body").messages.single().copy(
+                reactions =
+                    listOf(
+                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
+                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                    )
+            )
+        dataSource.cachePayload(contentPayload("reactable body").copy(messages = listOf(message)))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyMessageMutation(
+                MessageMutationSummary(
+                    messageId = "m1",
+                    reactions =
+                        listOf(
+                            MessageReactionSummary(
+                                emoji = "🔥",
+                                count = 2,
+                                reactorIds = listOf("u2", "u3"),
+                                reactorNames = listOf("Cindy", "Artin")
+                            ),
+                            MessageReactionSummary(
+                                emoji = "👍",
+                                count = 1,
+                                reactorIds = listOf("u1"),
+                                reactorNames = listOf("Artin")
+                            )
+                        )
+                )
+            )
+        )
+
+        val reactions = store.state.value.payload.messages.single().reactions
+        assertEquals(listOf("👍", "🔥"), reactions.map { it.emoji })
+        assertEquals(2, reactions.single { it.emoji == "🔥" }.count)
+        assertEquals(listOf("u2", "u3"), reactions.single { it.emoji == "🔥" }.reactorIds)
+        assertEquals(listOf("👍", "🔥"), dataSource.cachedPayload("channel-1")?.messages?.single()?.reactions?.map { it.emoji })
+        scope.cancel()
+    }
+
+    @Test
     fun setMessageReactionRemovesSelectedReaction() = runBlocking {
         val api = FakeThreadApi()
         val dataSource =
