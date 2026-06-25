@@ -12,8 +12,8 @@ import ai.slock.compose.model.RealtimeEvent
  */
 internal object RealtimeRoutePolicy {
     fun shouldForwardToActiveThread(event: RealtimeEvent): Boolean =
-        event !is Heartbeat
+        event !is MemberPresenceUpdated && event !is Heartbeat
 
     fun shouldEmitRouteMarker(event: RealtimeEvent, activeThread: Boolean): Boolean =
-        event !is Heartbeat
+        event !is Heartbeat && (!activeThread || event !is MemberPresenceUpdated)
 }

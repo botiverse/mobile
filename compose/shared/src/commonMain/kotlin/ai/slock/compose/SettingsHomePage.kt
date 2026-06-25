@@ -2139,6 +2139,7 @@ private fun SlockAppShellContent() {
                     sharedStores.agentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
                     )
+                    sharedStores.serverMembersStore.applyPresence(event)
                 },
                 requestMemberDetailRefresh = {
                     membersAgentDetailRefreshKey += 1

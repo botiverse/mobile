@@ -29,6 +29,10 @@ import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.SharedConversationDirectoryProjection
+import ai.slock.compose.data.SharedMembersMemberSuggestion
+import ai.slock.compose.data.SharedMembersState
+import ai.slock.compose.data.SharedServerMembersEntry
+import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.WireActionCardAction
@@ -190,6 +194,107 @@ class ThreadPayloadTest {
 
         assertEquals(AgentStatus.Working.name, updated.messages[0].authorAgentStatus)
         assertEquals(null, updated.messages[1].authorAgentStatus)
+    }
+
+    @Test
+    fun membersStoreStateProjectsAgentStatusIntoVisibleThreadMessages() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "origin",
+                        authorId = "agent-1",
+                        authorName = "Agent",
+                        authorKind = "agent",
+                        authorAgentStatus = AgentStatus.Online.name,
+                        body = "origin"
+                    ),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "Agent",
+                            authorKind = "agent",
+                            authorAgentStatus = AgentStatus.Online.name,
+                            body = "hello"
+                        ),
+                        KuiklyThreadMessageItem(
+                            id = "m2",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            authorKind = "human",
+                            body = "human"
+                        )
+                    )
+            )
+        val membersState =
+            SharedMembersState(
+                memberSuggestions =
+                    listOf(
+                        SharedMembersMemberSuggestion(
+                            displayName = "Agent",
+                            handle = "agent",
+                            kind = MemberKind.Agent,
+                            agentStatus = AgentStatus.Thinking,
+                            memberId = "agent-1"
+                        )
+                    )
+            )
+
+        val projected = payload.withMembersAgentStatusProjection(membersState)
+
+        assertEquals(AgentStatus.Thinking.name, projected.originMessage?.authorAgentStatus)
+        assertEquals(AgentStatus.Thinking.name, projected.messages[0].authorAgentStatus)
+        assertEquals(null, projected.messages[1].authorAgentStatus)
+    }
+
+    @Test
+    fun serverMembersStoreStateProjectsAgentStatusIntoVisibleThreadMessages() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "Agent",
+                            authorKind = "agent",
+                            authorAgentStatus = AgentStatus.Online.name,
+                            body = "hello"
+                        )
+                    )
+            )
+        val serverMembersState =
+            SharedServerMembersState(
+                entriesByServerId =
+                    mapOf(
+                        "server-1" to
+                            SharedServerMembersEntry(
+                                serverId = "server-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId("agent-1"),
+                                            displayName = "Agent",
+                                            handle = "agent",
+                                            kind = MemberKind.Agent,
+                                            presence = AgentStatus.Working.presence,
+                                            agentStatus = AgentStatus.Working
+                                        )
+                                    )
+                            )
+                    )
+            )
+
+        val projected =
+            payload.withMembersAgentStatusProjection(
+                membersState = SharedMembersState(),
+                serverMembersState = serverMembersState,
+                serverId = "server-1"
+            )
+
+        assertEquals(AgentStatus.Working.name, projected.messages[0].authorAgentStatus)
     }
 
     @Test

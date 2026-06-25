@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.coroutines.CancellationException
@@ -66,6 +68,37 @@ class SharedServerMembersStore(
                 errorCode = null
             )
         )
+    }
+
+    fun applyPresence(event: MemberPresenceUpdated) {
+        val memberId = event.memberId.value.trim()
+        if (memberId.isBlank()) return
+        val current = _state.value
+        var changed = false
+        val nextEntries =
+            current.entriesByServerId.mapValues { (_, entry) ->
+                var entryChanged = false
+                val nextMembers =
+                    entry.members.map { member ->
+                        if (member.kind == MemberKind.Agent && member.id.value == memberId) {
+                            entryChanged = true
+                            member.copy(
+                                presence = event.presence,
+                                agentStatus = event.agentStatus ?: member.agentStatus
+                            )
+                        } else {
+                            member
+                        }
+                    }
+                if (entryChanged) {
+                    changed = true
+                    entry.copy(members = nextMembers)
+                } else {
+                    entry
+                }
+            }
+        if (!changed) return
+        _state.value = current.copy(entriesByServerId = nextEntries)
     }
 
     suspend fun loadMembers(

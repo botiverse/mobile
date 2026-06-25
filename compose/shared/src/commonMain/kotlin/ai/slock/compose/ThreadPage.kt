@@ -50,7 +50,10 @@ import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
+import ai.slock.compose.data.SharedMembersState
 import ai.slock.compose.data.SharedMembersStore
+import ai.slock.compose.data.SharedServerMembersState
+import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksDataStore
 import ai.slock.compose.data.SharedTasksDataStoreStatus
@@ -1744,6 +1747,7 @@ private fun ThreadPageScreen() {
         tasksDataStore = sharedStores.tasksDataStore,
         computersStore = computersStore,
         membersStore = membersStore,
+        serverMembersStore = sharedStores.serverMembersStore,
         conversationDirectoryStore = sharedStores.conversationDirectoryStore,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         onBack = {
@@ -2188,6 +2192,7 @@ internal fun SharedThreadRouteContent(
     tasksDataStore: SharedTasksDataStore? = null,
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
+    serverMembersStore: SharedServerMembersStore? = null,
     conversationDirectoryStore: SharedConversationDirectoryStore? = null,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     onBack: () -> Unit,
@@ -2424,6 +2429,14 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
+    val emptyMembersStateFlow = remember { MutableStateFlow(SharedMembersState()) }
+    val membersState by remember(membersStore) {
+        membersStore?.state ?: emptyMembersStateFlow
+    }.collectAsState(SharedMembersState())
+    val emptyServerMembersStateFlow = remember { MutableStateFlow(SharedServerMembersState()) }
+    val serverMembersState by remember(serverMembersStore) {
+        serverMembersStore?.state ?: emptyServerMembersStateFlow
+    }.collectAsState(SharedServerMembersState())
     val filesViewModel: SharedThreadFilesViewModel =
         viewModel(key = "shared-thread-files-$threadInstanceKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
@@ -2637,9 +2650,14 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val routeUiState =
-        remember(renderedPayload, threadState.membersLoadStatus) {
+        remember(renderedPayload, membersState, serverMembersState, currentSession?.currentServerId, threadState.membersLoadStatus) {
             ThreadRouteUiState(
-                thread = renderedPayload,
+                thread =
+                    renderedPayload.withMembersAgentStatusProjection(
+                        membersState = membersState,
+                        serverMembersState = serverMembersState,
+                        serverId = currentSession?.currentServerId
+                    ),
                 membersLoadStatus = threadState.membersLoadStatus
             )
         }
@@ -8462,6 +8480,102 @@ internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
 
 internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
+
+internal fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
+    membersState: SharedMembersState
+): KuiklyThreadScreenPayload {
+    val projections = membersState.threadAgentStatusProjections()
+    return withMembersAgentStatusProjection(projections)
+}
+
+internal fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
+    membersState: SharedMembersState,
+    serverMembersState: SharedServerMembersState,
+    serverId: String?
+): KuiklyThreadScreenPayload {
+    val projections =
+        membersState.threadAgentStatusProjections() +
+            serverMembersState.threadAgentStatusProjections(serverId)
+    return withMembersAgentStatusProjection(projections)
+}
+
+private fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
+    projections: List<ThreadMembersAgentStatusProjection>
+): KuiklyThreadScreenPayload {
+    if (projections.isEmpty()) return this
+    val nextMessages = messages.map { it.withMembersAgentStatusProjection(projections) }
+    val nextOriginMessage = originMessage?.withMembersAgentStatusProjection(projections)
+    if (nextMessages == messages && nextOriginMessage == originMessage) return this
+    return copy(messages = nextMessages, originMessage = nextOriginMessage)
+}
+
+private data class ThreadMembersAgentStatusProjection(
+    val memberId: String?,
+    val handle: String?,
+    val status: AgentStatus
+)
+
+private fun SharedMembersState.threadAgentStatusProjections(): List<ThreadMembersAgentStatusProjection> =
+    (
+        memberSuggestions +
+            memberSuggestionSlices.values.flatMap { slice -> slice.suggestions }
+    ).mapNotNull { suggestion ->
+        val status = suggestion.agentStatus ?: return@mapNotNull null
+        if (suggestion.kind != MemberKind.Agent) return@mapNotNull null
+        ThreadMembersAgentStatusProjection(
+            memberId = suggestion.memberId.threadProjectionMemberId(),
+            handle = suggestion.handle.threadProjectionHandle(),
+            status = status
+        )
+    }
+
+private fun SharedServerMembersState.threadAgentStatusProjections(serverId: String?): List<ThreadMembersAgentStatusProjection> {
+    val cleanServerId = serverId.threadProjectionMemberId()
+    val entries =
+        if (cleanServerId != null) {
+            listOfNotNull(entriesByServerId[cleanServerId])
+        } else {
+            entriesByServerId.values.toList()
+        }
+    return entries
+        .flatMap { entry -> entry.members }
+        .mapNotNull { member ->
+            val status = member.agentStatus ?: return@mapNotNull null
+            if (member.kind != MemberKind.Agent) return@mapNotNull null
+            ThreadMembersAgentStatusProjection(
+                memberId = member.id.value.threadProjectionMemberId(),
+                handle = member.handle.threadProjectionHandle(),
+                status = status
+            )
+        }
+}
+
+private fun KuiklyThreadMessageItem.withMembersAgentStatusProjection(
+    projections: List<ThreadMembersAgentStatusProjection>
+): KuiklyThreadMessageItem {
+    if (!isThreadAgentAuthor()) return this
+    val authorMemberId = authorId.threadProjectionMemberId()
+    val authorHandle = authorHandle.threadProjectionHandle()
+    val status =
+        projections.firstOrNull { projection ->
+            (authorMemberId != null && projection.memberId == authorMemberId) ||
+                (authorHandle != null && projection.handle == authorHandle)
+        }?.status ?: return this
+    if (authorAgentStatus == status.name) return this
+    return copy(authorAgentStatus = status.name)
+}
+
+private fun String?.threadProjectionMemberId(): String? =
+    this
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+
+private fun String?.threadProjectionHandle(): String? =
+    this
+        ?.trim()
+        ?.removePrefix("@")
+        ?.lowercase()
+        ?.takeIf { it.isNotBlank() }
 
 private fun KuiklyThreadMessageItem.threadMentionHandle(): String? =
     authorHandle

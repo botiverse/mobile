@@ -49,6 +49,35 @@ class SharedServerMembersStoreTest {
         assertEquals(listOf("u3"), result.data.members.map { it.id.value })
     }
 
+    @Test
+    fun applyPresencePatchesCachedAgentRoster() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("u1", "Cindy"),
+                    member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online)
+                )
+            )
+        )
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = AgentStatus.Thinking.presence,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Thinking
+            )
+        )
+
+        val members = store.state.value.entryFor(ServerId("server-1"))?.members.orEmpty()
+        assertEquals(AgentStatus.Thinking, members.single { it.id.value == "agent-1" }.agentStatus)
+        assertEquals(AgentStatus.Thinking.presence, members.single { it.id.value == "agent-1" }.presence)
+        assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         var getMembersCalls = 0
