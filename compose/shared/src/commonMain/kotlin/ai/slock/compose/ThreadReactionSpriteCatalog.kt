@@ -3,7 +3,6 @@ package ai.slock.compose
 import ai.slock.compose.resources.MR
 import com.tencent.kuikly.compose.resources.DrawableResource
 import com.tencent.kuikly.compose.resources.InternalResourceApi
-import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.tmm.kmmresource.resource.AssetResource
 
 internal data class ThreadReactionAtlasResource(
@@ -85,13 +84,16 @@ internal data class ThreadReactionSpriteCatalog(
 
 @OptIn(InternalResourceApi::class)
 internal val ThreadReactionSpriteAtlasDrawableResource: DrawableResource =
-    DrawableResource(ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl(""))
+    DrawableResource(MR.assets.reactions.reaction_atlas_v1.toKuiklyAssetUrl())
 
 internal val ThreadReactionSpriteAtlasResource = ThreadReactionAtlasResource(
     image = MR.assets.reactions.reaction_atlas_v1,
     manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
-    imageUrl = ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl("")
+    imageUrl = MR.assets.reactions.reaction_atlas_v1.toKuiklyAssetUrl()
 )
+
+private fun AssetResource.toKuiklyAssetUrl(): String =
+    "assets://$originalPath"
 
 internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     schemaVersion = 1,
