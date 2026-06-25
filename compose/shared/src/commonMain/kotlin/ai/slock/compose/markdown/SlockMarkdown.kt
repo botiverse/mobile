@@ -1093,6 +1093,7 @@ fun SlockMarkdownBody(
         return
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
+    val currentOnOpenUrl = rememberUpdatedState(onOpenUrl)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
@@ -1194,19 +1195,22 @@ fun SlockMarkdownBody(
             codeBlock = PaddingValues(SlockSpacing.Sm)
         )
     }
-    CompositionLocalProvider(
-        LocalTextProvider provides SlockMarkdownTextProvider,
-        LocalUriHandler provides
+    val uriHandler =
+        remember {
             object : UriHandler {
                 override suspend fun openUri(uri: String) {
-                    onOpenUrl(uri)
+                    currentOnOpenUrl.value(uri)
                 }
 
                 override suspend fun openRef(ref: List<String>, x: Float, y: Float) {
                     val reference = ref.joinToString("#")
-                    if (reference.isNotBlank()) onOpenUrl(reference)
+                    if (reference.isNotBlank()) currentOnOpenUrl.value(reference)
                 }
             }
+        }
+    CompositionLocalProvider(
+        LocalTextProvider provides SlockMarkdownTextProvider,
+        LocalUriHandler provides uriHandler
     ) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             // #192 long-body sub-trace: split layout phase into pre-block setup
