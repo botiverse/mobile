@@ -969,6 +969,54 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun replyThreadLocalSendSuccessKeepsCanonicalSentMessageWhenEchoUsesParentChannel() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val base =
+            replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                .copy(
+                    status = "empty",
+                    originStatus = "loaded",
+                    originMessage =
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u2",
+                            authorName = "Cindy",
+                            body = "parent body",
+                            threadChannelId = "channel-1"
+                        )
+                )
+
+        store.accept(SharedThreadIntent.Start(base))
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage("local-1", "sent body", streamChannelId = "thread-m1")
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                "local-1",
+                sentPage("server-1", "sent body", channelId = "channel-1", threadId = null)
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertEquals(listOf("server-1"), payload.messages.map { it.id })
+        assertFalse(payload.messages.any { it.id == "local-1" })
+        assertEquals(ThreadMessageDeliverySent, payload.messages.single().deliveryState)
+        assertEquals("sent body", localStore.readThread(ThreadId("thread-m1"))?.messages?.single()?.body)
+        scope.cancel()
+    }
+
+    @Test
     fun readCachedPayloadDropsTransientLocalSendingBubble() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -6088,13 +6136,19 @@ class SharedThreadStoreTest {
             localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
         )
 
-    private fun sentPage(id: String, body: String): ThreadMessagesPage =
+    private fun sentPage(
+        id: String,
+        body: String,
+        channelId: String = "channel-1",
+        threadId: String? = null
+    ): ThreadMessagesPage =
         ThreadMessagesPage(
             messages =
                 listOf(
                     WireMessage(
                         id = id,
-                        channelId = "channel-1",
+                        channelId = channelId,
+                        threadId = threadId,
                         senderType = "user",
                         senderId = "u1",
                         senderName = "Artin",
@@ -6111,7 +6165,8 @@ class SharedThreadStoreTest {
         id: String,
         body: String,
         asTask: Boolean = false,
-        attachmentIds: List<String> = emptyList()
+        attachmentIds: List<String> = emptyList(),
+        streamChannelId: String = "channel-1"
     ): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
@@ -6119,7 +6174,7 @@ class SharedThreadStoreTest {
             authorName = "Artin",
             isOwn = true,
             body = body,
-            threadChannelId = "channel-1",
+            threadChannelId = streamChannelId,
             attachments =
                 attachmentIds.map { attachmentId ->
                     KuiklyThreadAttachmentItem(
@@ -6147,7 +6202,7 @@ class SharedThreadStoreTest {
                             )
                         },
                     mentionChannelId = "channel-1",
-                    streamChannelId = "channel-1",
+                    streamChannelId = streamChannelId,
                     memberScopedMentions = false
                 )
         )

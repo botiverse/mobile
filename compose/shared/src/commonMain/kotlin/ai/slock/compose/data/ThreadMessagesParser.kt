@@ -218,11 +218,18 @@ internal fun buildSharedThreadPayloadFromMessagesPage(
 internal fun appendSharedThreadSentMessageFromPage(
     basePayload: KuiklyThreadScreenPayload,
     page: ThreadMessagesPage,
-    session: StoredAuthSession?
+    session: StoredAuthSession?,
+    trustedReplyThreadChannelId: String? = null
 ): KuiklyThreadScreenPayload {
+    val trustSingleReplySend =
+        page.messages.size == 1 &&
+            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            trustedReplyThreadChannelId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && it == basePayload.replyThreadContentChannelId() } != null
     val sent =
         page.messages
-            .filter { it.belongsToBasePayloadThread(basePayload) }
+            .filter { it.belongsToBasePayloadThread(basePayload) || trustSingleReplySend }
             .map { it.toMessageItem(session?.user?.id) }
             .filterNot { it.id in basePayload.messages.map { message -> message.id }.toSet() }
 

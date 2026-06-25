@@ -2999,7 +2999,13 @@ internal class SharedThreadStore(
             appendSharedThreadSentMessageFromPage(
                 basePayload = currentPayload,
                 page = page,
-                session = dataSource.readSession()
+                session = dataSource.readSession(),
+                trustedReplyThreadChannelId =
+                    currentPayload
+                        .messages
+                        .firstOrNull { it.id == messageId }
+                        ?.pendingSendContext
+                        ?.streamChannelId
             )
         val replaced =
             appended
