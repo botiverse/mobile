@@ -142,6 +142,7 @@ CREATE TABLE messageReactionEntity (
   reactorKind TEXT NOT NULL,
   reactorId TEXT NOT NULL,
   emoji TEXT NOT NULL,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
   createdAtMs INTEGER,
   lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
@@ -546,9 +547,10 @@ INSERT OR REPLACE INTO messageReactionEntity(
   reactorKind,
   reactorId,
   emoji,
+  sortOrder,
   createdAtMs,
   lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 deleteMessageReaction:
 DELETE FROM messageReactionEntity
@@ -561,7 +563,7 @@ selectReactionsForMessage:
 SELECT *
 FROM messageReactionEntity
 WHERE messageId = ?
-ORDER BY emoji, reactorKind, reactorId;
+ORDER BY sortOrder, emoji, reactorKind, reactorId;
 
 selectSavedMessage:
 SELECT *

@@ -192,6 +192,65 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
+    fun writeThreadPreservesReactionOrderAcrossNormalizedReadback() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+        val reactions =
+            listOf(
+                MessageReaction(
+                    emoji = "👍",
+                    count = 1,
+                    reactorIds = listOf("member-1")
+                ),
+                MessageReaction(
+                    emoji = "🔥",
+                    count = 1,
+                    reactorIds = listOf("member-2")
+                ),
+                MessageReaction(
+                    emoji = "✅",
+                    count = 1,
+                    reactorIds = listOf("member-3")
+                )
+            )
+
+        store.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId("message-1"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 7,
+                            author = member,
+                            timestampLabel = "21:00",
+                            body = "cached body",
+                            reactions = reactions
+                        )
+                    ),
+                lastSeq = 7
+            )
+        )
+
+        val restored = assertNotNull(store.readThread(ThreadId("channel-1")))
+        assertEquals(listOf("👍", "🔥", "✅"), restored.messages.single().reactions?.map { it.emoji })
+    }
+
+    @Test
     fun writeHomePersistsConversationDirectoryRowsAndAliases() = runBlocking {
         val database = createDatabase()
         val store =

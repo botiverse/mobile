@@ -74,6 +74,7 @@ internal class SlockSqlDatabase(
             ?: RelationalValue.Null
 
     private fun ensureCompatibilitySchema() {
+        ensureMessageReactionSchema()
         driver.execute(
             identifier = null,
             sql =
@@ -102,6 +103,60 @@ internal class SlockSqlDatabase(
             sql = "CREATE INDEX IF NOT EXISTS conversationAliasEntity_canonical ON conversationAliasEntity(serverId, canonicalChannelId)",
             parameters = 0
         )
+    }
+
+    private fun ensureMessageReactionSchema() {
+        driver.execute(
+            identifier = null,
+            sql =
+                """
+                CREATE TABLE IF NOT EXISTS messageReactionEntity (
+                  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
+                  reactorKind TEXT NOT NULL,
+                  reactorId TEXT NOT NULL,
+                  emoji TEXT NOT NULL,
+                  sortOrder INTEGER NOT NULL DEFAULT 0,
+                  createdAtMs INTEGER,
+                  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
+                )
+                """.trimIndent(),
+            parameters = 0
+        )
+        driver.execute(
+            identifier = null,
+            sql = "CREATE INDEX IF NOT EXISTS messageReactionEntity_messageId ON messageReactionEntity(messageId)",
+            parameters = 0
+        )
+        driver.execute(
+            identifier = null,
+            sql = "CREATE INDEX IF NOT EXISTS messageReactionEntity_reactor ON messageReactionEntity(reactorKind, reactorId)",
+            parameters = 0
+        )
+        if (tableHasColumn("messageReactionEntity", "sortOrder")) return
+        driver.execute(
+            identifier = null,
+            sql = "ALTER TABLE messageReactionEntity ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0",
+            parameters = 0
+        )
+    }
+
+    private fun tableHasColumn(tableName: String, columnName: String): Boolean {
+        var found = false
+        driver.executeQuery(
+            identifier = null,
+            sql = "PRAGMA table_info($tableName)",
+            mapper = { cursor ->
+                while (cursor.next().value) {
+                    if (cursor.getString(1) == columnName) {
+                        found = true
+                    }
+                }
+                QueryResult.Value(Unit)
+            },
+            parameters = 0
+        )
+        return found
     }
 
     companion object {

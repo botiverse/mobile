@@ -195,8 +195,8 @@ internal class SqlDelightComposeLocalDataStore(
                     )
                 }
                 queries.deleteReactionsForMessage(message.id.value)
-                message.reactions.orEmpty().forEach { reaction ->
-                    reaction.writeMessageReaction(message.id.value, now)
+                message.reactions.orEmpty().forEachIndexed { index, reaction ->
+                    reaction.writeMessageReaction(message.id.value, sortOrder = index.toLong(), now)
                 }
                 message.task?.writeTaskSummary(serverId, now)
             }
@@ -263,7 +263,7 @@ internal class SqlDelightComposeLocalDataStore(
         )
     }
 
-    private fun MessageReaction.writeMessageReaction(messageId: String, now: Long) {
+    private fun MessageReaction.writeMessageReaction(messageId: String, sortOrder: Long, now: Long) {
         val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return
         if (count <= 0) return
         reactorIds
@@ -276,6 +276,7 @@ internal class SqlDelightComposeLocalDataStore(
                     reactorKind = MessageReactionReactorKindUser,
                     reactorId = reactorId,
                     emoji = cleanEmoji,
+                    sortOrder = sortOrder,
                     createdAtMs = null,
                     lastSyncedAtMs = now
                 )
