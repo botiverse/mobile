@@ -48,6 +48,7 @@ class SharedActivityStore(
 
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {
+            SharedActivityIntent.ClearSummary -> clearSummary()
             SharedActivityIntent.LoadInitial -> load(refresh = true)
             SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false)
             SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true)
@@ -79,6 +80,13 @@ class SharedActivityStore(
                 loading = true
             )
         load(refresh = true)
+    }
+
+    private fun clearSummary() {
+        _state.value =
+            SharedActivityState(
+                selectedFilter = _state.value.selectedFilter
+            )
     }
 
     private fun applyRealtimeEvent(event: RealtimeEvent) {
@@ -513,6 +521,7 @@ private fun activityStateCacheKey(serverId: String, userId: String, filter: Inbo
     "${serverId.trim()}:${userId.trim()}:${filter.name}"
 
 sealed interface SharedActivityIntent {
+    data object ClearSummary : SharedActivityIntent
     data object LoadInitial : SharedActivityIntent
     data object Refresh : SharedActivityIntent
     data object PullRefresh : SharedActivityIntent

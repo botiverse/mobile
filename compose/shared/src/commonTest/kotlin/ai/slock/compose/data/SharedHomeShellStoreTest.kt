@@ -135,9 +135,18 @@ class SharedHomeShellStoreTest {
 
         fixture.homeState.value = homeStateForServer("server-2")
 
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
         assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ClearSummary,
+                SharedActivityIntent.Refresh
+            ),
+            fixture.activityIntents
+        )
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(
+                SharedHomeSearchSavedIntent.ClearSavedSummary,
+                SharedHomeSearchSavedIntent.RefreshSaved
+            ),
             fixture.searchSavedIntents
         )
         fixture.cancel()

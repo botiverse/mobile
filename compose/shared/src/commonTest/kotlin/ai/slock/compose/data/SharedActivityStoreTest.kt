@@ -25,6 +25,25 @@ import kotlin.test.assertEquals
 
 class SharedActivityStoreTest {
     @Test
+    fun clearSummaryDropsLoadedActivityCountsButKeepsFilter() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        assertEquals(2, store.state.value.totalUnreadCount)
+
+        store.dispatch(SharedActivityIntent.ClearSummary)
+
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(false, store.state.value.loaded)
+        scope.cancel()
+    }
+
+    @Test
     fun loadMoreMergesWithoutDuplicateRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
