@@ -1268,11 +1268,10 @@ internal fun shouldStartThreadTasksJoin(
         payload.resolvedAuxiliaryThreadId()?.let { it == taskChannelId.value } == true
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
-    val candidate = streamChannelId.nonBlank() ?: sourceThreadId.nonBlank() ?: return null
-    if (!isReplyThreadWithExplicitParentPair()) return candidate
-    if (candidate == parentChannelId.nonBlank()) return null
+    val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
+    if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     if (status == "loading") return null
-    return candidate
+    return timelineChannelId
 }
 
 private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
@@ -3184,7 +3183,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyReplyThreadRead(
                                         parentMessageId = parentMessage.id,
-                                        threadChannelId = result.data.streamChannelId ?: result.data.sourceThreadId
+                                        threadChannelId = result.data.resolveThreadRouteIdentity().timelineChannelId
                                     )
                                 )
                                 onReplaceThreadPayload(result.data)
@@ -3387,7 +3386,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyReplyThreadRead(
                                         parentMessageId = parentMessage.id,
-                                        threadChannelId = result.data.streamChannelId ?: result.data.sourceThreadId
+                                        threadChannelId = result.data.resolveThreadRouteIdentity().timelineChannelId
                                     )
                                 )
                                 onReplaceThreadPayload(result.data)
