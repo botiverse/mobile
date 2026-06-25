@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.toConversationSummary
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberId
@@ -370,6 +371,26 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun mentionActionDoneRemovesRowWithoutCallingInboxDone() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val row = mentionActionItem("resolution-1")
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(row), totalCount = 1, totalUnreadCount = 0))
+            )
+        val conversation = FakeConversationRepository()
+        val store = activityStore(scope, inbox, conversationRepository = conversation)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(emptyList(), inbox.doneChannelIds)
+        assertEquals(emptyList(), conversation.doneThreadChannelIds)
+        scope.cancel()
+    }
+
+    @Test
     fun failedDoneRefreshesAndRestoresRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val row = activityItem("channel-1")
@@ -705,6 +726,31 @@ class SharedActivityStoreTest {
             firstUnreadMessageId = if (unreadCount > 0) MessageId("first-$channelId") else null,
             lastMessageId = MessageId("last-$channelId"),
             latestActivityMessageId = MessageId("latest-$channelId")
+        )
+
+    private fun mentionActionItem(resolutionId: String): InboxItem =
+        InboxItem(
+            key = "mention_action:$resolutionId",
+            kind = InboxItemKind.MentionAction,
+            channelId = ChannelId("channel-1"),
+            channelName = "android-dev",
+            channelKind = ConversationKind.Channel,
+            lastMessageId = MessageId("message-1"),
+            lastMessagePreview = "Can someone ping @missing-human?",
+            lastMessageAt = "2026-06-26T02:40:00Z",
+            mentionActionId = resolutionId,
+            pendingMentionActions =
+                listOf(
+                    PendingMentionAction(
+                        resolutionId = resolutionId,
+                        messageId = MessageId("message-1"),
+                        channelId = ChannelId("channel-1"),
+                        channelName = "android-dev",
+                        targetType = "user",
+                        targetHandle = "missing-human",
+                        availableActions = listOf("notify", "invite")
+                    )
+                )
         )
 
     private fun threadItem(

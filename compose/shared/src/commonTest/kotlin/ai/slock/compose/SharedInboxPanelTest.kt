@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.InboxItem
+import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
@@ -251,6 +252,47 @@ class SharedInboxPanelTest {
             ),
             item.activityFooterSlots()
         )
+    }
+
+    @Test
+    fun activityMentionActionRowUsesSenderSideActionShape() {
+        val item =
+            InboxItem(
+                key = "mention_action:resolution-1",
+                kind = InboxItemKind.MentionAction,
+                channelId = ChannelId("channel-1"),
+                channelName = "android-dev",
+                channelKind = ConversationKind.Channel,
+                lastMessageId = MessageId("message-1"),
+                lastMessagePreview = "Can someone ping @missing-human?",
+                lastMessageAt = "2026-06-26T02:40:00Z",
+                unreadCount = 0,
+                hasMention = false,
+                mentionActionId = "resolution-1",
+                pendingMentionActions =
+                    listOf(
+                        PendingMentionAction(
+                            resolutionId = "resolution-1",
+                            messageId = MessageId("message-1"),
+                            channelId = ChannelId("channel-1"),
+                            channelName = "android-dev",
+                            targetType = "user",
+                            targetHandle = "missing-human",
+                            availableActions = listOf("notify", "invite")
+                        )
+                    )
+            )
+
+        assertEquals("Can someone ping @missing-human?", item.primaryPreviewText())
+        assertEquals(null, item.primaryActivityPreviewText().senderName)
+        assertEquals(emptyList(), item.activityFooterSlots())
+
+        val request = item.toHomeMessageOpenRequest()
+        assertEquals("message-1", request.anchorMessageId)
+        assertEquals(ConversationKind.Channel, request.conversation.kind)
+        assertEquals("android-dev", request.conversation.name)
+        assertEquals(0, request.conversation.unreadCount)
+        assertEquals(0, request.conversation.mentionCount)
     }
 
     @Test

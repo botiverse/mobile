@@ -369,6 +369,7 @@ enum class InboxItemKind {
     Channel,
     DirectMessage,
     Thread,
+    MentionAction,
     System
 }
 
