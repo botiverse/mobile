@@ -3279,7 +3279,6 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
-                    onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
                     onSetProfilerEnabled = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
                     },
@@ -6235,7 +6234,6 @@ private fun SharedSettingsDiagnosticsContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
-    onClearLogs: () -> Unit,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -6250,7 +6248,6 @@ private fun SharedSettingsDiagnosticsContent(
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
-            "clearLogs" -> onClearLogs()
             DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
             "startProfiler" -> onStartProfiler()
             "stopProfiler" -> onStopProfiler()
@@ -7585,43 +7582,12 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: ai.slock.compose.data.SharedSettingsActionState?
 ): KuiklySharedSettingsPayload {
-    val logsAvailable = isNotEmpty()
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
     val profiler = snapshot?.profiler
         ?: SharedSettingsRecompositionProfilerSnapshot()
     val profilerRunning = profiler.statusLabel == "Running"
     val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
-    val stateLabel =
-        when (state) {
-            is ScreenLoadState.Content -> if (logsAvailable) "${size} entries" else "Empty"
-            is ScreenLoadState.Error -> state.error.code
-            is ScreenLoadState.NoPermission -> state.blocker.code
-            is ScreenLoadState.Empty -> state.reason.name
-            ScreenLoadState.Loading -> "Loading"
-        }
-    val logRows =
-        if (logsAvailable) {
-            takeLast(20).mapIndexed { index, entry ->
-                KuiklySharedSettingsRow(
-                    key = "log-$index",
-                    iconName = SlockLucideIconName.Terminal,
-                    title = entry.tag.ifBlank { "Log" },
-                    detail = "${entry.timestampLabel} ${entry.message}".trim(),
-                    status = ""
-                )
-            }
-        } else {
-            listOf(
-                KuiklySharedSettingsRow(
-                    key = "emptyLogs",
-                    iconName = SlockLucideIconName.CircleDashed,
-                    title = "No diagnostics yet",
-                    detail = "Runtime diagnostics will appear here after app activity.",
-                    status = stateLabel
-                )
-            )
-        }
     val environmentRows =
         snapshot?.about?.toDiagnosticsEnvironmentRows().orEmpty()
     val networkProbeRows =
@@ -7763,11 +7729,9 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow("copyLogs", SlockLucideIconName.Copy, "Copy diagnostics", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
                             KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Share diagnostics", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized diagnostics with support.", status = "Send", enabled = true),
-                            KuiklySharedSettingsRow("clearLogs", SlockLucideIconName.Trash2, "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
+                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized diagnostics with support.", status = "Send", enabled = true)
                         )
-                ),
-                KuiklySharedSettingsSection(title = "Log", rows = logRows)
+                )
             )
     )
 }

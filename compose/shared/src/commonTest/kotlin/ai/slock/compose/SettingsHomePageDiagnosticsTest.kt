@@ -35,7 +35,7 @@ class SettingsHomePageDiagnosticsTest {
 
         assertEquals("Auth, network, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
         assertEquals(
-            listOf("Recomposition profiler", "Actions", "Log"),
+            listOf("Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val profilerRows = payload.sections.first { it.title == "Recomposition profiler" }.rows.associateBy { it.key }
@@ -77,7 +77,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Environment", "Network probe", "Recomposition profiler", "Actions", "Log"),
+            listOf("Environment", "Network probe", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
@@ -148,7 +148,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun emptyDiagnosticsStillAllowsCopyAndShareButNotClear() {
+    fun emptyDiagnosticsStillAllowsDiagnosticExportsWithoutLogPreview() {
         val payload =
             emptyList<ai.slock.compose.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
@@ -166,8 +166,8 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Copy", actionRows.getValue("copyLogs").status)
         assertTrue(actionRows.getValue("shareLogs").enabled)
         assertEquals("Share", actionRows.getValue("shareLogs").status)
-        assertFalse(actionRows.getValue("clearLogs").enabled)
-        assertEquals("Disabled", actionRows.getValue("clearLogs").status)
+        assertTrue(actionRows.getValue("feedback").enabled)
+        assertFalse("clearLogs" in actionRows)
     }
 
     @Test
@@ -191,7 +191,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Recomposition profiler", "Actions", "Log"),
+            listOf("Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val switchRow =
