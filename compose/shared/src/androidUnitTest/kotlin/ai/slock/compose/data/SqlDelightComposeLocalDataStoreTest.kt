@@ -53,6 +53,16 @@ class SqlDelightComposeLocalDataStoreTest {
                 updatedAtLabel = "21:00",
                 canClaim = false
             )
+        val channelTask =
+            TaskSummary(
+                id = TaskId("task-channel-1"),
+                title = "channel-level task",
+                status = TaskStatus.Todo,
+                taskNumber = 110,
+                channelId = ChannelId("channel-1"),
+                updatedAtLabel = "21:02",
+                canClaim = true
+            )
         val snapshot =
             ThreadSnapshot(
                 conversation =
@@ -99,7 +109,7 @@ class SqlDelightComposeLocalDataStoreTest {
                             updatedAtLabel = "21:01"
                         )
                     ),
-                tasks = listOf(task),
+                tasks = listOf(task, channelTask),
                 canLoadMoreBefore = true,
                 canLoadMoreAfter = true,
                 historyLimited = true,
@@ -127,6 +137,10 @@ class SqlDelightComposeLocalDataStoreTest {
         assertEquals("wire local-first thread cache", message.task?.title)
         assertEquals(TaskStatus.InReview, message.task?.status)
         assertEquals(false, message.task?.canClaim)
+        assertEquals(listOf("task-1", "task-channel-1"), restored.tasks.map { it.id.value })
+        assertEquals("channel-level task", restored.tasks[1].title)
+        assertEquals(TaskStatus.Todo, restored.tasks[1].status)
+        assertEquals(true, restored.tasks[1].canClaim)
 
         val cachedMember = database.queries.selectMemberSnapshot(serverId.value, member.id.value).executeAsOne()
         assertEquals("Artin", cachedMember.displayName)

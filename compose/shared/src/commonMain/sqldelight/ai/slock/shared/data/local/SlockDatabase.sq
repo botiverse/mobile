@@ -634,6 +634,13 @@ WHERE serverId = ?
   AND (messageId = ? OR parentMessageId = ?)
 ORDER BY COALESCE(taskNumber, 9223372036854775807), id;
 
+selectTaskReferencesForChannel:
+SELECT *
+FROM taskSummaryEntity
+WHERE serverId = ?
+  AND channelId = ?
+ORDER BY COALESCE(taskNumber, 9223372036854775807), id;
+
 selectAllTaskReferences:
 SELECT *
 FROM taskSummaryEntity

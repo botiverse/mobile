@@ -110,12 +110,18 @@ internal class SqlDelightComposeLocalDataStore(
             channel.parentMessageId
                 ?.let { queries.selectMessage(it).executeAsOneOrNull() }
                 ?.toMessage(serverId)
-        val tasks =
-            (messages.mapNotNull { it.task } + messages.flatMap { message ->
+        val messageTasks =
+            messages.mapNotNull { it.task } + messages.flatMap { message ->
                 queries.selectTaskReferencesForMessage(serverId.value, message.id.value, message.id.value)
                     .executeAsList()
                     .map { it.toTaskSummary() }
-            })
+            }
+        val channelTasks =
+            queries.selectTaskReferencesForChannel(serverId.value, channel.channelId)
+                .executeAsList()
+                .map { it.toTaskSummary() }
+        val tasks =
+            (messageTasks + channelTasks)
                 .distinctBy { it.id }
                 .sortedWith(compareBy(nullsLast<Int>()) { it.taskNumber })
         return ThreadSnapshot(
