@@ -195,6 +195,15 @@ data class ThreadReactionSprite(
     val rect: IntRect,
     val labels: Map<String, String>
 )
+
+data class ThreadReactionChipModel(
+    val spriteName: String?,
+    val displayValue: String,
+    val rawValues: Set<String>,
+    val selectedRawValues: Set<String>,
+    val count: Int,
+    val selected: Boolean
+)
 ```
 
 Use this boundary:
@@ -208,14 +217,16 @@ Alias normalization rule:
 
 - `ThreadReactionSprite.name` is the presentation grouping key.
 - Incoming message reactions that resolve to the same `name` must be merged into one visible chip.
+- The merged chip model must preserve `rawValues` and `selectedRawValues`; `selectedRawValues` is required for optimistic removal.
 - The visible chip count is the sum of alias-equivalent reaction counts.
 - The visible chip `selected` state is true if any alias-equivalent raw reaction is selected by the current user.
 - Quick reaction selected-state detection must compare by `name`, not raw emoji.
 - Quick reaction toggle payload should use `apiValue`.
-- If a visible alias group contains selected raw aliases and the user taps the quick reaction to remove their reaction, remove every selected raw alias in that group or call the canonical remove flow repeatedly for each selected raw value the local model can prove. If the API only supports one removal and selected alias identity is ambiguous, prefer removing the canonical `apiValue` and then refresh the message rather than leaving duplicate selected chips.
+- If a visible alias group contains selected raw aliases and the user taps to remove their reaction, issue DELETE for every value in `selectedRawValues`.
+- If `selectedRawValues` is empty or ambiguous while the visible merged chip is selected, do not optimistically deselect and do not guess the canonical `apiValue`; refresh the message or temporarily fall back to raw chip rendering for that group.
 - Pending/rollback keys must be based on `(messageId, sprite.name)` for resolved catalog reactions, not `(messageId, rawEmoji)`. Unknown reactions keep the existing `(messageId, rawEmoji)` key.
 
-This rule prevents a message with both `☑️` and `✅` from rendering two identical Done chips after atlas migration. It also prevents the quick row from adding canonical `✅` while an alias-equivalent selected `☑️` is already present.
+This rule prevents a message with both `☑️` and `✅` from rendering two identical Done chips after atlas migration. It also prevents the quick row from adding canonical `✅` while an alias-equivalent selected `☑️` is already present. It also prevents UI/server divergence where the app visually removes `✅` while the server still stores the selected alias `☑️`.
 
 ## Rendering Contract
 
@@ -298,6 +309,7 @@ Unit tests:
 - Existing aliases (`❤`, `☑️`, `✔️`, `✓`) resolve to the intended sprite.
 - Alias-equivalent incoming reactions merge into one visible chip by `ThreadReactionSprite.name`.
 - Quick reaction selected detection treats alias-equivalent selected reactions as already selected.
+- Removing a selected merged chip sends DELETE for every `selectedRawValues` entry and never guesses canonical `apiValue` when selected raw identity is unknown.
 - Pending and rollback keys use `(messageId, sprite.name)` for resolved catalog reactions and do not duplicate alias/canonical toggles.
 - Locale lookup falls back exact -> script -> language -> `en` -> `name`.
 - Quick reaction order is stable.
