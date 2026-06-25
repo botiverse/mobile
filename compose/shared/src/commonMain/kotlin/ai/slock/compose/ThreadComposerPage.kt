@@ -42,6 +42,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -719,6 +720,7 @@ internal fun ThreadComposerContent(
     var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
+    val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
@@ -886,7 +888,12 @@ internal fun ThreadComposerContent(
                     modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
                 )
                 Column(
-                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .clickable(enabled = composerEnabled) { composerFocusRequester.requestFocus() }
+                        .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TextField(
@@ -932,6 +939,7 @@ internal fun ThreadComposerContent(
                         cursorBrush = SolidColor(SlockColor.TextBlack),
                         systemNewlineAction = true,
                         // React mobile uses a one-line textarea; keep the toolbar as the touch target.
+                        focusRequester = composerFocusRequester,
                         modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerTextFieldMinHeight)
                     )
                     if (state.hookLabels.isNotEmpty()) {
