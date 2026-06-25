@@ -399,6 +399,40 @@
       }
     },
     {
+      "id": "components.thread.files.list",
+      "title": "Thread Files List",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.files.list.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "mixed-files",
+          "name": "Mixed Files",
+          "props": {
+            "channelId": "visual-thread-composer"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.files.list']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/ChannelFilesPanel.tsx",
+      "androidCaseHint": "compose_thread_files_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "components.thread.header.states",
       "title": "Thread Header States",
       "surface": "thread",
@@ -3225,6 +3259,48 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.files.list",
+      "title": "Thread Files List",
+      "surface": "thread",
+      "group": "product-thread",
+      "status": "baseline",
+      "notes": "Real React ChannelFilesPanel vs Android connected visual-only rendering of ThreadFilesContent with image, PDF, archive, download/open state, and load-more affordance.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ChannelFilesPanel",
+            "AvatarListRow"
+          ],
+          "path": "packages/web/src/components/message/ChannelFilesPanel.tsx",
+          "fixture": "packages/web/tests/visual-testing/react-provider.spec.ts#/channels/visual-thread-composer/files"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadFilesContent",
+            "ThreadFileRow",
+            "ThreadFileThumbnail"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadFilesContent.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadFilesList",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadFilesContent"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadFilesContent.kt",
+          "reason": "Depends on shared files fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
       ]

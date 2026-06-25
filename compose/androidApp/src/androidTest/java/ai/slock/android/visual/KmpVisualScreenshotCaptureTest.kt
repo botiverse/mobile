@@ -145,6 +145,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadFilesList() {
+        captureKmpComponentCase(
+            caseId = "components.thread.files.list",
+            pageName = "compose_thread_files_visual",
+            crop = THREAD_FILES_LIST_CROP,
+            settleMs = 1_500
+        )
+    }
+
+    @Test
     fun captureThreadMessageRow() {
         captureKmpComponentCase(
             caseId = "components.thread.message.row",
@@ -1198,6 +1208,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 270
+            )
+        private val THREAD_FILES_LIST_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 360
             )
         private val THREAD_MESSAGE_ROW_RICH_CONTENT_CROP =
             VisualCrop(
