@@ -1513,7 +1513,11 @@ internal class SharedThreadDataSource(
         }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
-                repository.getThread(threadId, limit = SharedThreadPaging.initialPageSize)
+                repository.getThread(
+                    threadId = threadId,
+                    includeFollowedSummaries = false,
+                    limit = SharedThreadPaging.initialPageSize
+                )
             }
         val initialData = initialResult as? DataResult.Content
         // If the route's stream hint is untrusted (stream != parent channel) and the
@@ -1624,6 +1628,7 @@ internal class SharedThreadDataSource(
                 repository.getReplyThread(
                     parentChannelId = ChannelId(parentChannelId),
                     parentMessageId = MessageId(parentMessageId),
+                    includeFollowedSummaries = false,
                     limit = SharedThreadPaging.initialPageSize
                 )
             }
@@ -1680,7 +1685,11 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val resolvedResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
-                repository.getThread(ThreadId(resolvedThreadId), limit = SharedThreadPaging.initialPageSize)
+                repository.getThread(
+                    threadId = ThreadId(resolvedThreadId),
+                    includeFollowedSummaries = false,
+                    limit = SharedThreadPaging.initialPageSize
+                )
             }
         return when (resolvedResult) {
             is DataResult.Content ->
@@ -1879,7 +1888,7 @@ private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataRe
     }
 
 internal object SharedThreadPaging {
-    const val initialPageSize = 30
+    const val initialPageSize = 50
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
