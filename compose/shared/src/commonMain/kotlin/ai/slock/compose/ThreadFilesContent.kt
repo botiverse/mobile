@@ -23,6 +23,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -245,7 +246,7 @@ private fun ThreadFileRow(
         }
         Column(
             modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Text(
                 text = item.name,
@@ -370,23 +371,18 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
 
 @Composable
 private fun ThreadFileSourcePill(text: String) {
-    Box(
-        modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = text,
-            style = SlockType.Input.copy(
-                fontSize = 10.sp,
-                lineHeight = 12.sp,
-                color = SlockColor.TextBlack
-            ),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    Text(
+        text = text,
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+        color = SlockColor.TextBlack,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier =
+            Modifier
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+    )
 }
 
 @Composable
