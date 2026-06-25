@@ -28,10 +28,10 @@ plugins {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         gradlePluginPortal()
-        mavenLocal()
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
         }
