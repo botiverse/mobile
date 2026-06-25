@@ -31,7 +31,7 @@ import ai.slock.compose.model.threadIdentity
 import ai.slock.shared.data.local.AttachmentEntity
 import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.MessageEntity
-import ai.slock.shared.data.local.MessageReactionCacheEntity
+import ai.slock.shared.data.local.MessageReactionEntity
 import ai.slock.shared.data.local.SlockDatabaseQueries
 import ai.slock.shared.data.local.TaskSummaryEntity
 import kotlinx.coroutines.flow.Flow
@@ -283,7 +283,7 @@ internal class SqlDelightComposeLocalDataStore(
             }
     }
 
-    private fun List<MessageReactionCacheEntity>.toMessageReactions(): List<MessageReaction>? =
+    private fun List<MessageReactionEntity>.toMessageReactions(): List<MessageReaction>? =
         groupBy { it.emoji }
             .mapNotNull { (emoji, rows) ->
                 val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
