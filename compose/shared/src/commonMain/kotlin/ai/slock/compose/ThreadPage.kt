@@ -4269,7 +4269,15 @@ internal fun SharedThreadRouteContent(
                                 composerDraftViewModel.dispatch(
                                     SharedThreadComposerDraftIntent.AddUploadedAttachments(
                                         attachments = uploaded,
-                                        replacedAttachmentIds = replacedAttachmentIds
+                                        replacedAttachmentIds = replacedAttachmentIds,
+                                        replacedAttachmentIdsByUploadedId =
+                                            uploaded.mapIndexedNotNull { index, attachment ->
+                                                files
+                                                    .getOrNull(index)
+                                                    ?.id
+                                                    ?.takeIf { id -> id.isNotBlank() }
+                                                    ?.let { localId -> attachment.id to localId }
+                                            }.toMap()
                                     )
                                 )
                             }

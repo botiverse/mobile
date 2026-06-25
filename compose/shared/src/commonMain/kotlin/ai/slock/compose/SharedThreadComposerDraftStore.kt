@@ -326,7 +326,8 @@ internal sealed interface SharedThreadComposerDraftIntent {
     ) : SharedThreadComposerDraftIntent
     data class AddUploadedAttachments(
         val attachments: List<SharedThreadComposerAttachment>,
-        val replacedAttachmentIds: Set<String> = emptySet()
+        val replacedAttachmentIds: Set<String> = emptySet(),
+        val replacedAttachmentIdsByUploadedId: Map<String, String> = emptyMap()
     ) : SharedThreadComposerDraftIntent
     data class AddLocalAttachments(
         val attachments: List<SharedThreadComposerAttachment>
@@ -467,13 +468,31 @@ internal class SharedThreadComposerDraftStore(
                     executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
                 )
             is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
-                val uploadedIds = intent.attachments.map { attachment -> attachment.id }.toSet()
+                val fallbackReplacedAttachmentIds =
+                    if (intent.replacedAttachmentIdsByUploadedId.isEmpty()) {
+                        intent.replacedAttachmentIds
+                    } else {
+                        emptySet()
+                    }
+                val visibleAttachments =
+                    intent.attachments
+                        .filterNot { attachment ->
+                            attachment.id in current.removedAttachmentIds ||
+                                intent.replacedAttachmentIdsByUploadedId[attachment.id] in current.removedAttachmentIds
+                        }
+                val replacedVisibleAttachmentIds =
+                    visibleAttachments
+                        .mapNotNull { attachment -> intent.replacedAttachmentIdsByUploadedId[attachment.id] }
+                        .toSet()
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     failureLabel = null,
-                    removedAttachmentIds = (current.removedAttachmentIds + intent.replacedAttachmentIds) - uploadedIds,
+                    removedAttachmentIds =
+                        current.removedAttachmentIds +
+                            fallbackReplacedAttachmentIds +
+                            replacedVisibleAttachmentIds,
                     uploadedAttachments =
-                        (current.uploadedAttachments + intent.attachments)
+                        (current.uploadedAttachments + visibleAttachments)
                             .distinctBy { attachment -> attachment.id }
                 )
             }
@@ -482,6 +501,9 @@ internal class SharedThreadComposerDraftStore(
                     syncNonce = current.syncNonce + 1,
                     sending = false,
                     failureLabel = null,
+                    removedAttachmentIds =
+                        current.removedAttachmentIds -
+                            intent.attachments.map { attachment -> attachment.id }.toSet(),
                     uploadedAttachments =
                         (current.uploadedAttachments + intent.attachments)
                             .distinctBy { attachment -> attachment.id }

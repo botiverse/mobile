@@ -322,12 +322,73 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.AddUploadedAttachments(
                 attachments = listOf(uploaded),
-                replacedAttachmentIds = setOf("picked-local-1")
+                replacedAttachmentIds = setOf("picked-local-1"),
+                replacedAttachmentIdsByUploadedId = mapOf("remote-file-1" to "picked-local-1")
             )
         )
 
         assertEquals(listOf(local, uploaded), store.state.value.uploadedAttachments)
         assertEquals(setOf("picked-local-1"), store.state.value.removedAttachmentIds)
+    }
+
+    @Test
+    fun removedLocalPendingAttachmentDoesNotReturnWhenUploadCompletes() {
+        val store = SharedThreadComposerDraftStore()
+        val localRemoved =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "removed.png",
+                sizeLabel = "24 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+        val localKept =
+            SharedThreadComposerAttachment(
+                id = "picked-local-2",
+                fileName = "kept.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+        val uploadedRemoved =
+            SharedThreadComposerAttachment(
+                id = "remote-file-1",
+                fileName = "removed.png",
+                sizeLabel = "24 KB",
+                mimeType = "image/png",
+                status = "ready"
+            )
+        val uploadedKept =
+            SharedThreadComposerAttachment(
+                id = "remote-file-2",
+                fileName = "kept.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "ready"
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localRemoved, localKept)))
+        store.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment("picked-local-1"))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(uploadedRemoved, uploadedKept),
+                replacedAttachmentIds = setOf("picked-local-1", "picked-local-2"),
+                replacedAttachmentIdsByUploadedId =
+                    mapOf(
+                        "remote-file-1" to "picked-local-1",
+                        "remote-file-2" to "picked-local-2"
+                    )
+            )
+        )
+
+        assertEquals(
+            listOf(localRemoved, localKept, uploadedKept),
+            store.state.value.uploadedAttachments
+        )
+        assertEquals(
+            setOf("picked-local-1", "picked-local-2"),
+            store.state.value.removedAttachmentIds
+        )
     }
 
     @Test
