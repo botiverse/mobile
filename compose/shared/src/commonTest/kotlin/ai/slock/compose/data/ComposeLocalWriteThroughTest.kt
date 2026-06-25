@@ -14,6 +14,7 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
@@ -589,6 +590,41 @@ class ComposeLocalWriteThroughTest {
         assertEquals("task-2", channelTwoTask?.id?.value)
         assertEquals("Channel two task", channelTwoTask?.title)
         assertEquals(TaskStatus.InReview, channelTwoTask?.status)
+    }
+
+    @Test
+    fun realtimeTaskPatchMatchesMessageWhenTaskIdIsMessageId() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(message("message-1", "channel-1", "channel-1", seq = 1)),
+                tasks = emptyList(),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeRealtimeEvent(
+            serverId,
+            TaskCreated(
+                listOf(
+                    TaskSummary(
+                        id = TaskId("message-1"),
+                        title = "Created from message",
+                        status = TaskStatus.Todo,
+                        taskNumber = 42,
+                        channelId = ChannelId("channel-1"),
+                        updatedAtLabel = "12:03"
+                    )
+                )
+            )
+        )
+
+        val cached = store.readThread(ThreadId("channel-1"))
+        assertEquals("message-1", cached?.messages?.single()?.task?.id?.value)
+        assertEquals(TaskStatus.Todo, cached?.messages?.single()?.task?.status)
+        assertEquals(listOf("message-1"), cached?.tasks?.map { it.id.value })
     }
 
     @Test

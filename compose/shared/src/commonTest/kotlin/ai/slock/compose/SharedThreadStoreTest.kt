@@ -4976,6 +4976,32 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun applyTaskStatusMatchesMessageThroughTaskReference() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(taskPayloadWithMessageReferenceOnly())
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyTaskStatus("task-1", TaskStatus.Done.name))
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals("task-1", message.taskId)
+        assertEquals("Done", message.taskStatus)
+        assertEquals("Done", store.state.value.payload.tasks.single().status)
+        val cached = localStore.readThread(ThreadId("channel-1"))
+        assertEquals("task-1", cached?.messages?.single()?.task?.id?.value)
+        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
+        scope.cancel()
+    }
+
+    @Test
     fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11, channelId = "thread-m1"))
         val dataSource =
@@ -6325,6 +6351,23 @@ class SharedThreadStoreTest {
                         title = "#44 Task",
                         status = "Todo",
                         taskNumber = 44
+                    )
+            )
+        )
+    }
+
+    private fun taskPayloadWithMessageReferenceOnly(): KuiklyThreadScreenPayload {
+        val message = contentPayload("task body").messages.single()
+        return contentPayload("task body").copy(
+            messages = listOf(message),
+            tasks =
+                listOf(
+                    KuiklyThreadTaskItem(
+                        id = "task-1",
+                        title = "#44 Task",
+                        status = "Todo",
+                        taskNumber = 44,
+                        messageId = "m1"
                     )
                 )
         )

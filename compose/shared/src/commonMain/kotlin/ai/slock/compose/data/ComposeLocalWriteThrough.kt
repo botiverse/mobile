@@ -950,7 +950,7 @@ private fun ThreadSnapshot.withRealtimeTasks(
     incoming: List<ai.slock.compose.model.TaskSummary>
 ): ThreadSnapshot {
     val incomingByTaskId = incoming.associateBy { it.id }
-    val incomingByMessageId = incoming.mapNotNull { task -> task.messageId?.let { it to task } }.toMap()
+    val incomingByMessageId = incoming.associateByMessageIdentity()
     fun Message.withTaskPatch(): Message {
         val task = task
         val updatedTask =
@@ -977,7 +977,22 @@ private fun ThreadSnapshot.containsRealtimeTaskIdentity(
 }
 
 private fun Message.matchesTaskIdentity(taskId: TaskId, messageId: MessageId?): Boolean =
-    task?.id == taskId || (messageId != null && id == messageId)
+    task?.id == taskId ||
+        id.value == taskId.value ||
+        (messageId != null && id == messageId)
+
+private fun List<ai.slock.compose.model.TaskSummary>.associateByMessageIdentity(): Map<MessageId, ai.slock.compose.model.TaskSummary> =
+    buildMap {
+        this@associateByMessageIdentity.forEach { task ->
+            task.messageId?.let { messageId -> put(messageId, task) }
+        }
+        this@associateByMessageIdentity.forEach { task ->
+            val fallbackMessageId = MessageId(task.id.value)
+            if (!containsKey(fallbackMessageId)) {
+                put(fallbackMessageId, task)
+            }
+        }
+    }
 
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(

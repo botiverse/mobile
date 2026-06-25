@@ -112,7 +112,7 @@ internal class SqlDelightComposeLocalDataStore(
                 ?.toMessage(serverId)
         val messageTasks =
             messages.mapNotNull { it.task } + messages.flatMap { message ->
-                queries.selectTaskReferencesForMessage(serverId.value, message.id.value, message.id.value)
+                queries.selectTaskReferencesForMessage(serverId.value, message.id.value, message.id.value, message.id.value)
                     .executeAsList()
                     .map { it.toTaskSummary() }
             }
@@ -261,7 +261,7 @@ internal class SqlDelightComposeLocalDataStore(
                 .executeAsList()
                 .toMessageReactions()
         val task =
-            database.queries.selectTaskReferencesForMessage(serverId.value, id, id)
+            database.queries.selectTaskReferencesForMessage(serverId.value, id, id, id)
                 .executeAsList()
                 .firstOrNull()
                 ?.toTaskSummary()

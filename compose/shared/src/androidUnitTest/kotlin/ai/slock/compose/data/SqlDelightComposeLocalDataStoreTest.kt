@@ -149,6 +149,58 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
+    fun readsMessageTaskWhenTaskIdMatchesMessageId() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 1234L }
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("message-1"),
+                title = "created as task",
+                status = TaskStatus.Todo,
+                taskNumber = 111,
+                channelId = ChannelId("channel-1"),
+                updatedAtLabel = "21:03"
+            )
+
+        store.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId("message-1"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 8,
+                            author = member,
+                            timestampLabel = "21:03",
+                            body = "created as task"
+                        )
+                    ),
+                tasks = listOf(task),
+                lastSeq = 8
+            )
+        )
+
+        val restored = assertNotNull(store.readThread(ThreadId("channel-1")))
+        assertEquals("message-1", restored.messages.single().task?.id?.value)
+        assertEquals(TaskStatus.Todo, restored.messages.single().task?.status)
+        assertEquals(listOf("message-1"), restored.tasks.map { it.id.value })
+    }
+
+    @Test
     fun readsReplyThreadByStableThreadIdentityFromNormalizedTables() = runBlocking {
         val database = createDatabase()
         val store =

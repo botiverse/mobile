@@ -631,7 +631,7 @@ selectTaskReferencesForMessage:
 SELECT *
 FROM taskSummaryEntity
 WHERE serverId = ?
-  AND (messageId = ? OR parentMessageId = ?)
+  AND (id = ? OR messageId = ? OR parentMessageId = ?)
 ORDER BY COALESCE(taskNumber, 9223372036854775807), id;
 
 selectTaskReferencesForChannel:
