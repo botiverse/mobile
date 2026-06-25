@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,8 +32,11 @@ const outPath = resolve(
 );
 
 for (const reaction of reactions) {
-  if (!reaction.name || !reaction.value || !reaction.rect) {
+  if (!reaction.name || !reaction.value || !reaction.image || !reaction.rect) {
     throw new Error("Reaction atlas manifest includes an invalid reaction entry.");
+  }
+  if (basename(reaction.image) !== reaction.image || !reaction.image.endsWith(".png")) {
+    throw new Error(`Reaction ${reaction.name} has an invalid image file name.`);
   }
   const rect = reaction.rect;
   if (![rect.x, rect.y, rect.w, rect.h].every(Number.isInteger)) {
@@ -95,3 +98,42 @@ try {
 }
 
 console.log(`Generated ${outPath}`);
+
+for (const reaction of reactions) {
+  const rect = reaction.rect;
+  const iconSvgPath = resolve(tempDir, `${reaction.name}.svg`);
+  const iconOutPath = resolve(
+    repoRoot,
+    "compose/shared/src/commonMain/resources/MR/assets/reactions",
+    reaction.image,
+  );
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.w}" height="${rect.h}" viewBox="0 0 ${rect.w} ${rect.h}">
+  <g fill="none" transform="scale(${rect.w / 24} ${rect.h / 24})">
+${sourceBody(reaction.name)
+  .split("\n")
+  .map((line) => `    ${line}`)
+  .join("\n")}
+  </g>
+</svg>
+`;
+  writeFileSync(iconSvgPath, iconSvg);
+  try {
+    execFileSync("rsvg-convert", [
+      "--format",
+      "png",
+      "--width",
+      String(rect.w),
+      "--height",
+      String(rect.h),
+      "--output",
+      iconOutPath,
+      iconSvgPath,
+    ]);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error("rsvg-convert is required to regenerate the thread reaction assets.");
+    }
+    throw error;
+  }
+  console.log(`Generated ${iconOutPath}`);
+}

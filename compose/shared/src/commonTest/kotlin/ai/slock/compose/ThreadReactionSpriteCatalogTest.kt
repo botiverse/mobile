@@ -33,8 +33,19 @@ class ThreadReactionSpriteCatalogTest {
 
     @Test
     fun resourceAdapterUsesGeneratedKmmResourcePath() {
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://common/"))
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
+        assertEquals(
+            "assets://${ThreadReactionSpriteAtlasResource.image.originalPath}",
+            ThreadReactionSpriteAtlasResource.imageUrl
+        )
+        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("slock_reactions/reaction_atlas_v1.png"))
         assertTrue(ThreadReactionSpriteAtlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
+    }
+
+    @Test
+    fun spritesExposeDirectRenderableImageAssets() {
+        ThreadReactionSpriteCatalogV1.reactions.forEach { sprite ->
+            assertEquals("slock_reactions/reaction_${sprite.name}_v1.png", sprite.image.originalPath)
+            assertNotNull(sprite.toDrawableResource())
+        }
     }
 }
