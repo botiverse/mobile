@@ -2449,6 +2449,11 @@ internal class SharedThreadStore(
         persist: Boolean = true
     ) {
         val existing = _state.value.payload
+        val realtimeGapServerSeq =
+            existing.realtimeNewerGapServerSeq(
+                event = event,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
         val rawMerged =
             existing.applyRealtimeEvent(
                 event = event,
@@ -2479,6 +2484,15 @@ internal class SharedThreadStore(
                 diagnosticsLogger?.invoke(
                     "thread_realtime_persist_failed events=1 type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
                 )
+            }
+            if (realtimeGapServerSeq != null) {
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
+                        "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                        "serverSeq=$realtimeGapServerSeq"
+                )
+                recoverRealtimeGap(realtimeGapServerSeq)
+                return
             }
             val cached =
                 dataSource
@@ -3747,6 +3761,29 @@ private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
             withMemberPresenceUpdated(event)
         else -> this
     }
+
+private fun KuiklyThreadScreenPayload.realtimeNewerGapServerSeq(
+    event: RealtimeEvent,
+    activeReplyParentMessageId: MessageId? = null
+): Long? {
+    if (!canLoadMoreAfter) return null
+    val currentMaxSeq = messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
+    if (currentMaxSeq <= 0L) return null
+    val existingIds = messages.mapTo(mutableSetOf()) { it.id }
+    val eventMessages =
+        when (event) {
+            is MessageNew -> listOf(event.message)
+            is SyncResumeResponse -> event.messages
+            else -> return null
+        }
+    return eventMessages
+        .asSequence()
+        .filter { message -> message.matchesSharedThread(this, activeReplyParentMessageId) }
+        .filterNot { message -> message.id.value in existingIds }
+        .mapNotNull { message -> message.seq }
+        .filter { seq -> seq > currentMaxSeq + 1L }
+        .maxOrNull()
+}
 
 internal fun KuiklyThreadScreenPayload.withMemberPresenceUpdated(
     event: MemberPresenceUpdated
