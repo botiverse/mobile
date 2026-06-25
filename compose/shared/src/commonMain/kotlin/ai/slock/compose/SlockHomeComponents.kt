@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalPanel
+import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
@@ -274,6 +275,8 @@ internal data class SlockHomePayload(
 
 private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focused, Pressed }
 
+private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
+
 @Composable
 private fun SlockHomePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -378,8 +381,39 @@ private fun openThreadPageFromConversationId(
     val launchPayload =
         buildHomeConversationThreadLaunchPayload(payload, conversationId)
             ?: return
+    if (!homeConversationOpenBarrier.tryAcquire(launchPayload.instanceId)) return
     val pageData = threadLaunchPageData(launchPayload)
     pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
+}
+
+internal class HomeConversationOpenBarrier(
+    private val windowMillis: Long = 800L,
+    private val nowMillis: () -> Long = { defaultNowMillis() }
+) {
+    private val lastOpenedAtByKey = mutableMapOf<String, Long>()
+
+    fun tryAcquire(key: String): Boolean {
+        val cleanKey = key.trim()
+        if (cleanKey.isBlank()) return false
+        val now = nowMillis()
+        val lastOpenedAt = lastOpenedAtByKey[cleanKey]
+        if (lastOpenedAt != null && now >= lastOpenedAt && now - lastOpenedAt < windowMillis) {
+            return false
+        }
+        pruneExpired(now)
+        lastOpenedAtByKey[cleanKey] = now
+        return true
+    }
+
+    private fun pruneExpired(now: Long) {
+        val iterator = lastOpenedAtByKey.iterator()
+        while (iterator.hasNext()) {
+            val openedAt = iterator.next().value
+            if (now < openedAt || now - openedAt >= windowMillis) {
+                iterator.remove()
+            }
+        }
+    }
 }
 
 internal fun buildHomeConversationThreadLaunchPayload(

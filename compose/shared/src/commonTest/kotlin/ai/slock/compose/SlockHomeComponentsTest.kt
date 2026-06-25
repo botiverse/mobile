@@ -613,6 +613,34 @@ class SlockHomeComponentsTest {
         assertEquals("joint-1", launch?.streamChannelId)
     }
 
+    @Test
+    fun homeConversationOpenBarrierDropsRapidDuplicateOpen() {
+        var now = 1_000L
+        val barrier = HomeConversationOpenBarrier(windowMillis = 800L, nowMillis = { now })
+
+        assertTrue(barrier.tryAcquire("home-page:channel-1"))
+        assertFalse(barrier.tryAcquire("home-page:channel-1"))
+
+        now += 799L
+        assertFalse(barrier.tryAcquire("home-page:channel-1"))
+
+        now += 1L
+        assertTrue(barrier.tryAcquire("home-page:channel-1"))
+    }
+
+    @Test
+    fun homeConversationOpenBarrierAllowsDifferentRows() {
+        var now = 1_000L
+        val barrier = HomeConversationOpenBarrier(windowMillis = 800L, nowMillis = { now })
+
+        assertTrue(barrier.tryAcquire("home-page:channel-1"))
+        assertTrue(barrier.tryAcquire("home-page:dm-1"))
+
+        now += 100L
+        assertFalse(barrier.tryAcquire("home-page:channel-1"))
+        assertFalse(barrier.tryAcquire("home-page:dm-1"))
+    }
+
     private fun testMember(
         id: String,
         kind: MemberKind,
