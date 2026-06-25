@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SlockDiagnosticsLogger.d("SlockBoot", "main_activity_redirect_to_shared_shell")
         if (!handleSocialAuthCallback(intent)) {
-            openSharedShell()
+            openSharedShell(intent)
         }
     }
 
@@ -32,12 +32,16 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (!handleSocialAuthCallback(intent)) {
-            openSharedShell()
+            openSharedShell(intent)
         }
     }
 
-    private fun openSharedShell() {
-        SlockKuiklyActivity.startAppShell(this, clearTask = true)
+    private fun openSharedShell(launchIntent: Intent? = intent) {
+        SlockKuiklyActivity.startAppShell(
+            this,
+            pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent),
+            clearTask = true
+        )
         finish()
     }
 

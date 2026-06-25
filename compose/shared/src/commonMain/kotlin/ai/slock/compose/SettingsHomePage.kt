@@ -435,6 +435,9 @@ private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
+private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
+private const val AppShellNotificationServerIdKey = "slockNotificationServerId"
+private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
@@ -1556,6 +1559,8 @@ private fun SlockAppShellContent() {
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
+    var consumedNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
+    var switchingNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
@@ -1564,6 +1569,14 @@ private fun SlockAppShellContent() {
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
+    val notificationThreadLaunchPayload =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.appShellNotificationThreadLaunchPayload()
+        }
+    val notificationLaunchServerId =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.appShellNotificationServerId()
+        }
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
             SharedHomeSearchSavedViewModel(
@@ -1751,6 +1764,92 @@ private fun SlockAppShellContent() {
             return
         }
         is SharedAuthGateState.Ready -> Unit
+    }
+    LaunchedEffect(
+        readySession?.currentServerId,
+        notificationLaunchServerId,
+        notificationThreadLaunchPayload?.instanceId,
+        notificationThreadLaunchPayload?.sourceThreadId,
+        notificationThreadLaunchPayload?.focusedMessageId,
+        threadTimeContext,
+        myMessageAlignment
+    ) {
+        val launchPayload = notificationThreadLaunchPayload ?: return@LaunchedEffect
+        val launchIdentity =
+            launchPayload.instanceId.takeIf { it.isNotBlank() }
+                ?: launchPayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: launchPayload.streamChannelId?.takeIf { it.isNotBlank() }
+                ?: launchPayload.threadId?.takeIf { it.isNotBlank() }
+                ?: return@LaunchedEffect
+        val launchKey = "${notificationLaunchServerId.orEmpty()}|$launchIdentity|${launchPayload.focusedMessageId.orEmpty()}"
+        if (consumedNotificationLaunchKey == launchKey) {
+            return@LaunchedEffect
+        }
+        val session = readySession ?: return@LaunchedEffect
+        val targetServerId = notificationLaunchServerId
+        if (!targetServerId.isNullOrBlank() && targetServerId != session.currentServerId) {
+            if (switchingNotificationLaunchKey == launchKey) {
+                return@LaunchedEffect
+            }
+            if (session.servers.none { server -> server.id == targetServerId }) {
+                consumedNotificationLaunchKey = launchKey
+                bridge.logWarn(
+                    "app_shell_notification_launch_drop reason=server_unavailable " +
+                        "targetServerId=$targetServerId currentServerId=${session.currentServerId.orEmpty()}"
+                )
+                bridge.toast("Notification server unavailable")
+                return@LaunchedEffect
+            }
+            switchingNotificationLaunchKey = launchKey
+            bridge.log(
+                "app_shell_notification_server_switch_start " +
+                    "targetServerId=$targetServerId currentServerId=${session.currentServerId.orEmpty()}"
+            )
+            when (val result = authDataSource.selectServer(targetServerId)) {
+                is SharedAuthResult.Success -> {
+                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(result.data))
+                    resetAppShellSessionState()
+                    bridge.log("app_shell_notification_server_switch_success targetServerId=$targetServerId")
+                }
+                is SharedAuthResult.Failure -> {
+                    consumedNotificationLaunchKey = launchKey
+                    bridge.logWarn("app_shell_notification_server_switch_failed code=${result.code}")
+                    bridge.toast("Notification server unavailable")
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    consumedNotificationLaunchKey = launchKey
+                    bridge.logWarn("app_shell_notification_server_switch_failed result=unauthenticated")
+                    bridge.toast("Sign in to open this notification")
+                }
+            }
+            switchingNotificationLaunchKey = null
+            return@LaunchedEffect
+        }
+        consumedNotificationLaunchKey = launchKey
+        val runtimeLaunchPayload =
+            launchPayload.copy(
+                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: launchPayload.localOffsetMinutes,
+                todayEpochDay = threadTimeContext?.todayEpochDay ?: launchPayload.todayEpochDay,
+                nowEpochMillis = threadTimeContext?.nowEpochMillis ?: launchPayload.nowEpochMillis,
+                timeFormat = threadTimeContext?.timeFormat ?: launchPayload.timeFormat
+            )
+        selectedTab = "home"
+        retainedAppShellTabs = retainedAppShellTabs + "home"
+        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        homeShellStore.dispatch(
+            SharedHomeShellIntent.SetSelectedConversation(
+                runtimeLaunchPayload.sourceThreadId
+                    ?: runtimeLaunchPayload.streamChannelId
+                    ?: runtimeLaunchPayload.threadId
+            )
+        )
+        bridge.log(
+            "app_shell_notification_thread_open " +
+                "threadId=${runtimeLaunchPayload.sourceThreadId.orEmpty()} " +
+                "surface=${runtimeLaunchPayload.surfaceKind} focusedMessageId=${runtimeLaunchPayload.focusedMessageId.orEmpty()}"
+        )
+        pager.openStandaloneThreadLaunchPayload(runtimeLaunchPayload)
     }
     LaunchedEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -12057,6 +12156,16 @@ private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTime
     val now = optString("nowEpochMillis").toLongOrNull()
     return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
 }
+
+private fun JSONObject.appShellNotificationThreadLaunchPayload(): WireThreadLaunchPayload? {
+    val source = optString(AppShellNotificationThreadPayloadKey).takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        AppShellNotificationLaunchJson.decodeFromString(WireThreadLaunchPayload.serializer(), source)
+    }.getOrNull()?.takeIf { it.hasRouteIdentity() }
+}
+
+private fun JSONObject.appShellNotificationServerId(): String? =
+    optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
 
 private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange): SearchIsoBounds {
     val context = this ?: return SearchIsoBounds()

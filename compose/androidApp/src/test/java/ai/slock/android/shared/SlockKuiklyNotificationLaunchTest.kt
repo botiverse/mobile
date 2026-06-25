@@ -30,6 +30,7 @@ class SlockKuiklyNotificationLaunchTest {
 
         assertNotNull(pageData)
         val payload = JSONObject(pageData!!.getString("payload"))
+        assertEquals(SlockKuiklyActivity.PAGE_THREAD, pageData.getString(SlockKuiklyActivity.KEY_PAGE_NAME))
         assertEquals("notification-thread-channel-1-msg-42", pageData.getString("instanceId"))
         assertEquals("channel", payload.getString("surfaceKind"))
         assertEquals("channel-1", payload.getString("sourceThreadId"))
@@ -80,6 +81,31 @@ class SlockKuiklyNotificationLaunchTest {
         assertEquals("parent-msg", payload.getString("parentMessageId"))
         assertEquals("parent-msg", payload.getString("originParentMessageId"))
         assertEquals("reply-msg", payload.getString("focusedMessageId"))
+    }
+
+    @Test
+    fun unreadNotificationAppShellLaunchCarriesThreadIntent() {
+        val pageData =
+            SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(
+                JSONObject()
+                    .put("serverId", "server-1")
+                    .put("threadId", "channel-1")
+                    .put("channelId", "channel-1")
+                    .put("messageId", "msg-42")
+                    .put("category", "channel_unread")
+            )
+
+        assertNotNull(pageData)
+        assertEquals(SlockKuiklyActivity.PAGE_APP_SHELL, pageData!!.getString(SlockKuiklyActivity.KEY_PAGE_NAME))
+        assertEquals("notification-app-shell-notification-thread-channel-1-msg-42", pageData.getString("instanceId"))
+        assertEquals("server-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
+        assertEquals("google", pageData.getString("slockSocialAuthProviders"))
+        val payload =
+            JSONObject(pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD))
+        assertEquals("notification-thread-channel-1-msg-42", payload.getString("instanceId"))
+        assertEquals("channel", payload.getString("surfaceKind"))
+        assertEquals("channel-1", payload.getString("sourceThreadId"))
+        assertEquals("msg-42", payload.getString("focusedMessageId"))
     }
 
     @Test
