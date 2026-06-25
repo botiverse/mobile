@@ -2,8 +2,16 @@ package ai.slock.compose
 
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.animation.core.FiniteAnimationSpec
+import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.snap
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
@@ -15,6 +23,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
@@ -22,14 +31,17 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChange
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal enum class SlockSelectionChangeSource {
     Click,
@@ -55,6 +67,9 @@ internal data class SlockTopTabBarItem(
 internal object SlockTopTabBarDefaults {
     val Height = 32.dp
     val TabWidth = 98.dp
+    val SwipePreviewMaxOffset = 156.dp
+    const val SwipeSettleAnimationMs = 160
+    const val SwipeEdgeResistance = 0.28f
 }
 
 @Composable
@@ -69,6 +84,28 @@ internal fun <T> SlockTabbedScaffold(
     content: @Composable (T, Modifier) -> Unit
 ) {
     Column(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        val swipeTabs = remember(tabs) { tabs.filter { it.swipeEnabled } }
+        val selectedSwipeIndex = swipeTabs.indexOfFirst { it.key == selectedKey }
+        var dragDistancePx by remember(selectedKey) { mutableStateOf(0f) }
+        var dragActive by remember(selectedKey) { mutableStateOf(false) }
+        val density = LocalDensity.current
+        val maxPreviewOffsetPx = with(density) { SlockTopTabBarDefaults.SwipePreviewMaxOffset.toPx() }
+        val previewOffsetPx =
+            slockSwipePreviewOffset(
+                horizontalDistance = dragDistancePx,
+                maxOffsetPx = maxPreviewOffsetPx,
+                hasPrevious = selectedSwipeIndex > 0,
+                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeTabs.lastIndex,
+                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
+            )
+        val settleSpec: FiniteAnimationSpec<Float> =
+            if (dragActive) snap() else tween(durationMillis = SlockTopTabBarDefaults.SwipeSettleAnimationMs)
+        val visualOffsetPx by animateFloatAsState(
+            targetValue = previewOffsetPx,
+            animationSpec = settleSpec
+        )
+        val previousTab = swipeTabs.getOrNull(selectedSwipeIndex - 1)
+        val nextTab = swipeTabs.getOrNull(selectedSwipeIndex + 1)
         SlockTopTabBar(
             items = tabs.map { it.toTopTabBarItem() },
             selectedKey = selectedKey.toString(),
@@ -80,20 +117,41 @@ internal fun <T> SlockTabbedScaffold(
             itemKeyPrefix = itemKeyPrefix
         )
         val selectedTab = tabs.firstOrNull { it.key == selectedKey }
-        val contentModifier =
+        val contentContainerModifier =
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .slockSwipeSelection(
-                    items = tabs.filter { it.swipeEnabled }.map { it.key },
+                    items = swipeTabs.map { it.key },
                     selected = selectedKey,
                     enabled = swipeEnabled && selectedTab?.swipeEnabled == true,
                     canSwipe = canSwipe,
+                    onDragActiveChange = { active ->
+                        dragActive = active
+                        if (!active) {
+                            dragDistancePx = 0f
+                        }
+                    },
+                    onDragDistanceChange = { dragDistancePx = it },
                     onSelectedChange = { next ->
                         onSelectedKeyChange(next, SlockSelectionChangeSource.Swipe)
                     }
                 )
-        content(selectedKey, contentModifier)
+        Box(modifier = contentContainerModifier.background(SlockColor.SurfaceWhite)) {
+            SlockSwipeSelectionPreview(
+                previous = previousTab,
+                next = nextTab,
+                visualOffsetPx = visualOffsetPx,
+                thresholdOffsetPx = maxPreviewOffsetPx
+            )
+            content(
+                selectedKey,
+                Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(visualOffsetPx.roundToInt(), 0) }
+                    .background(SlockColor.SurfaceWhite)
+            )
+        }
     }
 }
 
@@ -105,6 +163,8 @@ internal fun <T> Modifier.slockSwipeSelection(
     swipeThreshold: Dp = 96.dp,
     horizontalDominanceRatio: Float = 1.45f,
     canSwipe: () -> Boolean = { true },
+    onDragActiveChange: (Boolean) -> Unit = {},
+    onDragDistanceChange: (Float) -> Unit = {},
     onSelectedChange: (T) -> Unit
 ): Modifier {
     if (!enabled || items.size < 2) return this
@@ -113,6 +173,8 @@ internal fun <T> Modifier.slockSwipeSelection(
     val itemsState = rememberUpdatedState(items)
     val selectedState = rememberUpdatedState(selected)
     val canSwipeState = rememberUpdatedState(canSwipe)
+    val onDragActiveChangeState = rememberUpdatedState(onDragActiveChange)
+    val onDragDistanceChangeState = rememberUpdatedState(onDragDistanceChange)
     val onSelectedChangeState = rememberUpdatedState(onSelectedChange)
     return this.pointerInput(enabled, thresholdPx, horizontalDominanceRatio) {
         var dragDistance = 0f
@@ -121,6 +183,8 @@ internal fun <T> Modifier.slockSwipeSelection(
             onDragStart = {
                 dragDistance = 0f
                 verticalDistance = 0f
+                onDragActiveChangeState.value(true)
+                onDragDistanceChangeState.value(0f)
             },
             onDragEnd = {
                 if (canSwipeState.value() && isClearHorizontalSwipe(dragDistance, verticalDistance, thresholdPx, horizontalDominanceRatio)) {
@@ -137,14 +201,19 @@ internal fun <T> Modifier.slockSwipeSelection(
                 }
                 dragDistance = 0f
                 verticalDistance = 0f
+                onDragDistanceChangeState.value(0f)
+                onDragActiveChangeState.value(false)
             },
             onDragCancel = {
                 dragDistance = 0f
                 verticalDistance = 0f
+                onDragDistanceChangeState.value(0f)
+                onDragActiveChangeState.value(false)
             }
         ) { change, dragAmount ->
             dragDistance += dragAmount
             verticalDistance += change.positionChange().y
+            onDragDistanceChangeState.value(dragDistance)
         }
     }
 }
@@ -158,6 +227,70 @@ internal fun isClearHorizontalSwipe(
     val horizontal = abs(horizontalDistance)
     val vertical = abs(verticalDistance)
     return horizontal >= thresholdPx && horizontal >= vertical * horizontalDominanceRatio
+}
+
+internal fun slockSwipePreviewOffset(
+    horizontalDistance: Float,
+    maxOffsetPx: Float,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
+    edgeResistance: Float = SlockTopTabBarDefaults.SwipeEdgeResistance
+): Float {
+    if (horizontalDistance == 0f || maxOffsetPx <= 0f) return 0f
+    val hasTarget = if (horizontalDistance > 0f) hasPrevious else hasNext
+    val resistance = if (hasTarget) 1f else edgeResistance
+    val limited = (horizontalDistance * resistance).coerceIn(-maxOffsetPx, maxOffsetPx)
+    return when {
+        limited > 0f && !hasPrevious -> limited.coerceAtMost(maxOffsetPx * edgeResistance)
+        limited < 0f && !hasNext -> limited.coerceAtLeast(-maxOffsetPx * edgeResistance)
+        else -> limited
+    }
+}
+
+@Composable
+private fun <T> SlockSwipeSelectionPreview(
+    previous: SlockTabSpec<T>?,
+    next: SlockTabSpec<T>?,
+    visualOffsetPx: Float,
+    thresholdOffsetPx: Float
+) {
+    if (visualOffsetPx == 0f || thresholdOffsetPx <= 0f) return
+    val target = (if (visualOffsetPx > 0f) previous else next) ?: return
+    val icon = if (visualOffsetPx > 0f) SlockLucideIconName.ChevronLeft else SlockLucideIconName.ChevronRight
+    val progress = (abs(visualOffsetPx) / thresholdOffsetPx).coerceIn(0.18f, 0.72f)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = SlockSpacing.Lg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (visualOffsetPx > 0f) Arrangement.Start else Arrangement.End
+    ) {
+        Row(
+            modifier = Modifier
+                .graphicsLayer(alpha = progress)
+                .background(SlockColor.EmptyStateGray)
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
+        ) {
+            SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = SlockColor.TextMutedGrayArgb)
+            Text(
+                text = target.label,
+                style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Box(
+                modifier = Modifier
+                    .width((progress * 18f).dp)
+                    .height(1.dp)
+                    .background(SlockColor.BorderBlack)
+            )
+        }
+    }
 }
 
 internal fun <T> SlockTabSpec<T>.toTopTabBarItem(): SlockTopTabBarItem =
