@@ -294,7 +294,6 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
-import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.slockEpochMillisUtcIso
@@ -12097,12 +12096,7 @@ internal fun buildAppShellThreadPayload(
         )
     val payload = KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
-        title =
-            if (isReplyThread) {
-                ""
-            } else {
-                conversation.safeDisplayNameOrNull().orEmpty()
-            },
+        title = SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId).title,
         subtitle = null,
         status = "loading",
         surfaceKind = surfaceKind,
@@ -12137,7 +12131,7 @@ internal fun buildAppShellThreadPayload(
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
-    )
+    ).withLaunchHeaderContext()
     return if (isReplyThread) {
         payload.withReplyThreadHeaderFallback(conversation)
     } else {
