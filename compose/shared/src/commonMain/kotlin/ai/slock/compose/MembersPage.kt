@@ -60,6 +60,7 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
@@ -807,6 +808,17 @@ internal fun MembersPageContent() {
         activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
+    val serverMembersState by sharedStores.serverMembersStore.state.collectAsState(SharedServerMembersState())
+    val agentStatusResolver =
+        remember(serverMembersState, serverId) {
+            val lookup = ThreadAgentStatusLookup.from(serverMembersState, serverId)
+            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
+            resolver
+        }
+    LaunchedEffect(sharedStores.serverMembersStore, serverId) {
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        sharedStores.serverMembersStore.loadMembers(ServerId(cleanServerId), DataRequestPriority.Background)
+    }
     val computersSlice by computersStore
         .computerPickerSliceFlow(serverId)
         .collectAsState(SharedComputersPickerSlice())
@@ -929,6 +941,7 @@ internal fun MembersPageContent() {
                     .openPage(MEMBER_DETAIL_PAGE, pageData)
             }
         },
+        agentStatusResolver = agentStatusResolver,
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = computersSlice.machines,
@@ -975,6 +988,7 @@ private class MemberDetailRouteProvider(
     val memberRepository: MemberRepository,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore,
+    val serverMembersStore: ai.slock.compose.data.SharedServerMembersStore,
     val agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
@@ -1206,19 +1220,21 @@ private fun rememberMemberDetailRouteProvider(
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val agentDetailStore = sharedStores.agentDetailStore
+    val serverMembersStore = sharedStores.serverMembersStore
     val agentsApiClient = remember(networkClient) {
         ai.slock.compose.data.SlockAgentsApiClient(
             transport = ai.slock.compose.data.SlockAgentsNetworkApi(networkClient),
             diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
         )
     }
-    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore, agentsApiClient) {
+    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore, serverMembersStore, agentsApiClient) {
         MemberDetailRouteProvider(
             bridge = bridge,
             authStore = authStore,
             memberRepository = memberRepository,
             settingsCapabilities = settingsCapabilities,
             agentDetailStore = agentDetailStore,
+            serverMembersStore = serverMembersStore,
             agentsApiClient = agentsApiClient
         )
     }
@@ -1237,6 +1253,7 @@ private fun MemberDetailPageContent() {
         return
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
+    val serverMembersState by provider.serverMembersStore.state.collectAsState(SharedServerMembersState())
     var routeState by remember(payload.memberId) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
     }
@@ -1258,11 +1275,26 @@ private fun MemberDetailPageContent() {
     val timeContext = payload.toSlockTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = remember(payload.memberKind) { payload.memberKind.toMemberDetailExpectedKind() }
+    val statusLookupServerId =
+        when (val current = routeState) {
+            is MemberDetailRouteState.Agent -> current.server.id.value
+            else -> null
+        }
+    val agentStatusResolver =
+        remember(serverMembersState, statusLookupServerId) {
+            val lookup = ThreadAgentStatusLookup.from(serverMembersState, statusLookupServerId)
+            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
+            resolver
+        }
 
     LaunchedEffect(payload.memberId, expectedKind, localAgentDetailRefreshKey) {
         val cached = provider.cachedContext(payload.memberId, expectedKind)
         routeState = cached ?: MemberDetailRouteState.Loading
         routeState = provider.loadMember(payload.memberId, expectedKind)
+    }
+    LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
+        val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        provider.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
     }
 
     when (val current = routeState) {
@@ -1373,6 +1405,7 @@ private fun MemberDetailPageContent() {
                     sharedAgentDetailStore = provider.agentDetailStore,
                     initialAgentTab = initialAgentTab,
                     agentPanelTabOrder = payload.agentPanelTabOrder,
+                    agentStatusResolver = agentStatusResolver,
                     agentsApiClient = provider.agentsApiClient
                 )
             }
@@ -1401,7 +1434,8 @@ private fun MemberDetailPageContent() {
                 onUnavailableAction = { bridge.toast(it) },
                 timeContext = timeContext,
                 initialAgentTab = initialAgentTab,
-                agentPanelTabOrder = payload.agentPanelTabOrder
+                agentPanelTabOrder = payload.agentPanelTabOrder,
+                agentStatusResolver = agentStatusResolver
             )
         }
     }
@@ -1679,6 +1713,7 @@ internal fun MembersRouteContent(
     refreshing: Boolean = false,
     onAddHuman: () -> Unit,
     onOpenMemberDetail: (MemberProfile) -> Unit,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     /**
      * Optional create-agent flow. When non-null, the agents section "+" opens a
      * SharedCreateAgentDialog and submit is forwarded to this host callback.
@@ -1715,6 +1750,7 @@ internal fun MembersRouteContent(
         refreshing = refreshing,
         onAddHuman = onAddHuman,
         onOpenMember = onOpenMemberDetail,
+        agentStatusResolver = agentStatusResolver,
         canCreateAgents = canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = createAgentMachines,
@@ -1738,6 +1774,7 @@ internal fun MembersListContent(
     refreshing: Boolean = false,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     canCreateAgents: Boolean = false,
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
@@ -1832,6 +1869,7 @@ internal fun MembersListContent(
                         val member = group.members[index]
                         MembersListRow(
                             member = member,
+                            agentStatusResolver = agentStatusResolver,
                             modifier = Modifier.padding(horizontal = MembersPageInset),
                             onClick = { onOpenMember(member) }
                         )
@@ -1860,6 +1898,7 @@ internal fun MembersListContent(
                     val member = humans[index]
                     MembersListRow(
                         member = member,
+                        agentStatusResolver = agentStatusResolver,
                         modifier = Modifier.padding(horizontal = MembersPageInset),
                         onClick = { onOpenMember(member) }
                     )
@@ -2005,6 +2044,7 @@ private fun MembersDetailContent(
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
     agentPanelTabOrder: List<String> = emptyList(),
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
@@ -2013,6 +2053,13 @@ private fun MembersDetailContent(
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
+    val agentStatusIndicatorState =
+        if (member.kind == MemberKind.Agent) {
+            agentStatusResolver(member.id.value)
+                ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
+        } else {
+            null
+        }
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
@@ -2319,6 +2366,7 @@ private fun MembersDetailContent(
                 onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
                 onOpenDirectMessage = onOpenDirectMessage,
                 onCopyMemberId = onCopyMemberId,
+                agentStatusIndicatorState = agentStatusIndicatorState,
                 onRequestManagementMenu = { anchor ->
                     managementMenuAnchor = anchor
                     managementMenuOpen = true
@@ -2381,6 +2429,8 @@ private fun MembersDetailContent(
                                         member = member,
                                         detail = detail,
                                         canManage = canManage,
+                                        agentStatusIndicatorState = agentStatusIndicatorState,
+                                        agentStatusResolver = agentStatusResolver,
                                         showAvatarPicker = showAvatarPicker && canManage && !deleted,
                                         onToggleAvatarPicker = {
                                             showAvatarPicker = !showAvatarPicker
@@ -2639,6 +2689,7 @@ private fun MembersDetailHeader(
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     onBack: () -> Unit,
     onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
@@ -2675,6 +2726,7 @@ private fun MembersDetailHeader(
                 avatarSize = 42.dp,
                 statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
+                statusIndicatorState = agentStatusIndicatorState,
                 showStatusOverlay = false,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
@@ -2775,6 +2827,7 @@ private fun MembersDetailSummary(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     modifier: Modifier = Modifier
 ) {
     val summary = detail?.summary
@@ -2799,7 +2852,8 @@ private fun MembersDetailSummary(
             member = member,
             avatarSize = 58.dp,
             statusSize = 12.dp,
-            statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
+            statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity),
+            statusIndicatorState = agentStatusIndicatorState
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
@@ -3380,6 +3434,7 @@ private fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     canEdit: Boolean,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     showAvatarPicker: Boolean,
     onToggleAvatarPicker: () -> Unit,
     onSelectAvatar: (String) -> Unit,
@@ -3440,9 +3495,9 @@ private fun MembersAgentProfileHeader(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SlockStatusIndicator(
-                        color = statusDisplayState.color,
+                        color = agentStatusIndicatorState?.color ?: SlockColor.EmptyStateGray,
                         size = 8.dp,
-                        pulsing = statusDisplayState.pulsing
+                        pulsing = agentStatusIndicatorState?.pulsing == true
                     )
                     Text(
                         text = statusLabel,
@@ -3506,6 +3561,8 @@ private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     showAvatarPicker: Boolean,
     onToggleAvatarPicker: () -> Unit,
     onSelectAvatar: (String) -> Unit,
@@ -3798,6 +3855,7 @@ private fun MembersAgentProfileTab(
             member = member,
             summary = summary,
             canEdit = canEdit,
+            agentStatusIndicatorState = agentStatusIndicatorState,
             showAvatarPicker = showAvatarPicker,
             onToggleAvatarPicker = onToggleAvatarPicker,
             onSelectAvatar = onSelectAvatar,
@@ -4171,7 +4229,7 @@ private fun MembersAgentProfileTab(
         // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
         // picker invocation that previously lived here were removed in this commit so the
         // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
-        MembersAgentCreatedAgentsSection(detail)
+        MembersAgentCreatedAgentsSection(detail, agentStatusResolver = agentStatusResolver)
         MembersAgentSkillsSection(detail)
         MembersAgentProfileActionsSection(
             member = member,
@@ -4805,7 +4863,10 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
 }
 
 @Composable
-private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
+private fun MembersAgentCreatedAgentsSection(
+    detail: AgentDetailSnapshot?,
+    agentStatusResolver: SlockAgentStatusResolver = { null }
+) {
     val createdAgents = detail?.summary?.createdAgents.orEmpty()
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -4840,7 +4901,7 @@ private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 createdAgents.forEach { agent ->
-                    MembersAgentCreatedAgentRow(agent)
+                    MembersAgentCreatedAgentRow(agent, agentStatusResolver)
                 }
             }
         }
@@ -4848,9 +4909,12 @@ private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
 }
 
 @Composable
-private fun MembersAgentCreatedAgentRow(agent: AgentCreatedSummary) {
+private fun MembersAgentCreatedAgentRow(
+    agent: AgentCreatedSummary,
+    agentStatusResolver: SlockAgentStatusResolver = { null }
+) {
     val profile = remember(agent) { agent.toMemberProfile() }
-    val statusDisplayState = profile.membersAgentStatusDisplayState(agent.status, agent.status)
+    val statusDisplayState = agentStatusResolver(profile.id.value)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -4888,9 +4952,9 @@ private fun MembersAgentCreatedAgentRow(agent: AgentCreatedSummary) {
             )
         }
         SlockStatusIndicator(
-            color = statusDisplayState.color,
+            color = statusDisplayState?.color ?: SlockColor.EmptyStateGray,
             size = 10.dp,
-            pulsing = statusDisplayState.pulsing
+            pulsing = statusDisplayState?.pulsing == true
         )
     }
 }
@@ -6308,8 +6372,15 @@ private fun MembersPageHeader(
 private fun MembersListRow(
     member: MemberProfile,
     modifier: Modifier = Modifier,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     onClick: () -> Unit = {}
 ) {
+    val agentStatusDisplayState =
+        if (member.kind == MemberKind.Agent) {
+            agentStatusResolver(member.id.value)
+        } else {
+            null
+        }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -6321,7 +6392,8 @@ private fun MembersListRow(
     ) {
         MembersAvatar(
             member = member,
-            showStatusOverlay = false
+            showStatusOverlay = false,
+            statusIndicatorState = agentStatusDisplayState
         )
         Row(
             modifier = Modifier.weight(1f),
@@ -6346,11 +6418,10 @@ private fun MembersListRow(
             )
         }
         if (member.kind == MemberKind.Agent) {
-            val statusDisplayState = member.membersAgentStatusDisplayState()
             SlockStatusIndicator(
-                color = statusDisplayState.color,
+                color = agentStatusDisplayState?.color ?: SlockColor.EmptyStateGray,
                 size = MemberStatusDotSize,
-                pulsing = statusDisplayState.pulsing
+                pulsing = agentStatusDisplayState?.pulsing == true
             )
         }
     }
@@ -6362,6 +6433,7 @@ private fun MembersAvatar(
     avatarSize: Dp = MemberAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
     statusDisplayState: MembersAgentStatusDisplayState = member.membersAgentStatusDisplayState(),
+    statusIndicatorState: SlockAgentStatusIndicatorState? = null,
     showStatusOverlay: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -6372,13 +6444,13 @@ private fun MembersAvatar(
         modifier = modifier,
         statusColor =
             if (showStatusOverlay && member.kind == MemberKind.Agent) {
-                statusDisplayState.color
+                statusIndicatorState?.color ?: statusDisplayState.color
             } else {
                 null
             },
         avatarSize = avatarSize,
         statusSize = statusSize,
-        statusPulsing = statusDisplayState.pulsing
+        statusPulsing = statusIndicatorState?.pulsing ?: statusDisplayState.pulsing
     ) {
         SlockAvatar(
             avatarWireValue = avatarWireValue,

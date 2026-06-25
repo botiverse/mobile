@@ -252,6 +252,7 @@ import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsServerTranslationSnapshot
 import ai.slock.compose.data.SettingsServerSystemChannelSnapshot
 import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
+import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.markdown.SlockMarkdownBody
@@ -405,6 +406,7 @@ private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
 private val EmptyConversationDirectoryProjectionFlow =
     MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
+private val EmptyServerMembersStateFlow = MutableStateFlow(SharedServerMembersState())
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
@@ -465,7 +467,10 @@ internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
 }
 
 @Composable
-private fun SharedHomeSearchEntityLeadingAvatar(result: SearchEntityResult) {
+private fun SharedHomeSearchEntityLeadingAvatar(
+    result: SearchEntityResult,
+    agentStatusResolver: SlockAgentStatusResolver
+) {
     when (result.type) {
         SearchEntityType.Channel ->
             Box(
@@ -480,15 +485,28 @@ private fun SharedHomeSearchEntityLeadingAvatar(result: SearchEntityResult) {
             }
 
         else ->
-            SlockAvatarWithStatus(
-                statusColor = if (result.showPresence) result.presence.searchStatusColor() else null,
-                avatarSize = 32.dp,
-                statusSize = 8.dp
-            ) {
-                SlockAvatar(
-                    avatarWireValue = result.avatarWireValue ?: "random:${result.key}",
-                    label = result.title.removePrefix("@").removePrefix("#")
-                )
+            run {
+                val status =
+                    if (result.showPresence) {
+                        result.memberId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(agentStatusResolver)
+                            ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
+                    } else {
+                        null
+                    }
+
+                SlockAvatarWithStatus(
+                    statusColor = status?.color,
+                    avatarSize = 32.dp,
+                    statusSize = 8.dp,
+                    statusPulsing = status?.pulsing == true
+                ) {
+                    SlockAvatar(
+                        avatarWireValue = result.avatarWireValue ?: "random:${result.key}",
+                        label = result.title.removePrefix("@").removePrefix("#")
+                    )
+                }
             }
     }
 }
@@ -749,11 +767,29 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
     }
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
+    val searchServerId =
+        (homeState.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.server
+            ?.id
+            ?.value
+    val serverMembersState by environment.serverMembersStore.state.collectAsState(SharedServerMembersState())
+    val agentStatusResolver =
+        remember(serverMembersState, searchServerId) {
+            val lookup = ThreadAgentStatusLookup.from(serverMembersState, searchServerId)
+            val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
+            resolver
+        }
+    LaunchedEffect(environment.serverMembersStore, searchServerId) {
+        val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        environment.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+    }
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
+        agentStatusResolver = agentStatusResolver,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
@@ -2342,6 +2378,7 @@ private fun SlockAppShellContent() {
                             onOpenConversation = { conversation ->
                                 openHomeConversation(conversation, "home")
                             },
+                            serverMembersStore = sharedStores.serverMembersStore,
                             bottomContentPadding = appShellBottomContentInset
                         )
                     }
@@ -8655,6 +8692,13 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Content -> {
             val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
             val serverId = current.server.id.value
+            val serverMembersState by serverMembersStore.state.collectAsState(SharedServerMembersState())
+            val agentStatusResolver =
+                remember(serverMembersState, serverId) {
+                    val lookup = ThreadAgentStatusLookup.from(serverMembersState, serverId)
+                    val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
+                    resolver
+                }
             val computersSlice by computersStore
                 .computerPickerSliceFlow(serverId)
                 .collectAsState(SharedComputersPickerSlice())
@@ -8768,6 +8812,7 @@ private fun SharedMembersScreen(
                 payload = membersPayload,
                 refreshing = refreshing,
                 onAddHuman = { loadInviteJoinLink() },
+                agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
                     val pageData = membersPayload.toMemberDetailPageData(member.id.value)
                     if (pageData == null) {
@@ -9044,6 +9089,7 @@ private fun SharedHomeScreen(
     onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
+    serverMembersStore: SharedServerMembersStore? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     LaunchedEffect(active, state.content, state.homeRealtimeDirty) {
@@ -9101,6 +9147,17 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
+            val serverMembersState by (serverMembersStore?.state ?: EmptyServerMembersStateFlow)
+                .collectAsState(SharedServerMembersState())
+            val agentStatusResolver =
+                remember(serverMembersState, snapshot.server.id.value) {
+                    val lookup = ThreadAgentStatusLookup.from(serverMembersState, snapshot.server.id.value)
+                    val resolver: SlockAgentStatusResolver = { memberId -> lookup.indicatorStateForMemberId(memberId) }
+                    resolver
+                }
+            LaunchedEffect(serverMembersStore, snapshot.server.id) {
+                serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
+            }
             LaunchedEffect(conversationDirectoryStore, snapshot.server.id, snapshot.channels, snapshot.directMessages) {
                 val store = conversationDirectoryStore ?: return@LaunchedEffect
                 (snapshot.channels + snapshot.directMessages).forEach { conversation ->
@@ -9283,7 +9340,8 @@ private fun SharedHomeScreen(
                 },
                 onArchiveChannel = { conversationId ->
                     onIntent(SharedHomeIntent.ArchiveChannel(conversationId))
-                }
+                },
+                agentStatusResolver = agentStatusResolver
             )
         }
     }
@@ -9867,6 +9925,7 @@ private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificati
 private fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     interactiveSearchField: Boolean = true,
@@ -9982,6 +10041,7 @@ private fun SharedHomeSearchPanel(
                     items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                         SharedHomeSearchEntityRow(
                             result = entityResults[index],
+                            agentStatusResolver = agentStatusResolver,
                             onOpen = { onOpenEntity(entityResults[index]) }
                         )
                     }
@@ -11176,6 +11236,7 @@ private fun SharedHomeSearchSectionLabel(label: String) {
 @Composable
 private fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
+    agentStatusResolver: SlockAgentStatusResolver,
     onOpen: () -> Unit
 ) {
     Row(
@@ -11190,7 +11251,7 @@ private fun SharedHomeSearchEntityRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SharedHomeSearchEntityLeadingAvatar(result)
+        SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -11844,14 +11905,6 @@ private fun ConversationSummary.searchMatches(query: String): Boolean =
 private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
     listOf(label, handle, id).any { it.lowercase().contains(query) }
 
-private fun SlockPresence?.searchStatusColor(): Color? =
-    when (this) {
-        SlockPresence.Online -> SlockColor.AccentLime
-        SlockPresence.Offline -> SlockColor.EmptyStateGray
-        SlockPresence.Unknown -> SlockColor.BrandYellow
-        null -> null
-    }
-
 private fun String.searchAvatarSeed(): String =
     lowercase()
         .replace(Regex("[^a-z0-9]+"), "-")
@@ -11911,6 +11964,7 @@ internal data class SharedHomeConversationRowSeed(
     val avatarUrl: String? = null,
     val gravatarUrl: String? = null,
     val peerType: String? = null,
+    val fallbackPresenceMemberId: String? = null,
     val fallbackName: String = "",
     val fallbackChannelType: String? = null,
     val fallbackDescription: String? = null,
@@ -11944,6 +11998,7 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
         avatarUrl = avatarUrl,
         gravatarUrl = gravatarUrl,
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
+        fallbackPresenceMemberId = presenceMemberId?.value,
         fallbackName = name,
         fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
@@ -11971,6 +12026,7 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         avatarWireValue = directoryProjection?.avatarWireValue ?: fallbackAvatarWireValue,
         gravatarUrl = gravatarUrl,
         peerType = peerType,
+        presenceMemberId = directoryProjection?.peerMemberId ?: fallbackPresenceMemberId,
         presence = (directoryProjection?.presence ?: fallbackPresence).toSharedPresence(),
         agentStatus = (directoryProjection?.agentStatus ?: fallbackAgentStatus)?.name,
         hasDraft = draftProjection.hasRootDraft(id),

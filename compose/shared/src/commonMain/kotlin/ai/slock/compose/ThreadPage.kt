@@ -5540,7 +5540,7 @@ private fun ThreadPageContent(
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (String) -> Unit,
     highlightedMentions: Set<String>,
-    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -5758,6 +5758,7 @@ private fun ThreadPageContent(
                 members = payload.members,
                 membersCount = payload.membersCount,
                 canAddMembers = payload.canAddMembers,
+                agentStatusResolver = agentStatusResolver,
                 onDismiss = { activeModal = null },
                 onAddMember = {
                     activeModal = "addMember"
@@ -5776,6 +5777,7 @@ private fun ThreadPageContent(
                     members = payload.members,
                     membersCount = payload.membersCount,
                     canAddMembers = payload.canAddMembers,
+                    agentStatusResolver = agentStatusResolver,
                     onDismiss = { activeModal = null },
                     onAddMember = {
                         activeModal = "addMember"
@@ -5792,6 +5794,7 @@ private fun ThreadPageContent(
                     members = payload.members,
                     candidates = payload.memberCandidates,
                     canAddMembers = payload.canAddMembers,
+                    agentStatusResolver = agentStatusResolver,
                     addMemberStatus = payload.addMemberStatus,
                     addMemberErrorCode = payload.addMemberErrorCode,
                     onDismiss = { activeModal = "members" },
@@ -10547,6 +10550,7 @@ private fun ThreadMembersModal(
     members: List<KuiklyThreadMemberItem>,
     membersCount: Int,
     canAddMembers: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     removeMemberStatus: String,
     removingMemberId: String?,
     removeMemberErrorCode: String?,
@@ -10602,14 +10606,15 @@ private fun ThreadMembersModal(
                         items(agents.size, key = { agents[it].memberKey }) { index ->
                             val member = agents[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
+                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
-                                statusColor = member.modalStatusColor(),
-                                statusPulsing = member.modalStatusPulsing(),
+                                statusColor = status?.color,
+                                statusPulsing = status?.pulsing == true,
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
@@ -10622,14 +10627,15 @@ private fun ThreadMembersModal(
                         items(humans.size, key = { humans[it].memberKey }) { index ->
                             val member = humans[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
+                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
-                                statusColor = member.modalStatusColor(),
-                                statusPulsing = member.modalStatusPulsing(),
+                                statusColor = status?.color,
+                                statusPulsing = status?.pulsing == true,
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
@@ -10655,6 +10661,7 @@ private fun ThreadAddMemberModal(
     members: List<KuiklyThreadMemberItem>,
     candidates: List<KuiklyThreadMemberItem>,
     canAddMembers: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver = { null },
     addMemberStatus: String,
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
@@ -10737,13 +10744,14 @@ private fun ThreadAddMemberModal(
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
+                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
-                                statusColor = member.modalStatusColor(),
-                                statusPulsing = member.modalStatusPulsing(),
+                                statusColor = status?.color,
+                                statusPulsing = status?.pulsing == true,
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
@@ -10762,13 +10770,14 @@ private fun ThreadAddMemberModal(
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
+                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
-                                statusColor = member.modalStatusColor(),
-                                statusPulsing = member.modalStatusPulsing(),
+                                statusColor = status?.color,
+                                statusPulsing = status?.pulsing == true,
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
@@ -10803,18 +10812,12 @@ private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
 private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
-private fun KuiklyThreadMemberItem.modalStatusColor(): Color? =
-    modalAgentStatusIndicatorState()?.color
-
-private fun KuiklyThreadMemberItem.modalStatusPulsing(): Boolean =
-    modalAgentStatusIndicatorState()?.pulsing == true
-
-private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
+private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
+    agentStatusResolver: SlockAgentStatusResolver
+): SlockAgentStatusIndicatorState? {
     if (!kind.equals("agent", ignoreCase = true)) return null
-    return slockAgentStatusIndicatorState(
-        status = agentStatus,
-        presence = presence ?: agentStatus?.presence ?: Presence.Offline
-    )
+    return agentStatusResolver(id)
+        ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
 }
 
 private enum class ThreadSettingsDangerAction(

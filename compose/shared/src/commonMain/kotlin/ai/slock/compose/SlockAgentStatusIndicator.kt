@@ -10,6 +10,8 @@ internal data class SlockAgentStatusIndicatorState(
     val pulsing: Boolean
 )
 
+internal typealias SlockAgentStatusResolver = (String?) -> SlockAgentStatusIndicatorState?
+
 internal fun slockAgentStatusIndicatorState(
     status: AgentStatus?,
     presence: Presence
