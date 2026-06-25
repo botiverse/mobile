@@ -193,8 +193,14 @@ internal class SharedThreadDataSource(
             payload
                 .withoutTransientLocalSendingMessages()
                 .withOriginReplyCountAtLeastLoadedReplies()
+                .asLoadedEmptyReplyThreadPayload()
         if (cacheablePayload.hasRenderableThreadContent()) {
-            payloadCache[threadId] = cacheablePayload.copy(status = "content", backgroundRefreshing = false, errorCode = null)
+            payloadCache[threadId] =
+                cacheablePayload.copy(
+                    status = if (cacheablePayload.isLoadedEmptyReplyThread()) "empty" else "content",
+                    backgroundRefreshing = false,
+                    errorCode = null
+                )
         }
     }
 
@@ -218,6 +224,7 @@ internal class SharedThreadDataSource(
             snapshot
                 .toKuiklyThreadPayload(basePayload, session?.user?.id)
                 .withoutTransientLocalSendingMessages()
+                .asLoadedEmptyReplyThreadPayload()
         val windowedPayload =
             if (trimToLatestThreadWindow) {
                 payload.trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
@@ -1470,6 +1477,7 @@ internal class SharedThreadDataSource(
         return result.map { snapshot ->
             transform(snapshot)
                 .withCachedSenderProfiles(session)
+                .asLoadedEmptyReplyThreadPayload()
         }
     }
 
@@ -2254,10 +2262,11 @@ internal class SharedThreadStore(
                 }
                 ?.withRouteContext(basePayload)
                 ?.preserveStableTimelineFrom(latest)
+                ?.asLoadedEmptyReplyThreadPayload()
         val nextPayload =
             when (result) {
                 is DataResult.Content ->
-                    visiblePayload ?: result.data.withRouteContext(basePayload)
+                    visiblePayload ?: result.data.withRouteContext(basePayload).asLoadedEmptyReplyThreadPayload()
                 is DataResult.Empty ->
                     if (result.reason == EmptyReason.NoMessages) {
                         latest.asRefreshEmpty(basePayload)
@@ -3252,6 +3261,29 @@ private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPay
         emptyDetail = "This conversation has no messages yet."
     )
 
+private fun KuiklyThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
+    if (isLoadedEmptyReplyThread()) {
+        copy(
+            status = "empty",
+            messages = emptyList(),
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+            olderMessagesStatus = "idle",
+            newerMessagesStatus = "idle",
+            errorCode = null,
+            emptyTitle = ThreadReplyEmptyTitle,
+            emptyDetail = ThreadReplyEmptyDetail
+        )
+    } else {
+        this
+    }
+
+private fun KuiklyThreadScreenPayload.isLoadedEmptyReplyThread(): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        messages.isEmpty() &&
+        originStatus != "none" &&
+        originStatus != "loading"
+
 private fun DataResult<*>.threadDiagnosticsResult(): String =
     when (this) {
         is DataResult.Content -> "content"
@@ -3945,6 +3977,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
         errorCode = null,
         messages = merged.sortedByThreadTimeline()
     ).withOriginReplyCountAtLeastLoadedReplies()
+        .asLoadedEmptyReplyThreadPayload()
 }
 
 private fun KuiklyThreadScreenPayload.mergePagedMessages(
@@ -3968,6 +4001,7 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
         olderMessagesStatus = if (before) "idle" else olderMessagesStatus,
         newerMessagesStatus = if (before) newerMessagesStatus else "idle"
     ).withOriginReplyCountAtLeastLoadedReplies()
+        .asLoadedEmptyReplyThreadPayload()
 }
 
 private fun KuiklyThreadScreenPayload.withLocalSendStarted(
