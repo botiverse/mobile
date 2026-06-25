@@ -201,6 +201,7 @@ internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
 private const val THREAD_HEADER_VISUAL_PAGE = "compose_thread_header_visual"
+private const val THREAD_REACTION_ATLAS_VISUAL_PAGE = "compose_thread_reaction_atlas_visual"
 private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_panel_visual"
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
@@ -393,6 +394,14 @@ internal class ComposeThreadHeaderVisualPage : ai.slock.compose.base.BasePager()
     override fun willInit() {
         super.willInit()
         setContent { ThreadHeaderVisualScreen() }
+    }
+}
+
+@Page(THREAD_REACTION_ATLAS_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadReactionAtlasVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadReactionAtlasVisualScreen() }
     }
 }
 
@@ -1822,6 +1831,94 @@ private fun ThreadHeaderVisualScreen() {
             onShowMembers = {},
             onShowSettings = {}
         )
+    }
+}
+
+@Composable
+private fun ThreadReactionAtlasVisualScreen() {
+    Column(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        ThreadReactionVisualSection("Atlas sprites") {
+            ThreadReactionAtlasImagePreview()
+        }
+        ThreadReactionVisualSection("Quick row") {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
+                        .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                        .padding(vertical = SlockSpacing.Xs)
+            ) {
+                ThreadMessageReactionRow(onReact = {})
+            }
+        }
+        ThreadReactionVisualSection("Chips") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
+                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
+                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
+            }
+        }
+        ThreadReactionVisualSection("Fallback") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
+                ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
+                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadReactionVisualSection(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+        Text(
+            text = title,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.58f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        content()
+    }
+}
+
+@Composable
+private fun ThreadReactionAtlasImagePreview() {
+    Box(
+        modifier =
+            Modifier
+                .width(252.dp)
+                .height(36.dp)
+                .background(SlockColor.SurfaceCream),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Lg),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ThreadReactionSpriteCatalogV1.reactions.forEach { sprite ->
+                ThreadQuickReactionGlyph(sprite.value, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }
 
@@ -8765,6 +8862,11 @@ private fun ThreadReactionSpriteGlyph(
     modifier: Modifier = Modifier
 ) {
     val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val imageReady = image.width > 0 && image.height > 0
+    if (!imageReady) {
+        ThreadLegacyQuickReactionGlyph(emoji = sprite.value, modifier = modifier)
+        return
+    }
     val rect = sprite.rect
     Canvas(modifier = modifier) {
         drawImage(

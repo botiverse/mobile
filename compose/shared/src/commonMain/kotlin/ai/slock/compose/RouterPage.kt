@@ -167,6 +167,7 @@ private val DeveloperRouteGroups =
                     DeveloperRouteItem("Thread Message Visual", "compose_thread_message_visual", "Message fixture"),
                     DeveloperRouteItem("Thread Message Row Visual", "compose_thread_message_row_visual", "Row fixture"),
                     DeveloperRouteItem("Thread Header Visual", "compose_thread_header_visual", "Header fixture"),
+                    DeveloperRouteItem("Thread Reaction Atlas Visual", "compose_thread_reaction_atlas_visual", "Reaction sprite fixture"),
                     DeveloperRouteItem("Channel Members Panel", "compose_channel_members_panel_visual", "Panel fixture"),
                     DeveloperRouteItem("Channel Settings Panel", "compose_channel_settings_panel_visual", "Panel fixture"),
                     DeveloperRouteItem("Channel Add Member Panel", "compose_channel_add_member_panel_visual", "Panel fixture")

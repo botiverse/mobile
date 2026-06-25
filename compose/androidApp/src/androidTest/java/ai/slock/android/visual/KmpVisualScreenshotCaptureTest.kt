@@ -165,6 +165,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadReactionAtlas() {
+        captureKmpComponentCase(
+            caseId = "components.thread.reaction-atlas",
+            pageName = "compose_thread_reaction_atlas_visual",
+            crop = THREAD_REACTION_ATLAS_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureHomeTitlebarStates() {
         captureKmpComponentCase(
             caseId = "components.home.titlebar.states",
@@ -1118,6 +1128,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 62
+            )
+        private val THREAD_REACTION_ATLAS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 270
             )
         private val HOME_ACTIVITY_RESULTS_CROP =
             VisualCrop(
