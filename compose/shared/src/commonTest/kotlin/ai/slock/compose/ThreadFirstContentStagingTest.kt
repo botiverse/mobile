@@ -36,8 +36,8 @@ class ThreadFirstContentStagingTest {
     }
 
     @Test
-    fun backgroundRefreshingUsesFullLoadingShell() {
-        assertTrue(
+    fun backgroundRefreshingKeepsRenderableContentVisible() {
+        assertFalse(
             KuiklyThreadScreenPayload(
                 status = "content",
                 messages = listOf(
@@ -48,6 +48,12 @@ class ThreadFirstContentStagingTest {
                         body = "Loaded"
                     )
                 ),
+                backgroundRefreshing = true
+            ).shouldRenderThreadEarlyLoadingShell()
+        )
+        assertTrue(
+            KuiklyThreadScreenPayload(
+                status = "content",
                 backgroundRefreshing = true
             ).shouldRenderThreadEarlyLoadingShell()
         )
