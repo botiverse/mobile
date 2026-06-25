@@ -30,6 +30,7 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
 import ai.slock.compose.data.formatAttachmentSizeLabel
 import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockComputersNetworkApi
@@ -1560,6 +1561,7 @@ private fun ThreadPageScreen() {
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
     var threadRealtimeCacheInvalidationSequence by remember { mutableStateOf(0L) }
+    var sharedThreadCacheInvalidation by remember { mutableStateOf<ThreadRealtimeCacheInvalidationSignal?>(null) }
     DisposableEffect(pager, realtimeEventMapper, authStore, threadPageCoroutineScope) {
         val observer =
             object : IPagerEventObserver {
@@ -1588,8 +1590,16 @@ private fun ThreadPageScreen() {
         pager.addPagerEventObserver(observer)
         onDispose { pager.removePagerEventObserver(observer) }
     }
-    val sharedThreadCacheInvalidation by
-        sharedStores.realtimeDomainEventOwner.threadCacheInvalidations.collectAsState(null)
+    val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
+    DisposableEffect(threadCacheInvalidationEvents) {
+        val callbackRef =
+            threadCacheInvalidationEvents.addListener { signal ->
+                sharedThreadCacheInvalidation = signal
+            }
+        onDispose {
+            threadCacheInvalidationEvents.removeListener(callbackRef)
+        }
+    }
     LaunchedEffect(sharedThreadCacheInvalidation?.sequence, authStore, payload) {
         val signal = sharedThreadCacheInvalidation ?: return@LaunchedEffect
         val currentServerId =

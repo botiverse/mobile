@@ -26,6 +26,7 @@ import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
+import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -1447,6 +1448,7 @@ private fun SlockAppShellContent() {
             )
         }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
+    val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
@@ -2258,7 +2260,13 @@ private fun SlockAppShellContent() {
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
-    DisposableEffect(sharedStores.realtimeDomainEventOwner, homeShellStore, settingsViewModel, bridge) {
+    DisposableEffect(
+        sharedStores.realtimeDomainEventOwner,
+        homeShellStore,
+        settingsViewModel,
+        threadCacheInvalidationEvents,
+        bridge
+    ) {
         val sinks =
             RealtimeDomainEventSinks(
                 applyHomeShell = { serverId, event ->
@@ -2293,6 +2301,7 @@ private fun SlockAppShellContent() {
                         )
                     }
                 },
+                emitThreadCacheInvalidation = threadCacheInvalidationEvents::postInvalidation,
                 log = { message -> bridge.log(message) }
             )
         sharedStores.realtimeDomainEventOwner.registerSinks(sinks)
