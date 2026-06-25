@@ -9,6 +9,9 @@ import ai.slock.compose.network.AuthenticatedKtorTransport
 import ai.slock.compose.network.AuthTokenProvider
 import ai.slock.compose.network.AuthTokens
 import ai.slock.compose.network.HttpClientConfig
+import ai.slock.compose.network.SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
+import ai.slock.compose.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+import ai.slock.compose.network.SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS
 import ai.slock.compose.network.SlockApiClient
 import ai.slock.compose.network.SlockRequestScheduler
 import ai.slock.compose.network.TimeoutConfig
@@ -32,15 +35,32 @@ object RealSlockNetworkClientFactory {
         }
         val config = HttpClientConfig(timeout = TimeoutConfig())
         val foregroundHttpClient =
-            createPriorityHttpClient(config = config, maxRequests = 12, maxRequestsPerHost = 12)
+            createPriorityHttpClient(
+                config = config,
+                maxRequests = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
+                maxRequestsPerHost = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+            )
         val visibleHttpClient =
-            createPriorityHttpClient(config = config, maxRequests = 8, maxRequestsPerHost = 8)
+            createPriorityHttpClient(
+                config = config,
+                maxRequests = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS,
+                maxRequestsPerHost = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS
+            )
         val backgroundHttpClient =
-            createPriorityHttpClient(config = config, maxRequests = 4, maxRequestsPerHost = 4)
+            createPriorityHttpClient(
+                config = config,
+                maxRequests = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS,
+                maxRequestsPerHost = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
+            )
         val client =
             SlockApiClient(
                 baseUrl = baseUrl,
-                httpClient = createPriorityHttpClient(config = config, maxRequests = 6, maxRequestsPerHost = 6),
+                httpClient =
+                    createPriorityHttpClient(
+                        config = config,
+                        maxRequests = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
+                        maxRequestsPerHost = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+                    ),
                 foregroundHttpClient = foregroundHttpClient,
                 visibleHttpClient = visibleHttpClient,
                 backgroundHttpClient = backgroundHttpClient,
@@ -56,9 +76,9 @@ object RealSlockNetworkClientFactory {
                     ),
                 requestScheduler =
                     SlockRequestScheduler(
-                        maxForegroundRequests = 12,
-                        maxVisibleRequests = 8,
-                        maxBackgroundRequests = 4,
+                        maxForegroundRequests = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
+                        maxVisibleRequests = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS,
+                        maxBackgroundRequests = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS,
                         logger = { message -> logger("request_pool_$message") }
                     ),
                 warningLogger = warningLogger
