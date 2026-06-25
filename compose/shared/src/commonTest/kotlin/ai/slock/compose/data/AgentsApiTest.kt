@@ -107,6 +107,20 @@ class AgentsApiTest {
         assertEquals("gpt-5.3-codex", json.getValue("model").jsonPrimitive.content)
         assertEquals("high", json.getValue("reasoningEffort").jsonPrimitive.content)
         assertEquals("machine-1", json.getValue("machineId").jsonPrimitive.content)
+        val runtimeConfig = json.getValue("runtimeConfig").jsonObject
+        assertEquals("codex", runtimeConfig.getValue("runtime").jsonPrimitive.content)
+        assertEquals(
+            "preset",
+            runtimeConfig.getValue("model").jsonObject.getValue("kind").jsonPrimitive.content
+        )
+        assertEquals(
+            "gpt-5.3-codex",
+            runtimeConfig.getValue("model").jsonObject.getValue("id").jsonPrimitive.content
+        )
+        assertEquals(
+            "fast",
+            runtimeConfig.getValue("mode").jsonObject.getValue("kind").jsonPrimitive.content
+        )
     }
 
     @Test
