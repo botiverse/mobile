@@ -143,6 +143,7 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -167,8 +168,11 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
 import com.tencent.kuikly.core.module.PerformanceModule
@@ -8592,7 +8596,6 @@ private val ThreadMessageMenuWidth = 208.dp
 private val ThreadMessageMenuFallbackHeight = 210.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
-internal val ThreadQuickReactionEmojis = listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅")
 
 @Composable
 private fun ThreadMessageActionMenu(
@@ -8745,6 +8748,37 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 
 @Composable
 private fun ThreadQuickReactionGlyph(
+    emoji: String,
+    modifier: Modifier = Modifier
+) {
+    val sprite = ThreadReactionSpriteCatalogV1.resolve(emoji)
+    if (sprite != null) {
+        ThreadReactionSpriteGlyph(sprite = sprite, modifier = modifier)
+        return
+    }
+    ThreadLegacyQuickReactionGlyph(emoji = emoji, modifier = modifier)
+}
+
+@Composable
+private fun ThreadReactionSpriteGlyph(
+    sprite: ThreadReactionSprite,
+    modifier: Modifier = Modifier
+) {
+    val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val rect = sprite.rect
+    Canvas(modifier = modifier) {
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(rect.x, rect.y),
+            srcSize = IntSize(rect.width, rect.height),
+            dstOffset = IntOffset.Zero,
+            dstSize = size.toIntSize()
+        )
+    }
+}
+
+@Composable
+private fun ThreadLegacyQuickReactionGlyph(
     emoji: String,
     modifier: Modifier = Modifier
 ) {

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "atlas": {
+    "image": "reaction_atlas_v1.png",
+    "width": 504,
+    "height": 72,
+    "pixelRatio": 3,
+    "defaultDisplaySizeDp": 18
+  },
+  "reactions": [
+    {
+      "name": "thumbs_up",
+      "value": "👍",
+      "rect": { "x": 0, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Thumbs up",
+        "zh-Hans": "点赞",
+        "zh-Hant": "讚"
+      }
+    },
+    {
+      "name": "heart",
+      "value": "❤️",
+      "rect": { "x": 72, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Heart",
+        "zh-Hans": "爱心",
+        "zh-Hant": "愛心"
+      }
+    },
+    {
+      "name": "party",
+      "value": "🎉",
+      "rect": { "x": 144, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Celebrate",
+        "zh-Hans": "庆祝",
+        "zh-Hant": "慶祝"
+      }
+    },
+    {
+      "name": "eyes",
+      "value": "👀",
+      "rect": { "x": 216, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Eyes",
+        "zh-Hans": "关注",
+        "zh-Hant": "關注"
+      }
+    },
+    {
+      "name": "fire",
+      "value": "🔥",
+      "rect": { "x": 288, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Fire",
+        "zh-Hans": "火",
+        "zh-Hant": "火"
+      }
+    },
+    {
+      "name": "laugh",
+      "value": "😂",
+      "rect": { "x": 360, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Laugh",
+        "zh-Hans": "大笑",
+        "zh-Hant": "大笑"
+      }
+    },
+    {
+      "name": "done",
+      "value": "✅",
+      "rect": { "x": 432, "y": 0, "w": 72, "h": 72 },
+      "labels": {
+        "en": "Done",
+        "zh-Hans": "完成",
+        "zh-Hant": "完成"
+      }
+    }
+  ]
+}
