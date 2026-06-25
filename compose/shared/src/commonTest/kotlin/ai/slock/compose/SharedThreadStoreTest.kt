@@ -457,6 +457,39 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun memoryCachedDirectMessageSnapshotKeepsLaunchHeaderWhenSnapshotOmitsDisplayMetadata() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(
+            contentPayloadForRoute(directMessagePayload(), "cached body")
+                .copy(
+                    title = "Direct Message",
+                    dmPeerName = null,
+                    dmPeerAvatarUrl = null,
+                    dmPeerAvatarLabel = null,
+                    dmPeerGravatarUrl = null
+                )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertEquals("artin", payload.title)
+        assertEquals("artin", payload.dmPeerName)
+        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
+        assertEquals("AR", payload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("cached body", payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
     fun contentPatchDoesNotReplaceAgentDirectMessagePixelAvatarWithGravatar() {
         val current =
             directMessagePayload().copy(
