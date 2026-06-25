@@ -156,14 +156,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     override fun onDestroy() {
-        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = false)
+        AndroidAppScopeRealtimeOwner.declareKuiklySurfaceRooms(
+                surfaceId = realtimeSurfaceId,
+                rooms = emptySet()
+        )
         removeSlockInputFontBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
     }
 
     override fun onPause() {
-        detachRealtimeConsumerForPause()
         AndroidAppScopeRealtimeOwner.onAppHidden(source = "activity_on_pause")
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
@@ -183,7 +185,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             context = applicationContext,
             source = "activity_on_resume"
         )
-        attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
     }
 
@@ -671,26 +672,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             intent.getBooleanExtra(KEY_SUPPRESS_SOFT_KEYBOARD, false) ||
                     (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
 
-    private fun attachRealtimeConsumerIfNeeded() {
-        if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidAppScopeRealtimeOwner.attachKuiklyRawConsumer(realtimeSurfaceId) { serverId, eventName, rawPayload ->
-            sendRawRealtimeEvent(serverId, eventName, rawPayload)
-        }
-    }
-
-    private fun detachRealtimeConsumerIfNeeded(retainDeclaredRooms: Boolean) {
-        if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidAppScopeRealtimeOwner.detachKuiklyRawConsumer(
-            surfaceId = realtimeSurfaceId,
-            retainDeclaredRooms = retainDeclaredRooms
-        )
-    }
-
-    private fun detachRealtimeConsumerForPause() {
-        if (pageName == PAGE_APP_SHELL) return
-        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = true)
-    }
-
     internal fun requestRealtimeConnect(
         serverId: String,
         accessToken: String,
@@ -718,7 +699,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun declareForegroundRealtimeRooms() {
-        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        if (pageName != PAGE_THREAD) return
         AndroidAppScopeRealtimeOwner.declareKuiklySurfaceRooms(
             surfaceId = realtimeSurfaceId,
             rooms = foregroundThreadRealtimeChannelIds().map(::ChannelId).toSet()
@@ -741,39 +722,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 .distinct()
     }
 
-    private fun String.isRealtimeBridgeConsumerPage(): Boolean =
-            this == PAGE_APP_SHELL || this == PAGE_THREAD
-
     private fun sendAppShellLifecycleEvent(event: String) {
         if (pageSpec?.pageName != PAGE_APP_SHELL) return
-        kuiklyRenderViewDelegator.sendEvent(
+        applicationContext.sendKuiklyEvent(
                 REALTIME_EVENT_NAME,
-                mapOf(
-                        "action" to "appLifecycle",
-                        "event" to event,
-                        "pageName" to PAGE_APP_SHELL
-                )
-        )
-    }
-
-    private fun sendRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
-        val rawPayloadStr = when (rawPayload) {
-            is String -> rawPayload
-            is org.json.JSONObject -> rawPayload.toString()
-            is org.json.JSONArray -> rawPayload.toString()
-            else -> rawPayload?.toString() ?: "{}"
-        }
-        kuiklyRenderViewDelegator.sendEvent(
-                REALTIME_EVENT_NAME,
-                mapOf(
-                        "serverId" to serverId.value,
-                        "eventName" to eventName,
-                        "rawPayload" to rawPayloadStr
-                )
-        )
-        SlockDiagnosticsLogger.d(
-                "SlockKuiklyRealtime",
-                "raw_event_forwarded eventName=$eventName serverId=${serverId.value}"
+                JSONObject()
+                        .put("action", "appLifecycle")
+                        .put("event", event)
+                        .put("pageName", PAGE_APP_SHELL)
         )
     }
 

@@ -31,6 +31,7 @@ import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import ai.slock.compose.model.ConversationKind
+import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,12 +39,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
+    private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val rawConsumers = linkedMapOf<String, RealtimeConsumer>()
     private val surfaceRooms = linkedMapOf<String, Set<ChannelId>>()
     private val joinedRooms = linkedSetOf<ChannelId>()
 
@@ -98,7 +101,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Foreground
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
+            "app_scope_lifecycle event=shown source=$source declared_room_surfaces=${surfaceRooms.size}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -111,7 +114,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Background
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
+            "app_scope_lifecycle event=hidden source=$source declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
@@ -137,28 +140,6 @@ internal object AndroidAppScopeRealtimeOwner {
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
-        )
-    }
-
-    fun attachKuiklyRawConsumer(
-        surfaceId: String,
-        sink: (serverId: ServerId, eventName: String, rawPayload: Any?) -> Unit
-    ) {
-        rawConsumers[surfaceId] = RealtimeConsumer(surfaceId, sink)
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "kuikly_raw_consumer_attach surfaceId=$surfaceId consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
-        )
-    }
-
-    fun detachKuiklyRawConsumer(surfaceId: String, retainDeclaredRooms: Boolean = false) {
-        rawConsumers.remove(surfaceId)
-        if (!retainDeclaredRooms) {
-            surfaceRooms.remove(surfaceId)
-        }
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "kuikly_raw_consumer_detach surfaceId=$surfaceId consumer_count=${rawConsumers.size} retain_declared_rooms=$retainDeclaredRooms declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
@@ -370,7 +351,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "kuikly_surface_rooms_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }} consumer_count=${rawConsumers.size}"
+            "kuikly_surface_rooms_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }}"
         )
         joinDeclaredRooms()
     }
@@ -410,13 +391,13 @@ internal object AndroidAppScopeRealtimeOwner {
                             ?: run {
                                 SlockDiagnosticsLogger.d(
                                     LOG_TAG,
-                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()} consumer_count=${rawConsumers.size}"
+                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()}"
                                 )
                                 return@launch
                             }
                     SlockDiagnosticsLogger.d(
                         LOG_TAG,
-                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
+                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
                     )
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
@@ -434,11 +415,11 @@ internal object AndroidAppScopeRealtimeOwner {
                         ?: run {
                             SlockDiagnosticsLogger.d(
                                 LOG_TAG,
-                                "native_raw_event_skip reason=missing_server eventName=$eventName consumer_count=${rawConsumers.size} payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
+                                "native_raw_event_skip reason=missing_server eventName=$eventName payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
                             )
                             return@launch
                         }
-                fanOutRawRealtimeEvent(serverId, eventName, rawPayload)
+                fanOutRawRealtimeEvent(context.applicationContext, serverId, eventName, rawPayload)
             }
         }.also { realtimeRawSubscription = it }
         return repository
@@ -564,7 +545,7 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    private fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
+    private fun fanOutRawRealtimeEvent(appContext: Context, serverId: ServerId, eventName: String, rawPayload: Any?) {
         if (eventName == RealtimeSocketEvents.Heartbeat) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
@@ -572,15 +553,26 @@ internal object AndroidAppScopeRealtimeOwner {
             )
             return
         }
-        val snapshot = rawConsumers.values.toList()
-        snapshot.forEach { consumer ->
-            consumer.sink(serverId, eventName, rawPayload)
-        }
+        appContext.sendKuiklyEvent(REALTIME_EVENT_NAME, realtimeNotifyPayload(serverId, eventName, rawPayload))
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "raw_event_fanout eventName=$eventName serverId=${serverId.value} consumer_count=${snapshot.size}"
+            "raw_event_notify eventName=$eventName serverId=${serverId.value}"
         )
     }
+
+    private fun realtimeNotifyPayload(serverId: ServerId, eventName: String, rawPayload: Any?): JSONObject =
+        JSONObject()
+            .put("serverId", serverId.value)
+            .put("eventName", eventName)
+            .put("rawPayload", rawPayload.toRealtimeRawPayloadString())
+
+    private fun Any?.toRealtimeRawPayloadString(): String =
+        when (this) {
+            is String -> this
+            is JSONObject -> toString()
+            is JSONArray -> toString()
+            else -> this?.toString() ?: "{}"
+        }
 
     private suspend fun maybePostBackgroundUnreadNotification(
         appContext: Context,
@@ -589,10 +581,10 @@ internal object AndroidAppScopeRealtimeOwner {
         event: MessageNew
     ) {
         val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
-        val hasAttachedConsumers = rawConsumers.isNotEmpty()
+        val hasAttachedConsumers = false
         SlockDiagnosticsLogger.w(
             LOG_TAG,
-            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} consumer_count=${rawConsumers.size} preference_enabled=$preferenceEnabled visibility=$appVisibility"
+            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} preference_enabled=$preferenceEnabled visibility=$appVisibility"
         )
         val isAppInForeground = appVisibility == AppVisibility.Foreground
         if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
@@ -701,8 +693,4 @@ internal object AndroidAppScopeRealtimeOwner {
         Background
     }
 
-    private data class RealtimeConsumer(
-        val surfaceId: String,
-        val sink: (serverId: ServerId, eventName: String, rawPayload: Any?) -> Unit
-    )
 }

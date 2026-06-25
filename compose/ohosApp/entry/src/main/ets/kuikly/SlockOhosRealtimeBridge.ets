@@ -1,3 +1,4 @@
+import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
@@ -152,7 +153,7 @@ export class SlockOhosRealtimeBridge {
       console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
     }
     const serverId = this.connectParams?.serverId ?? '';
-    this.controller?.sendEvent(REALTIME_EVENT_NAME, {
+    this.sendRealtimeNotify({
       serverId: serverId,
       eventName: eventName,
       rawPayload: JSON.stringify(payload ?? {}),
@@ -261,14 +262,9 @@ export class SlockOhosRealtimeBridge {
       console.info(`[SlockOhosRealtime] auth_refresh_skip reason=${reason} result=in_flight`);
       return true;
     }
-    const controller = this.controller;
-    if (controller === undefined) {
-      console.warn(`[SlockOhosRealtime] auth_refresh_unavailable reason=${reason}`);
-      return false;
-    }
     this.authRefreshInFlight = true;
     console.info(`[SlockOhosRealtime] auth_refresh_request reason=${reason} serverId=${params.serverId}`);
-    controller.sendEvent(REALTIME_EVENT_NAME, {
+    this.sendRealtimeNotify({
       action: 'authRefreshRequired',
       reason: reason,
       serverId: params.serverId,
@@ -277,10 +273,19 @@ export class SlockOhosRealtimeBridge {
   }
 
   private sendAppLifecycleEvent(event: string): void {
-    this.controller?.sendEvent(REALTIME_EVENT_NAME, {
+    this.sendRealtimeNotify({
       action: 'appLifecycle',
       event: event,
       pageName: 'compose_slock_app_shell',
+    });
+  }
+
+  private sendRealtimeNotify(data: KRRecord): void {
+    emitter.emit(REALTIME_EVENT_NAME, {
+      data: {
+        eventName: REALTIME_EVENT_NAME,
+        stringify: JSON.stringify(data),
+      },
     });
   }
 }

@@ -26,6 +26,7 @@ import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
+import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
@@ -363,7 +364,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
@@ -432,7 +432,6 @@ private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val PreJoinAgreementBodyMaxLength = 5_000
-private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
 private const val AppShellNotificationServerIdKey = "slockNotificationServerId"
@@ -1449,6 +1448,7 @@ private fun SlockAppShellContent() {
         }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
     val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
+    val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
@@ -2309,82 +2309,78 @@ private fun SlockAppShellContent() {
     }
 
     DisposableEffect(
-        pager,
+        realtimeEvents,
         homeViewModel,
         realtimeEventMapper,
         settingsViewModel
     ) {
-        val observer =
-            object : IPagerEventObserver {
-                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
-                    if (pagerEvent != AppShellRealtimeEvent) return
-                    if (eventData.optString("action") == AppShellLifecycleAction) {
-                        val event = eventData.optString("event")
-                        if (
-                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
-                            latestReadySession != null
-                        ) {
-                            bridge.log(
-                                "app_shell_resume_refresh tab=${latestSelectedTab} " +
-                                    "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
-                            )
-                            when (retainedAppShellSelectedTab(latestSelectedTab)) {
-                                "home" ->
-                                    if (homeDestinationRefreshesOnLifecycleResume(latestSelectedHomeDestination)) {
-                                        when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
-                                            null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch ->
-                                                homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-                                        }
+        val callbackRef =
+            realtimeEvents.addListener { eventData ->
+                if (eventData.optString("action") == AppShellLifecycleAction) {
+                    val event = eventData.optString("event")
+                    if (
+                        (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                        latestReadySession != null
+                    ) {
+                        bridge.log(
+                            "app_shell_resume_refresh tab=${latestSelectedTab} " +
+                                "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+                        )
+                        when (retainedAppShellSelectedTab(latestSelectedTab)) {
+                            "home" ->
+                                if (homeDestinationRefreshesOnLifecycleResume(latestSelectedHomeDestination)) {
+                                    when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
+                                        null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch ->
+                                            homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                                     }
-                                "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
-                                "members" -> {
-                                    membersListRefreshKey += 1
-                                    membersAgentDetailRefreshKey += 1
                                 }
-                                "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+                            "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
+                            "members" -> {
+                                membersListRefreshKey += 1
+                                membersAgentDetailRefreshKey += 1
                             }
+                            "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
                         }
-                        return
                     }
-                    if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
-                        latestRealtimeAuthRefreshHandler(eventData)
-                        return
-                    }
-                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
-                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return
-                    val activeSession = latestReadySession
-                    if (
-                        event is ServerMembershipRemoved &&
-                        event.serverId.value == activeSession?.currentServerId
-                    ) {
-                        bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
-                        bridge.realtimeDisconnect("server_membership_removed")
-                        latestResetAppShellSessionState()
-                        appShellCoroutineScope.launch {
-                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                        }
-                        return
-                    }
-                    if (
-                        event is ServerDeleted &&
-                        event.serverId.value == activeSession?.currentServerId
-                    ) {
-                        bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
-                        bridge.realtimeDisconnect("server_deleted")
-                        latestResetAppShellSessionState()
-                        appShellCoroutineScope.launch {
-                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                        }
-                        return
-                    }
-                    realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
+                    return@addListener
                 }
+                if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
+                    latestRealtimeAuthRefreshHandler(eventData)
+                    return@addListener
+                }
+                val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@addListener
+                val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@addListener
+                val activeSession = latestReadySession
+                if (
+                    event is ServerMembershipRemoved &&
+                    event.serverId.value == activeSession?.currentServerId
+                ) {
+                    bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
+                    bridge.realtimeDisconnect("server_membership_removed")
+                    latestResetAppShellSessionState()
+                    appShellCoroutineScope.launch {
+                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                    }
+                    return@addListener
+                }
+                if (
+                    event is ServerDeleted &&
+                    event.serverId.value == activeSession?.currentServerId
+                ) {
+                    bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
+                    bridge.realtimeDisconnect("server_deleted")
+                    latestResetAppShellSessionState()
+                    appShellCoroutineScope.launch {
+                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                    }
+                    return@addListener
+                }
+                realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
             }
-        pager.addPagerEventObserver(observer)
-        onDispose { pager.removePagerEventObserver(observer) }
+        onDispose { realtimeEvents.removeListener(callbackRef) }
     }
 
     val showAppShellBottomTabs =

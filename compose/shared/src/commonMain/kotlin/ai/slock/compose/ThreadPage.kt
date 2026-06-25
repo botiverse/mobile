@@ -30,6 +30,7 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
 import ai.slock.compose.data.formatAttachmentSizeLabel
 import ai.slock.compose.data.SlockComputersApiClient
@@ -217,7 +218,6 @@ private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_p
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
-private const val THREAD_REALTIME_EVENT = "slockRealtimeEvent"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
@@ -1563,33 +1563,30 @@ private fun ThreadPageScreen() {
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
     var threadRealtimeCacheInvalidationSequence by remember { mutableStateOf(0L) }
     var sharedThreadCacheInvalidation by remember { mutableStateOf<ThreadRealtimeCacheInvalidationSignal?>(null) }
-    DisposableEffect(pager, realtimeEventMapper, authStore, threadPageCoroutineScope) {
-        val observer =
-            object : IPagerEventObserver {
-                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
-                    if (pagerEvent != THREAD_REALTIME_EVENT) return
-                    threadPageCoroutineScope.launch {
-                        val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
-                        val session = authStore.readSession()
-                        val serverId = resolveSharedShellRealtimeServerId(eventData, event, session) ?: return@launch
-                        val currentServerId =
-                            session
-                                ?.currentServerId
-                                ?.takeIf { it.isNotBlank() }
-                                ?: return@launch
-                        if (currentServerId != serverId) return@launch
-                        if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return@launch
-                        threadRealtimeEventSequence += 1
-                        threadRealtimeEventSignal =
-                            SharedThreadRealtimeEventSignal(
-                                sequence = threadRealtimeEventSequence,
-                                event = event
-                            )
-                    }
+    val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
+    DisposableEffect(realtimeEvents, realtimeEventMapper, authStore, threadPageCoroutineScope) {
+        val callbackRef =
+            realtimeEvents.addListener { eventData ->
+                threadPageCoroutineScope.launch {
+                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
+                    val session = authStore.readSession()
+                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, session) ?: return@launch
+                    val currentServerId =
+                        session
+                            ?.currentServerId
+                            ?.takeIf { it.isNotBlank() }
+                            ?: return@launch
+                    if (currentServerId != serverId) return@launch
+                    if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return@launch
+                    threadRealtimeEventSequence += 1
+                    threadRealtimeEventSignal =
+                        SharedThreadRealtimeEventSignal(
+                            sequence = threadRealtimeEventSequence,
+                            event = event
+                        )
                 }
             }
-        pager.addPagerEventObserver(observer)
-        onDispose { pager.removePagerEventObserver(observer) }
+        onDispose { realtimeEvents.removeListener(callbackRef) }
     }
     val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
     DisposableEffect(threadCacheInvalidationEvents) {
