@@ -976,6 +976,58 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun stableTimelineKeepsTransientLocalSendingReplyWhenCacheProjectionIsEmpty() {
+        val parentMessageId = "parent-1"
+        val threadChannelId = "thread-1"
+        val pendingReply =
+            KuiklyThreadMessageItem(
+                id = "local-send-thread-1-1",
+                authorId = "user-1",
+                authorName = "Artin",
+                body = "pending reply",
+                deliveryState = ThreadMessageDeliverySending,
+                pendingSendContext =
+                    KuiklyThreadPendingSendContext(
+                        body = "pending reply",
+                        asTask = false,
+                        attachmentIds = emptyList(),
+                        streamChannelId = threadChannelId,
+                        parentMessageId = parentMessageId
+                    )
+            )
+        val current =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-pending-$parentMessageId",
+                sourceThreadId = threadChannelId,
+                streamChannelId = threadChannelId,
+                parentChannelId = "channel-1",
+                parentMessageId = parentMessageId,
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                status = "content",
+                messages = listOf(pendingReply),
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = parentMessageId,
+                        authorId = "user-1",
+                        authorName = "Artin",
+                        body = "origin"
+                    ),
+                originParentMessageId = parentMessageId,
+                originStatus = "loaded"
+            )
+        val emptyCacheProjection =
+            current.copy(
+                status = "empty",
+                messages = emptyList()
+            )
+
+        val preserved = emptyCacheProjection.preserveStableTimelineFrom(current)
+
+        assertEquals("content", preserved.status)
+        assertEquals(listOf(pendingReply), preserved.messages)
+    }
+
+    @Test
     fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

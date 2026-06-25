@@ -3483,11 +3483,23 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload,
     preserveSelectedReactions: Boolean = true
 ): KuiklyThreadScreenPayload {
+    val timelineMessages =
+        if (messages.isEmpty()) {
+            messages.withRetainedTransientLocalSendingMessagesFrom(previous.messages)
+        } else {
+            messages
+        }
     val stableMessages =
-        messages
+        timelineMessages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
             .withSelectedReactionsFrom(previous.messages, preserveSelectedReactions)
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
+    val stableStatus =
+        if (stableMessages.any { it.isTransientLocalSendingMessage() } && status == "empty") {
+            "content"
+        } else {
+            status
+        }
     val preservePreviousOrigin = shouldPreserveLoadedOriginFrom(previous)
     val stableOrigin =
         when {
@@ -3524,11 +3536,13 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         stableOriginParentMessageId == originParentMessageId &&
         stableOriginPreview == originPreview &&
         stableOriginStatus == originStatus &&
-        stableOriginErrorCode == originErrorCode
+        stableOriginErrorCode == originErrorCode &&
+        stableStatus == status
     ) {
         return this
     }
     return copy(
+        status = stableStatus,
         messages = stableMessages,
         originMessage = reactionStableOrigin,
         originPreview = stableOriginPreview,
@@ -4068,6 +4082,17 @@ private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): Ku
 private fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
+
+private fun List<KuiklyThreadMessageItem>.withRetainedTransientLocalSendingMessagesFrom(
+    previousMessages: List<KuiklyThreadMessageItem>
+): List<KuiklyThreadMessageItem> {
+    val existingIds = map { it.id }.toSet()
+    val retainedSendingMessages =
+        previousMessages.filter { message ->
+            message.id !in existingIds && message.isTransientLocalSendingMessage()
+        }
+    return if (retainedSendingMessages.isEmpty()) this else (this + retainedSendingMessages).sortedByThreadTimeline()
+}
 
 private fun List<KuiklyThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
     previousMessages: List<KuiklyThreadMessageItem>
