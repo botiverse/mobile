@@ -1321,6 +1321,18 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: Kuikly
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
+internal fun KuiklyThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
+    showTaskStatusActions &&
+        !surfaceKind.equals(KuiklyThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
+        parentMessageId.isNullOrBlank() &&
+        originParentMessageId.isNullOrBlank()
+
+internal fun KuiklyThreadMessageItem.canConvertToTask(): Boolean =
+    !isSystemMessage() &&
+        taskId.isNullOrBlank() &&
+        taskNumber == null &&
+        !hasLocalSendState()
+
 internal fun shouldStartThreadTasksJoin(
     payload: KuiklyThreadScreenPayload,
     startedThreadId: String?,
@@ -2406,6 +2418,7 @@ internal fun SharedThreadRouteContent(
     }
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -2456,6 +2469,7 @@ internal fun SharedThreadRouteContent(
                 )
         )
         pendingActionCardIds = emptySet()
+        pendingTaskConvertMessageIds = emptySet()
         createAgentDialogState = null
         attachmentOpenStates = emptyMap()
         attachmentCommentsDialogState = null
@@ -3435,6 +3449,7 @@ internal fun SharedThreadRouteContent(
             agentStatusResolver = agentStatusResolver,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
+            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             currentServerSlug = currentServerSlug,
@@ -3917,6 +3932,40 @@ internal fun SharedThreadRouteContent(
                                 if (routeAuthRequired(result)) return@launch
                                 bridge.toast("Unable to delete channel")
                             }
+                        }
+                    }
+                }
+                action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
+                    if (itemId in pendingTaskConvertMessageIds) {
+                        return@ThreadPageContent
+                    }
+                    val message = renderedThread.threadActionMessage(itemId)
+                    if (message == null || !renderedThread.canConvertMessagesToTasks() || !message.canConvertToTask()) {
+                        bridge.toast("Unable to convert message")
+                        return@ThreadPageContent
+                    }
+                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.convertMessageToTask(itemId)) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(result.data))
+                                    )
+                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(result.data))
+                                    bridge.toast("Task created")
+                                }
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    bridge.toast("Unable to convert message")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    bridge.toast("Unable to convert message")
+                                }
+                            }
+                        } finally {
+                            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds - itemId
                         }
                     }
                 }
@@ -5645,6 +5694,7 @@ private fun ThreadPageContent(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
+    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -5773,6 +5823,7 @@ private fun ThreadPageContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         pendingActionCardIds = pendingActionCardIds,
+                        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
@@ -6288,6 +6339,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
+    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -6344,6 +6396,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         highlightedMentions = highlightedMentions,
         agentStatusResolver = agentStatusResolver,
         pendingActionCardIds = pendingActionCardIds,
+        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
         attachmentOpenStates = attachmentOpenStates,
         attachmentCommentsEnabled = attachmentCommentsEnabled,
         currentServerSlug = currentServerSlug,
@@ -6370,6 +6423,7 @@ private fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
+    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -6419,6 +6473,7 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     pendingActionCardIds = pendingActionCardIds,
+                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
@@ -6455,6 +6510,7 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     pendingActionCardIds = pendingActionCardIds,
+                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
@@ -6485,6 +6541,7 @@ private fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
@@ -6512,6 +6569,7 @@ private fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     pendingActionCardIds: Set<String> = emptySet(),
+    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -7179,6 +7237,9 @@ private fun ThreadMessagesList(
                     showReplyAction = payload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = payload.showMessageSaveAction && !message.hasLocalSendState(),
                     showTaskStatusAction = payload.showTaskStatusActions && !message.hasLocalSendState(),
+                    showConvertToTaskAction =
+                        payload.canConvertMessagesToTasks() && !message.hasLocalSendState() &&
+                            message.id !in pendingTaskConvertMessageIds,
                     showReactionActions = !message.hasLocalSendState(),
                     showDeleteAction = isFailedLocalSend,
                     onDismiss = { actionMessageId = null },
@@ -7201,6 +7262,10 @@ private fun ThreadMessagesList(
                     onTaskStatusChange = { action ->
                         actionMessageId = null
                         onThreadEvent(action, message.taskId, null, null)
+                    },
+                    onConvertToTask = {
+                        actionMessageId = null
+                        onThreadEvent("convertMessageToTask", message.id, null, null)
                     },
                     onDelete = {
                         actionMessageId = null
@@ -9181,7 +9246,7 @@ private data class ThreadMessageMenuAction(
 )
 
 private val ThreadMessageMenuWidth = 208.dp
-private val ThreadMessageMenuFallbackHeight = 210.dp
+private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
 
@@ -9192,6 +9257,7 @@ private fun ThreadMessageActionMenu(
     showReplyAction: Boolean,
     showSaveAction: Boolean,
     showTaskStatusAction: Boolean,
+    showConvertToTaskAction: Boolean,
     showReactionActions: Boolean,
     showDeleteAction: Boolean,
     onDismiss: () -> Unit,
@@ -9200,6 +9266,7 @@ private fun ThreadMessageActionMenu(
     onSave: () -> Unit,
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
+    onConvertToTask: () -> Unit,
     onDelete: () -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
@@ -9237,6 +9304,16 @@ private fun ThreadMessageActionMenu(
                         icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
                         group = "task",
                         onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                    )
+                )
+            }
+            if (showConvertToTaskAction && message.canConvertToTask()) {
+                add(
+                    ThreadMessageMenuAction(
+                        label = "Convert to Task",
+                        icon = SlockLucideIconName.ClipboardList,
+                        group = "task",
+                        onClick = onConvertToTask
                     )
                 )
             }

@@ -1637,6 +1637,81 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun topLevelThreadMessagesCanConvertToTasksWhenTaskActionsAreEnabled() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                showTaskStatusActions = true
+            )
+
+        assertTrue(payload.canConvertMessagesToTasks())
+        assertTrue(
+            KuiklyThreadMessageItem(
+                id = "msg-1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "ship it"
+            ).canConvertToTask()
+        )
+    }
+
+    @Test
+    fun replyThreadAndIneligibleMessagesCannotConvertToTasks() {
+        val replyPayload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentMessageId = "parent-1",
+                originParentMessageId = "parent-1",
+                showTaskStatusActions = true
+            )
+        val disabledPayload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                showTaskStatusActions = false
+            )
+
+        assertFalse(replyPayload.canConvertMessagesToTasks())
+        assertFalse(disabledPayload.canConvertMessagesToTasks())
+        assertFalse(
+            KuiklyThreadMessageItem(
+                id = "msg-task-id",
+                authorId = "u1",
+                authorName = "Artin",
+                taskId = "task-1"
+            ).canConvertToTask()
+        )
+        assertFalse(
+            KuiklyThreadMessageItem(
+                id = "msg-task-number",
+                authorId = "u1",
+                authorName = "Artin",
+                taskNumber = 12
+            ).canConvertToTask()
+        )
+        assertFalse(
+            KuiklyThreadMessageItem(
+                id = "msg-system",
+                authorId = "system",
+                authorName = "System",
+                messageType = "System"
+            ).canConvertToTask()
+        )
+        assertFalse(
+            KuiklyThreadMessageItem(
+                id = "msg-local",
+                authorId = "u1",
+                authorName = "Artin",
+                deliveryState = ThreadMessageDeliverySending,
+                pendingSendContext =
+                    KuiklyThreadPendingSendContext(
+                        channelId = "channel-1",
+                        body = "pending"
+                    )
+            ).canConvertToTask()
+        )
+    }
+
+    @Test
     fun sharedShellDirectMessageRouteKeepsDmSurfaceForComposerProps() {
         val payload =
             buildAppShellThreadPayload(
