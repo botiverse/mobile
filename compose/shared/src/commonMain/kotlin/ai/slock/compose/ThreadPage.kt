@@ -1325,7 +1325,7 @@ internal fun shouldStartThreadTasksJoin(
     taskChannelId: ChannelId?
 ): Boolean =
     taskChannelId != null &&
-    payload.status == "content" &&
+        payload.status == "content" &&
         payload.supportsChannelTasks() &&
         startedThreadId != taskChannelId.value &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
