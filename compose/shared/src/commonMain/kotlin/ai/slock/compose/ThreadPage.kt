@@ -1003,13 +1003,6 @@ private data class ThreadImagePreviewState(
     val current: KuiklyThreadAttachmentItem? get() = images.getOrNull(currentIndex)
 }
 
-private data class ThreadAttachmentNoPreviewState(
-    val attachment: KuiklyThreadAttachmentItem,
-    val markdownStatus: String = "idle",
-    val markdownBody: String? = null,
-    val markdownError: String? = null
-)
-
 private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
 
 private data class ThreadAttachmentCommentsDialogState(
@@ -2606,7 +2599,6 @@ internal fun SharedThreadRouteContent(
     }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
-    var attachmentNoPreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -2899,7 +2891,6 @@ internal fun SharedThreadRouteContent(
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
         imagePreviewState = null
-        attachmentNoPreviewState = null
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "image"))
     }
     fun selectImagePreviewIndex(index: Int) {
@@ -2954,44 +2945,15 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    fun requestAttachmentDownloadControl(attachment: KuiklyThreadAttachmentItem, action: String) {
-        val current = attachmentOpenStates[attachment.id] ?: return
-        val downloadId = current.downloadId.ifBlank { attachment.threadAttachmentDownloadId() }
-        attachmentOpenStates =
-            when (action) {
-                "pause" ->
-                    attachmentOpenStates +
-                        (attachment.id to current.copy(status = "paused", downloadId = downloadId))
-                "resume" ->
-                    attachmentOpenStates +
-                        (attachment.id to current.copy(status = "downloading", downloadId = downloadId))
-                "stop" ->
-                    attachmentOpenStates +
-                        (attachment.id to ThreadAttachmentOpenUiState(
-                            status = "cancelled",
-                            message = "Download stopped",
-                            downloadId = downloadId
-                        ))
-                else -> attachmentOpenStates
-            }
-        coroutineScope.launch {
-            bridge.attachmentDownloadControl(downloadId = downloadId, action = action)
-        }
-    }
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
-        attachmentNoPreviewState = null
         val lazyPreviewKind =
             when {
                 attachment.isMarkdownAttachment() -> "markdown"
                 attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
-                else -> null
+                else -> "file"
             }
-        if (lazyPreviewKind == null) {
-            attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment = attachment)
-            return
-        }
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = lazyPreviewKind))
     }
 
@@ -4218,18 +4180,6 @@ internal fun SharedThreadRouteContent(
                 onSelectIndex = ::selectImagePreviewIndex
             )
         }
-        attachmentNoPreviewState?.let { preview ->
-            ThreadAttachmentNoPreviewOverlay(
-                state = preview,
-                openState = attachmentOpenStates[preview.attachment.id],
-                onDismiss = { attachmentNoPreviewState = null },
-                onOpenWithSystem = { openAttachmentExternally(preview.attachment) },
-                onPauseDownload = { requestAttachmentDownloadControl(preview.attachment, "pause") },
-                onResumeDownload = { requestAttachmentDownloadControl(preview.attachment, "resume") },
-                onStopDownload = { requestAttachmentDownloadControl(preview.attachment, "stop") },
-                onOpenUrl = { bridge.openUrl(it, null) }
-            )
-        }
         attachmentCommentsDialogState?.let { dialogState ->
             ThreadAttachmentCommentsDialog(
                 state = dialogState,
@@ -4896,79 +4846,6 @@ private fun ThreadImagePreviewThumbnail(
             } else {
                 SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
             }
-        }
-    }
-}
-
-@Composable
-private fun ThreadAttachmentNoPreviewOverlay(
-    state: ThreadAttachmentNoPreviewState,
-    openState: ThreadAttachmentOpenUiState?,
-    onDismiss: () -> Unit,
-    onOpenWithSystem: () -> Unit,
-    onPauseDownload: () -> Unit,
-    onResumeDownload: () -> Unit,
-    onStopDownload: () -> Unit,
-    onOpenUrl: (String) -> Unit
-) {
-    val attachment = state.attachment
-    val isOpening = openState.threadAttachmentIsOpening()
-    val isPaused = openState?.status == "paused"
-    val isMarkdown = attachment.isMarkdownAttachment()
-    SlockFilePreviewPageScaffold(
-        title = attachment.name.ifBlank { "Attachment" },
-        subtitle = attachment.genericAttachmentMetaLine().takeIf { it.isNotBlank() },
-        iconName = if (isMarkdown) SlockLucideIconName.FileText else SlockLucideIconName.File,
-        onBack = onDismiss,
-        overflowMenuItems =
-            listOf(
-                SlockBrutalDropdownMenuItem(
-                    id = ThreadAttachmentPreviewOpenWithActionId,
-                    label = if (isOpening) "Preparing..." else "Open with...",
-                    icon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink,
-                    enabled = !isOpening
-                )
-            ),
-        onOverflowMenuSelect = { id ->
-            if (id == ThreadAttachmentPreviewOpenWithActionId) {
-                onOpenWithSystem()
-            }
-        }
-    ) {
-        if (isMarkdown) {
-            SlockFilePreviewMarkdownPanel(
-                name = attachment.name.ifBlank { "Markdown" },
-                meta = attachment.genericAttachmentMetaLine(),
-                statusLabel = openState.threadAttachmentStatusLabel(),
-                status = state.markdownStatus,
-                body = state.markdownBody,
-                error = state.markdownError,
-                onOpenUrl = onOpenUrl,
-                modifier = Modifier.weight(1f),
-                performanceKey = "attachment:${attachment.id.take(8)}"
-            )
-        } else {
-            SlockFilePreviewGenericCard(
-                iconName = SlockLucideIconName.File,
-                name = attachment.name.ifBlank { "File" },
-                meta = attachment.genericAttachmentMetaLine(),
-                message = "No preview is available for this file type.",
-                statusLabel = openState.threadAttachmentStatusLabel(),
-                showProgress = isOpening,
-                progressPercent = openState?.progress?.percent ?: if (isOpening) 0 else null,
-                actionLabel = if (isOpening) null else "Download",
-                actionIcon = if (isOpening) null else SlockLucideIconName.Download,
-                actionEnabled = !isOpening,
-                onAction = onOpenWithSystem,
-                downloadPaused = isPaused,
-                onToggleDownload = if (isOpening) {
-                    if (isPaused) onResumeDownload else onPauseDownload
-                } else {
-                    null
-                },
-                onStopDownload = if (isOpening) onStopDownload else null,
-                modifier = Modifier.fillMaxSize()
-            )
         }
     }
 }
