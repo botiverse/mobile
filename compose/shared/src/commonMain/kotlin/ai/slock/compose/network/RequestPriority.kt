@@ -18,9 +18,9 @@ enum class SlockRequestPriority {
 }
 
 // Keep user-visible requests high while still bounding background/bulk work.
-const val SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS = 30
-const val SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS = 16
-const val SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS = 6
+const val SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS = 64
+const val SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS = 32
+const val SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS = 16
 
 class SlockRequestTimeoutException(message: String) : Exception(message)
 
