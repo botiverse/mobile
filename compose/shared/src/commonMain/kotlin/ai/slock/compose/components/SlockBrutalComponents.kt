@@ -410,6 +410,9 @@ internal fun SlockBrutalInputField(
     onClear: (() -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isMultiline = maxLines > 1
+    val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
+    val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
         if (focused && enabled) 4.dp else 3.dp
     } else {
@@ -440,12 +443,12 @@ internal fun SlockBrutalInputField(
                     .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = Alignment.CenterStart
+            contentAlignment = fieldContentAlignment
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = rowVerticalAlignment
             ) {
                 TextField(
                     value = value,
@@ -460,6 +463,7 @@ internal fun SlockBrutalInputField(
                     keyboardActions = keyboardActions,
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
+                    contentAlignment = fieldContentAlignment,
                     modifier = Modifier.weight(1f)
                 )
                 if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {

@@ -571,7 +571,8 @@ internal fun TextField(
      * underlying value stays intact but the rendered text is masked.
      * Show/Hide toggles in the caller just switch this parameter.
      */
-    visualTransformation: VisualTransformation = VisualTransformation.None
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
 
@@ -609,7 +610,7 @@ internal fun TextField(
         cursorBrush = cursorBrush,
         visualTransformation = visualTransformation,
         decorationBox = { innerTextField ->
-            Box(contentAlignment = Alignment.CenterStart) {
+            Box(contentAlignment = contentAlignment) {
                 if (value.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
@@ -650,7 +651,8 @@ internal fun TextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
-    systemNewlineAction: Boolean = false
+    systemNewlineAction: Boolean = false,
+    contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
 
@@ -687,7 +689,7 @@ internal fun TextField(
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
         decorationBox = { innerTextField ->
-            Box(contentAlignment = Alignment.CenterStart) {
+            Box(contentAlignment = contentAlignment) {
                 if (value.text.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
