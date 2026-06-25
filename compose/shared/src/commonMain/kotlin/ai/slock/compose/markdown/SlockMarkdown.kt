@@ -685,6 +685,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         style: TextStyle
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
+        val markdownOverflow = slockMarkdownContentOverflow(overflow)
         KuiklyText(
             text = text,
             modifier = modifier,
@@ -697,7 +698,7 @@ private object SlockMarkdownTextProvider : TextProvider {
             textDecoration = textDecoration,
             textAlign = textAlign,
             lineHeight = lineHeight,
-            overflow = overflow,
+            overflow = markdownOverflow,
             softWrap = softWrap,
             maxLines = maxLines,
             minLines = minLines,
@@ -728,6 +729,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         style: TextStyle
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
+        val markdownOverflow = slockMarkdownContentOverflow(overflow)
         val resolvedText = remember(text, resolvedStyle) {
             text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
@@ -761,7 +763,7 @@ private object SlockMarkdownTextProvider : TextProvider {
             textDecoration = textDecoration,
             textAlign = textAlign,
             lineHeight = lineHeight,
-            overflow = overflow,
+            overflow = markdownOverflow,
             softWrap = softWrap,
             maxLines = maxLines,
             minLines = minLines,
@@ -771,6 +773,9 @@ private object SlockMarkdownTextProvider : TextProvider {
         )
     }
 }
+
+internal fun slockMarkdownContentOverflow(overflow: TextOverflow): TextOverflow =
+    if (overflow == TextOverflow.Ellipsis) TextOverflow.Clip else overflow
 
 private data class SlockMarkdownTextLayoutSignature(
     val size: IntSize,
