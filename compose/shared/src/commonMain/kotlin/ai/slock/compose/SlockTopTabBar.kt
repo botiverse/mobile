@@ -95,26 +95,37 @@ internal fun <T> SlockTabbedScaffold(
         var contentWidthPx by remember { mutableStateOf(0f) }
         val density = LocalDensity.current
         val maxPreviewOffsetPx = with(density) { SlockTopTabBarDefaults.SwipePreviewMaxOffset.toPx() }
-        val previewOffsetPx =
-            slockSwipePreviewOffset(
-                horizontalDistance = dragDistancePx,
-                maxOffsetPx = maxPreviewOffsetPx,
-                hasPrevious = selectedSwipeIndex > 0,
-                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeTabs.lastIndex,
-                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
-            )
         val activeSettleTransition = settleTransition
         val settleTravelWidthPx = slockSwipeTravelWidth(
             containerWidthPx = contentWidthPx,
             fallbackWidthPx = maxPreviewOffsetPx
         )
+        val dragVisualOffsetPx =
+            slockSwipeDragOffset(
+                horizontalDistance = dragDistancePx,
+                travelWidthPx = settleTravelWidthPx,
+                fallbackOffsetPx = maxPreviewOffsetPx,
+                hasPrevious = selectedSwipeIndex > 0,
+                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeTabs.lastIndex,
+                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
+            )
+        val activeDragTransition =
+            if (activeSettleTransition == null && dragActive) {
+                slockSwipeDragTransition(
+                    items = swipeTabs.map { it.key },
+                    selected = selectedKey,
+                    visualOffsetPx = dragVisualOffsetPx
+                )
+            } else {
+                null
+            }
         val visualTargetOffsetPx =
             activeSettleTransition?.let {
                 slockSwipeSettleTargetOffset(
                     travelWidthPx = settleTravelWidthPx,
                     directionSign = it.directionSign
                 )
-            } ?: previewOffsetPx
+            } ?: dragVisualOffsetPx
         val settleSpec: FiniteAnimationSpec<Float> =
             if (dragActive) snap() else tween(durationMillis = SlockTopTabBarDefaults.SwipeSettleAnimationMs)
         val visualOffsetPx by key(selectedKey) {
@@ -194,7 +205,7 @@ internal fun <T> SlockTabbedScaffold(
                     .clipToBounds()
                     .onSizeChanged { contentWidthPx = it.width.toFloat() }
         ) {
-            if (activeSettleTransition == null) {
+            if (activeSettleTransition == null && activeDragTransition == null) {
                 SlockSwipeSelectionPreview(
                     previous = previousTab,
                     next = nextTab,
@@ -205,6 +216,7 @@ internal fun <T> SlockTabbedScaffold(
             SlockSwipeSlidingContent(
                 selected = selectedKey,
                 transition = activeSettleTransition,
+                dragTransition = activeDragTransition,
                 visualOffsetPx = visualOffsetPx,
                 travelWidthPx = settleTravelWidthPx,
                 content = content
@@ -215,6 +227,11 @@ internal fun <T> SlockTabbedScaffold(
 
 internal data class SlockSwipeSettleTransition<T>(
     val from: T,
+    val to: T,
+    val directionSign: Int
+)
+
+internal data class SlockSwipeDragTransition<T>(
     val to: T,
     val directionSign: Int
 )
@@ -311,6 +328,32 @@ internal fun slockSwipePreviewOffset(
     }
 }
 
+internal fun slockSwipeDragOffset(
+    horizontalDistance: Float,
+    travelWidthPx: Float,
+    fallbackOffsetPx: Float,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
+    edgeResistance: Float = SlockTopTabBarDefaults.SwipeEdgeResistance
+): Float {
+    if (horizontalDistance == 0f) return 0f
+    val hasTarget = if (horizontalDistance > 0f) hasPrevious else hasNext
+    val maxOffsetPx =
+        if (hasTarget) {
+            slockSwipeTravelWidth(travelWidthPx, fallbackOffsetPx)
+        } else {
+            fallbackOffsetPx
+        }
+    if (maxOffsetPx <= 0f) return 0f
+    val resistance = if (hasTarget) 1f else edgeResistance
+    val limited = (horizontalDistance * resistance).coerceIn(-maxOffsetPx, maxOffsetPx)
+    return when {
+        limited > 0f && !hasPrevious -> limited.coerceAtMost(maxOffsetPx * edgeResistance)
+        limited < 0f && !hasNext -> limited.coerceAtLeast(-maxOffsetPx * edgeResistance)
+        else -> limited
+    }
+}
+
 internal fun slockSwipeDirectionSign(currentIndex: Int, nextIndex: Int): Int =
     when {
         currentIndex < 0 || nextIndex < 0 -> 0
@@ -318,6 +361,21 @@ internal fun slockSwipeDirectionSign(currentIndex: Int, nextIndex: Int): Int =
         nextIndex < currentIndex -> 1
         else -> 0
     }
+
+internal fun <T> slockSwipeDragTransition(
+    items: List<T>,
+    selected: T,
+    visualOffsetPx: Float
+): SlockSwipeDragTransition<T>? {
+    if (visualOffsetPx == 0f) return null
+    val currentIndex = items.indexOf(selected)
+    if (currentIndex < 0) return null
+    val targetIndex = if (visualOffsetPx < 0f) currentIndex + 1 else currentIndex - 1
+    val target = items.getOrNull(targetIndex) ?: return null
+    val directionSign = slockSwipeDirectionSign(currentIndex = currentIndex, nextIndex = targetIndex)
+    if (directionSign == 0) return null
+    return SlockSwipeDragTransition(to = target, directionSign = directionSign)
+}
 
 internal fun slockSwipeTravelWidth(containerWidthPx: Float, fallbackWidthPx: Float): Float =
     when {
@@ -339,11 +397,14 @@ internal fun slockSwipeIncomingOffset(
 internal fun <T> SlockSwipeSlidingContent(
     selected: T,
     transition: SlockSwipeSettleTransition<T>?,
+    dragTransition: SlockSwipeDragTransition<T>? = null,
     visualOffsetPx: Float,
     travelWidthPx: Float,
     content: @Composable (T, Modifier) -> Unit
 ) {
-    if (transition == null) {
+    val target = transition?.to ?: dragTransition?.to
+    val directionSign = transition?.directionSign ?: dragTransition?.directionSign ?: 0
+    if (target == null || directionSign == 0) {
         content(
             selected,
             Modifier
@@ -354,7 +415,7 @@ internal fun <T> SlockSwipeSlidingContent(
         return
     }
     content(
-        transition.to,
+        target,
         Modifier
             .fillMaxSize()
             .offset {
@@ -362,7 +423,7 @@ internal fun <T> SlockSwipeSlidingContent(
                     slockSwipeIncomingOffset(
                         currentOffsetPx = visualOffsetPx,
                         travelWidthPx = travelWidthPx,
-                        directionSign = transition.directionSign
+                        directionSign = directionSign
                     ).roundToInt(),
                     0
                 )
@@ -370,7 +431,7 @@ internal fun <T> SlockSwipeSlidingContent(
             .background(SlockColor.SurfaceWhite)
     )
     content(
-        transition.from,
+        transition?.from ?: selected,
         Modifier
             .fillMaxSize()
             .offset { IntOffset(visualOffsetPx.roundToInt(), 0) }
