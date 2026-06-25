@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import ai.slock.android.MainActivity
 import ai.slock.android.R
 import ai.slock.compose.data.SystemUnreadNotificationRequest
 import org.json.JSONObject
@@ -142,11 +143,11 @@ internal object AndroidUnreadNotificationPoster {
 
     private fun unreadNotificationContentIntent(context: Context, request: JSONObject, notificationId: Int): PendingIntent? {
         val appContext = context.applicationContext
-        val pageData = SlockKuiklyActivity.buildUnreadNotificationThreadPageData(request)
+        val pageData = SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request)
         val intent =
             if (pageData != null) {
-                Intent(appContext, SlockKuiklyActivity::class.java)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_THREAD)
+                Intent(appContext, MainActivity::class.java)
+                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
                     .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
             } else {
                 appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)

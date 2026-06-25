@@ -793,6 +793,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         internal const val KEY_PAGE_DATA = "pageData"
         const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
+        internal const val KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD = "slockNotificationThreadLaunchPayload"
+        internal const val KEY_APP_SHELL_NOTIFICATION_SERVER_ID = "slockNotificationServerId"
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
@@ -834,8 +836,29 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             start(context, PAGE_APP_SHELL, pageData, clearTask)
         }
 
+        internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject =
+                if (intent?.getStringExtra(KEY_PAGE_NAME) == PAGE_APP_SHELL) {
+                    runCatching { JSONObject(intent.getStringExtra(KEY_PAGE_DATA).orEmpty()) }.getOrElse { JSONObject() }
+                } else {
+                    JSONObject()
+                }
+
         internal fun shouldReplaceCurrentPage(pageData: JSONObject): Boolean {
             return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)
+        }
+
+        internal fun buildUnreadNotificationAppShellPageData(request: JSONObject): JSONObject? {
+            val threadPageData = buildUnreadNotificationThreadPageData(request) ?: return null
+            val threadPayload = threadPageData.optTrimmedString("payload") ?: return null
+            val threadInstanceId = threadPageData.optTrimmedString("instanceId") ?: return null
+            val appShellPageData =
+                    JSONObject()
+                            .put("instanceId", "notification-app-shell-$threadInstanceId")
+                            .put(KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD, threadPayload)
+            request.optTrimmedString("serverId")?.let { serverId ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+            }
+            return appShellPageData.withAndroidHostPageData(PAGE_APP_SHELL)
         }
 
         internal fun buildUnreadNotificationThreadPageData(request: JSONObject): JSONObject? {
