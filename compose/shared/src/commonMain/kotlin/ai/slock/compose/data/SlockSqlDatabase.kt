@@ -10,10 +10,6 @@ import ai.slock.shared.data.local.SlockDatabaseQueries
 internal class SlockSqlDatabase(
     private val driver: SqlDriver
 ) {
-    init {
-        ensureCompatibilitySchema()
-    }
-
     private val database: SlockDatabase = SlockDatabase(driver)
     val queries: SlockDatabaseQueries = database.slockDatabaseQueries
 
@@ -73,39 +69,8 @@ internal class SlockSqlDatabase(
             ?: getBoolean(index)?.let(RelationalValue::BooleanValue)
             ?: RelationalValue.Null
 
-    private fun ensureCompatibilitySchema() {
-        driver.execute(
-            identifier = null,
-            sql =
-                """
-                CREATE TABLE IF NOT EXISTS conversationAliasEntity (
-                  serverId TEXT NOT NULL,
-                  aliasId TEXT NOT NULL,
-                  aliasKind TEXT NOT NULL,
-                  canonicalChannelId TEXT NOT NULL,
-                  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
-                  PRIMARY KEY (serverId, aliasId, aliasKind),
-                  FOREIGN KEY (serverId, canonicalChannelId)
-                    REFERENCES channelEntity(serverId, channelId)
-                    ON DELETE CASCADE
-                )
-                """.trimIndent(),
-            parameters = 0
-        )
-        driver.execute(
-            identifier = null,
-            sql = "CREATE INDEX IF NOT EXISTS conversationAliasEntity_alias ON conversationAliasEntity(serverId, aliasId)",
-            parameters = 0
-        )
-        driver.execute(
-            identifier = null,
-            sql = "CREATE INDEX IF NOT EXISTS conversationAliasEntity_canonical ON conversationAliasEntity(serverId, canonicalChannelId)",
-            parameters = 0
-        )
-    }
-
     companion object {
-        const val DatabaseName: String = "slock_shared_v2.db"
+        const val DatabaseName: String = "slock_cache.db"
 
         val Schema = SlockDatabase.Schema
     }
