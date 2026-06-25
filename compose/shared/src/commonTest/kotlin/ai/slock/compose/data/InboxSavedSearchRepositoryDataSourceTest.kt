@@ -133,6 +133,70 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun inboxRepositoryMapsReactMentionActionRowShape() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson = """
+                    {
+                      "items": [
+                        {
+                          "kind": "mention_action",
+                          "id": "resolution-1",
+                          "channelId": "channel-1",
+                          "channelName": "android-dev",
+                          "channelType": "channel",
+                          "messageId": "message-1",
+                          "messagePreview": "Can someone ping @missing-human?",
+                          "createdAt": "2026-06-26T02:40:00Z",
+                          "unreadCount": 9,
+                          "hasMention": true,
+                          "pendingMentionActions": [
+                            {
+                              "resolutionId": "resolution-1",
+                              "messageId": "message-1",
+                              "channelId": "channel-1",
+                              "channelName": "android-dev",
+                              "targetType": "user",
+                              "targetHandle": "missing-human",
+                              "reason": "Mention target was not notified at send time.",
+                              "availableActions": ["notify", "invite"],
+                              "expiresAt": "2026-06-27T02:40:00Z"
+                            }
+                          ]
+                        }
+                      ],
+                      "hasMore": false,
+                      "totalCount": 1,
+                      "totalUnreadCount": 0
+                    }
+                """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val result = repository.loadInitial(ServerId("server-1"))
+
+        assertTrue(result is DataResult.Content)
+        val item = result.data.items.single()
+        assertEquals("mention_action:resolution-1", item.key)
+        assertEquals(InboxItemKind.MentionAction, item.kind)
+        assertEquals("resolution-1", item.mentionActionId)
+        assertEquals("channel-1", item.channelId.value)
+        assertEquals("android-dev", item.channelName)
+        assertEquals(ConversationKind.Channel, item.channelKind)
+        assertEquals("message-1", item.lastMessageId?.value)
+        assertEquals("Can someone ping @missing-human?", item.lastMessagePreview)
+        assertEquals("2026-06-26T02:40:00Z", item.lastMessageAt)
+        assertEquals(0, item.unreadCount)
+        assertEquals(false, item.hasMention)
+        val pending = item.pendingMentionActions.single()
+        assertEquals("resolution-1", pending.resolutionId)
+        assertEquals("message-1", pending.messageId?.value)
+        assertEquals("channel-1", pending.channelId?.value)
+        assertEquals("missing-human", pending.targetHandle)
+        assertEquals(listOf("notify", "invite"), pending.availableActions)
+    }
+
+    @Test
     fun savedAndSearchMapItems() = runBlocking {
         val network =
             FakeInboxNetworkClient(

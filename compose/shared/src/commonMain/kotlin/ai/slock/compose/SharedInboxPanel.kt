@@ -1151,13 +1151,19 @@ private fun InboxFilter.emptyCopy(): String =
 private fun InboxItem.displayTitle(): String =
     when (kind) {
         InboxItemKind.Thread -> parentChannelName ?: channelName
-        InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.System -> channelName
+        InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.MentionAction, InboxItemKind.System -> channelName
     }.ifBlank { channelId.value }
 
 private fun InboxItem.channelLabel(): String =
     when (kind) {
         InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
         InboxItemKind.Thread -> "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+        InboxItemKind.MentionAction ->
+            if (channelKind == ConversationKind.DirectMessage) {
+                "@${channelName.ifBlank { channelId.value }}"
+            } else {
+                "#${channelName.ifBlank { channelId.value }}"
+            }
         InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
     }
 
@@ -1208,10 +1214,10 @@ internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String
         ?: ""
 
 private fun InboxItem.previewText(): String =
-    if (kind == InboxItemKind.Thread) {
-        parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: "Thread update"
-    } else {
-        lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
+    when (kind) {
+        InboxItemKind.Thread -> parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: "Thread update"
+        InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: "Action required"
+        else -> lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
     }
 
 internal fun InboxItem.primaryPreviewText(
@@ -1251,7 +1257,7 @@ internal fun InboxItem.primaryActivityPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): ActivityPreviewText =
     ActivityPreviewText(
-        senderName = if (kind == InboxItemKind.Thread) null else senderDisplayName(senderProfiles),
+        senderName = if (kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction) null else senderDisplayName(senderProfiles),
         body = previewText()
     )
 
@@ -1366,6 +1372,7 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
             when (kind) {
                 InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
                 InboxItemKind.Thread -> ConversationKind.Thread
+                InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
                 InboxItemKind.System -> ConversationKind.System
                 InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
             },
@@ -1407,7 +1414,7 @@ internal data class HomeMessageOpenRequest(
 internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
     when (kind) {
         InboxItemKind.Thread -> threadChannelId
-        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.System -> null
+        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.MentionAction, InboxItemKind.System -> null
     }
 
 /**

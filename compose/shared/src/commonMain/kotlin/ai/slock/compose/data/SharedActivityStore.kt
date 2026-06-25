@@ -315,6 +315,10 @@ class SharedActivityStore(
     private fun markDone(item: InboxItem) {
         val previous = _state.value
         if (previous.snapshot == null) return
+        if (item.kind == InboxItemKind.MentionAction) {
+            removeItemOptimistically(item)
+            return
+        }
         val targetChannelId = item.activityActionChannelId()
         if (targetChannelId == null) {
             refreshAfterFailure(previous, "activity_thread_channel_missing")
