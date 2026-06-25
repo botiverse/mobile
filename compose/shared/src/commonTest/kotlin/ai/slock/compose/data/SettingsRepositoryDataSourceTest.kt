@@ -907,7 +907,8 @@ class SettingsRepositoryDataSourceTest {
         private val renameMachineJson: String =
             """{"id":"machine-1","name":"Builder Mac 2","status":"online","daemonVersion":"1.5.0","hostname":"builder.local","os":"macOS"}""",
         private val rotateMachineKeyJson: String = """{"apiKey":"sk_machine_rot987"}""",
-        private val runtimeModelsJson: String = """{"models":["sonnet","opus"],"default":"sonnet"}""",
+        private val runtimeModelsJson: String =
+            """{"models":[{"id":"sonnet","label":"Claude Sonnet"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}""",
         private val commandJson: String = """{"ok":true}""",
         private val memberRoleUpdateJson: String = commandJson,
         private val removeMemberJson: String = commandJson,

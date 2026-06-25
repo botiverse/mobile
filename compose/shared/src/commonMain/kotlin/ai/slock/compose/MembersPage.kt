@@ -870,9 +870,7 @@ internal fun MembersPageContent() {
             scope.launch {
                 when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
                     is DataResult.Content -> {
-                        if (result.data.isNotEmpty()) {
-                            createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
-                        }
+                        createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
                     }
                     is DataResult.Empty -> Unit
                     is DataResult.Error ->
@@ -977,6 +975,7 @@ internal fun MembersPageContent() {
         createAgentMaxAgents = maxAgents,
         createAgentLoadMachines = loadMachines,
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = loadRuntimeModels,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
@@ -1753,6 +1752,7 @@ internal fun MembersRouteContent(
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
@@ -1787,6 +1787,7 @@ internal fun MembersRouteContent(
         createAgentMaxAgents = createAgentMaxAgents,
         createAgentLoadMachines = createAgentLoadMachines,
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
+        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
@@ -1813,6 +1814,7 @@ internal fun MembersListContent(
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
     inviteHumanJoinLinkLoading: Boolean = false,
@@ -1948,6 +1950,7 @@ internal fun MembersListContent(
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
+            runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             onRuntimeModelsRequest = createAgentLoadRuntimeModels,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,

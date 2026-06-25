@@ -28,7 +28,11 @@ class ComputersApiTest {
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachine(serverId, "machine-1")).data.ok)
         assertEquals("sk_machine_1", assertIs<DataResult.Content<ComputerApiKeyRotationSummary>>(client.rotateMachineKey(serverId, "machine-1")).data.apiKeyPrefix)
         assertEquals(2, assertIs<DataResult.Content<ComputerWorkspacePage>>(client.machineWorkspaces(serverId, "machine-1")).data.itemCount)
-        assertEquals("sonnet", assertIs<DataResult.Content<ComputerRuntimeModelsSummary>>(client.runtimeModels(serverId, "machine-1", "claude")).data.defaultModel)
+        val runtimeModels = assertIs<DataResult.Content<ComputerRuntimeModelsSummary>>(client.runtimeModels(serverId, "machine-1", "claude")).data
+        assertEquals("sonnet", runtimeModels.defaultModel)
+        assertEquals(listOf("sonnet", "opus"), runtimeModels.models.map { it.id })
+        assertEquals(listOf("Claude Sonnet", "Claude Opus"), runtimeModels.models.map { it.label })
+        assertEquals(listOf("launchable", null), runtimeModels.models.map { it.verified })
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachineWorkspace(serverId, "machine-1", "agent-old")).data.ok)
 
         assertEquals(
@@ -120,7 +124,8 @@ class ComputersApiTest {
         private val rotateBody: String = """{"apiKey":"sk_machine_123456"}""",
         private val workspacesBody: String =
             """[{"directoryName":"agent-live","totalSizeBytes":2048,"lastModified":"2026-05-26T00:00:00.000Z","fileCount":12,"status":"active","agentName":"Noel","agentStatus":"active"},{"directoryName":"agent-old","totalSizeBytes":1,"lastModified":"2026-05-25T00:00:00.000Z","fileCount":1,"status":"orphan","agentName":null,"agentStatus":null}]""",
-        private val runtimeModelsBody: String = """{"models":["sonnet","opus"],"default":"sonnet"}"""
+        private val runtimeModelsBody: String =
+            """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}"""
     ) : SlockComputersApi {
         var respond: ((Int) -> HomeNetworkResponse)? = null
         val calls = mutableListOf<String>()

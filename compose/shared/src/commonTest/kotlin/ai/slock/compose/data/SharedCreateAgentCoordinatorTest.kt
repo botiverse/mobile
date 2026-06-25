@@ -13,7 +13,8 @@ class SharedCreateAgentCoordinatorTest {
     fun loadRuntimeModelsUsesMachineEndpointAndLocalLabels() = runBlocking {
         val computersApi =
             FakeCreateAgentComputersApi(
-                runtimeModelsBody = """{"models":["claude-sonnet-4-6","vendor/custom"],"default":"claude-sonnet-4-6"}"""
+                runtimeModelsBody =
+                    """{"models":[{"id":"claude-sonnet-4-6","label":"Machine Sonnet","verified":"launchable"},{"id":"vendor/custom","label":"Vendor Custom","verified":"suggestion_only"}],"default":"vendor/custom"}"""
             )
         val coordinator =
             SharedCreateAgentCoordinator(
@@ -25,8 +26,9 @@ class SharedCreateAgentCoordinatorTest {
 
         val models = assertIs<DataResult.Content<List<SharedCreateAgentRuntimeModelOption>>>(result).data
         assertEquals(listOf("runtimeModels:server-1:machine-1:claude"), computersApi.calls)
-        assertEquals(listOf("claude-sonnet-4-6", "vendor/custom"), models.map { it.id })
-        assertEquals(listOf("Claude Sonnet 4.6", "vendor/custom"), models.map { it.label })
+        assertEquals(listOf("vendor/custom", "claude-sonnet-4-6"), models.map { it.id })
+        assertEquals(listOf("Vendor Custom", "Machine Sonnet"), models.map { it.label })
+        assertEquals(listOf("suggestion_only", "launchable"), models.map { it.verified })
     }
 }
 

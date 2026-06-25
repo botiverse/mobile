@@ -123,13 +123,17 @@ internal class SharedCreateAgentCoordinator(
         ) {
             is DataResult.Content -> {
                 val fallbackById = RUNTIME_MODELS[normalizedRuntime].orEmpty().associateBy { it.id }
+                val sortedModels =
+                    result.data.defaultModel?.let { defaultModel ->
+                        result.data.models.sortedBy { model -> if (model.id == defaultModel) 0 else 1 }
+                    } ?: result.data.models
                 val options =
-                    result.data.models.map { modelId ->
-                        val fallback = fallbackById[modelId]
+                    sortedModels.map { model ->
+                        val fallback = fallbackById[model.id]
                         SharedCreateAgentRuntimeModelOption(
-                            id = modelId,
-                            label = fallback?.label ?: modelId,
-                            verified = fallback?.verified
+                            id = model.id,
+                            label = model.label.takeIf { it.isNotBlank() } ?: fallback?.label ?: model.id,
+                            verified = model.verified ?: fallback?.verified
                         )
                     }
                 DataResult.Content(options)
