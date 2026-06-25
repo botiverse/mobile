@@ -2597,6 +2597,7 @@ internal fun SharedThreadRouteContent(
         )
         if (signal.event is MemberPresenceUpdated) {
             membersStore?.dispatch(SharedMembersIntent.ApplyPresence(signal.event))
+            serverMembersStore?.applyPresence(signal.event)
         }
         if (signal.event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
             membersStore?.dispatch(
