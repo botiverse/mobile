@@ -122,7 +122,7 @@ internal class SlockComputersApiClient(
         ) { wire ->
             val machine = wire.machine.toSummary() ?: return@mapComputersBody null
             val apiKey = wire.apiKey.takeIf { it.isNotBlank() } ?: return@mapComputersBody null
-            ComputerRegistrationSummary(machine = machine, apiKeyPrefix = apiKey.take(12))
+            ComputerRegistrationSummary(machine = machine, apiKey = apiKey, apiKeyPrefix = apiKey.take(12))
         }
 
     suspend fun renameMachine(serverId: ServerId, machineId: String, name: String): DataResult<ComputerSummary> =
@@ -199,7 +199,7 @@ internal data class ComputerSummary(
     val createdAt: String?
 )
 
-internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKeyPrefix: String)
+internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKey: String, val apiKeyPrefix: String)
 internal data class ComputerApiKeyRotationSummary(val apiKeyPrefix: String)
 internal data class ComputerWorkspaceSummary(
     val directoryName: String,

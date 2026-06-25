@@ -68,16 +68,28 @@ enum class AddComputerStep { Type, Waiting, Connected }
 
 enum class AddComputerType { Local, Cloud }
 
+enum class AddComputerCommandTarget { Daemon, Computer }
+
 data class AddComputerDialogState(
     val step: AddComputerStep = AddComputerStep.Type,
     val machineType: AddComputerType = AddComputerType.Local,
     val name: String = "",
     val machineId: String? = null,
     val apiKeyPrefix: String? = null,
+    val daemonRunCommand: String? = null,
+    val computerSetupCommand: String? = null,
+    val copiedCommand: AddComputerCommandTarget? = null,
+    val connectedDetail: String? = null,
     val errorMessage: String? = null,
     val registering: Boolean = false,
+    val saving: Boolean = false,
     val canManage: Boolean = true,
     val atLimit: Boolean = false
+)
+
+data class AddComputerSetupCommands(
+    val daemonRunCommand: String? = null,
+    val computerSetupCommand: String? = null
 )
 
 data class SharedSettingsHomeSnapshot(
@@ -276,6 +288,10 @@ sealed interface SharedSettingsIntent {
     data class SetAddComputerName(val name: String) : SharedSettingsIntent
     data class SetAddComputerRegistration(val machineId: String, val apiKeyPrefix: String) : SharedSettingsIntent
     data class SetAddComputerError(val message: String) : SharedSettingsIntent
+    data class PollAddComputerMachineStatus(val machineId: String) : SharedSettingsIntent
+    data class CopyAddComputerCommand(val target: AddComputerCommandTarget) : SharedSettingsIntent
+    data object ClearAddComputerCopiedCommand : SharedSettingsIntent
+    data object CompleteAddComputerDialog : SharedSettingsIntent
     /**
      * #79: realtime event bridge for the Settings surface. Only used for
      * `RealtimeRefreshScope.Machines` events today. Listens to the same
@@ -347,6 +363,8 @@ sealed interface SharedSettingsEffect {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsEffect
     data class ClearStorage(val target: String) : SharedSettingsEffect
     data object CopyDiagnostics : SharedSettingsEffect
+    data class CopyText(val text: String) : SharedSettingsEffect
+    data class OpenComputer(val machineId: String) : SharedSettingsEffect
     data object ShareDiagnostics : SharedSettingsEffect
     data object ClearDiagnostics : SharedSettingsEffect
     data object SendFeedback : SharedSettingsEffect
@@ -473,14 +491,16 @@ class SharedSettingsDataSource(
         settingsRepository?.uninstallMarketplaceApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadComputers(forceComputers: Boolean = false): DataResult<SettingsComputersSnapshot> {
-        val serverId = sessionStore.readSession()?.currentServerId
+        val session = sessionStore.readSession()
+        val serverId = session?.currentServerId
         val sharedResult =
             if (serverId != null && computersSource != null) {
                 computersSource.loadSettingsComputersForServer(serverId, force = forceComputers)
             } else {
                 null
             }
-        return sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val result = sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return result.withAddComputerGate(session.canManageCurrentServer())
     }
 
     suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
@@ -524,6 +544,36 @@ class SharedSettingsDataSource(
 
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
         settingsRepository?.registerComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun buildAddComputerSetupCommands(apiKey: String): AddComputerSetupCommands {
+        val cleanApiKey = apiKey.trim()
+        if (cleanApiKey.isBlank()) return AddComputerSetupCommands()
+        val session = sessionStore.readSession()
+        val environment = apiEnvironmentStore?.current() ?: SharedApiEnvironmentStore.Production
+        val server = session.settingsCurrentServer()
+        val serverName = server?.name?.takeIf { it.isNotBlank() } ?: session.currentServerSlugForSettings() ?: "server"
+        val serverUrl = environment.socketBaseUrl.trimEnd('/')
+        val daemonTag = if (environment.key == SharedApiEnvironmentStore.Staging.key) "staging" else "latest"
+        val daemonRunCommand =
+            "npx @botiverse/raft-daemon@$daemonTag --server-url $serverUrl --api-key $cleanApiKey # $serverName"
+        val slug = session.currentServerSlugForSettings()?.trim()?.trimStart('/')
+        val computerSetupCommand =
+            if (!slug.isNullOrBlank() && (slug == "botiverse" || environment.key == SharedApiEnvironmentStore.CustomKey)) {
+                val serverUrlArg =
+                    when (environment.key) {
+                        SharedApiEnvironmentStore.Staging.key -> " --server-url https://slock-server-staging.fly.dev"
+                        SharedApiEnvironmentStore.CustomKey -> " --server-url $serverUrl"
+                        else -> ""
+                    }
+                "npm install -g @botiverse/raft-computer@latest && raft-computer setup /$slug$serverUrlArg"
+            } else {
+                null
+            }
+        return AddComputerSetupCommands(
+            daemonRunCommand = daemonRunCommand,
+            computerSetupCommand = computerSetupCommand
+        )
+    }
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1228,37 +1278,67 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.RegisterComputer -> {
                 runAction(COMPUTER_ACTION_REGISTER) {
+                    _state.value = _state.value.copy(
+                        addComputerDialog = _state.value.addComputerDialog?.copy(
+                            registering = true,
+                            errorMessage = null,
+                            copiedCommand = null
+                        )
+                    )
                     val result = dataSource.registerComputer(intent.request)
                     when (result) {
                         is DataResult.Content -> {
                             val state = _state.value.addComputerDialog
+                            val commands = dataSource.buildAddComputerSetupCommands(result.data.apiKey.orEmpty())
                             _state.value = _state.value.copy(
                                 addComputerDialog = state?.copy(
                                     step = AddComputerStep.Waiting,
                                     machineId = result.data.machine.id,
                                     apiKeyPrefix = result.data.apiKeyPrefix,
+                                    daemonRunCommand = commands.daemonRunCommand,
+                                    computerSetupCommand = commands.computerSetupCommand,
                                     registering = false,
                                     errorMessage = null
                                 )
                             )
-                            // Refresh computers list to show new machine
-                            dataSource.loadComputers()
+                            dataSource.loadComputers(forceComputers = true).applyToComputersListState()
                             result.applyComputerRegisterActionResult(result.data.machine.id)
                         }
-                        else -> Unit
+                        is DataResult.Empty -> {
+                            _state.value = _state.value.copy(
+                                addComputerDialog = _state.value.addComputerDialog?.copy(
+                                    registering = false,
+                                    errorMessage = result.reason.name
+                                )
+                            )
+                            result.applyComputerRegisterActionResult()
+                        }
+                        is DataResult.Error -> {
+                            _state.value = _state.value.copy(
+                                addComputerDialog = _state.value.addComputerDialog?.copy(
+                                    registering = false,
+                                    errorMessage = result.error.code
+                                )
+                            )
+                            result.applyComputerRegisterActionResult()
+                        }
+                        is DataResult.NoPermission -> {
+                            _state.value = _state.value.copy(
+                                addComputerDialog = _state.value.addComputerDialog?.copy(
+                                    registering = false,
+                                    errorMessage = result.blocker.code
+                                )
+                            )
+                            result.applyComputerRegisterActionResult()
+                        }
                     }
                 }
             }
             is SharedSettingsIntent.ShowAddComputerDialog ->
                 _state.value = _state.value.copy(
-                    addComputerDialog = AddComputerDialogState(
-                        step = AddComputerStep.Type,
-                        canManage = true,
-                        atLimit = false
-                    )
+                    addComputerDialog = _state.value.addComputerDialog ?: _state.value.computers.toAddComputerDialogState()
                 )
-            is SharedSettingsIntent.DismissAddComputerDialog ->
-                _state.value = _state.value.copy(addComputerDialog = null)
+            is SharedSettingsIntent.DismissAddComputerDialog -> dismissAddComputerDialog(cleanupPendingMachine = true)
             is SharedSettingsIntent.SetAddComputerStep ->
                 _state.value = _state.value.copy(
                     addComputerDialog = _state.value.addComputerDialog?.copy(step = intent.step)
@@ -1283,6 +1363,29 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(
                     addComputerDialog = _state.value.addComputerDialog?.copy(errorMessage = intent.message)
                 )
+            is SharedSettingsIntent.PollAddComputerMachineStatus ->
+                scope.launch {
+                    dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                    maybeAdvanceAddComputerDialogFromMachines(intent.machineId)
+                }
+            is SharedSettingsIntent.CopyAddComputerCommand -> {
+                val dialog = _state.value.addComputerDialog ?: return
+                val command =
+                    when (intent.target) {
+                        AddComputerCommandTarget.Daemon -> dialog.daemonRunCommand
+                        AddComputerCommandTarget.Computer -> dialog.computerSetupCommand
+                    }?.takeIf { it.isNotBlank() } ?: return
+                _state.value = _state.value.copy(
+                    addComputerDialog = dialog.copy(copiedCommand = intent.target),
+                    effect = SharedSettingsEffect.CopyText(command)
+                )
+            }
+            SharedSettingsIntent.ClearAddComputerCopiedCommand ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(copiedCommand = null)
+                )
+            SharedSettingsIntent.CompleteAddComputerDialog ->
+                scope.launch { completeAddComputerDialog() }
             is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
             is SharedSettingsIntent.UpdateServerAgreement -> {
                 runAction(SERVER_ACTION_AGREEMENT_SAVE) {
@@ -1554,10 +1657,65 @@ class SharedSettingsStore(
                 }
             }
             SharedSettingsDestination.Computers -> {
-                scope.launch { dataSource.loadComputers(forceComputers = true).applyToComputersListState() }
+                scope.launch {
+                    dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                    maybeAdvanceAddComputerDialogFromMachines(machineId)
+                }
             }
             else -> Unit
         }
+    }
+
+    private fun dismissAddComputerDialog(cleanupPendingMachine: Boolean) {
+        val dialog = _state.value.addComputerDialog
+        _state.value = _state.value.copy(addComputerDialog = null)
+        val machineId = dialog?.machineId?.takeIf { it.isNotBlank() } ?: return
+        if (!cleanupPendingMachine || dialog.step == AddComputerStep.Connected) return
+        scope.launch {
+            dataSource.deleteComputer(machineId)
+            dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+        }
+    }
+
+    private suspend fun completeAddComputerDialog() {
+        val dialog = _state.value.addComputerDialog ?: return
+        val machineId = dialog.machineId?.takeIf { it.isNotBlank() } ?: run {
+            dismissAddComputerDialog(cleanupPendingMachine = false)
+            return
+        }
+        _state.value = _state.value.copy(addComputerDialog = dialog.copy(saving = true, errorMessage = null))
+        val finalName = dialog.name.trim()
+        if (finalName.isNotBlank() && finalName != "my-computer") {
+            dataSource.renameComputer(SettingsComputerRenameRequest(machineId = machineId, name = finalName))
+        }
+        dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+        _state.value =
+            _state.value.copy(
+                addComputerDialog = null,
+                route = SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, machineId),
+                effect = SharedSettingsEffect.OpenComputer(machineId)
+            )
+        loadComputerDetail(machineId)
+    }
+
+    private fun maybeAdvanceAddComputerDialogFromMachines(machineId: String) {
+        val dialog = _state.value.addComputerDialog ?: return
+        if (dialog.step != AddComputerStep.Waiting) return
+        if (dialog.machineId != null && dialog.machineId != machineId) return
+        val machines = (_state.value.computers as? ScreenLoadState.Content)?.data ?: return
+        val machine = machines.computers.firstOrNull { it.id == machineId } ?: return
+        if (!machine.online) return
+        val connectedDetail = listOfNotNull(
+            machine.hostname?.takeIf { it.isNotBlank() },
+            machine.platform?.takeIf { it.isNotBlank() } ?: "Unknown OS"
+        ).joinToString(" - ").takeIf { it.isNotBlank() }
+        _state.value = _state.value.copy(
+            addComputerDialog = dialog.copy(
+                step = AddComputerStep.Connected,
+                name = machine.hostname?.takeIf { it.isNotBlank() } ?: machine.name.takeIf { it.isNotBlank() } ?: dialog.name,
+                connectedDetail = connectedDetail
+            )
+        )
     }
 
     private fun DataResult<SettingsComputersSnapshot>.applyToComputersListState() {
@@ -1878,14 +2036,14 @@ class SharedSettingsStore(
     }
 
     private suspend fun DataResult<SettingsComputerRegistrationResult>.applyComputerRegisterActionResult(
-        machineId: String
+        machineId: String? = null
     ) {
         when (this) {
             is DataResult.Content -> {
                 _state.value = _state.value.copy(
                     actionState = SharedSettingsActionState(
                         action = COMPUTER_ACTION_REGISTER,
-                        itemId = machineId,
+                        itemId = machineId ?: data.machine.id,
                         inProgress = false
                     )
                 )
@@ -2107,6 +2265,10 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetAddComputerName,
             is SharedSettingsIntent.SetAddComputerRegistration,
             is SharedSettingsIntent.SetAddComputerError,
+            is SharedSettingsIntent.PollAddComputerMachineStatus,
+            is SharedSettingsIntent.CopyAddComputerCommand,
+            SharedSettingsIntent.ClearAddComputerCopiedCommand,
+            SharedSettingsIntent.CompleteAddComputerDialog,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.ApplyRealtimeEvent,
@@ -2120,6 +2282,53 @@ private fun <T> DataResult<T>.toScreenLoadState(): ScreenLoadState<T> =
         is DataResult.Error -> ScreenLoadState.Error(error)
         is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
     }
+
+private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
+    canManageServer: Boolean
+): DataResult<SettingsComputersSnapshot> =
+    when (this) {
+        is DataResult.Content ->
+            DataResult.Content(
+                data.copy(
+                    canAddComputer = canManageServer,
+                    addComputerUnavailableReason =
+                        if (canManageServer) null else data.addComputerUnavailableReason ?: "server_admin_required"
+                )
+            )
+        is DataResult.Empty -> this
+        is DataResult.Error -> this
+        is DataResult.NoPermission -> this
+    }
+
+private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(): AddComputerDialogState {
+    val snapshot = (this as? ScreenLoadState.Content)?.data
+    val canManage = snapshot?.canAddComputer ?: false
+    return AddComputerDialogState(
+        step = AddComputerStep.Type,
+        machineType = AddComputerType.Local,
+        name = "my-computer",
+        canManage = canManage,
+        atLimit = false,
+        errorMessage = if (canManage) null else snapshot?.addComputerUnavailableReason ?: "server_admin_required"
+    )
+}
+
+private fun StoredAuthSession?.settingsCurrentServer(): StoredAuthServer? {
+    val session = this ?: return null
+    val selectedId = session.currentServerId
+    return selectedId?.let { id -> session.servers.firstOrNull { it.id == id } }
+        ?: session.servers.firstOrNull()
+}
+
+private fun StoredAuthSession?.canManageCurrentServer(): Boolean =
+    settingsCurrentServer()?.role.let { it == "owner" || it == "admin" }
+
+private fun StoredAuthSession?.currentServerSlugForSettings(): String? {
+    val session = this ?: return null
+    return session.selectedServerSlug?.takeIf { it.isNotBlank() }
+        ?: session.settingsCurrentServer()?.slug?.takeIf { it.isNotBlank() }
+        ?: session.servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
+}
 
 private fun ScreenLoadState<*>.routeErrorCode(): String? =
     when (this) {

@@ -653,7 +653,8 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(result is DataResult.Content)
         val snapshot = result.data
         assertEquals("server-1", network.machinesServerId)
-        assertEquals(false, snapshot.canAddComputer)
+        assertEquals(true, snapshot.canAddComputer)
+        assertEquals(null, snapshot.addComputerUnavailableReason)
         assertEquals("1.5.0", snapshot.latestDaemonVersion)
         assertEquals(2, snapshot.computers.size)
         assertEquals("Jiachengs-MacBook-Pro", snapshot.computers[0].name)
@@ -662,7 +663,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("machine-2", snapshot.computers[1].id)
         assertEquals(false, snapshot.computers[1].online)
         assertTrue(logs.any { it == "machines_fetch_start serverId=server-1" })
-        assertTrue(logs.any { it == "machines_fetch_content serverId=server-1 count=2 canAdd=false" })
+        assertTrue(logs.any { it == "machines_fetch_content serverId=server-1 count=2 canAdd=true" })
         assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
     }
 

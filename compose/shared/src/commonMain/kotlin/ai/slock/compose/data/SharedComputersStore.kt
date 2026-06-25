@@ -219,18 +219,14 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCrea
 private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<SettingsComputersSnapshot> =
     when (status) {
         SharedComputersLoadStatus.Loaded ->
-            if (machines.isEmpty()) {
-                DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            } else {
-                DataResult.Content(
-                    SettingsComputersSnapshot(
-                        computers = machines.map { it.toSettingsComputerSnapshot() },
-                        canAddComputer = false,
-                        addComputerUnavailableReason = null,
-                        latestDaemonVersion = latestDaemonVersion
-                    )
+            DataResult.Content(
+                SettingsComputersSnapshot(
+                    computers = machines.map { it.toSettingsComputerSnapshot() },
+                    canAddComputer = false,
+                    addComputerUnavailableReason = null,
+                    latestDaemonVersion = latestDaemonVersion
                 )
-            }
+            )
         SharedComputersLoadStatus.Error ->
             DataResult.Error(ScreenError(errorCode ?: "computers_unavailable", retryable = true))
         SharedComputersLoadStatus.Idle, SharedComputersLoadStatus.InFlight ->

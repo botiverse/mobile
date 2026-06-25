@@ -555,9 +555,10 @@ class RealSettingsRepository(
     }
 
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
-        val serverId = selectedServerId() ?: return serverRequired()
+        val server = selectedServer() ?: return serverRequired()
+        val serverId = server.id
         logger("machines_fetch_start serverId=$serverId")
-        val result = settingsComputers(serverId).emptyWhen { it.computers.isEmpty() }
+        val result = settingsComputers(serverId, canManageServer = server.canManageServer)
         when (result) {
             is DataResult.Content -> logger(
                 "machines_fetch_content serverId=$serverId count=${result.data.computers.size} canAdd=${result.data.canAddComputer}"
@@ -574,7 +575,7 @@ class RealSettingsRepository(
         if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         logger("machine_detail_fetch_start serverId=$serverId machineId=$machineId")
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=machines")
-        val machines = settingsComputers(serverId).emptyWhen { it.computers.isEmpty() }
+        val machines = settingsComputers(serverId, canManageServer = false).emptyWhen { it.computers.isEmpty() }
         machines.logMachineDetailSection(serverId, machineId, "machines", (machines as? DataResult.Content)?.data?.computers?.size, logger, warningLogger)
         if (machines !is DataResult.Content) return machines.mapSettingsDetailError(serverId, machineId)
         val computer = machines.data.computers.firstOrNull { it.id == machineId }
@@ -639,6 +640,7 @@ class RealSettingsRepository(
         return computersApiClient.registerMachine(ServerId(serverId), normalizedName).mapComputerResult { summary ->
             SettingsComputerRegistrationResult(
                 machine = summary.machine.toSettingsComputerSnapshot(),
+                apiKey = summary.apiKey,
                 apiKeyPrefix = summary.apiKeyPrefix
             )
         }
@@ -1292,7 +1294,10 @@ class RealSettingsRepository(
         }
     }
 
-    private suspend fun settingsComputers(serverId: String): DataResult<SettingsComputersSnapshot> =
+    private suspend fun settingsComputers(
+        serverId: String,
+        canManageServer: Boolean
+    ): DataResult<SettingsComputersSnapshot> =
         computersApiClient.machines(ServerId(serverId)).mapComputerResult { summary ->
             val computers = summary.machines.map { it.toSettingsComputerSnapshot() }
             if (computers.isEmpty()) {
@@ -1300,8 +1305,8 @@ class RealSettingsRepository(
             }
             SettingsComputersSnapshot(
                 computers = computers,
-                canAddComputer = false,
-                addComputerUnavailableReason = null,
+                canAddComputer = canManageServer,
+                addComputerUnavailableReason = if (canManageServer) null else "server_admin_required",
                 latestDaemonVersion = summary.latestDaemonVersion
             )
         }

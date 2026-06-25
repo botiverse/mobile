@@ -127,6 +127,12 @@ internal fun StandaloneSettingsEffectHandler(
             is SharedSettingsEffect.OpenUrl -> {
                 environment.settingsCapabilities.openUrl(effect.url)
             }
+            is SharedSettingsEffect.CopyText -> {
+                environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
+            }
+            is SharedSettingsEffect.OpenComputer -> {
+                pager.openSettingsComputerDetailPage(effect.machineId, null)
+            }
             is SharedSettingsEffect.ClearStorage -> {
                 val result = environment.settingsCapabilities.clearStorage(effect.target)
                 when (result) {

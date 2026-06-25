@@ -36,12 +36,12 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.Appearance,
                 SharedSettingsDestination.Notifications,
                 SharedSettingsDestination.Mobile,
+                SharedSettingsDestination.Storage,
                 SharedSettingsDestination.Server,
                 SharedSettingsDestination.Billing,
                 SharedSettingsDestination.Administration,
                 SharedSettingsDestination.ConnectedApps,
                 SharedSettingsDestination.Computers,
-                SharedSettingsDestination.Storage,
                 SharedSettingsDestination.About,
                 SharedSettingsDestination.Developer
             ),
@@ -1175,6 +1175,225 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun computersEmptyListStillShowsAdminAddComputerEntry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = emptyList()))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+
+        val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
+        assertEquals(emptyList(), computers.computers)
+        assertEquals(true, computers.canAddComputer)
+        scope.cancel()
+    }
+
+    @Test
+    fun addComputerRegisterBuildsTransientSetupCommandAndWaitingState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val registered =
+            SettingsComputerSnapshot(
+                id = "machine-new",
+                name = "my-computer",
+                daemonVersion = "",
+                online = false
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = emptyList())),
+                registerComputerResult =
+                    DataResult.Content(
+                        SettingsComputerRegistrationResult(
+                            machine = registered,
+                            apiKey = "test-key-full",
+                            apiKeyPrefix = "test-key-ful"
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
+
+        val dialog = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Waiting, dialog?.step)
+        assertEquals("machine-new", dialog?.machineId)
+        assertEquals("test-key-ful", dialog?.apiKeyPrefix)
+        assertTrue(dialog?.daemonRunCommand.orEmpty().contains("--api-key test-key-full"))
+        assertTrue(dialog?.daemonRunCommand.orEmpty().contains("@botiverse/raft-daemon@latest"))
+        assertEquals(listOf("computers", "registerComputer:my-computer", "computers"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun addComputerPollAdvancesWaitingDialogWhenMachineComesOnline() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val offline =
+            SettingsComputerSnapshot(
+                id = "machine-new",
+                name = "my-computer",
+                daemonVersion = "",
+                online = false
+            )
+        val online =
+            offline.copy(
+                online = true,
+                hostname = "builder.local",
+                platform = "darwin"
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(offline))),
+                registerComputerResult =
+                    DataResult.Content(
+                        SettingsComputerRegistrationResult(
+                            machine = offline,
+                            apiKey = "test-key-full",
+                            apiKeyPrefix = "test-key-ful"
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
+        repository.computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(online)))
+        store.accept(SharedSettingsIntent.PollAddComputerMachineStatus("machine-new"))
+        yield()
+
+        val dialog = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Connected, dialog?.step)
+        assertEquals("builder.local", dialog?.name)
+        assertEquals("builder.local - darwin", dialog?.connectedDetail)
+        scope.cancel()
+    }
+
+    @Test
+    fun addComputerDoneRenamesAndOpensComputerDetail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val online =
+            SettingsComputerSnapshot(
+                id = "machine-new",
+                name = "my-computer",
+                daemonVersion = "0.51.1",
+                online = true,
+                hostname = "builder.local",
+                platform = "darwin"
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(online))),
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-new")),
+                registerComputerResult =
+                    DataResult.Content(
+                        SettingsComputerRegistrationResult(
+                            machine = online.copy(online = false),
+                            apiKey = "test-key-full",
+                            apiKeyPrefix = "test-key-ful"
+                        )
+                    ),
+                renameComputerResult = DataResult.Content(online.copy(name = "Builder Mac"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
+        store.accept(SharedSettingsIntent.PollAddComputerMachineStatus("machine-new"))
+        yield()
+        store.accept(SharedSettingsIntent.SetAddComputerName("Builder Mac"))
+        store.accept(SharedSettingsIntent.CompleteAddComputerDialog)
+        yield()
+
+        assertTrue(repository.calls.contains("renameComputer:machine-new:Builder Mac"))
+        assertEquals(null, store.state.value.addComputerDialog)
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-new"), store.state.value.route)
+        assertEquals(SharedSettingsEffect.OpenComputer("machine-new"), store.state.value.effect)
+        scope.cancel()
+    }
+
+    @Test
+    fun dismissAddComputerWhileWaitingDeletesPendingMachine() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val registered =
+            SettingsComputerSnapshot(
+                id = "machine-new",
+                name = "my-computer",
+                daemonVersion = "",
+                online = false
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(registered))),
+                registerComputerResult =
+                    DataResult.Content(
+                        SettingsComputerRegistrationResult(
+                            machine = registered,
+                            apiKey = "test-key-full",
+                            apiKeyPrefix = "test-key-ful"
+                        )
+                    ),
+                deleteComputerResult = DataResult.Content(SettingsComputerActionResult(machineId = "machine-new", success = true, action = "delete"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
+        store.accept(SharedSettingsIntent.DismissAddComputerDialog)
+        yield()
+
+        assertEquals(null, store.state.value.addComputerDialog)
+        assertTrue(repository.calls.contains("deleteComputer:machine-new"))
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeEventWithNonMachineScopeIsIgnored() = runBlocking {
         // #79: only RealtimeRefreshScope.Machines events are handled here.
         // Other scopes (ServerMembers, Agents, etc.) are routed through
@@ -1612,6 +1831,7 @@ class SharedSettingsStoreTest {
         var languageRegionResult: DataResult<SettingsLanguageRegionSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var appearanceResult: DataResult<SettingsAppearanceSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var registerComputerResult: DataResult<SettingsComputerRegistrationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var renameComputerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var deleteComputerResult: DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var rotateComputerKeyResult: DataResult<SettingsComputerKeyRotationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -1878,8 +2098,10 @@ class SharedSettingsStoreTest {
             return computerDetailResult
         }
 
-        override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> {
+            calls += "registerComputer:${request.name}"
+            return registerComputerResult
+        }
 
         override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> {
             calls += "renameComputer:${request.machineId}:${request.name}"

@@ -583,6 +583,7 @@ data class SettingsComputerWorkspaceDeleteRequest(
 
 data class SettingsComputerRegistrationResult(
     val machine: SettingsComputerSnapshot,
+    val apiKey: String? = null,
     val apiKeyPrefix: String
 )
 

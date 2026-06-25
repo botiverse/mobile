@@ -177,8 +177,12 @@ private fun SettingsComputersScreen() {
     ) { action, itemId ->
         when (action) {
             "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { pager.openSettingsComputerDetailPage(it, timeContext) }
+            "addComputer" -> settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog)
             else -> bridge.settingsEvent(launchPayload.instanceId, action, itemId)
         }
+    }
+    settingsState.addComputerDialog?.let { dialogState ->
+        AddComputerDialog(state = dialogState, onIntent = settingsViewModel::dispatch)
     }
 }
 

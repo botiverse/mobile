@@ -2507,6 +2507,12 @@ private fun SettingsAppShellContent(
             is SharedSettingsEffect.OpenUrl -> {
                 settingsCapabilities.openUrl(effect.url)
             }
+            is SharedSettingsEffect.CopyText -> {
+                settingsCapabilities.bridgeCopyToClipboard(effect.text)
+            }
+            is SharedSettingsEffect.OpenComputer -> {
+                onOpenComputer(effect.machineId)
+            }
             SharedSettingsEffect.CopyDiagnostics -> {
                 val ok = settingsCapabilities.copyDiagnostics()
                 if (ok) {
