@@ -24,8 +24,6 @@ import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
@@ -163,8 +161,6 @@ internal data class ThreadRealtimeCacheInvalidationSignal(
 )
 
 internal interface RealtimeDomainEventOwner {
-    val threadCacheInvalidations: StateFlow<ThreadRealtimeCacheInvalidationSignal?>
-
     fun registerSinks(sinks: RealtimeDomainEventSinks)
     fun unregisterSinks(sinks: RealtimeDomainEventSinks)
     fun accept(serverId: String, event: RealtimeEvent, source: String = "unknown")
@@ -177,6 +173,7 @@ internal data class RealtimeDomainEventSinks(
     val requestMemberDetailRefresh: () -> Unit = {},
     val joinChannel: (String) -> Unit = {},
     val emitRouteMarker: (RealtimeEvent) -> Unit = {},
+    val emitThreadCacheInvalidation: (ThreadRealtimeCacheInvalidationSignal) -> Unit = {},
     val log: (String) -> Unit = {}
 )
 
@@ -187,9 +184,6 @@ internal class SharedRealtimeDomainEventOwner(
     private var sinks: RealtimeDomainEventSinks? = null
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
-    private val _threadCacheInvalidations = MutableStateFlow<ThreadRealtimeCacheInvalidationSignal?>(null)
-    override val threadCacheInvalidations: StateFlow<ThreadRealtimeCacheInvalidationSignal?> =
-        _threadCacheInvalidations
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
@@ -249,13 +243,14 @@ internal class SharedRealtimeDomainEventOwner(
             return
         }
         nextSequence += 1
-        _threadCacheInvalidations.value =
+        val signal =
             ThreadRealtimeCacheInvalidationSignal(
                 sequence = nextSequence,
                 serverId = serverId,
                 threadIds = threadIds,
                 broadcast = broadcast
             )
+        activeSinks?.emitThreadCacheInvalidation?.invoke(signal)
         activeSinks?.log?.invoke(
             "realtime_domain_accept source=$source serverId=$serverId threadCache=invalidated " +
                 "seq=$nextSequence ids=${threadIds.joinToString(",")} broadcast=$broadcast"
