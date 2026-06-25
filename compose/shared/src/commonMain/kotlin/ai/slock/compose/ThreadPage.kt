@@ -187,6 +187,8 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -2377,6 +2379,9 @@ internal fun SharedThreadRouteContent(
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
+    var attachmentUploadJobs by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, Job>>(emptyMap())
+    }
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -2387,6 +2392,13 @@ internal fun SharedThreadRouteContent(
     var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
+
+    DisposableEffect(threadInstanceKey) {
+        onDispose {
+            currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
+        }
+    }
 
     LaunchedEffect(authStore, initialThreadInstanceKey) {
         val session = authStore.readSession()
@@ -4227,7 +4239,6 @@ internal fun SharedThreadRouteContent(
                             }
                             return@launch
                         }
-                        val localAttachmentIds = files.map { file -> file.id }.filter { it.isNotBlank() }.toSet()
                         val localAttachments =
                             files
                                 .filter { file -> file.id.isNotBlank() }
@@ -4247,53 +4258,62 @@ internal fun SharedThreadRouteContent(
                             )
                             yield()
                         }
-                        when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
-                            is DataResult.Content -> {
-                                val replacedAttachmentIds = files.map { file -> file.id }.filter { it.isNotBlank() }.toSet()
-                                val previewUrisByIndex = files.map { file -> file.previewUri?.takeIf { it.isNotBlank() } }
-                                val uploaded =
-                                    uploadResult.data.attachments.mapIndexed { index, attachment ->
-                                        SharedThreadComposerAttachment(
-                                            id = attachment.id.value,
-                                            fileName = attachment.name,
-                                            sizeLabel = attachment.sizeLabel,
-                                            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
-                                            previewUri = previewUrisByIndex.getOrNull(index),
-                                            status = "ready"
-                                        )
+                        files.forEach { file ->
+                            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
+                            val uploadJob =
+                                coroutineScope.launch(start = CoroutineStart.LAZY) {
+                                    try {
+                                        when (val uploadResult = dataSource.uploadAttachments(channelId, listOf(file))) {
+                                            is DataResult.Content -> {
+                                                val previewUri = file.previewUri?.takeIf { it.isNotBlank() }
+                                                val uploaded =
+                                                    uploadResult.data.attachments.map { attachment ->
+                                                        SharedThreadComposerAttachment(
+                                                            id = attachment.id.value,
+                                                            fileName = attachment.name,
+                                                            sizeLabel = attachment.sizeLabel,
+                                                            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                                            previewUri = previewUri,
+                                                            status = "ready"
+                                                        )
+                                                    }
+                                                if (uploaded.isEmpty()) {
+                                                    handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                                    return@launch
+                                                }
+                                                composerDraftViewModel.dispatch(
+                                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                                                        attachments = uploaded,
+                                                        replacedAttachmentIds = setOf(localAttachmentId),
+                                                        replacedAttachmentIdsByUploadedId =
+                                                            uploaded.associate { attachment -> attachment.id to localAttachmentId }
+                                                    )
+                                                )
+                                            }
+                                            is DataResult.Error ->
+                                                handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
+                                            is DataResult.NoPermission -> {
+                                                if (routeAuthRequired(uploadResult)) return@launch
+                                                handleAttachmentUploadFailure(uploadResult.blocker.code, setOf(localAttachmentId))
+                                            }
+                                            is DataResult.Empty ->
+                                                handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                        }
+                                    } catch (_: CancellationException) {
+                                        // The user removed this uploading tile; RemoveAttachment already hid it.
+                                    } finally {
+                                        attachmentUploadJobs = attachmentUploadJobs - localAttachmentId
                                     }
-                                if (uploaded.isEmpty()) {
-                                    handleAttachmentUploadFailure("empty_upload_result", localAttachmentIds)
-                                    return@launch
                                 }
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                                        attachments = uploaded,
-                                        replacedAttachmentIds = replacedAttachmentIds,
-                                        replacedAttachmentIdsByUploadedId =
-                                            uploaded.mapIndexedNotNull { index, attachment ->
-                                                files
-                                                    .getOrNull(index)
-                                                    ?.id
-                                                    ?.takeIf { id -> id.isNotBlank() }
-                                                    ?.let { localId -> attachment.id to localId }
-                                            }.toMap()
-                                    )
-                                )
-                            }
-                            is DataResult.Error ->
-                                handleAttachmentUploadFailure(uploadResult.error.code, localAttachmentIds)
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(uploadResult)) return@launch
-                                handleAttachmentUploadFailure(uploadResult.blocker.code, localAttachmentIds)
-                            }
-                            is DataResult.Empty ->
-                                handleAttachmentUploadFailure("empty_upload_result", localAttachmentIds)
+                            attachmentUploadJobs = attachmentUploadJobs + (localAttachmentId to uploadJob)
+                            uploadJob.start()
                         }
                     }
                 }
                 "removeAttachment" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        attachmentUploadJobs[id]?.cancel()
+                        attachmentUploadJobs = attachmentUploadJobs - id
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
                     }
                 }
