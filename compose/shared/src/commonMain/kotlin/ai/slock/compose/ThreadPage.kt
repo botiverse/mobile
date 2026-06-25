@@ -5645,6 +5645,32 @@ private fun ThreadPageContent(
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
+    LaunchedEffect(
+        threadInstanceKey,
+        payload.status,
+        payload.messages.size,
+        payload.backgroundRefreshing,
+        payload.originStatus,
+        payload.originMessage?.id,
+        payload.originPreview,
+        payload.selectedTab,
+        selectedTab,
+        renderEarlyLoadingShell
+    ) {
+        diagnosticsLogger(
+            "thread_visible_state instance=$threadInstanceKey " +
+                "threadId=${payload.sourceThreadId.orEmpty()} " +
+                "streamChannelId=${payload.streamChannelId.orEmpty()} " +
+                "payloadTab=${payload.selectedTab} selectedTab=${selectedTab.wireValue} " +
+                "status=${payload.status} messages=${payload.messages.size} " +
+                "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                "originStatus=${payload.originStatus} " +
+                "hasOriginMessage=${payload.originMessage != null} " +
+                "hasOriginPreview=${!payload.originPreview.isNullOrBlank()} " +
+                "renderEarlyLoadingShell=$renderEarlyLoadingShell " +
+                "branch=${if (renderEarlyLoadingShell) "early_loading" else "tab_content"}"
+        )
+    }
     val availableTabs =
         remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
             KuiklyThreadTab.entries.filter { tab ->
@@ -6345,6 +6371,29 @@ private fun ThreadChatTab(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadContentReady: () -> Unit = {}
 ) {
+    val chatRenderBranch =
+        when (payload.status) {
+            "loading" -> if (payload.originStatus != "none") "loading_with_origin" else "loading_empty"
+            "error" -> "error"
+            "no_permission" -> "no_permission"
+            "empty" -> if (payload.originStatus != "none") "empty_with_origin" else "empty_state"
+            else -> "messages_list"
+        }
+    LaunchedEffect(
+        threadInstanceKey,
+        payload.status,
+        payload.messages.size,
+        payload.backgroundRefreshing,
+        payload.originStatus,
+        chatRenderBranch
+    ) {
+        diagnosticsLogger(
+            "thread_chat_visible_state instance=$threadInstanceKey " +
+                "status=${payload.status} messages=${payload.messages.size} " +
+                "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                "originStatus=${payload.originStatus} branch=$chatRenderBranch"
+        )
+    }
     when (payload.status) {
         "loading" ->
             if (payload.originStatus != "none") {
@@ -6547,6 +6596,30 @@ private fun ThreadMessagesList(
             latestItemIndex = latestItemIndex,
             messageCount = payload.messages.size
         )
+    val showInitialBottomAnchorLoading =
+        !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
+    LaunchedEffect(
+        threadInstanceKey,
+        payload.status,
+        payload.messages.size,
+        payload.backgroundRefreshing,
+        initialBottomAnchorReady,
+        latestItemIndex,
+        revealLatestLocalSendBeforeInitialAnchor,
+        showInitialBottomAnchorLoading
+    ) {
+        if (showInitialBottomAnchorLoading) {
+            diagnosticsLogger(
+                "thread_messages_visible_state instance=$threadInstanceKey " +
+                    "status=${payload.status} messages=${payload.messages.size} " +
+                    "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                    "originStatus=${payload.originStatus} latestItemIndex=$latestItemIndex " +
+                    "initialBottomAnchorReady=$initialBottomAnchorReady " +
+                    "revealLatestLocalSendBeforeInitialAnchor=$revealLatestLocalSendBeforeInitialAnchor " +
+                    "branch=initial_bottom_anchor_loading"
+            )
+        }
+    }
     LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady, revealLatestLocalSendBeforeInitialAnchor) {
         if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
             onThreadContentReady()
@@ -7057,7 +7130,7 @@ private fun ThreadMessagesList(
                 }
             }
         }
-        if (!initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor) {
+        if (showInitialBottomAnchorLoading) {
             ThreadStateMessage("Loading...", null)
         }
         if (shouldShowThreadBackToBottomButton(
