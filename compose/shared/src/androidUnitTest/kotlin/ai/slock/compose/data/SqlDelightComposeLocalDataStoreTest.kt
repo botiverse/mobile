@@ -371,7 +371,7 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
-    fun genericThreadRefreshDoesNotDowngradeStoredJointChannelProjection() = runBlocking {
+    fun writeThroughThreadRefreshDoesNotPublishGenericChannelMetadata() = runBlocking {
         val database = createDatabase()
         val store =
             SqlDelightComposeLocalDataStore(
@@ -380,6 +380,7 @@ class SqlDelightComposeLocalDataStoreTest {
                 currentServerId = { serverId },
                 clock = { 42L }
             )
+        val writer = ComposeLocalWriteThrough(store)
         store.writeHome(
             HomeSnapshot(
                 server = ServerSummary(serverId, name = "Slock"),
@@ -393,20 +394,26 @@ class SqlDelightComposeLocalDataStoreTest {
                             name = "raft-mobile",
                             subtitle = "Mobile bridge"
                         )
-                    )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
             )
         )
-        store.writeThread(
-            ThreadSnapshot(
-                conversation =
-                    ConversationSummary(
-                        threadId = ThreadId("joint-1"),
-                        channelId = ChannelId("joint-1"),
-                        kind = ConversationKind.Channel,
-                        name = "Channel"
-                    ),
-                messages = emptyList()
-            )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation =
+                        ConversationSummary(
+                            threadId = ThreadId("joint-1"),
+                            channelId = ChannelId("joint-1"),
+                            kind = ConversationKind.Channel,
+                            name = "joint-1"
+                        ),
+                    messages = emptyList()
+                )
+            ),
+            source = "messages_channel"
         )
 
         val projection = assertNotNull(SharedConversationDirectoryStore(database).resolveProjection(serverId, "joint-1"))

@@ -29,9 +29,6 @@ import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
-import ai.slock.compose.isGenericThreadHeaderFallbackLabel
-import ai.slock.compose.threadHeaderCandidateTitle
-import ai.slock.compose.threadHeaderIdentityLikeTitle
 import ai.slock.shared.data.local.AttachmentEntity
 import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.MessageEntity
@@ -478,43 +475,23 @@ internal class SqlDelightComposeLocalDataStore(
         val incomingName = channel.name.ifBlank { canonicalChannelId }
         val incomingAvatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl
         val incomingPresenceMemberId = channel.presenceMemberId?.value
-        val existingChannel =
-            existing?.takeIf { incomingType == "channel" && it.type.isSpecificChannelType() }
-        val storedType = existingChannel?.type ?: incomingType
         val existingDirectMessage =
             existing?.takeIf { incomingType == "dm" && it.type == "dm" }
         val shouldPreserveDmMetadata = existingDirectMessage != null
-        val shouldPreserveChannelMetadata = existingChannel != null
         val existingNameLooksConcrete =
-            (existingDirectMessage?.name ?: existingChannel?.name)?.isBlankOrDirectoryIdentity(
+            existingDirectMessage?.name?.isBlankOrDirectoryIdentity(
                 canonicalChannelId = canonicalChannelId,
                 channel = channel
             ) == false
         val nameLooksSparse =
-            (shouldPreserveDmMetadata || shouldPreserveChannelMetadata) &&
+            shouldPreserveDmMetadata &&
                 channel.nameIsBlankOrIdentity(additionalIdentityIds = setOf(canonicalChannelId)) &&
                 existingNameLooksConcrete
-        val nameLooksGenericHeader =
-            shouldPreserveChannelMetadata &&
-                incomingName.isGenericDirectoryHeaderTitle(canonicalChannelId, channel)
-        val storedName =
-            if (nameLooksSparse || nameLooksGenericHeader) {
-                existingDirectMessage?.name ?: existingChannel?.name ?: incomingName
-            } else {
-                incomingName
-            }
+        val storedName = if (nameLooksSparse) existingDirectMessage.name else incomingName
         val storedAvatarUrl =
-            if (shouldPreserveDmMetadata || shouldPreserveChannelMetadata) {
-                incomingAvatarUrl ?: existingDirectMessage?.avatarUrl ?: existingChannel?.avatarUrl
-            } else {
-                incomingAvatarUrl
-            }
+            if (shouldPreserveDmMetadata) incomingAvatarUrl ?: existingDirectMessage.avatarUrl else incomingAvatarUrl
         val storedDescription =
-            if (shouldPreserveDmMetadata || shouldPreserveChannelMetadata) {
-                channel.subtitle ?: existingDirectMessage?.description ?: existingChannel?.description
-            } else {
-                channel.subtitle
-            }
+            if (shouldPreserveDmMetadata) channel.subtitle ?: existingDirectMessage.description else channel.subtitle
         val storedPresence =
             if (shouldPreserveDmMetadata) channel.presence?.name ?: existingDirectMessage.presence else channel.presence?.name
         val storedAgentStatus =
@@ -524,7 +501,7 @@ internal class SqlDelightComposeLocalDataStore(
         upsertChannel(
             serverId = serverId,
             channelId = canonicalChannelId,
-            type = storedType,
+            type = incomingType,
             name = storedName,
             description = storedDescription,
             parentChannelId = channel.thread?.parentChannelId?.value,
@@ -585,25 +562,6 @@ internal class SqlDelightComposeLocalDataStore(
             value == channel.threadId.value ||
             value == channel.channelId?.value ||
             value == channel.thread?.streamChannelId?.value
-    }
-
-    private fun String?.isSpecificChannelType(): Boolean =
-        equals("joint", ignoreCase = true) || equals("private", ignoreCase = true)
-
-    private fun String.isGenericDirectoryHeaderTitle(
-        canonicalChannelId: String,
-        channel: ConversationSummary
-    ): Boolean {
-        val candidate = threadHeaderCandidateTitle(this) ?: return true
-        val identityIds =
-            setOfNotNull(
-                canonicalChannelId,
-                channel.threadId.value,
-                channel.channelId?.value,
-                channel.thread?.streamChannelId?.value
-            )
-        return candidate.isGenericThreadHeaderFallbackLabel() ||
-            threadHeaderIdentityLikeTitle(candidate, identityIds)
     }
 
     private data class StoredConversationAlias(

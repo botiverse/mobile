@@ -1,11 +1,12 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.KuiklyThreadSurfaceKind
 import ai.slock.compose.normalizedThreadChannelKind
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
-import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
@@ -26,12 +27,13 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.explicitMessageStreamChannelId
+import ai.slock.compose.model.isGenericDisplayName
+import ai.slock.compose.model.isSameConversationAs
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.threadIdentity
-import ai.slock.compose.model.withTitleFallback
 
 class ComposeLocalWriteThrough(
     private val store: ComposeLocalDataStore,
@@ -256,7 +258,7 @@ class ComposeLocalWriteThrough(
         val resolvedParentMessage = snapshot.parentMessage ?: fallbackProof.parentMessage
         val conversation =
             snapshot.conversation
-                .withTitleFallback(fallbackProof.header)
+                .withStoredConversationMetadata(storedConversation)
                 .withResolvedReplyThreadMetadata(
                     storedConversation = storedConversation,
                     fallbackHeader = fallbackProof.header,
@@ -767,6 +769,71 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
         )
     } else {
         this
+    }
+}
+
+private fun ConversationSummary.withStoredConversationMetadata(stored: ConversationSummary?): ConversationSummary {
+    if (stored == null || kind == ConversationKind.Thread) return this
+    if (!isSameConversationAs(stored)) return this
+    val storedDisplayName = stored.safeDisplayNameOrNull()
+    val identityIds =
+        setOfNotNull(
+            stored.threadId.value,
+            stored.channelId?.value,
+            stored.thread?.streamChannelId?.value,
+            threadId.value,
+            channelId?.value,
+            thread?.streamChannelId?.value
+        )
+    val nameLooksSparse =
+        nameIsBlankOrIdentity(additionalIdentityIds = identityIds) ||
+            isGenericDisplayName(additionalIdentityIds = identityIds)
+    val resolvedKind =
+        if (kind == ConversationKind.Channel &&
+            (
+                stored.kind == ConversationKind.Joint ||
+                    stored.kind == ConversationKind.DirectMessage
+                )
+        ) {
+            stored.kind
+        } else {
+            kind
+        }
+    val resolvedChannelType = channelType.withStoredChannelTypeFallback(stored.channelType)
+    return copy(
+        kind = resolvedKind,
+        channelId = channelId ?: stored.channelId,
+        channelType = resolvedChannelType,
+        name = if (nameLooksSparse && storedDisplayName != null) stored.name else name,
+        subtitle = subtitle ?: stored.subtitle,
+        directMessagePeerType = directMessagePeerType ?: stored.directMessagePeerType,
+        avatarUrl = avatarUrl ?: stored.avatarUrl,
+        avatar = avatar ?: stored.avatar,
+        gravatarUrl = gravatarUrl ?: stored.gravatarUrl,
+        presence = presence ?: stored.presence,
+        agentStatus = agentStatus ?: stored.agentStatus,
+        presenceMemberId = presenceMemberId ?: stored.presenceMemberId,
+        memberCount = memberCount ?: stored.memberCount,
+        jointChannelId = jointChannelId ?: stored.jointChannelId,
+        jointRole = jointRole ?: stored.jointRole,
+        jointPeerServerId = jointPeerServerId ?: stored.jointPeerServerId,
+        jointPeerServerName = jointPeerServerName ?: stored.jointPeerServerName,
+        jointPeerServerSlug = jointPeerServerSlug ?: stored.jointPeerServerSlug,
+        jointPeerStatus = jointPeerStatus ?: stored.jointPeerStatus
+    )
+}
+
+private fun String?.withStoredChannelTypeFallback(storedChannelType: String?): String? {
+    val normalized = normalizedThreadChannelKind()
+    val storedNormalized = storedChannelType.normalizedThreadChannelKind()
+    return if (
+        normalized == KuiklyThreadSurfaceKind.Channel &&
+        storedNormalized != null &&
+        storedNormalized != KuiklyThreadSurfaceKind.Channel
+    ) {
+        storedChannelType
+    } else {
+        this ?: storedChannelType
     }
 }
 
