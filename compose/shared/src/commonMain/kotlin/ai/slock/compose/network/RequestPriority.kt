@@ -17,6 +17,11 @@ enum class SlockRequestPriority {
     Background
 }
 
+// Keep user-visible requests high while still bounding background/bulk work.
+const val SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS = 30
+const val SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS = 16
+const val SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS = 6
+
 class SlockRequestTimeoutException(message: String) : Exception(message)
 
 class SlockRequestPriorityElement(
@@ -35,9 +40,9 @@ suspend fun <T> withSlockRequestPriority(
 ): T = withContext(SlockRequestPriorityElement(priority, key, reason)) { block() }
 
 class SlockRequestScheduler(
-    private val maxForegroundRequests: Int = 6,
-    private val maxVisibleRequests: Int = 3,
-    private val maxBackgroundRequests: Int = 1,
+    private val maxForegroundRequests: Int = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
+    private val maxVisibleRequests: Int = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS,
+    private val maxBackgroundRequests: Int = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS,
     private val requestTimeoutMillis: Long = 30_000,
     private val logger: (String) -> Unit = {}
 ) {

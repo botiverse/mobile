@@ -223,7 +223,7 @@ private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
-private const val ThreadAttachmentUploadConcurrencyLimit = 2
+private const val ThreadAttachmentUploadConcurrencyLimit = 6
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs

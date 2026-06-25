@@ -7,12 +7,21 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 
 class SlockRequestSchedulerTest {
+    @Test
+    fun defaultLanesUseMobileHttpConcurrencyCaps() = runBlocking {
+        assertDefaultLaneLimit(SlockRequestPriority.Foreground, SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS)
+        assertDefaultLaneLimit(SlockRequestPriority.Visible, SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS)
+        assertDefaultLaneLimit(SlockRequestPriority.Background, SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS)
+    }
+
     @Test
     fun requestTimeoutReleasesLanePermit() = runBlocking {
         val scheduler =
@@ -189,5 +198,38 @@ class SlockRequestSchedulerTest {
         jobs.forEach { it.await() }
 
         assertEquals(1, maxActive)
+    }
+
+    private suspend fun assertDefaultLaneLimit(priority: SlockRequestPriority, expectedLimit: Int) = coroutineScope {
+        val scheduler = SlockRequestScheduler(requestTimeoutMillis = 5_000)
+        val releaseRequests = CompletableDeferred<Unit>()
+        val reachedExpectedLimit = CompletableDeferred<Unit>()
+        val mutex = Mutex()
+        var active = 0
+        var maxActive = 0
+
+        val jobs =
+                (0..expectedLimit).map { index ->
+                    async {
+                        scheduler.run(priority, key = "${priority.name.lowercase()}-$index") {
+                            mutex.withLock {
+                                active += 1
+                                maxActive = maxOf(maxActive, active)
+                                if (active == expectedLimit && !reachedExpectedLimit.isCompleted) {
+                                    reachedExpectedLimit.complete(Unit)
+                                }
+                            }
+                            releaseRequests.await()
+                            mutex.withLock { active -= 1 }
+                        }
+                    }
+                }
+
+        withTimeout(1_000) { reachedExpectedLimit.await() }
+        delay(75)
+        assertEquals(expectedLimit, maxActive)
+
+        releaseRequests.complete(Unit)
+        jobs.forEach { it.await() }
     }
 }
