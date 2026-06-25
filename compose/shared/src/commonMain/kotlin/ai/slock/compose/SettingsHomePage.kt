@@ -8783,6 +8783,38 @@ private fun SharedMembersScreen(
                     computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
                 }
             }
+            val createAgentRuntimeModelScope = rememberCoroutineScope()
+            var createAgentRuntimeModels by remember(serverId) {
+                mutableStateOf<Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>>>(emptyMap())
+            }
+            var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
+                mutableStateOf<Set<Pair<String, String>>>(emptySet())
+            }
+            val loadRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
+                val key = machineId.trim() to runtime.trim()
+                if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
+                    // no-op: the dialog keeps using the static runtime catalog fallback
+                } else if (!force && (key in createAgentRuntimeModels || key in createAgentRuntimeModelLoadsInFlight)) {
+                    // no-op: cached or already loading
+                } else {
+                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight + key
+                    createAgentRuntimeModelScope.launch {
+                        when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
+                            is DataResult.Content -> {
+                                if (result.data.isNotEmpty()) {
+                                    createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
+                                }
+                            }
+                            is DataResult.Empty -> Unit
+                            is DataResult.Error ->
+                                bridge.log("create_agent_runtime_models_failed source=shared_members code=${result.error.code}")
+                            is DataResult.NoPermission ->
+                                bridge.log("create_agent_runtime_models_blocked source=shared_members code=${result.blocker.code}")
+                        }
+                        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight - key
+                    }
+                }
+            }
             // task #79: wire Settings → Members humans "+" invite flow.
             // Mirror the MembersPage.kt path: build a SharedMembersDataSource
             // on the fly from the host memberRepository + settingsRepository,
@@ -8906,6 +8938,8 @@ private fun SharedMembersScreen(
                 createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                 createAgentLoadMachines = loadMachines,
+                createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                createAgentLoadRuntimeModels = loadRuntimeModels,
                 inviteHumanSubmit = inviteHumanSubmit,
                 inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
                 inviteHumanJoinLinkUrl = inviteJoinLinkUrl,

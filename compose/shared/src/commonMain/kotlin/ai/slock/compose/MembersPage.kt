@@ -853,6 +853,37 @@ internal fun MembersPageContent() {
             }
         }
     }
+    var createAgentRuntimeModels by remember(serverId) {
+        mutableStateOf<Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>>>(emptyMap())
+    }
+    var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
+        mutableStateOf<Set<Pair<String, String>>>(emptySet())
+    }
+    val loadRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
+        val key = machineId.trim() to runtime.trim()
+        if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
+            // no-op: the dialog keeps using the static runtime catalog fallback
+        } else if (!force && (key in createAgentRuntimeModels || key in createAgentRuntimeModelLoadsInFlight)) {
+            // no-op: cached or already loading
+        } else {
+            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight + key
+            scope.launch {
+                when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
+                    is DataResult.Content -> {
+                        if (result.data.isNotEmpty()) {
+                            createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
+                        }
+                    }
+                    is DataResult.Empty -> Unit
+                    is DataResult.Error ->
+                        bridge.log("create_agent_runtime_models_failed source=members_page code=${result.error.code}")
+                    is DataResult.NoPermission ->
+                        bridge.log("create_agent_runtime_models_blocked source=members_page code=${result.blocker.code}")
+                }
+                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight - key
+            }
+        }
+    }
 
     // Task #43 step 3: humans "+" invite flow state. Mirrors the React
     // `InviteHumanDialog.tsx` (join link + emails + send). Join link
@@ -945,6 +976,8 @@ internal fun MembersPageContent() {
         createAgentCurrentAgentCount = currentAgentCount,
         createAgentMaxAgents = maxAgents,
         createAgentLoadMachines = loadMachines,
+        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+        createAgentLoadRuntimeModels = loadRuntimeModels,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
@@ -1719,6 +1752,8 @@ internal fun MembersRouteContent(
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
+    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
@@ -1751,6 +1786,8 @@ internal fun MembersRouteContent(
         createAgentCurrentAgentCount = createAgentCurrentAgentCount,
         createAgentMaxAgents = createAgentMaxAgents,
         createAgentLoadMachines = createAgentLoadMachines,
+        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
+        createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
@@ -1775,6 +1812,8 @@ internal fun MembersListContent(
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
+    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
     inviteHumanJoinLinkLoading: Boolean = false,
     inviteHumanJoinLinkUrl: String? = null,
@@ -1908,6 +1947,8 @@ internal fun MembersListContent(
             errorMessage = createAgentError,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
+            runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
+            onRuntimeModelsRequest = createAgentLoadRuntimeModels,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
             onDismiss = {

@@ -1,8 +1,11 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.SharedCreateAgentMachineOption
+import ai.slock.compose.SharedCreateAgentRuntimeModelOption
+import ai.slock.compose.model.RUNTIME_MODELS
 import ai.slock.compose.model.RuntimeConfig
 import ai.slock.compose.model.RuntimeModelConfig
+import ai.slock.compose.model.ServerId
 
 /**
  * KMP-side coordinator for the create-agent flow shared between the Members
@@ -71,7 +74,7 @@ internal class SharedCreateAgentCoordinator(
     }
 
     suspend fun loadMachines(serverId: String): DataResult<List<SharedCreateAgentMachineOption>> {
-        return when (val result = computersApiClient.machines(ai.slock.compose.model.ServerId(serverId))) {
+        return when (val result = computersApiClient.machines(ServerId(serverId))) {
             is DataResult.Content -> {
                 val opts = result.data.machines.map { m ->
                     SharedCreateAgentMachineOption(
@@ -94,6 +97,50 @@ internal class SharedCreateAgentCoordinator(
             }
             is DataResult.NoPermission -> {
                 logger("load_machines_no_permission")
+                result
+            }
+        }
+    }
+
+    suspend fun loadRuntimeModels(
+        serverId: String,
+        machineId: String,
+        runtime: String
+    ): DataResult<List<SharedCreateAgentRuntimeModelOption>> {
+        val normalizedServerId = serverId.trim()
+        val normalizedMachineId = machineId.trim()
+        val normalizedRuntime = runtime.trim()
+        if (normalizedServerId.isBlank() || normalizedMachineId.isBlank() || normalizedRuntime.isBlank()) {
+            return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        }
+        return when (
+            val result =
+                computersApiClient.runtimeModels(
+                    ServerId(normalizedServerId),
+                    normalizedMachineId,
+                    normalizedRuntime
+                )
+        ) {
+            is DataResult.Content -> {
+                val fallbackById = RUNTIME_MODELS[normalizedRuntime].orEmpty().associateBy { it.id }
+                val options =
+                    result.data.models.map { modelId ->
+                        val fallback = fallbackById[modelId]
+                        SharedCreateAgentRuntimeModelOption(
+                            id = modelId,
+                            label = fallback?.label ?: modelId,
+                            verified = fallback?.verified
+                        )
+                    }
+                DataResult.Content(options)
+            }
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> {
+                logger("load_runtime_models_failed machineId=$normalizedMachineId runtime=$normalizedRuntime code=${result.error.code}")
+                result
+            }
+            is DataResult.NoPermission -> {
+                logger("load_runtime_models_no_permission machineId=$normalizedMachineId runtime=$normalizedRuntime")
                 result
             }
         }
