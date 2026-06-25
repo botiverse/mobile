@@ -1946,13 +1946,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=profile",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=profile",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Profile tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=profile; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=profile."
+      "notes": "Real route capture for the Profile tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=profile; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=profile."
     },
     {
       "id": "screens.members.agent-detail.permissions",
@@ -1983,13 +1983,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=permissions",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=permissions",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Permissions tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=permissions; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=permissions."
+      "notes": "Real route capture for the Permissions tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=permissions; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=permissions."
     },
     {
       "id": "screens.members.agent-detail.dms",
@@ -2020,13 +2020,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=dms",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=dms",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Agent DMs tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=dms; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=dms."
+      "notes": "Real route capture for the Agent DMs tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=dms; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=dms."
     },
     {
       "id": "screens.members.agent-detail.reminders",
@@ -2057,13 +2057,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=reminders",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=reminders",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Reminders tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=reminders; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=reminders."
+      "notes": "Real route capture for the Reminders tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=reminders; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=reminders."
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2094,13 +2094,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=workspace",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=workspace",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Workspace tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=workspace; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=workspace."
+      "notes": "Real route capture for the Workspace tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=workspace; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=workspace."
     },
     {
       "id": "screens.members.agent-detail.apps",
@@ -2131,13 +2131,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=apps",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=apps",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Apps tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=apps; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=apps."
+      "notes": "Real route capture for the Apps tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=apps; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=apps."
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2168,13 +2168,50 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
-      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=activity",
+      "androidCaseHint": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=activity",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture for the Activity tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=activity; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity."
+      "notes": "Real route capture for the Activity tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=activity; Android uses compose_member_detail pageData with memberId=agent-product-ux, memberKind=agent, and initialAgentTab=activity."
+    },
+    {
+      "id": "screens.members.human.profile",
+      "title": "Members Human Detail Profile Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "fixture": "fixtures/screens.members.human.profile.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {
+            "humanUserId": "visual-human-1"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.human.profile']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#HumanRoute",
+      "androidCaseHint": "compose_member_detail:memberId=visual-human-1,memberKind=human",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Real route capture for the human Profile tab. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human."
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -4685,10 +4722,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailProfileScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=profile",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=profile",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentProfileTab"
           ]
@@ -4729,12 +4765,11 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailPermissionsScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=permissions",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=permissions",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
-            "MembersAgentPlaceholderTab"
+            "MembersAgentPermissionsTab"
           ]
         },
         {
@@ -4773,10 +4808,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailDmsScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=dms",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=dms",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentDmsTab"
           ]
@@ -4817,10 +4851,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailRemindersScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=reminders",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=reminders",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentRemindersTab"
           ]
@@ -4861,10 +4894,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailWorkspaceScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=workspace",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=workspace",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentWorkspaceTab"
           ]
@@ -4905,10 +4937,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailAppsScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=apps",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=apps",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentAppsTab"
           ]
@@ -4949,10 +4980,9 @@
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailActivityScreen",
-          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=activity",
+          "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=activity",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
+            "MemberDetailPageContent",
             "MembersDetailContent",
             "MembersAgentActivityTab"
           ]
@@ -4973,12 +5003,12 @@
       "surface": "members",
       "category": "members",
       "group": "screens-members",
-      "status": "pending",
-      "notes": "Pending: needs real Members route/provider capture for human member detail profile. React uses MainLayout at /s/visual/members/human/...; Android uses compose_members pageData with selectedMemberId=<human-user-id>. Mirrors screens.members.agent-detail.profile contract.",
+      "status": "baseline",
+      "notes": "Real Members route capture for human member detail profile. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
+          "status": "ready",
           "path": "packages/web/src/components/layout/MainLayout.tsx#HumanRoute",
           "fixture": "fixtures/screens.members.human.profile.json",
           "components": [
@@ -4989,16 +5019,15 @@
         },
         {
           "id": "android",
-          "status": "pending",
-          "source": "kmp-shared",
+          "status": "ready",
+          "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersHumanDetailProfileScreen",
-          "route": "compose_members:selectedMemberId=<human-user-id>,initialHumanTab=profile",
+          "route": "compose_member_detail:memberId=visual-human-1,memberKind=human",
           "components": [
-            "MembersPageContent",
-            "MembersRouteContent",
-            "MembersHumanDetailContent",
-            "MembersHumanProfileTab"
+            "MemberDetailPageContent",
+            "MembersDetailContent",
+            "MembersHumanDetailSections"
           ]
         },
         {

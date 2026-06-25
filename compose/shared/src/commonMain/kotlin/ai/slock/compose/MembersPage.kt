@@ -468,6 +468,35 @@ private val membersAgentDetailVisualMember = MemberProfile(
     permissionBadges = listOf("computer:MacBook Pro", "runtime:Codex")
 )
 
+private val membersHumanDetailVisualMember = MemberProfile(
+    id = MemberId("visual-human-1"),
+    displayName = "artin",
+    handle = "@artin",
+    kind = MemberKind.Human,
+    description = "Owner",
+    roleDescription = "Server owner",
+    avatar = AvatarReference.Pixel("user"),
+    avatarLabel = "A",
+    presence = Presence.Active
+)
+
+private val membersAgentDetailVisualScopeSet = AgentScopeSet(
+    agentId = membersAgentDetailVisualMember.id,
+    granted = listOf(
+        "inbox:receive",
+        "server:read",
+        "channel:read",
+        "message:read",
+        "message:send",
+        "task:read",
+        "task:write",
+        "knowledge:read"
+    ),
+    mode = "custom",
+    revision = 7L,
+    updatedAt = "2026-06-19T12:28:00.000Z"
+)
+
 private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     agentId = membersAgentDetailVisualMember.id,
     summary = AgentDetailSummary(
@@ -933,6 +962,12 @@ private sealed interface MemberDetailRouteState {
     ) : MemberDetailRouteState
 }
 
+private data class MemberDetailVisualSeed(
+    val member: MemberProfile,
+    val agentDetailState: MembersAgentDetailLoadState,
+    val agentScopeSet: AgentScopeSet? = null
+)
+
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
     val authStore: SlockAuthSessionStore,
@@ -1195,6 +1230,11 @@ private fun MemberDetailPageContent() {
     val payload = remember(pager.pageData.params.toString()) {
         pager.pageData.params.toKuiklyMemberDetailPayload()
     }
+    val visualSeed = remember(payload) { payload.toMemberDetailVisualSeedOrNull() }
+    if (visualSeed != null) {
+        MemberDetailVisualSeedContent(payload = payload, seed = visualSeed)
+        return
+    }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
     var routeState by remember(payload.memberId) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
@@ -1364,6 +1404,66 @@ private fun MemberDetailPageContent() {
             )
         }
     }
+}
+
+private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDetailVisualSeed? {
+    if (!instanceId.startsWith("visual-")) return null
+    return when (memberId) {
+        membersAgentDetailVisualMember.id.value ->
+            MemberDetailVisualSeed(
+                member = membersAgentDetailVisualMember,
+                agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
+                agentScopeSet = membersAgentDetailVisualScopeSet
+            )
+        membersHumanDetailVisualMember.id.value ->
+            MemberDetailVisualSeed(
+                member = membersHumanDetailVisualMember,
+                agentDetailState = MembersAgentDetailLoadState.Idle
+            )
+        else -> null
+    }
+}
+
+@Composable
+private fun MemberDetailVisualSeedContent(
+    payload: KuiklyMemberDetailPayload,
+    seed: MemberDetailVisualSeed
+) {
+    val initialAgentTab = remember(payload.initialAgentTab) {
+        payload.initialAgentTab.toMembersAgentDetailTabOrNull()
+    }
+    MembersDetailContent(
+        member = seed.member,
+        agentDetailState = seed.agentDetailState,
+        canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
+        canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
+        onBack = {},
+        onOpenDirectMessage = {},
+        onCopyMemberId = {},
+        onOpenUrl = {},
+        onUpdateAgentProfile = { DataResult.Content(seed.member) },
+        onUploadAgentAvatar = null,
+        onAgentLifecycleAction = { agentId, action ->
+            DataResult.Content(
+                AgentLifecycleActionResult(
+                    agentId = agentId,
+                    action = action.actionKey,
+                    success = true
+                )
+            )
+        },
+        agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
+        agentWorkspaceChildrenLoader = { _, _ ->
+            DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
+        },
+        onCopyAgentDiagnostics = {},
+        onReportAgentIssue = { true },
+        onUnavailableAction = {},
+        timeContext = payload.toSlockTimeContext(),
+        initialAgentTab = initialAgentTab,
+        agentPanelTabOrder = payload.agentPanelTabOrder,
+        initialAgentScopeSet = seed.agentScopeSet
+    )
 }
 
 @Composable
@@ -1907,7 +2007,8 @@ private fun MembersDetailContent(
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
-    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null
+    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
+    initialAgentScopeSet: AgentScopeSet? = null
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -2313,6 +2414,7 @@ private fun MembersDetailContent(
                                         detail = detail,
                                         canManage = canManage,
                                         agentsApiClient = agentsApiClient,
+                                        initialScopeSet = initialAgentScopeSet,
                                         onUnavailableAction = onUnavailableAction,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -5585,15 +5687,16 @@ private fun MembersAgentPermissionsTab(
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
     agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient?,
+    initialScopeSet: AgentScopeSet? = null,
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // #89 React parity: mirror `AgentScopesPanel.tsx` state machine.
     // Local state only (per owner 06-25 04:08 — `SharedAgentDetailStore`
     // integration deferred to AD4 #56 lane).
-    var serverSet by remember { mutableStateOf<AgentScopeSet?>(null) }
-    var draft by remember { mutableStateOf<Set<String>?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    var serverSet by remember(member.id, initialScopeSet) { mutableStateOf<AgentScopeSet?>(initialScopeSet) }
+    var draft by remember(member.id, initialScopeSet) { mutableStateOf(initialScopeSet?.granted?.toSet()) }
+    var loading by remember(member.id, initialScopeSet) { mutableStateOf(initialScopeSet == null) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -5620,7 +5723,9 @@ private fun MembersAgentPermissionsTab(
     }
 
     LaunchedEffect(member.id) {
-        loadScopes()
+        if (initialScopeSet == null) {
+            loadScopes()
+        }
     }
 
     fun toggle(scope: String) {

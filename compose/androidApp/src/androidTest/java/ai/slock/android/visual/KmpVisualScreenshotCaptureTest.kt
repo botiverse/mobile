@@ -339,16 +339,36 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureMembersHumanDetailProfileScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.members.human.profile",
+            pageName = "compose_member_detail",
+            pageData = memberDetailVisualPageData(
+                instanceId = "visual-members-human-profile",
+                memberId = "visual-human-1",
+                memberKind = "human"
+            ),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
     private fun captureMembersAgentDetailScreen(
         caseId: String,
         tab: String
     ) {
         captureKmpComponentCase(
             caseId = caseId,
-            pageName = "compose_members",
-            pageData = membersAgentDetailPageData(tab),
+            pageName = "compose_member_detail",
+            pageData = memberDetailVisualPageData(
+                instanceId = "visual-members-agent-$tab",
+                memberId = "agent-product-ux",
+                memberKind = "agent",
+                initialAgentTab = tab
+            ),
             crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
+            settleMs = 2_500
         )
     }
 
@@ -828,44 +848,33 @@ class KmpVisualScreenshotCaptureTest {
             .put("advancedOpen", advancedOpen)
             .put("command", command)
 
-    private fun membersAgentDetailPageData(tab: String): JSONObject {
-        val instanceId = "visual-members-agent-$tab"
+    private fun memberDetailVisualPageData(
+        instanceId: String,
+        memberId: String,
+        memberKind: String,
+        initialAgentTab: String? = null
+    ): JSONObject {
         val payload =
             JSONObject()
                 .put("instanceId", instanceId)
-                .put("title", "Members")
-                .put("selectedMemberId", "agent-product-ux")
-                .put("initialAgentTab", tab)
+                .put("memberId", memberId)
+                .put("memberKind", memberKind)
                 .put("localOffsetMinutes", 480)
                 .put("todayEpochDay", 20623)
+                .put("nowEpochMillis", 1781872200000)
                 .put("timeFormat", "24h")
-                .put("canCreateAgents", false)
                 .put(
-                    "members",
+                    "agentPanelTabOrder",
                     JSONArray()
-                        .put(
-                            JSONObject()
-                                .put("id", "agent-product-ux")
-                                .put("displayName", "Product UX Designer")
-                                .put("handle", "@Product-UX-Designer")
-                                .put("kind", "Agent")
-                                .put(
-                                    "description",
-                                    "Turns product feedback, screenshots, and release notes into actionable UX specs."
-                                )
-                                .put("roleDescription", "Product / UX agent")
-                                .put("avatarWireValue", "pixel:paint")
-                                .put("avatarLabel", "P")
-                                .put("presence", "Active")
-                                .put("agentStatus", "Working")
-                                .put(
-                                    "permissionBadges",
-                                    JSONArray()
-                                        .put("computer:MacBook Pro")
-                                        .put("runtime:Codex")
-                                )
-                        )
+                        .put("profile")
+                        .put("permissions")
+                        .put("dms")
+                        .put("reminders")
+                        .put("workspace")
+                        .put("apps")
+                        .put("activity")
                 )
+        initialAgentTab?.let { payload.put("initialAgentTab", it) }
         return JSONObject()
             .put("instanceId", instanceId)
             .put("payload", payload.toString())
