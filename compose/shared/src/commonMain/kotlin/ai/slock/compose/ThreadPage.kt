@@ -1638,12 +1638,10 @@ private fun ThreadPageScreen() {
             )
         }
     val membersStore =
-        remember(authStore, memberRepository, channelRepository, sharedStores.serverMembersStore, routeScope) {
+        remember(authStore, channelRepository, routeScope) {
             SharedMembersStore(
                 authStore = authStore,
-                memberRepository = memberRepository,
                 channelRepository = channelRepository,
-                serverMembersStore = sharedStores.serverMembersStore,
                 scope = routeScope,
                 logger = { message -> bridge.log(message) }
             )
@@ -2485,20 +2483,27 @@ internal fun SharedThreadRouteContent(
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
+    val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     val memberSuggestionsFlow =
         remember(
-        membersStore,
-        memberSuggestionScopeChannelId,
-        memberSuggestionScopedMentions
-    ) {
-        membersStore?.memberSuggestionSliceFlow(
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions
-        )
-            ?.map { slice -> slice.suggestions }
-            ?.distinctUntilChanged()
-            ?: emptyMemberSuggestionsFlow
-    }
+            serverMembersStore,
+            currentServerId,
+            memberSuggestionScopeChannelId,
+            memberSuggestionScopedMentions
+        ) {
+            val serverId = currentServerId?.let(::ServerId)
+            if (serverMembersStore != null && serverId != null) {
+                serverMembersStore.memberSuggestionSliceFlow(
+                    serverId = serverId,
+                    mentionChannelId = memberSuggestionScopeChannelId,
+                    memberScopedMentions = memberSuggestionScopedMentions
+                )
+                    .map { slice -> slice.suggestions }
+                    .distinctUntilChanged()
+            } else {
+                emptyMemberSuggestionsFlow
+            }
+        }
     val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
     val channelSuggestionsFlow = remember(membersStore) {
         membersStore?.channelSuggestionSliceFlow()
@@ -2576,13 +2581,16 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    LaunchedEffect(membersStore, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
-        membersStore?.dispatch(
-            SharedMembersIntent.EnsureSuggestions(
-                mentionChannelId = memberSuggestionScopeChannelId,
-                memberScopedMentions = memberSuggestionScopedMentions
-            )
+    LaunchedEffect(serverMembersStore, currentServerId, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
+        val serverId = currentServerId ?: return@LaunchedEffect
+        serverMembersStore?.ensureMemberSuggestionsForServer(
+            serverId = ServerId(serverId),
+            mentionChannelId = memberSuggestionScopeChannelId,
+            memberScopedMentions = memberSuggestionScopedMentions
         )
+    }
+    LaunchedEffect(membersStore) {
+        membersStore?.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
     }
     LaunchedEffect(realtimeEventSignal?.sequence, threadInstanceKey) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
@@ -2597,15 +2605,19 @@ internal fun SharedThreadRouteContent(
             )
         )
         if (signal.event is MemberPresenceUpdated) {
-            membersStore?.dispatch(SharedMembersIntent.ApplyPresence(signal.event))
             serverMembersStore?.applyPresence(signal.event)
         }
         if (signal.event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
-            membersStore?.dispatch(
-                SharedMembersIntent.RefreshSuggestions(
+            currentServerId?.let { serverId ->
+                serverMembersStore?.ensureMemberSuggestionsForServer(
+                    serverId = ServerId(serverId),
                     mentionChannelId = memberSuggestionScopeChannelId,
-                    memberScopedMentions = memberSuggestionScopedMentions
+                    memberScopedMentions = memberSuggestionScopedMentions,
+                    force = true
                 )
+            }
+            membersStore?.dispatch(
+                SharedMembersIntent.RefreshChannelSuggestions
             )
         }
     }
@@ -5720,6 +5732,7 @@ private fun ThreadPageContent(
                             surface = composerSurface,
                             memberSuggestionsFlow = memberSuggestionsFlow,
                             channelSuggestionsFlow = channelSuggestionsFlow,
+                            agentStatusResolver = agentStatusResolver,
                             onEvent = onComposerEvent,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
@@ -5929,6 +5942,7 @@ private fun ThreadComposerRoute(
     surface: ThreadComposerSurface,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit
 ) {
@@ -5946,6 +5960,7 @@ private fun ThreadComposerRoute(
         state = composerState.toThreadComposerUiState(),
         memberSuggestionsFlow = memberSuggestionsFlow,
         channelSuggestionsFlow = channelSuggestionsFlow,
+        agentStatusResolver = agentStatusResolver,
         onEvent = onEvent,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
@@ -5959,6 +5974,7 @@ private fun ThreadComposerContentWithSuggestions(
     state: ThreadComposerUiState,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
@@ -5979,8 +5995,7 @@ private fun ThreadComposerContentWithSuggestions(
                     avatarWireValue = suggestion.avatarWireValue,
                     gravatarHash = suggestion.gravatarHash,
                     avatarLabel = suggestion.avatarLabel,
-                    presence = suggestion.presence,
-                    agentStatus = suggestion.agentStatus
+                    memberId = suggestion.memberId
                 )
             }
         }
@@ -6026,7 +6041,8 @@ private fun ThreadComposerContentWithSuggestions(
         onEvent = onEvent,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
-        contentPaddingBottom = contentPaddingBottom
+        contentPaddingBottom = contentPaddingBottom,
+        agentStatusResolver = agentStatusResolver
     )
 }
 

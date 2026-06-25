@@ -157,44 +157,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun memberPresenceRealtimeUpdatesVisibleAgentMessageStatus() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "agent-1",
-                            authorName = "Agent",
-                            authorKind = "agent",
-                            authorAgentStatus = AgentStatus.Idle.name,
-                            body = "hello"
-                        ),
-                        KuiklyThreadMessageItem(
-                            id = "m2",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            authorKind = "human",
-                            body = "human"
-                        )
-                    )
-            )
-
-        val updated =
-            payload.withMemberPresenceUpdated(
-                MemberPresenceUpdated(
-                    memberId = MemberId("agent-1"),
-                    presence = AgentStatus.Working.presence,
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Working
-                )
-            )
-
-        assertEquals(AgentStatus.Working.name, updated.messages[0].authorAgentStatus)
-        assertEquals(null, updated.messages[1].authorAgentStatus)
-    }
-
-    @Test
     fun serverMembersRosterResolvesAgentStatusWithoutMutatingThreadMessages() {
         val payload =
             KuiklyThreadScreenPayload(

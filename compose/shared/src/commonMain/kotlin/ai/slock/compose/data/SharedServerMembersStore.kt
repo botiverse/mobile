@@ -1,14 +1,19 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.avatarSlotResolution
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -32,7 +37,8 @@ data class SharedServerMembersEntry(
 
 data class SharedServerMembersState(
     val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
-    val presenceByMemberId: Map<String, MemberPresenceUpdated> = emptyMap()
+    val presenceByMemberId: Map<String, MemberPresenceUpdated> = emptyMap(),
+    val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap()
 ) {
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
@@ -42,6 +48,19 @@ data class SharedServerMembersState(
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let { presenceByMemberId[it] }
+
+    fun memberSuggestionSlice(
+        serverId: ServerId,
+        mentionChannelId: String? = null,
+        memberScopedMentions: Boolean = false
+    ): SharedMembersMemberSuggestionSlice =
+        memberSuggestionSlices[
+            SharedMembersMentionScope(
+                serverId = serverId.value.trim(),
+                mentionChannelId = mentionChannelId.normalizedServerMembersId(),
+                memberScopedMentions = memberScopedMentions
+            )
+        ] ?: SharedMembersMemberSuggestionSlice()
 }
 
 /**
@@ -61,6 +80,21 @@ class SharedServerMembersStore(
 
     fun cachedSnapshot(serverId: ServerId): MemberSnapshot? =
         _state.value.entryFor(serverId)?.snapshotOrNull()
+
+    fun memberSuggestionSliceFlow(
+        serverId: ServerId,
+        mentionChannelId: String? = null,
+        memberScopedMentions: Boolean = false
+    ): Flow<SharedMembersMemberSuggestionSlice> =
+        state
+            .map { current ->
+                current.memberSuggestionSlice(
+                    serverId = serverId,
+                    mentionChannelId = mentionChannelId,
+                    memberScopedMentions = memberScopedMentions
+                )
+            }
+            .distinctUntilChanged()
 
     fun seed(snapshot: MemberSnapshot) {
         val key = snapshot.server.id.value.trim()
@@ -200,11 +234,250 @@ class SharedServerMembersStore(
         }
     }
 
+    suspend fun ensureMemberSuggestionsForServer(
+        serverId: ServerId,
+        mentionChannelId: String? = null,
+        memberScopedMentions: Boolean = false,
+        force: Boolean = false
+    ) {
+        val key = serverId.value.trim()
+        if (key.isBlank()) return
+        val normalizedMentionChannelId = mentionChannelId.normalizedServerMembersId()
+        val suggestionScope =
+            SharedMembersMentionScope(
+                serverId = key,
+                mentionChannelId = normalizedMentionChannelId,
+                memberScopedMentions = memberScopedMentions
+            )
+        val currentSlice = _state.value.memberSuggestionSlices[suggestionScope] ?: SharedMembersMemberSuggestionSlice()
+        if (
+            !force &&
+            (currentSlice.status == SharedMembersLoadStatus.Loaded ||
+                currentSlice.status == SharedMembersLoadStatus.InFlight)
+        ) {
+            logger("shared_server_members_suggestions_skip serverId=$key reason=loaded_or_inflight")
+            return
+        }
+        setMemberSuggestionSlice(
+            scope = suggestionScope,
+            slice = currentSlice.copy(status = SharedMembersLoadStatus.InFlight, errorCode = null)
+        )
+        if (memberScopedMentions) {
+            loadScopedMemberSuggestions(
+                serverId = key,
+                mentionChannelId = normalizedMentionChannelId,
+                suggestionScope = suggestionScope,
+                preserveExistingOnEmpty = force
+            )
+        } else {
+            loadMemberSuggestions(
+                serverId = key,
+                mentionChannelId = normalizedMentionChannelId,
+                suggestionScope = suggestionScope,
+                preserveExistingOnEmpty = force
+            )
+        }
+    }
+
     private fun cachedLoadedSnapshot(key: String, force: Boolean): MemberSnapshot? {
         if (force) return null
         val entry = _state.value.entriesByServerId[key] ?: return null
         if (entry.status != SharedServerMembersLoadStatus.Loaded) return null
         return entry.snapshotOrNull()
+    }
+
+    private suspend fun loadMemberSuggestions(
+        serverId: String,
+        mentionChannelId: String?,
+        suggestionScope: SharedMembersMentionScope,
+        preserveExistingOnEmpty: Boolean
+    ) {
+        val result =
+            runCatchingPreservingCancellation {
+                loadMembers(ServerId(serverId), DataRequestPriority.Visible)
+            }.getOrElse { throwable ->
+                logger("shared_server_members_suggestions_members_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
+                setMemberSuggestionFailure(suggestionScope, "members_exception")
+                return
+            }
+        when (result) {
+            is DataResult.Content -> {
+                val channelMembers =
+                    mentionChannelId?.let { channelId ->
+                        loadChannelMembersBestEffort(
+                            serverId = serverId,
+                            mentionChannelId = channelId
+                        )
+                    }.orEmpty()
+                val suggestions =
+                    if (mentionChannelId == null) {
+                        result.data.members.toServerMembersMemberSuggestions()
+                    } else {
+                        result.data.members.toServerMembersMemberSuggestions(
+                            localServerId = serverId,
+                            inMentionChannelIds = channelMembers.map { it.id.value }.toSet()
+                        ).mergeServerMembersMentionChannelSuggestions(
+                            channelMembers.toServerMembersMemberSuggestions(
+                                localServerId = serverId,
+                                inMentionChannel = true
+                            )
+                        )
+                    }
+                setMemberSuggestionSlice(
+                    scope = suggestionScope,
+                    slice = loadedMemberSuggestionSlice(suggestionScope, suggestions, preserveExistingOnEmpty)
+                )
+            }
+            is DataResult.Empty -> {
+                val channelMembers =
+                    mentionChannelId?.let { channelId ->
+                        loadChannelMembersBestEffort(
+                            serverId = serverId,
+                            mentionChannelId = channelId
+                        )
+                    }.orEmpty()
+                setMemberSuggestionSlice(
+                    scope = suggestionScope,
+                    slice =
+                        loadedMemberSuggestionSlice(
+                            scope = suggestionScope,
+                            suggestions = channelMembers.toServerMembersMemberSuggestions(localServerId = serverId),
+                            preserveExistingOnEmpty = preserveExistingOnEmpty
+                        )
+                )
+            }
+            is DataResult.Error -> setMemberSuggestionFailure(suggestionScope, result.error.code)
+            is DataResult.NoPermission -> setMemberSuggestionFailure(suggestionScope, result.blocker.code)
+        }
+    }
+
+    private suspend fun loadScopedMemberSuggestions(
+        serverId: String,
+        mentionChannelId: String?,
+        suggestionScope: SharedMembersMentionScope,
+        preserveExistingOnEmpty: Boolean
+    ) {
+        if (mentionChannelId == null) {
+            setMemberSuggestionSlice(
+                scope = suggestionScope,
+                slice = SharedMembersMemberSuggestionSlice(status = SharedMembersLoadStatus.Loaded)
+            )
+            return
+        }
+        val result =
+            runCatchingPreservingCancellation {
+                memberRepository.getChannelMembers(DataRequestPriority.Visible, ChannelId(mentionChannelId))
+            }.getOrElse { throwable ->
+                logger(
+                    "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
+                        "channelId=$mentionChannelId result=exception message=${throwable.message.orEmpty()}"
+                )
+                setMemberSuggestionFailure(suggestionScope, "channel_members_exception")
+                return
+            }
+        when (result) {
+            is DataResult.Content ->
+                setMemberSuggestionSlice(
+                    scope = suggestionScope,
+                    slice =
+                        loadedMemberSuggestionSlice(
+                            scope = suggestionScope,
+                            suggestions = result.data.members.toServerMembersMemberSuggestions(localServerId = serverId),
+                            preserveExistingOnEmpty = preserveExistingOnEmpty
+                        )
+                )
+            is DataResult.Empty ->
+                setMemberSuggestionSlice(
+                    scope = suggestionScope,
+                    slice =
+                        loadedMemberSuggestionSlice(
+                            scope = suggestionScope,
+                            suggestions = emptyList(),
+                            preserveExistingOnEmpty = preserveExistingOnEmpty
+                        )
+                )
+            is DataResult.Error -> setMemberSuggestionFailure(suggestionScope, result.error.code)
+            is DataResult.NoPermission -> setMemberSuggestionFailure(suggestionScope, result.blocker.code)
+        }
+    }
+
+    private suspend fun loadChannelMembersBestEffort(
+        serverId: String,
+        mentionChannelId: String
+    ): List<MemberProfile> {
+        val result =
+            runCatchingPreservingCancellation {
+                memberRepository.getChannelMembers(DataRequestPriority.Visible, ChannelId(mentionChannelId))
+            }.getOrElse { throwable ->
+                logger(
+                    "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
+                        "channelId=$mentionChannelId result=exception message=${throwable.message.orEmpty()}"
+                )
+                return emptyList()
+            }
+        return when (result) {
+            is DataResult.Content -> result.data.members
+            is DataResult.Empty -> emptyList()
+            is DataResult.Error -> {
+                logger(
+                    "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
+                        "channelId=$mentionChannelId result=error code=${result.error.code}"
+                )
+                emptyList()
+            }
+            is DataResult.NoPermission -> {
+                logger(
+                    "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
+                        "channelId=$mentionChannelId result=no_permission code=${result.blocker.code}"
+                )
+                emptyList()
+            }
+        }
+    }
+
+    private fun loadedMemberSuggestionSlice(
+        scope: SharedMembersMentionScope,
+        suggestions: List<SharedMembersMemberSuggestion>,
+        preserveExistingOnEmpty: Boolean
+    ): SharedMembersMemberSuggestionSlice {
+        val retainedSuggestions =
+            suggestions.ifEmpty {
+                if (preserveExistingOnEmpty) {
+                    _state.value.memberSuggestionSlices[scope]?.suggestions.orEmpty()
+                } else {
+                    emptyList()
+                }
+            }
+        return SharedMembersMemberSuggestionSlice(
+            suggestions = retainedSuggestions,
+            status = SharedMembersLoadStatus.Loaded,
+            errorCode = null
+        )
+    }
+
+    private fun setMemberSuggestionFailure(
+        scope: SharedMembersMentionScope,
+        errorCode: String?
+    ) {
+        val currentSlice = _state.value.memberSuggestionSlices[scope] ?: SharedMembersMemberSuggestionSlice()
+        setMemberSuggestionSlice(
+            scope = scope,
+            slice =
+                currentSlice.copy(
+                    status = SharedMembersLoadStatus.Error,
+                    errorCode = errorCode
+                )
+        )
+    }
+
+    private fun setMemberSuggestionSlice(
+        scope: SharedMembersMentionScope,
+        slice: SharedMembersMemberSuggestionSlice
+    ) {
+        _state.value =
+            _state.value.copy(
+                memberSuggestionSlices = _state.value.memberSuggestionSlices + (scope to slice)
+            )
     }
 
     private fun markFailure(
@@ -247,6 +520,9 @@ private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPres
         else -> true
     }
 
+private fun String?.normalizedServerMembersId(): String? =
+    this?.trim()?.takeIf { it.isNotBlank() }
+
 private fun List<MemberProfile>.withServerMemberPresenceFacts(
     presenceFacts: Map<String, MemberPresenceUpdated>
 ): List<MemberProfile> =
@@ -259,3 +535,100 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
             agentStatus = event.agentStatus ?: member.agentStatus
         )
     }
+
+private fun List<MemberProfile>.toServerMembersMemberSuggestions(
+    localServerId: String? = null
+): List<SharedMembersMemberSuggestion> =
+    toServerMembersMemberSuggestions(localServerId = localServerId, inMentionChannel = true)
+
+private fun List<MemberProfile>.toServerMembersMemberSuggestions(
+    localServerId: String? = null,
+    inMentionChannel: Boolean
+): List<SharedMembersMemberSuggestion> =
+    toServerMembersMemberSuggestions(
+        localServerId = localServerId,
+        inMentionChannelIds = null,
+        fallbackInMentionChannel = inMentionChannel
+    )
+
+private fun List<MemberProfile>.toServerMembersMemberSuggestions(
+    localServerId: String? = null,
+    inMentionChannelIds: Set<String>?,
+    fallbackInMentionChannel: Boolean = false
+): List<SharedMembersMemberSuggestion> {
+    val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
+    for (member in this) {
+        val handle = member.handle.trim().removePrefix("@").takeIf { it.isNotBlank() }
+            ?: member.displayName.toServerMembersSuggestionToken()
+            ?: continue
+        val key = handle.lowercase()
+        if (!deduped.containsKey(key)) {
+            val avatar = member.avatarSlotResolution()
+            deduped[key] =
+                SharedMembersMemberSuggestion(
+                    displayName = member.displayName.trim().ifBlank { handle },
+                    handle = handle,
+                    inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
+                    sourceServerLabel = member.serverMembersSourceServerLabel(localServerId),
+                    kind = member.kind,
+                    description = member.description?.trim()?.takeIf { it.isNotBlank() },
+                    avatarWireValue = avatar.effectiveAvatarWireValue,
+                    gravatarHash = avatar.gravatarHash,
+                    avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
+                        ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
+                    memberId = member.id.value.takeIf { member.kind == MemberKind.Agent }
+                )
+        }
+    }
+    return deduped.values.toList()
+}
+
+private fun List<SharedMembersMemberSuggestion>.mergeServerMembersMentionChannelSuggestions(
+    channelSuggestions: List<SharedMembersMemberSuggestion>
+): List<SharedMembersMemberSuggestion> {
+    if (channelSuggestions.isEmpty()) return this
+    val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
+    for (suggestion in this + channelSuggestions) {
+        val key = suggestion.handle.lowercase()
+        val existing = deduped[key]
+        deduped[key] =
+            when {
+                existing == null -> suggestion
+                suggestion.inMentionChannel && !existing.inMentionChannel ->
+                    existing.copy(
+                        inMentionChannel = true,
+                        sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
+                        description = existing.description ?: suggestion.description,
+                        avatarWireValue = existing.avatarWireValue.preferServerMembersConcreteSuggestionAvatar(suggestion.avatarWireValue),
+                        gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash,
+                        memberId = existing.memberId ?: suggestion.memberId
+                    )
+                else -> existing
+            }
+    }
+    return deduped.values.toList()
+}
+
+private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: String?): String? =
+    when {
+        isNullOrBlank() -> candidate
+        isServerMembersAgentFallbackSuggestionAvatar() && !candidate.isNullOrBlank() &&
+            !candidate.isServerMembersAgentFallbackSuggestionAvatar() -> candidate
+        else -> this
+    }
+
+private fun String?.isServerMembersAgentFallbackSuggestionAvatar(): Boolean =
+    this?.equals("pixel:robot", ignoreCase = true) == true || this?.startsWith("random:", ignoreCase = true) == true
+
+private fun MemberProfile.serverMembersSourceServerLabel(localServerId: String?): String? {
+    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null
+    if (localServerId != null && sourceId == localServerId) return null
+    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
+}
+
+private fun String.toServerMembersSuggestionToken(): String? =
+    trim()
+        .lowercase()
+        .replace(Regex("""\s+"""), "-")
+        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+        .takeIf { it.isNotBlank() }

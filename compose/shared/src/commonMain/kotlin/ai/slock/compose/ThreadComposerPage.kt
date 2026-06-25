@@ -6,11 +6,9 @@ import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.components.SlockBrutalIconButton
-import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
-import ai.slock.compose.model.Presence
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -249,8 +247,7 @@ internal data class KuiklyComposerMemberItem(
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
-    val presence: Presence? = null,
-    val agentStatus: AgentStatus? = null
+    val memberId: String? = null
 )
 
 @Serializable
@@ -707,7 +704,8 @@ internal fun ThreadComposerContent(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
-    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
+    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null }
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -865,6 +863,7 @@ internal fun ThreadComposerContent(
                 ComposerMemberSuggestionPanel(
                     title = surface.memberSuggestionTitle(),
                     members = filteredMemberSuggestions,
+                    agentStatusResolver = agentStatusResolver,
                     onClick = { applyMemberSuggestion(it) }
                 )
             } else if (showChannelSuggestions) {
@@ -1083,6 +1082,7 @@ private fun KuiklyPendingMentionActionItem.targetInitial(): String =
 private fun ComposerMemberSuggestionPanel(
     title: String,
     members: List<KuiklyComposerMemberItem>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
     onClick: (KuiklyComposerMemberItem) -> Unit
 ) {
     val inChannel = members.filter { it.inMentionChannel }
@@ -1108,6 +1108,7 @@ private fun ComposerMemberSuggestionPanel(
                     member = member,
                     inChannel = true,
                     selected = index == 0,
+                    agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )
             }
@@ -1123,6 +1124,7 @@ private fun ComposerMemberSuggestionPanel(
                     member = member,
                     inChannel = false,
                     selected = false,
+                    agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )
             }
@@ -1150,6 +1152,7 @@ private fun ComposerMemberSuggestionRow(
     member: KuiklyComposerMemberItem,
     inChannel: Boolean,
     selected: Boolean,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState?,
     onClick: () -> Unit
 ) {
     val description =
@@ -1217,7 +1220,9 @@ private fun ComposerMemberSuggestionRow(
                 overflow = TextOverflow.Ellipsis
             )
             if (inChannel && member.kind == MemberKind.Agent) {
-                ComposerAgentStatusDot(member.composerAgentStatusIndicatorState())
+                agentStatusResolver(member.memberId)?.let { status ->
+                    ComposerAgentStatusDot(status)
+                }
             }
             if (secondary != null) {
                 Text(
@@ -1253,12 +1258,6 @@ private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
         pulsing = status.pulsing
     )
 }
-
-private fun KuiklyComposerMemberItem.composerAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
-        status = agentStatus,
-        presence = presence ?: agentStatus?.presence ?: Presence.Offline
-    )
 
 @Composable
 private fun PendingMentionActionBanner(

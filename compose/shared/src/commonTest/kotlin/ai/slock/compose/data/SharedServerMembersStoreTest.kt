@@ -103,9 +103,57 @@ class SharedServerMembersStoreTest {
         assertEquals(AgentStatus.Working.presence, result.data.members.single { it.id.value == "agent-1" }.presence)
     }
 
+    @Test
+    fun memberSuggestionsAreOwnedByServerMembersStore() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(ServerId("server-1"))
+
+        val suggestions =
+            store.state.value.memberSuggestionSlice(ServerId("server-1")).suggestions
+        assertEquals(listOf("cindy", "build-agent"), suggestions.map { it.handle })
+        assertEquals("agent-1", suggestions.single { it.handle == "build-agent" }.memberId)
+        assertEquals(1, repository.getMembersCalls)
+    }
+
+    @Test
+    fun memberSuggestionsRefreshScopedChannelMembership() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u2", "Artin"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(false, suggestions.single { it.handle == "cindy" }.inMentionChannel)
+        assertEquals(true, suggestions.single { it.handle == "artin" }.inMentionChannel)
+        assertEquals(1, repository.getChannelMembersCalls)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
+        val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
         var getMembersCalls = 0
+        var getChannelMembersCalls = 0
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -132,7 +180,18 @@ class SharedServerMembersStoreTest {
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun assignAgentMachine(priority: DataRequestPriority, request: AgentMachineAssignmentRequest): DataResult<AgentLifecycleActionResult> = error("unused")
-        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> = error("unused")
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> {
+            getChannelMembersCalls += 1
+            return DataResult.Content(
+                ChannelMemberSnapshot(
+                    channelId = channelId,
+                    members = channelMembersByChannel[channelId.value].orEmpty()
+                )
+            )
+        }
         override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
         override suspend fun removeChannelMember(priority: DataRequestPriority, request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
     }

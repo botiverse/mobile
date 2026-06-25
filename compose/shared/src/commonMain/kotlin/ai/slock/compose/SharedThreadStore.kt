@@ -3916,7 +3916,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
         is TaskDeleted ->
             removeRealtimeTask(event.taskId)
         is MemberPresenceUpdated ->
-            withMemberPresenceUpdated(event)
+            this
         else -> this
     }
 
@@ -3941,34 +3941,6 @@ private fun KuiklyThreadScreenPayload.realtimeNewerGapServerSeq(
         .mapNotNull { message -> message.seq }
         .filter { seq -> seq > currentMaxSeq + 1L }
         .maxOrNull()
-}
-
-internal fun KuiklyThreadScreenPayload.withMemberPresenceUpdated(
-    event: MemberPresenceUpdated
-): KuiklyThreadScreenPayload {
-    val status = event.agentStatus?.name ?: event.statusLabel?.takeIf { it.isNotBlank() }
-    val updatedAuthorId = event.memberId.value
-    val nextMessages =
-        messages.map { message ->
-            if (message.authorId == updatedAuthorId && message.authorKind.equals("agent", ignoreCase = true)) {
-                message.copy(authorAgentStatus = status)
-            } else {
-                message
-            }
-        }
-    val nextOriginMessage =
-        originMessage?.let { message ->
-            if (message.authorId == updatedAuthorId && message.authorKind.equals("agent", ignoreCase = true)) {
-                message.copy(authorAgentStatus = status)
-            } else {
-                message
-            }
-        }
-    if (nextMessages == messages && nextOriginMessage == originMessage) return this
-    return copy(
-        messages = nextMessages,
-        originMessage = nextOriginMessage
-    )
 }
 
 private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
