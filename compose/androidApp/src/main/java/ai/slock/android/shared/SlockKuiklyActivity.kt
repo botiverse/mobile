@@ -1968,11 +1968,7 @@ internal class SlockKuiklyBridgeModule(
                                     .put("tag", "SlockDiagnostics")
                                     .put(
                                             "message",
-                                            if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) {
-                                                "Bugly TDLog is enabled. Send diagnostics exports the current TDLog files."
-                                            } else {
-                                                "Bugly TDLog is disabled. Send diagnostics exports the environment summary only."
-                                            }
+                                            "Bugly TDLog is disabled. Send diagnostics exports app-owned JSONL logs."
                                     )
                     )
                 }
@@ -1987,7 +1983,7 @@ internal class SlockKuiklyBridgeModule(
                 appendLine()
                 appendLine(summaryText.trim())
                 appendLine()
-                appendLine("Bugly TDLog diagnostics are attached as `$diagnosticsFileName`.")
+                appendLine("App-owned JSONL diagnostics are attached as `$diagnosticsFileName`.")
                 appendLine()
                 appendLine("## Feedback")
                 appendLine()
@@ -2069,16 +2065,16 @@ internal class SlockKuiklyBridgeModule(
             appendDiagnosticsLine("Socket", about.stringValue("socketStatusLabel"))
             appendLine()
             appendLine("Bugly diagnostics")
-            appendDiagnosticsLine("TDLog", if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) "enabled" else "disabled")
+            appendDiagnosticsLine("TDLog", "disabled")
             appendDiagnosticsLine(
-                "App log",
+                "App JSONL log",
                 if (SlockAndroidBuglyDiagnostics.hasFallbackDiagnosticsLogs(appContext)) {
                     "enabled"
                 } else {
                     "pending"
                 }
             )
-            appendDiagnosticsLine("Attachment", "Bugly TDLog and app-owned diagnostics files are included in this zip when available.")
+            appendDiagnosticsLine("Attachment", "App-owned diagnostics JSONL files are included in this zip when available.")
         }
     }
 
