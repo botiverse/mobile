@@ -118,6 +118,7 @@ class SharedMembersStore(
     private val authStore: SlockAuthSessionStore,
     private val memberRepository: MemberRepository,
     private val channelRepository: ChannelRepository,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {}
 ) {
@@ -389,7 +390,8 @@ class SharedMembersStore(
         }
         val result =
             runCatchingPreservingCancellation {
-                memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
+                serverMembersStore?.loadMembers(ServerId(serverId), DataRequestPriority.Visible)
+                    ?: memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
             }.getOrElse { throwable ->
                 logger("shared_members_suggestions_members_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
                 setMemberSuggestionFailure(

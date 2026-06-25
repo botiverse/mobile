@@ -28,6 +28,7 @@ class SharedHomeSearchSavedStore(
     private val savedRepository: SavedRepository,
     private val searchRepository: SearchRepository,
     private val memberRepository: MemberRepository? = null,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val savedStateCache: SharedHomeSavedStateCache? = null,
     private val scope: CoroutineScope,
     private val timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
@@ -147,7 +148,7 @@ class SharedHomeSearchSavedStore(
     }
 
     private fun loadSenderFilters() {
-        val repository = memberRepository ?: return
+        if (memberRepository == null && serverMembersStore == null) return
         senderFiltersJob?.cancel()
         senderFiltersJob =
             scope.launch {
@@ -158,7 +159,7 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSenderFiltersError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSenderFiltersError("server_missing")
-                    when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                    when (val result = loadServerMembers(serverId, DataRequestPriority.Visible)) {
                         is DataResult.Content ->
                             _state.value =
                                 _state.value.copy(
@@ -425,9 +426,8 @@ class SharedHomeSearchSavedStore(
                 }
         )
         if (cached.isNotEmpty()) return cached
-        val repository = memberRepository ?: return emptyMap()
         return try {
-            when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+            when (val result = loadServerMembers(serverId, DataRequestPriority.Visible)) {
                 is DataResult.Content -> {
                     val filters = result.data.members.toSearchSenderFilters(session.user.id)
                     _state.value =
@@ -457,6 +457,14 @@ class SharedHomeSearchSavedStore(
             emptyMap()
         }
     }
+
+    private suspend fun loadServerMembers(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<MemberSnapshot> =
+        serverMembersStore?.loadMembers(serverId, priority)
+            ?: memberRepository?.getMembers(priority, serverId)
+            ?: DataResult.Error(ScreenError(code = "members_unavailable", retryable = false))
 
     private fun applySavedResult(
         result: DataResult<SavedSnapshot>,
@@ -696,6 +704,7 @@ class SharedHomeSearchSavedViewModel(
     savedRepository: SavedRepository,
     searchRepository: SearchRepository,
     memberRepository: MemberRepository? = null,
+    serverMembersStore: SharedServerMembersStore? = null,
     savedStateCache: SharedHomeSavedStateCache? = null,
     timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() }
 ) : ViewModel() {
@@ -706,6 +715,7 @@ class SharedHomeSearchSavedViewModel(
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
+                serverMembersStore = serverMembersStore,
                 savedStateCache = savedStateCache,
                 scope = viewModelScope,
                 timeRangeBoundsProvider = timeRangeBoundsProvider

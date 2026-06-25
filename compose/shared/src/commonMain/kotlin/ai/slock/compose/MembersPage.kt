@@ -787,7 +787,8 @@ internal fun MembersPageContent() {
                 sessionStore = authStore,
                 networkClient = networkClient,
                 logger = { message -> bridge.log("members_settings_repository $message") }
-            )
+            ),
+            serverMembersStore = sharedStores.serverMembersStore
         )
     }
     var currentAgentCount by remember { mutableStateOf(payload.members.count { it.kind == MemberKind.Agent }) }

@@ -1620,11 +1620,12 @@ private fun ThreadPageScreen() {
             )
         }
     val membersStore =
-        remember(authStore, memberRepository, channelRepository, routeScope) {
+        remember(authStore, memberRepository, channelRepository, sharedStores.serverMembersStore, routeScope) {
             SharedMembersStore(
                 authStore = authStore,
                 memberRepository = memberRepository,
                 channelRepository = channelRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 scope = routeScope,
                 logger = { message -> bridge.log(message) }
             )
@@ -1643,6 +1644,7 @@ private fun ThreadPageScreen() {
             authStore,
             localWriteThrough,
             memberRepository,
+            sharedStores.serverMembersStore,
             channelRepository,
             createAgentCoordinator
         ) {
@@ -1651,6 +1653,7 @@ private fun ThreadPageScreen() {
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,
+                serverMembersStore = sharedStores.serverMembersStore,
                 conversationRepository =
                     RealConversationRepository(
                         sessionStore = authStore,

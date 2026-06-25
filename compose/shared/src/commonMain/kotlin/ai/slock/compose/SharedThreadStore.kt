@@ -34,6 +34,7 @@ import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SavedStatusRepository
+import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.SlockThreadApi
 import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
@@ -124,6 +125,7 @@ internal class SharedThreadDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val memberRepository: MemberRepository? = null,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
@@ -156,6 +158,7 @@ internal class SharedThreadDataSource(
         sessionStore: SlockAuthSessionStore,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         memberRepository: MemberRepository? = null,
+        serverMembersStore: SharedServerMembersStore? = null,
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
@@ -168,6 +171,7 @@ internal class SharedThreadDataSource(
         sessionStore = sessionStore,
         localWriteThrough = localWriteThrough,
         memberRepository = memberRepository,
+        serverMembersStore = serverMembersStore,
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
         agentsApiClient = agentsApiClient,
@@ -788,23 +792,7 @@ internal class SharedThreadDataSource(
             serverId
                 ?.let { localWriteThrough?.readHomeSnapshot(it)?.directMessageAvatarWireValuesByMemberId() }
                 .orEmpty()
-        val serverMembers =
-            if (serverId == null) {
-                null
-            } else {
-                try {
-                    when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
-                        is DataResult.Content -> result.data.members
-                        is DataResult.Empty,
-                        is DataResult.Error,
-                        is DataResult.NoPermission -> null
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    null
-                }
-            }
+        val serverMembers = serverId?.let { serverMembersStore?.cachedSnapshot(it)?.members }
         val serverMembersByKey = serverMembers.orEmpty().associateBy { it.memberKey }
         val members =
             channelMembers.data.members
@@ -1744,35 +1732,11 @@ internal class SharedThreadDataSource(
             return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
         }
         val memberProfilesById =
-            when (val repository = memberRepository) {
-                null -> emptyMap()
-                else ->
-                    try {
-                        when (val result = repository.getMembers(priority, serverId)) {
-                            is DataResult.Content -> result.data.members.associateBy { it.id.value }
-                            is DataResult.Empty -> emptyMap()
-                            is DataResult.Error -> {
-                                diagnosticsLogger(
-                                    "thread_sender_profiles_refresh_failed stage=members result=error code=${result.error.code}"
-                                )
-                                emptyMap()
-                            }
-                            is DataResult.NoPermission -> {
-                                diagnosticsLogger(
-                                    "thread_sender_profiles_refresh_failed stage=members result=no_permission code=${result.blocker.code}"
-                                )
-                                emptyMap()
-                            }
-                        }
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (throwable: Throwable) {
-                        diagnosticsLogger(
-                            "thread_sender_profiles_refresh_failed stage=members errorType=${throwable.safeThreadDiagnosticsType()}"
-                        )
-                        emptyMap()
-                    }
-            }
+            serverMembersStore
+                ?.cachedSnapshot(serverId)
+                ?.members
+                ?.associateBy { it.id.value }
+                .orEmpty()
         val profilesById = memberProfilesById + loadThreadSenderAgentProfiles(serverId)
         senderProfilesCache[serverId.value] = profilesById
         return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)

@@ -33,6 +33,7 @@ internal class SlockSharedStoreProvider private constructor(
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
     val conversationDirectoryStore: SharedConversationDirectoryStore,
+    val serverMembersStore: SharedServerMembersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -57,6 +58,13 @@ internal class SlockSharedStoreProvider private constructor(
                     database = database,
                     logger = { message -> bridge.log("shared_conversation_directory $message") }
                 )
+            val authStore =
+                KuiklyMMKVAuthSessionStore(
+                    store = KuiklyMMKVKeyValueStore(
+                        pager = pager,
+                        namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+                    )
+                )
             val sharedPreferenceStore =
                 KuiklyMMKVKeyValueStore(
                     pager = pager,
@@ -64,19 +72,30 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
-                authStore =
-                    KuiklyMMKVAuthSessionStore(
-                        store = KuiklyMMKVKeyValueStore(
-                            pager = pager,
-                            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                        )
-                    ),
+                authStore = authStore,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
                 ),
                 tasksDataStore = tasksDataStore,
                 conversationDirectoryStore = conversationDirectoryStore,
+                serverMembersStore =
+                    SharedServerMembersStore(
+                        memberRepository =
+                            RealMemberRepository(
+                                sessionStore = authStore,
+                                networkClient =
+                                    KuiklySlockNetworkClient(
+                                        sessionStore = authStore,
+                                        networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
+                                            ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
+                                        ),
+                                        warningLogger = { message -> bridge.log("shared_server_members_network $message") }
+                                    ),
+                                logger = { message -> bridge.log("shared_server_members_repository $message") }
+                            ),
+                        logger = { message -> bridge.log(message) }
+                    ),
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
