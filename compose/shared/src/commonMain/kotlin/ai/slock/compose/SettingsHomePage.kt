@@ -8378,6 +8378,7 @@ private fun AppShellServerGateContent(
     var pendingServerId by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val showPinnedSignOut = serverGateShouldPinSignOut(errorMessage)
 
     LaunchedEffect(Unit) {
         when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
@@ -8428,6 +8429,17 @@ private fun AppShellServerGateContent(
         )
         AuthFormColumn {
             AuthError(errorMessage)
+            if (showPinnedSignOut) {
+                AuthActionButton(
+                    text = "Sign out",
+                    onClick = {
+                        pendingServerId = "__logout__"
+                        loading = true
+                    },
+                    tone = AuthButtonTone.White,
+                    enabled = !loading
+                )
+            }
             if (mode == "create") {
                 Text(
                     text = "Create the workspace you want to land in. You can rename it later in settings.",
@@ -8494,14 +8506,16 @@ private fun AppShellServerGateContent(
                     enabled = !loading
                 )
             }
-            SlockLinkButton(
-                text = "Sign out",
-                enabled = !loading,
-                onClick = {
-                    pendingServerId = "__logout__"
-                    loading = true
-                }
-            )
+            if (!showPinnedSignOut) {
+                SlockLinkButton(
+                    text = "Sign out",
+                    enabled = !loading,
+                    onClick = {
+                        pendingServerId = "__logout__"
+                        loading = true
+                    }
+                )
+            }
         }
     }
 
@@ -8539,6 +8553,9 @@ private fun AppShellServerGateContent(
 
 private fun serverGateUnauthenticatedMessage(): String =
     "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
+
+internal fun serverGateShouldPinSignOut(errorMessage: String?): Boolean =
+    errorMessage == serverGateUnauthenticatedMessage()
 
 @Composable
 private fun AppShellServerEmptyState(

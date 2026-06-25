@@ -266,4 +266,16 @@ class SlockAppShellTest {
         assertEquals(true, authChooseServerPageData(fromShell = true).optBoolean("slockChooseServerFromShell", false))
     }
 
+    @Test
+    fun serverGatePinsSignOutForSessionRefreshRecovery() {
+        assertEquals(
+            true,
+            serverGateShouldPinSignOut(
+                "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
+            )
+        )
+        assertEquals(false, serverGateShouldPinSignOut(null))
+        assertEquals(false, serverGateShouldPinSignOut("Could not load servers."))
+    }
+
 }
