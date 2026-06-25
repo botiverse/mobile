@@ -3156,7 +3156,7 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
             emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
-        )
+        ).withDirectMessageHeaderFallback(base)
     } else {
         copy(
             instanceId = base.instanceId.ifBlank { instanceId },
@@ -3174,8 +3174,38 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
-        )
+        ).withDirectMessageHeaderFallback(base)
     }
+
+private fun KuiklyThreadScreenPayload.withDirectMessageHeaderFallback(
+    fallback: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    if (!shouldPreserveDirectMessageHeaderForPatch(fallback)) return this
+    val fallbackName = fallback.safeDirectMessagePeerNameFromPatch()
+    val currentName = safeDirectMessagePeerNameFromPatch()
+    val nextName = currentName ?: fallbackName
+    val currentAvatar = dmPeerAvatarUrl?.takeIf { it.isNotBlank() }
+    val fallbackAvatar = fallback.dmPeerAvatarUrl?.takeIf { it.isNotBlank() }
+    val nextAvatar = currentAvatar ?: fallbackAvatar
+    val nextLabel =
+        dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
+            ?: fallback.dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
+    val nextGravatar =
+        dmPeerGravatarUrl?.takeIf { it.isNotBlank() }
+            ?: fallback.dmPeerGravatarUrl
+                ?.takeIf {
+                    fallbackAvatar.isNonGravatarAvatarWireValue() ||
+                        !nextAvatar.isNonGravatarAvatarWireValue()
+                }
+                ?.takeIf { it.isNotBlank() }
+    return copy(
+        title = nextName ?: title,
+        dmPeerName = nextName,
+        dmPeerAvatarUrl = nextAvatar,
+        dmPeerAvatarLabel = nextLabel,
+        dmPeerGravatarUrl = nextGravatar
+    )
+}
 
 private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
     if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {
