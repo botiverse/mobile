@@ -4790,6 +4790,13 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         } else {
             null
         }
+    val parentChannelKind =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            base.parentChannelKind.normalizedThreadChannelKind()
+                ?: conversation.threadParentChannelKind()
+        } else {
+            null
+        }
     val sourceThreadId =
         base.sourceThreadId
             ?: conversation.thread?.streamChannelId?.value
@@ -4867,6 +4874,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        parentChannelKind = parentChannelKind,
         memberScopedMentions = base.memberScopedMentions || conversation.usesMemberScopedMentions(),
         messages = cachedMessages,
         originMessage = headerContext.originMessage,
@@ -5007,7 +5015,8 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(
                     ThreadConversation(
                         parentChannelId = ChannelId(replyParentChannelId),
                         parentMessageId = MessageId(replyParentMessageId),
-                        streamChannelId = channelId
+                        streamChannelId = channelId,
+                        parentChannelKind = parentChannelKind.normalizedThreadChannelKind()
                     )
                 } else {
                     null

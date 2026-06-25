@@ -12001,6 +12001,12 @@ internal fun buildAppShellThreadPayload(
         } else {
             null
         }
+    val parentChannelKind =
+        if (isReplyThread) {
+            conversation.threadParentChannelKind()
+        } else {
+            null
+        }
     val originParentMessageId =
         if (isReplyThread) {
             parentMessageId
@@ -12032,6 +12038,7 @@ internal fun buildAppShellThreadPayload(
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         parentSurfaceKind = parentSurfaceKind,
+        parentChannelKind = parentChannelKind,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -12226,6 +12233,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         parentChannelId = conversation.threadParentChannelId(),
         parentMessageId = parentMessageId,
         parentSurfaceKind = if (isReplyThread) conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
+        parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",

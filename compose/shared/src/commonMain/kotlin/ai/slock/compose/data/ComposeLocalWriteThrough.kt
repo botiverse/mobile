@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.normalizedThreadChannelKind
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -733,7 +734,8 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
                 ThreadConversation(
                     parentChannelId = resolvedParentChannelId,
                     parentMessageId = parentMessage.id,
-                    streamChannelId = parentMessage.threadChannelId ?: streamChannelId
+                    streamChannelId = parentMessage.threadChannelId ?: streamChannelId,
+                    parentChannelKind = channelType.normalizedThreadChannelKind()
                 ),
             kind = ConversationKind.Thread,
             name = if (nameLooksLikeIdentity && fallbackName != null) fallbackName else name
@@ -886,7 +888,8 @@ private fun ConversationSummary.withThreadMetadata(event: ThreadUpdated): Conver
                 ThreadConversation(
                     parentChannelId = channelId ?: event.threadChannelId,
                     parentMessageId = event.parentMessageId,
-                    streamChannelId = event.threadChannelId
+                    streamChannelId = event.threadChannelId,
+                    parentChannelKind = channelType.normalizedThreadChannelKind()
                 )
         )
     } else {

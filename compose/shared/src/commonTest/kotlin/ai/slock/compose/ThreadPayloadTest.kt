@@ -1380,6 +1380,48 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun jointReplyThreadLaunchKeepsParentChannelKind() {
+        val parentMessage =
+            KuiklyThreadMessageItem(
+                id = "joint-parent-1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "Can you check this?",
+                threadChannelId = "thread-joint-parent-1"
+            )
+        val jointPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-joint-1",
+                title = "partner",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                sourceThreadId = "joint-channel-1",
+                streamChannelId = "joint-channel-1",
+                status = "content",
+                messages = listOf(parentMessage)
+            )
+
+        val replyPayload = jointPayload.replyThreadLoadingPayload(parentMessage)
+        val launchPayload = replyPayload.toWireThreadLaunchPayload()
+        val parsedPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(WireThreadLaunchPayload.serializer(), launchPayload),
+                instanceId = "fallback"
+            )
+        val parentPayload = parsedPayload.parentMessageContextLoadingPayload("joint-parent-1")
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
+        assertEquals("joint", replyPayload.parentChannelKind)
+        assertEquals("joint", launchPayload.parentChannelKind)
+        assertEquals("joint", parsedPayload.parentChannelKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals("joint-channel-1", parentPayload.sourceThreadId)
+        assertEquals("joint", parentPayload.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
     fun sharedShellReplyThreadRouteUsesConversationChannelSubtitle() {
         val payload =
             buildAppShellThreadPayload(
@@ -2471,6 +2513,47 @@ class ThreadPayloadTest {
         assertEquals(true, payload.showModeTabs)
         assertEquals("Loading...", payload.emptyTitle)
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.resolveThreadComposer().surfaceKind)
+    }
+
+    @Test
+    fun standaloneInboxJointReplyThreadCarriesParentChannelKind() {
+        val request =
+            InboxItem(
+                key = "thread:thread-joint-parent-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-joint-parent-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-joint-parent-1"),
+                parentChannelId = ChannelId("joint-channel-1"),
+                parentChannelName = "Partner",
+                parentChannelKind = ConversationKind.Joint,
+                parentMessageId = MessageId("joint-parent-1"),
+                parentMessagePreview = "Can you check this?",
+                latestActivityMessageId = MessageId("joint-reply-1"),
+                latestActivityPreview = "Sure"
+            ).toHomeMessageOpenRequest()
+
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversation,
+                timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
+                anchorMessageId = request.anchorMessageId
+            )
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+        val parentPayload = initialPayload.parentMessageContextLoadingPayload("joint-parent-1")
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals("joint", request.conversation.thread?.parentChannelKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
+        assertEquals("joint", launch.parentChannelKind)
+        assertEquals("joint", initialPayload.parentChannelKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals("joint", parentPayload.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
     }
 
     @Test

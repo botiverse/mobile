@@ -72,6 +72,25 @@ internal fun ConversationSummary.threadParentSurfaceKind(): String? =
             null
         }
 
+internal fun ConversationSummary.threadParentChannelKind(): String? =
+    thread?.parentChannelKind.normalizedThreadChannelKind()
+        ?: if (kind == ConversationKind.Thread) {
+            channelType.normalizedThreadChannelKind()
+        } else {
+            null
+        }
+
+internal fun ConversationKind?.threadChannelKindWireValue(): String? =
+    when (this) {
+        ConversationKind.Channel -> KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Joint -> "joint"
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        else -> null
+    }
+
+internal fun String?.normalizedThreadChannelKind(): String? =
+    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
 internal fun threadSurfaceComposerPlaceholder(
     surfaceKind: String,
     displayName: String,

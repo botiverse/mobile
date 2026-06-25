@@ -46,7 +46,8 @@ data class ThreadConversation(
     val parentChannelId: ChannelId,
     val parentMessageId: MessageId,
     val streamChannelId: ChannelId? = null,
-    val parentSurfaceKind: String? = null
+    val parentSurfaceKind: String? = null,
+    val parentChannelKind: String? = null
 )
 
 @Serializable

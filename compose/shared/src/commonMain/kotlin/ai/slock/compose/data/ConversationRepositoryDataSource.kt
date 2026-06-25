@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.normalizedThreadChannelKind
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
@@ -982,7 +983,8 @@ private fun ConversationSummary.withThreadAnchor(
             ThreadConversation(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessage.id,
-                streamChannelId = parentMessage.threadChannelId ?: streamChannelId
+                streamChannelId = parentMessage.threadChannelId ?: streamChannelId,
+                parentChannelKind = channelType.normalizedThreadChannelKind()
             ),
         kind = ConversationKind.Thread
     ).withParentNameFallback()
@@ -1002,7 +1004,8 @@ private fun ThreadSnapshot.withReplyThreadConversation(
                     ThreadConversation(
                         parentChannelId = parentChannelId,
                         parentMessageId = parentMessageId,
-                        streamChannelId = streamChannelId
+                        streamChannelId = streamChannelId,
+                        parentChannelKind = conversation.thread?.parentChannelKind
                     )
             )
     )

@@ -456,6 +456,7 @@ internal data class KuiklyThreadScreenPayload(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val parentSurfaceKind: String? = null,
+    val parentChannelKind: String? = null,
     val parentNavigationHint: String? = null,
     val memberScopedMentions: Boolean = false,
     val selectedTab: String = "chat",
@@ -559,6 +560,7 @@ internal data class WireThreadLaunchPayload(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val parentSurfaceKind: String? = null,
+    val parentChannelKind: String? = null,
     val parentNavigationHint: String? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
@@ -581,6 +583,10 @@ internal data class WireThreadLaunchPayload(
     fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
         val resolvedParentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull()
+        val resolvedParentChannelKind =
+            parentChannelKind.normalizedThreadChannelKind()
+                ?: channelKind.normalizedThreadChannelKind()
+                    .takeIf { isReplyThread && resolvedParentSurfaceKind == KuiklyThreadSurfaceKind.Channel }
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =
@@ -630,6 +636,7 @@ internal data class WireThreadLaunchPayload(
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
             parentSurfaceKind = resolvedParentSurfaceKind,
+            parentChannelKind = resolvedParentChannelKind,
             parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
             memberScopedMentions = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
@@ -694,6 +701,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         parentChannelId = parentChannelId.nonBlank(),
         parentMessageId = parentMessageId.nonBlank(),
         parentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull(),
+        parentChannelKind = parentChannelKind.normalizedThreadChannelKind(),
         parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
         focusedMessageId = focusedMessageId.nonBlank(),
@@ -4882,6 +4890,12 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
             memberScopedMentions && parentChannelId.isNullOrBlank() -> KuiklyThreadSurfaceKind.DirectMessage
             else -> KuiklyThreadSurfaceKind.Channel
         }
+    val resolvedParentChannelKind =
+        if (resolvedParentSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+            channelKind.normalizedThreadChannelKind()
+        } else {
+            null
+        }
     val composer =
         buildThreadSurfaceComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4903,6 +4917,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         parentChannelId = sourceThreadId,
         parentMessageId = parentMessage.id,
         parentSurfaceKind = resolvedParentSurfaceKind,
+        parentChannelKind = resolvedParentChannelKind,
         parentNavigationHint = ThreadParentNavigationPrevious,
         focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         navigationLabel = "Close",
@@ -4936,6 +4951,14 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
             } else {
                 KuiklyThreadSurfaceKind.Channel
             }
+    val resolvedParentChannelKind =
+        if (parentSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+            parentChannelKind.normalizedThreadChannelKind()
+                ?: channelKind.normalizedThreadChannelKind()
+                ?: KuiklyThreadSurfaceKind.Channel
+        } else {
+            KuiklyThreadSurfaceKind.DirectMessage
+        }
     return copy(
         instanceId = parentThreadId?.let { "shared-shell-thread-$it" }
             ?: focusedParentMessageId?.let { "shared-shell-parent-message-$it" }
@@ -4944,11 +4967,13 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         subtitle = null,
         status = "loading",
         surfaceKind = parentSurfaceKind,
+        channelKind = resolvedParentChannelKind,
         sourceThreadId = parentThreadId,
         streamChannelId = parentThreadId,
         parentChannelId = null,
         parentMessageId = null,
         parentSurfaceKind = null,
+        parentChannelKind = null,
         originParentMessageId = null,
         focusedMessageId = focusedParentMessageId,
         navigationLabel = "Back",

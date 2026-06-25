@@ -129,6 +129,3 @@ private fun ConversationSummary.conversationThreadChannelKind(): String? =
         ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
         else -> channelType.normalizedThreadChannelKind()
     }
-
-private fun String?.normalizedThreadChannelKind(): String? =
-    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
