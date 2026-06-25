@@ -172,6 +172,8 @@ internal class SharedThreadComposerDraftPersistSlice(
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
+    private val stagedUploadedAttachmentsByDraftKey =
+        mutableMapOf<String, List<SharedThreadComposerAttachment>>()
 
     init {
         refreshActiveDraftRecords(reason = "init")
@@ -184,16 +186,27 @@ internal class SharedThreadComposerDraftPersistSlice(
     ): SharedThreadComposerDraftState =
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
+                val stagedUploadedAttachments = consumeStagedUploadedAttachments(intent.draftKey)
                 val persistedDraft =
                     intent.draftKey
                         ?.takeIf { it.isNotBlank() }
                         ?.let(persistence::read)
-                if (persistedDraft == null) {
-                    reduced
+                val restored =
+                    if (persistedDraft == null) {
+                        reduced
+                    } else {
+                        reduced.copy(
+                            seedText = persistedDraft.text,
+                            seedAsTask = persistedDraft.asTask
+                        )
+                    }
+                if (stagedUploadedAttachments.isEmpty()) {
+                    restored
                 } else {
-                    reduced.copy(
-                        seedText = persistedDraft.text,
-                        seedAsTask = persistedDraft.asTask
+                    restored.copy(
+                        uploadedAttachments =
+                            (restored.uploadedAttachments + stagedUploadedAttachments)
+                                .distinctBy { attachment -> attachment.id }
                     )
                 }
             }
@@ -231,6 +244,22 @@ internal class SharedThreadComposerDraftPersistSlice(
             "thread_composer_draft_active_records reason=$reason count=${records.size} " +
                 "records=${records.toThreadComposerDraftDiagnosticsSummary()}"
         )
+    }
+
+    fun stageUploadedAttachments(
+        draftKey: String?,
+        attachments: List<SharedThreadComposerAttachment>
+    ) {
+        val key = draftKey?.takeIf { it.isNotBlank() } ?: return
+        if (attachments.isEmpty()) return
+        stagedUploadedAttachmentsByDraftKey[key] =
+            (stagedUploadedAttachmentsByDraftKey[key].orEmpty() + attachments)
+                .distinctBy { attachment -> attachment.id }
+    }
+
+    private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
+        val key = draftKey?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return stagedUploadedAttachmentsByDraftKey.remove(key).orEmpty()
     }
 
     private companion object {

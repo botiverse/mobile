@@ -730,9 +730,10 @@ class ThreadPayloadTest {
             "memberCandidates",
             "filesPayload",
             "composer",
+            "composerPendingAttachments",
+            "pendingAttachments",
             "title",
             "subtitle",
-            "channelKind",
             "memberScopedMentions",
             "showModeTabs",
             "showReplyActions",
@@ -761,6 +762,34 @@ class ThreadPayloadTest {
         ).forEach { forbidden ->
             assertFalse(forbidden in names, "$forbidden must stay outside compose_thread launch pageData")
         }
+    }
+
+    @Test
+    fun launchPayloadIgnoresLegacyPendingAttachmentRouteState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-channel-1",
+                      "surfaceKind": "channel",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
+                      "composerSeedText": "draft from route",
+                      "composerPendingAttachments": [
+                        {
+                          "id": "att-route",
+                          "fileName": "route.txt",
+                          "status": "ready"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("draft from route", payload.composer.seedText)
+        assertEquals(emptyList(), payload.composer.pendingAttachments)
     }
 
     @Test

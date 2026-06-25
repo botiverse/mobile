@@ -40,6 +40,53 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun stagedUploadedAttachmentsRestoreOnceForMatchingComposerKey() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val attachment =
+            SharedThreadComposerAttachment(
+                id = "att-1",
+                fileName = "diagnostics.txt",
+                sizeLabel = "12 KB",
+                mimeType = "text/plain",
+                status = "ready"
+            )
+
+        persistSlice.stageUploadedAttachments(
+            draftKey = draftKey,
+            attachments = listOf(attachment)
+        )
+
+        val otherStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        otherStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "other-composer"),
+                draftKey = "send=channel-2|parent=_|mention=channel-2"
+            )
+        )
+        assertEquals(emptyList(), otherStore.state.value.uploadedAttachments)
+
+        val matchingStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        matchingStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "matching-composer"),
+                draftKey = draftKey
+            )
+        )
+        assertEquals(listOf(attachment), matchingStore.state.value.uploadedAttachments)
+
+        val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        nextStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "next-composer"),
+                draftKey = draftKey
+            )
+        )
+        assertEquals(emptyList(), nextStore.state.value.uploadedAttachments)
+    }
+
+    @Test
     fun insertMentionAppendsTokenFocusesComposerAndPersistsDraft() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
