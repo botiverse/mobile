@@ -2476,11 +2476,28 @@ class SharedThreadStoreTest {
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
-        assertEquals("Cindy", payload.title)
+        val headerDisplay =
+            payload.threadHeaderDisplayModel(
+                sharedConversationHeaderState(
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Cindy",
+                            avatar = AvatarReference.Pixel("cindy")
+                        )
+                    )
+                ).entryFor(payload)
+            )
+
+        assertEquals("Thread", payload.title)
+        assertEquals("Cindy", headerDisplay.title)
+        assertEquals("pixel:cindy", headerDisplay.dmPeerAvatarWireValue)
         assertEquals(null, payload.subtitle)
-        assertEquals("Cindy", payload.dmPeerName)
-        assertEquals("pixel:cindy", payload.dmPeerAvatarUrl)
-        assertEquals("CI", payload.dmPeerAvatarLabel)
+        assertEquals("Thread", payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals("TH", payload.dmPeerAvatarLabel)
         assertEquals("reply-thread-1", payload.messages.single().threadChannelId)
         assertEquals(3, payload.messages.single().replyCount)
         assertEquals(1, payload.messages.single().unreadReplyCount)
