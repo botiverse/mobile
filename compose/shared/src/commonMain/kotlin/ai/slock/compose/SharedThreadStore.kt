@@ -114,6 +114,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private data class ReplyThreadResolveKey(
@@ -754,6 +755,35 @@ internal class SharedThreadDataSource(
     suspend fun enrichSavedStatus(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return payload
         return payload.withSavedStatus(session)
+    }
+
+    suspend fun fetchFollowedThreadPayload(
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<KuiklyThreadScreenPayload> {
+        if (conversationRepository == null) return DataResult.Content(basePayload)
+        val session =
+            readSession()
+                ?: return authSessionRequiredResult()
+        val result =
+            if (basePayload.shouldFetchReplyThreadByParentPair()) {
+                fetchInitialReplyThreadPayloadFromRepository(
+                    session = session,
+                    basePayload = basePayload,
+                    includeFollowedSummaries = true
+                )
+            } else {
+                val resolvedThreadId =
+                    basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                        ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
+                        ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+                fetchInitialThreadPayloadFromRepository(
+                    session = session,
+                    basePayload = basePayload,
+                    threadId = ThreadId(resolvedThreadId),
+                    includeFollowedSummaries = true
+                )
+            }
+        return result.map { payload -> payload.withKnownMarkdownChannelNames(session) }
     }
 
     /**
@@ -1498,16 +1528,21 @@ internal class SharedThreadDataSource(
     private suspend fun fetchInitialThreadPayloadFromRepository(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
-        threadId: ThreadId
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
         val headerFallback = resolveConversationHeaderFallback(basePayload, session)
         val focusedContext =
-            fetchFocusedInitialThreadPayloadFromRepository(
-                session = session,
-                basePayload = basePayload,
-                routeThreadId = threadId,
-                headerFallback = headerFallback
-            )
+            if (includeFollowedSummaries) {
+                null
+            } else {
+                fetchFocusedInitialThreadPayloadFromRepository(
+                    session = session,
+                    basePayload = basePayload,
+                    routeThreadId = threadId,
+                    headerFallback = headerFallback
+                )
+            }
         if (focusedContext != null) {
             return focusedContext
         }
@@ -1515,7 +1550,7 @@ internal class SharedThreadDataSource(
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
                 repository.getThread(
                     threadId = threadId,
-                    includeFollowedSummaries = false,
+                    includeFollowedSummaries = includeFollowedSummaries,
                     limit = SharedThreadPaging.initialPageSize
                 )
             }
@@ -1615,7 +1650,8 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: KuiklyThreadScreenPayload,
+        includeFollowedSummaries: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -1628,7 +1664,7 @@ internal class SharedThreadDataSource(
                 repository.getReplyThread(
                     parentChannelId = ChannelId(parentChannelId),
                     parentMessageId = MessageId(parentMessageId),
-                    includeFollowedSummaries = false,
+                    includeFollowedSummaries = includeFollowedSummaries,
                     limit = SharedThreadPaging.initialPageSize
                 )
             }
@@ -1892,6 +1928,7 @@ internal object SharedThreadPaging {
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
+private const val ThreadReadAllCoalesceWindowMillis = 2_000L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -1997,6 +2034,7 @@ internal class SharedThreadStore(
     private var readAllInFlightMarker: ThreadReadAllMarker? = null
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
+    private var lastCompletedReadAllAt: TimeMark? = null
 
     fun dispatch(intent: SharedThreadIntent) {
         when (intent) {
@@ -2116,6 +2154,7 @@ internal class SharedThreadStore(
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
+        lastCompletedReadAllAt = null
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
@@ -2353,9 +2392,23 @@ internal class SharedThreadStore(
         if (!beforeFetch.hasRenderableThreadContent()) {
             return
         }
+        val followedStartedAt = TimeSource.Monotonic.markNow()
+        val followedResult = dataSource.fetchFollowedThreadPayload(beforeFetch)
+        diagnosticsLogger?.invoke(
+            "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "result=${followedResult.threadDiagnosticsResult()} " +
+                "durationMs=${followedStartedAt.elapsedNow().inWholeMilliseconds}"
+        )
+        val followedPayload =
+            when (followedResult) {
+                is DataResult.Content -> followedResult.data
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> beforeFetch
+            }
         val enriched =
             dataSource.enrichSavedStatus(
-                dataSource.enrichSenderProfiles(beforeFetch)
+                dataSource.enrichSenderProfiles(followedPayload)
             )
         val latest = _state.value.payload
         if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)) {
@@ -2717,9 +2770,9 @@ internal class SharedThreadStore(
 
     private suspend fun markVisibleReadAll() {
         val marker = _state.value.payload.readAllMarker() ?: return
-        if (marker == lastCompletedReadAllMarker) {
+        if (marker.wasRecentlyMarkedRead()) {
             diagnosticsLogger?.invoke(
-                "thread_read_all_skip channelId=${marker.channelId} reason=already_marked latest=${marker.latestMessageId}"
+                "thread_read_all_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
             )
             return
         }
@@ -2744,6 +2797,7 @@ internal class SharedThreadStore(
                 val result = dataSource.markChannelReadAll(current.channelId)
                 if (result is DataResult.Content) {
                     lastCompletedReadAllMarker = current
+                    lastCompletedReadAllAt = TimeSource.Monotonic.markNow()
                 }
                 diagnosticsLogger?.invoke(
                     "thread_read_all_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
@@ -2761,6 +2815,15 @@ internal class SharedThreadStore(
                     null
                 }
         }
+    }
+
+    private fun ThreadReadAllMarker.wasRecentlyMarkedRead(): Boolean {
+        val completed = lastCompletedReadAllMarker ?: return false
+        if (completed.channelId != channelId) return false
+        if (completed == this) return true
+        val completedAt = lastCompletedReadAllAt ?: return false
+        val ageMs = completedAt.elapsedNow().inWholeMilliseconds
+        return ageMs in 0L until ThreadReadAllCoalesceWindowMillis
     }
 
     private suspend fun loadOlder() {

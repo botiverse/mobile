@@ -4,7 +4,10 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 
-data class TasksLoadRequest(val filter: TaskFilter = TaskFilter())
+data class TasksLoadRequest(
+    val filter: TaskFilter = TaskFilter(),
+    val priority: DataRequestPriority = DataRequestPriority.Visible
+)
 
 data class TasksStatusUpdateRequest(
     val taskId: TaskId,

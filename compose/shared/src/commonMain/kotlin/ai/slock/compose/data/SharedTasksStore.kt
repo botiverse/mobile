@@ -101,6 +101,7 @@ sealed interface SharedTasksIntent {
 
 sealed interface SharedTasksRouteIntent {
     data object Start : SharedTasksRouteIntent
+    data object StartBackground : SharedTasksRouteIntent
     data object Refresh : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
@@ -181,6 +182,7 @@ internal class SharedTasksViewModel(
     override fun dispatch(action: SharedTasksRouteIntent) {
         when (action) {
             SharedTasksRouteIntent.Start,
+            SharedTasksRouteIntent.StartBackground,
             SharedTasksRouteIntent.Refresh,
             is SharedTasksRouteIntent.SelectFilter ->
                 load(action)
@@ -235,7 +237,16 @@ internal class SharedTasksViewModel(
                 is SharedTasksRouteIntent.SelectFilter -> intent.status
                 else -> state.value.selectedFilter
             }
-        val request = TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
+        val request =
+            TasksLoadRequest(
+                filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()),
+                priority =
+                    if (intent == SharedTasksRouteIntent.StartBackground) {
+                        DataRequestPriority.Background
+                    } else {
+                        DataRequestPriority.Visible
+                    }
+            )
         val currentState = state.value
         val hasSnapshot = currentState.hasCompletedTasksSnapshot()
         val reason = intent.tasksRefreshReason()
@@ -253,7 +264,7 @@ internal class SharedTasksViewModel(
                 staleWindowMs = staleWindowMs,
                 forceRefresh = forceRefresh
             )
-        if (intent == SharedTasksRouteIntent.Start && skipReason != null) {
+        if ((intent == SharedTasksRouteIntent.Start || intent == SharedTasksRouteIntent.StartBackground) && skipReason != null) {
             logTasksRefreshSkip(reason, skipReason, hasSnapshot, snapshotAgeMs, selectedFilter)
             return
         }
@@ -290,7 +301,7 @@ internal class SharedTasksViewModel(
         val startedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
             "tasks_refresh_start reason=$reason filter=${selectedFilter?.name.orEmpty()} " +
-                "hasSnapshot=${state.value.hasCompletedTasksSnapshot()}"
+                "hasSnapshot=${state.value.hasCompletedTasksSnapshot()} priority=${request.priority.name}"
         )
         try {
             val result = useCase.refreshTasks(request)
@@ -493,6 +504,7 @@ internal fun DataResult<TaskSnapshot>.isCompletedTasksSnapshot(): Boolean =
 private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
     when (this) {
         SharedTasksRouteIntent.Start -> "start"
+        SharedTasksRouteIntent.StartBackground -> "background_start"
         SharedTasksRouteIntent.Refresh -> "manual"
         is SharedTasksRouteIntent.SelectFilter -> "filter"
         is SharedTasksRouteIntent.UpdateStatus -> "status"

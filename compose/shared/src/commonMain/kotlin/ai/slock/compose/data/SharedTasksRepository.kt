@@ -23,7 +23,12 @@ sealed interface SharedTasksScope {
 interface SharedTasksRepository {
     fun observeTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): Flow<DataResult<TaskSnapshot>>
 
-    suspend fun refreshTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): DataResult<TaskSnapshot>
+    suspend fun refreshTasks(
+        serverId: ServerId,
+        scope: SharedTasksScope,
+        filter: TaskFilter,
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ): DataResult<TaskSnapshot>
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
@@ -46,12 +51,13 @@ class SharedTasksDataRepository(
     override suspend fun refreshTasks(
         serverId: ServerId,
         scope: SharedTasksScope,
-        filter: TaskFilter
+        filter: TaskFilter,
+        priority: DataRequestPriority
     ): DataResult<TaskSnapshot> {
         val remoteResult =
             when (scope) {
-                SharedTasksScope.Server -> remoteDataSource.loadTasks(serverId, TaskFilter())
-                is SharedTasksScope.Channel -> remoteDataSource.loadChannelTasks(scope.channelId, TaskFilter())
+                SharedTasksScope.Server -> remoteDataSource.loadTasks(serverId, TaskFilter(), priority)
+                is SharedTasksScope.Channel -> remoteDataSource.loadChannelTasks(scope.channelId, TaskFilter(), priority)
             }
         if (remoteResult is DataResult.Content) {
             localDataSource.replaceTasks(serverId, scope, remoteResult.data)
@@ -103,9 +109,17 @@ interface SharedTasksLocalDataSource {
 }
 
 interface SharedTasksRemoteDataSource {
-    suspend fun loadTasks(serverId: ServerId, filter: TaskFilter = TaskFilter()): DataResult<TaskSnapshot>
+    suspend fun loadTasks(
+        serverId: ServerId,
+        filter: TaskFilter = TaskFilter(),
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ): DataResult<TaskSnapshot>
 
-    suspend fun loadChannelTasks(channelId: ChannelId, filter: TaskFilter = TaskFilter()): DataResult<TaskSnapshot>
+    suspend fun loadChannelTasks(
+        channelId: ChannelId,
+        filter: TaskFilter = TaskFilter(),
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ): DataResult<TaskSnapshot>
 
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 

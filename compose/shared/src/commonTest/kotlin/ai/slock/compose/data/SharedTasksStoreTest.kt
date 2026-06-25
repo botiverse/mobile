@@ -111,6 +111,38 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksUseCasePropagatesBackgroundRefreshPriority() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest(priority = DataRequestPriority.Background))
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(DataRequestPriority.Background, repository.lastPriority)
+    }
+
+    @Test
     fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
         val serverId = ServerId("server-1")
         val local = InMemorySharedTasksLocalDataSource()
@@ -152,6 +184,38 @@ class SharedTasksStoreTest {
         assertEquals(listOf("task-1"), refreshContent.tasks.map { it.id.value })
         assertEquals(listOf("task-1"), observedContent.tasks.map { it.id.value })
         assertEquals(TaskFilter(), remote.lastFilter)
+        assertEquals(DataRequestPriority.Visible, remote.lastPriority)
+    }
+
+    @Test
+    fun sharedTasksRepositoryUsesRequestedRefreshPriority() = runBlocking {
+        val serverId = ServerId("server-1")
+        val local = InMemorySharedTasksLocalDataSource()
+        val remote =
+            FakeTasksRemoteDataSource(
+                channelLoadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        repository.refreshTasks(
+            serverId,
+            SharedTasksScope.Channel(ChannelId("channel-1")),
+            TaskFilter(),
+            DataRequestPriority.Background
+        )
+
+        assertEquals(ChannelId("channel-1"), remote.lastChannelId)
+        assertEquals(DataRequestPriority.Background, remote.lastPriority)
     }
 
     @Test
@@ -894,6 +958,8 @@ class SharedTasksStoreTest {
             private set
         var lastFilter: TaskFilter? = null
             private set
+        var lastPriority: DataRequestPriority? = null
+            private set
 
         override fun observeTasks(
             serverId: ServerId,
@@ -905,12 +971,14 @@ class SharedTasksStoreTest {
         override suspend fun refreshTasks(
             serverId: ServerId,
             scope: SharedTasksScope,
-            filter: TaskFilter
+            filter: TaskFilter,
+            priority: DataRequestPriority
         ): DataResult<TaskSnapshot> {
             loadCalls += 1
             lastServerId = serverId
             lastScope = scope
             lastFilter = filter
+            lastPriority = priority
             return loadResult
         }
 
@@ -943,15 +1011,27 @@ class SharedTasksStoreTest {
             private set
         var lastChannelId: ChannelId? = null
             private set
+        var lastPriority: DataRequestPriority? = null
+            private set
 
-        override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
+        override suspend fun loadTasks(
+            serverId: ServerId,
+            filter: TaskFilter,
+            priority: DataRequestPriority
+        ): DataResult<TaskSnapshot> {
             lastFilter = filter
+            lastPriority = priority
             return loadResult
         }
 
-        override suspend fun loadChannelTasks(channelId: ChannelId, filter: TaskFilter): DataResult<TaskSnapshot> {
+        override suspend fun loadChannelTasks(
+            channelId: ChannelId,
+            filter: TaskFilter,
+            priority: DataRequestPriority
+        ): DataResult<TaskSnapshot> {
             lastChannelId = channelId
             lastFilter = filter
+            lastPriority = priority
             return channelLoadResult
         }
 

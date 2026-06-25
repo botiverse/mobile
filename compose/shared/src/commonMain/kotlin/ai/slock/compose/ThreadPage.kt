@@ -2503,7 +2503,8 @@ internal fun SharedThreadRouteContent(
                     authStore = authStore,
                     dataSource = tasksDataSource,
                     sharedTasksDataStore = tasksDataStore,
-                    scope = SharedTasksScope.Channel(resolvedTaskChannelId)
+                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
+                    diagnosticsLogger = { bridge.log(it) }
                 )
             }
         }
@@ -2678,7 +2679,7 @@ internal fun SharedThreadRouteContent(
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
             return@LaunchedEffect
         }
-        delay(ThreadFirstContentTaskJoinDelayMs)
+        delay(ThreadBackgroundTasksJoinDelayMs)
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
             return@LaunchedEffect
         }
@@ -2688,7 +2689,7 @@ internal fun SharedThreadRouteContent(
         bridge.log(
             "thread_tasks_join_start threadId=${threadTimelineKey.orEmpty()} reason=after_first_content"
         )
-        tasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
+        tasksViewModel?.dispatch(SharedTasksRouteIntent.StartBackground)
     }
     ThreadTasksJoinResultLogger(
         tasksViewModel = tasksViewModel,
@@ -7841,6 +7842,7 @@ private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadRealtimeCacheInvalidationDelayMillis = 64L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
+private const val ThreadBackgroundTasksJoinDelayMs = 360L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
