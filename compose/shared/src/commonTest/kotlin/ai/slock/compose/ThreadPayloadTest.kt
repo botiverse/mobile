@@ -1407,6 +1407,36 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sharedShellReplyThreadWithJointParentDisablesTaskSurfaces() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = threadIdentity(ChannelId("joint-1"), MessageId("message-1")),
+                    channelId = ChannelId("joint-1"),
+                    kind = ConversationKind.Thread,
+                    name = "Reply thread",
+                    joined = true,
+                    permissions = ConversationPermissions(canSend = true, canCreateTask = true),
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("joint-1"),
+                            parentMessageId = MessageId("message-1"),
+                            streamChannelId = ChannelId("thread-message-1"),
+                            parentChannelKind = "joint"
+                        )
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("joint", payload.parentChannelKind)
+        assertEquals(false, payload.showTaskOpenActions)
+        assertEquals(false, payload.showTaskStatusActions)
+        assertEquals(false, payload.composer.showAsTaskToggle)
+        assertEquals(false, payload.resolveThreadComposer().showAsTaskToggle)
+        assertEquals(false, payload.supportsChannelTasks())
+    }
+
+    @Test
     fun sharedShellDirectMessageRouteKeepsDmSurfaceForComposerProps() {
         val payload =
             buildAppShellThreadPayload(
@@ -1535,6 +1565,30 @@ class ThreadPayloadTest {
         assertEquals("joint-channel-1", parentPayload.sourceThreadId)
         assertEquals("joint", parentPayload.channelKind)
         assertEquals(SlockLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
+    fun jointReplyThreadLaunchDisablesInitialTaskSurfaces() {
+        val initialPayload =
+            WireThreadLaunchPayload(
+                instanceId = "thread-route",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1",
+                parentChannelId = "joint-1",
+                parentMessageId = "parent-message-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "joint",
+                originParentMessageId = "parent-message-1"
+            ).toInitialPayload("fallback")
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals("joint", initialPayload.parentChannelKind)
+        assertEquals(false, initialPayload.showTaskOpenActions)
+        assertEquals(false, initialPayload.showTaskStatusActions)
+        assertEquals(false, initialPayload.composer.showAsTaskToggle)
+        assertEquals(false, initialPayload.resolveThreadComposer().showAsTaskToggle)
+        assertEquals(false, initialPayload.supportsChannelTasks())
     }
 
     @Test

@@ -591,6 +591,8 @@ internal data class WireThreadLaunchPayload(
             parentChannelKind.normalizedThreadChannelKind()
                 ?: channelKind.normalizedThreadChannelKind()
                     .takeIf { isReplyThread && resolvedParentSurfaceKind == KuiklyThreadSurfaceKind.Channel }
+        val taskChannelKind = if (isReplyThread) resolvedParentChannelKind else channelKind.normalizedThreadChannelKind()
+        val supportsChannelTasks = !taskChannelKind.equals("joint", ignoreCase = true)
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =
@@ -617,7 +619,7 @@ internal data class WireThreadLaunchPayload(
                 syncNonce = composerSyncNonce,
                 focusRequestNonce = composerFocusRequestNonce,
                 enabled = true,
-                showAsTaskToggle = true,
+                showAsTaskToggle = supportsChannelTasks,
                 mentionChannelId = parentChannelId.nonBlank(),
                 parentMessageId = parentMessageId.nonBlank(),
                 streamChannelId = resolvedStreamId,
@@ -664,6 +666,8 @@ internal data class WireThreadLaunchPayload(
             showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null && resolvedParentSurfaceKind != null,
+            showTaskOpenActions = supportsChannelTasks,
+            showTaskStatusActions = supportsChannelTasks,
             emptyTitle = "Loading...",
             emptyDetail = ""
         ).withLaunchHeaderContext()

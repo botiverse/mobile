@@ -12048,9 +12048,10 @@ internal fun buildAppShellThreadPayload(
             null
         }
     val canSend = conversation.joined && conversation.permissions.canSend
+    val taskChannelKind = if (isReplyThread) parentChannelKind else routeChannelKind
     val supportsChannelTasks =
         conversation.permissions.canCreateTask &&
-            !routeChannelKind.equals("joint", ignoreCase = true)
+            !taskChannelKind.equals("joint", ignoreCase = true)
     val composer =
         KuiklyThreadComposerPayload(
             surfaceKind = surfaceKind,
