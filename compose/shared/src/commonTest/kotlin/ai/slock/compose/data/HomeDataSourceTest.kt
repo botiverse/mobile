@@ -88,7 +88,7 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadHomeEnrichesAgentDirectMessageStatusesFromMembers() = runBlocking {
+    fun loadHomeDoesNotBlockOnAgentDirectMessageStatusEnrichment() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val agentDm =
             ConversationSummary(
@@ -110,31 +110,32 @@ class HomeDataSourceTest {
                 presence = Presence.Offline,
                 presenceMemberId = MemberId("human-1")
             )
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Agent One",
+                            handle = "agent-one",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active,
+                            agentStatus = AgentStatus.Working
+                        ),
+                        MemberProfile(
+                            id = MemberId("human-1"),
+                            displayName = "Human One",
+                            handle = "human-one",
+                            kind = MemberKind.Human,
+                            presence = Presence.Active
+                        )
+                    )
+            )
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
-                memberRepository =
-                    FakeMemberRepository(
-                        members =
-                            listOf(
-                                MemberProfile(
-                                    id = MemberId("agent-1"),
-                                    displayName = "Agent One",
-                                    handle = "agent-one",
-                                    kind = MemberKind.Agent,
-                                    presence = Presence.Active,
-                                    agentStatus = AgentStatus.Working
-                                ),
-                                MemberProfile(
-                                    id = MemberId("human-1"),
-                                    displayName = "Human One",
-                                    handle = "human-one",
-                                    kind = MemberKind.Human,
-                                    presence = Presence.Active
-                                )
-                            )
-                    ),
+                memberRepository = memberRepository,
                 localWriteThrough = ComposeLocalWriteThrough(localStore),
                 parseHome = { _, session ->
                     DataResult.Content(
@@ -148,13 +149,28 @@ class HomeDataSourceTest {
         val result = source.loadHome()
 
         val dms = (result as DataResult.Content).data.directMessages
-        assertEquals(AgentStatus.Working, dms[0].agentStatus)
-        assertEquals(Presence.Active, dms[0].presence)
+        assertEquals(null, dms[0].agentStatus)
+        assertEquals(Presence.Offline, dms[0].presence)
         assertEquals(null, dms[1].agentStatus)
         assertEquals(Presence.Offline, dms[1].presence)
+        assertEquals(0, memberRepository.getMembersCalls)
+
+        val patch = source.refreshAgentDirectMessageStatuses(result.data)
+
+        assertTrue(patch.changed)
+        assertEquals(1, memberRepository.getMembersCalls)
+        assertEquals(listOf(ThreadId("dm-agent-1")), patch.directMessages.map { it.threadId })
+        assertEquals(AgentStatus.Working, patch.snapshot.directMessages[0].agentStatus)
+        assertEquals(Presence.Active, patch.snapshot.directMessages[0].presence)
         val cached = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
-        assertEquals(AgentStatus.Working, cached[0].agentStatus)
-        assertEquals(Presence.Active, cached[0].presence)
+        assertEquals(null, cached[0].agentStatus)
+        assertEquals(Presence.Offline, cached[0].presence)
+
+        source.writeHomeSnapshot(patch.snapshot, source = "test_agent_dm_status_refresh")
+
+        val cachedAfterWrite = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
+        assertEquals(AgentStatus.Working, cachedAfterWrite[0].agentStatus)
+        assertEquals(Presence.Active, cachedAfterWrite[0].presence)
     }
 
     @Test
@@ -549,11 +565,16 @@ class HomeDataSourceTest {
     private class FakeMemberRepository(
         private val members: List<MemberProfile>
     ) : MemberRepository {
+        var getMembersCalls: Int = 0
+            private set
+
         override suspend fun getMembers(
             priority: DataRequestPriority,
             serverId: ServerId
-        ): DataResult<MemberSnapshot> =
-            DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Slock"), members))
+        ): DataResult<MemberSnapshot> {
+            getMembersCalls += 1
+            return DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Slock"), members))
+        }
 
         override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId): DataResult<MemberProfile> =
             error("unused")

@@ -105,6 +105,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -532,7 +533,7 @@ class SharedThreadStoreTest {
                 channelId = "thread-a"
             )
         )
-        val logs = mutableListOf<String>()
+        val logs = CopyOnWriteArrayList<String>()
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         val channelJob = scope.launch { store.accept(SharedThreadIntent.Start(basePayload())) }
@@ -672,8 +673,8 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
-        assertEquals(listOf(30, 30), api.channelMessageLimits)
-        assertEquals(listOf(30), api.syncLimits)
+        assertEquals(listOf(30, 30, 30), api.channelMessageLimits)
+        assertEquals(emptyList(), api.syncLimits)
         scope.cancel()
     }
 
@@ -1133,14 +1134,11 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        // Start now eagerly loads members via the Refresh path, so the
-        // first LoadMembers below is a no-op (idempotency contract).
-        assertEquals(2, store.state.value.payload.membersCount)
-        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertEquals(0, store.state.value.payload.membersCount)
+        assertEquals(emptyList(), memberRepository.channelMemberRequests)
         val beforeMessages = store.state.value.payload.messages
 
         store.accept(SharedThreadIntent.LoadMembers)
-        // No second enrichment: members are already Loaded for this thread.
         assertEquals(
             listOf(ChannelId("channel-1")),
             memberRepository.channelMemberRequests
@@ -1151,6 +1149,11 @@ class SharedThreadStoreTest {
         assertEquals(2, payload.membersCount)
         assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
         assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
+        store.accept(SharedThreadIntent.LoadMembers)
+        assertEquals(
+            listOf(ChannelId("channel-1")),
+            memberRepository.channelMemberRequests
+        )
         scope.cancel()
     }
 
@@ -1174,12 +1177,13 @@ class SharedThreadStoreTest {
                 memberRepository = flakyMemberRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        // Start -> refresh path -> loadMembers(force = true) -> first
-        // getChannelMembers returns Error. Status becomes Error.
         store.accept(SharedThreadIntent.Start(basePayload()))
-        val callsAfterStart = flakyMemberRepository.channelMemberCalls
-        assertEquals(1, callsAfterStart, "Start should have triggered exactly one enrichment attempt")
-        // Explicit LoadMembers should retry, not skip.
+        assertEquals(0, flakyMemberRepository.channelMemberCalls, "Start should not fetch channel members")
+
+        store.accept(SharedThreadIntent.LoadMembers)
+        val callsAfterFirstLoad = flakyMemberRepository.channelMemberCalls
+        assertEquals(1, callsAfterFirstLoad, "First explicit LoadMembers should fetch once")
+
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterRetry = flakyMemberRepository.channelMemberCalls
         assertEquals(
@@ -1484,7 +1488,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startLoadsThreadMembersEagerlyAfterRefresh() = runBlocking {
+    fun startDoesNotLoadThreadMembersEagerlyAfterRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val memberRepository =
             FakeMemberRepository(
@@ -1502,10 +1506,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         assertEquals("content", store.state.value.payload.status)
-        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
-        assertEquals(listOf(ServerId("server-1"), ServerId("server-1")), memberRepository.serverMemberRequests)
-        assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
-        assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
+        assertEquals(emptyList(), memberRepository.channelMemberRequests)
+        assertEquals(emptyList(), store.state.value.payload.members.map { it.id })
+        assertEquals(emptyList(), store.state.value.payload.memberCandidates.map { it.id })
         scope.cancel()
     }
 
@@ -1537,6 +1540,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.LoadMembers)
 
         val remote = store.state.value.payload.members.single { it.id == "remote-agent" }
         assertEquals("server-2", remote.sourceServerId)
@@ -1836,7 +1840,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchedThreadPayloadUsesMemberProfileAvatarBeforeFirstRender() = runBlocking {
+    fun fetchedThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runBlocking {
         val memberRepository =
             FakeMemberRepository(
                 serverMembers =
@@ -1861,15 +1865,15 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
-        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals(emptyList(), memberRepository.serverMemberRequests)
         val message = payload.messages.single()
         assertEquals("Product-UX-Designer", message.authorName)
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
 
     @Test
-    fun taskReplyThreadPayloadUsesMemberProfileAvatarForOriginBeforeFirstRender() = runBlocking {
+    fun taskReplyThreadPayloadDoesNotBlockOnMemberProfileAvatarForOriginBeforeFirstRender() = runBlocking {
         val agentParent =
             message(threadId = "channel-1", id = "m1", seq = 1, body = "agent task parent")
                 .copy(
@@ -1944,9 +1948,9 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
-        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals(emptyList(), memberRepository.serverMemberRequests)
         assertEquals("agent task parent", payload.originMessage?.body)
-        assertEquals("pixel:tree", payload.originMessage?.avatarWireValue)
+        assertEquals("pixel:robot", payload.originMessage?.avatarWireValue)
         assertEquals(null, payload.originMessage?.gravatarHash)
     }
 
@@ -2335,7 +2339,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun repositoryThreadPayloadUsesMemberProfileAvatarBeforeFirstRender() = runBlocking {
+    fun repositoryThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runBlocking {
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -2383,9 +2387,9 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
         val message = payload.messages.single()
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
-        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals(emptyList(), memberRepository.serverMemberRequests)
     }
 
     @Test
@@ -3189,7 +3193,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshWithUnchangedSnapshotDoesNotEmitAndKeepsTimelineList() = runBlocking {
+    fun refreshWithUnchangedSnapshotKeepsTimelineList() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
             FakeConversationRepository(
@@ -3231,7 +3235,7 @@ class SharedThreadStoreTest {
             )
         store.accept(SharedThreadIntent.Refresh)
 
-        assertEquals(countBeforeRefresh, observedStates.size)
+        assertTrue(observedStates.size >= countBeforeRefresh)
         assertTrue(beforeMessages === store.state.value.payload.messages)
         observer.cancel()
         scope.cancel()
@@ -4080,7 +4084,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadChecksSavedStatus() = runBlocking {
+    fun fetchThreadPayloadDefersSavedStatusUntilSecondaryRefresh() = runBlocking {
         val savedStatusRepository = FakeSavedStatusRepository(savedIds = setOf(MessageId("m1")))
         val dataSource =
             SharedThreadDataSource(
@@ -4091,8 +4095,13 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
+        assertEquals(emptyList(), savedStatusRepository.checkedMessageIds)
+        assertFalse(payload.messages.single().isSaved)
+
+        val enriched = dataSource.enrichSavedStatus(payload)
+
         assertEquals(listOf(listOf(MessageId("m1"))), savedStatusRepository.checkedMessageIds)
-        assertTrue(payload.messages.single().isSaved)
+        assertTrue(enriched.messages.single().isSaved)
     }
 
     @Test

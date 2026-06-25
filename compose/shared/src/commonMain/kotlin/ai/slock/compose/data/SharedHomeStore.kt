@@ -83,6 +83,7 @@ class SharedHomeStore(
 
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
+    private var agentDirectMessageStatusJob: Job? = null
     private var presenceFlushJob: Job? = null
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
@@ -100,6 +101,8 @@ class SharedHomeStore(
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
             loadJob?.cancel()
+            agentDirectMessageStatusJob?.cancel()
+            agentDirectMessageStatusJob = null
             if (intent.cancelsBackgroundRefresh) {
                 refreshJob?.cancel()
             }
@@ -119,6 +122,8 @@ class SharedHomeStore(
         loadJob = null
         refreshJob?.cancel()
         refreshJob = null
+        agentDirectMessageStatusJob?.cancel()
+        agentDirectMessageStatusJob = null
         presenceFlushJob?.cancel()
         presenceFlushJob = null
         pendingPresenceEvents.clear()
@@ -671,9 +676,71 @@ class SharedHomeStore(
             )
             loadNotifications()
             if (freshSnapshot != null) {
+                launchAgentDirectMessageStatusRefresh(
+                    request = request,
+                    snapshot = freshSnapshot
+                )
                 loadAndMergeSidebarOrder()
             }
         }
+    }
+
+    private fun launchAgentDirectMessageStatusRefresh(
+        request: HomeServerSwitchState,
+        snapshot: HomeSnapshot
+    ) {
+        if (snapshot.directMessages.none { it.isAgentDirectMessage }) return
+        agentDirectMessageStatusJob?.cancel()
+        agentDirectMessageStatusJob =
+            scope.launch {
+                val patch =
+                    try {
+                        dataSource.refreshAgentDirectMessageStatuses(snapshot, DataRequestPriority.Background)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        diagnosticsLogger(
+                            "home_agent_status_refresh_failed result=exception errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+                        )
+                        return@launch
+                    }
+                if (!patch.changed) return@launch
+                val latestSwitch = _state.value.serverSwitchState
+                if (!latestSwitch.isCurrent(request.requestGeneration, patch.snapshot.server.id)) {
+                    diagnosticsLogger(
+                        "home_agent_status_refresh_result serverId=${patch.snapshot.server.id.value} ignored=true reason=stale_server"
+                    )
+                    return@launch
+                }
+                val currentContent = _state.value.content as? SharedHomeContentState.Content
+                if (currentContent?.baseSnapshot?.server?.id != patch.snapshot.server.id) {
+                    diagnosticsLogger(
+                        "home_agent_status_refresh_result serverId=${patch.snapshot.server.id.value} ignored=true reason=inactive_content"
+                    )
+                    return@launch
+                }
+                val nextSnapshot =
+                    currentContent.baseSnapshot.withAgentDirectMessageStatusesFrom(patch.directMessages)
+                if (nextSnapshot == currentContent.baseSnapshot) return@launch
+                dataSource.writeHomeSnapshot(
+                    snapshot = nextSnapshot,
+                    source = "shared_home_agent_dm_status_refresh"
+                )
+                val nextContent =
+                    contentFromDurableSnapshot(
+                        snapshot = nextSnapshot,
+                        session = currentContent.session,
+                        contentRefreshing = currentContent.contentRefreshing,
+                        previousContent = currentContent
+                    )
+                val emitted =
+                    reduceState(
+                        _state.value.copy(content = nextContent)
+                    )
+                diagnosticsLogger(
+                    "home_agent_status_refresh_result serverId=${patch.snapshot.server.id.value} emitted=$emitted"
+                )
+            }
     }
 
     private fun enqueuePresenceEvent(serverId: ServerId, event: MemberPresenceUpdated) {
@@ -1110,6 +1177,34 @@ class SharedHomeStore(
 private enum class HomeBackgroundRefreshPolicy {
     SkipInFlight,
     Force
+}
+
+private val ConversationSummary.isAgentDirectMessage: Boolean
+    get() =
+        kind == ConversationKind.DirectMessage &&
+            directMessagePeerType.equals("agent", ignoreCase = true)
+
+private fun HomeSnapshot.withAgentDirectMessageStatusesFrom(patches: List<ConversationSummary>): HomeSnapshot {
+    val patchByThreadId =
+        patches
+            .asSequence()
+            .filter { it.isAgentDirectMessage }
+            .associateBy { it.threadId }
+    if (patchByThreadId.isEmpty()) return this
+    var changed = false
+    val nextDirectMessages =
+        directMessages.map { conversation ->
+            if (!conversation.isAgentDirectMessage) return@map conversation
+            val statusPatch = patchByThreadId[conversation.threadId] ?: return@map conversation
+            val next =
+                conversation.copy(
+                    presence = statusPatch.presence,
+                    agentStatus = statusPatch.agentStatus ?: conversation.agentStatus
+                )
+            if (next != conversation) changed = true
+            next
+        }
+    return if (changed) copy(directMessages = nextDirectMessages) else this
 }
 
 class SharedHomeViewModel(
