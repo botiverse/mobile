@@ -5156,6 +5156,7 @@ class SharedThreadStoreTest {
     @Test
     fun replyThreadUpdatedReplyCountGapSyncsFromVisiblePayloadTail() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
         val api =
             FakeThreadApi(
                 bodyText =
@@ -5177,7 +5178,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5201,6 +5203,14 @@ class SharedThreadStoreTest {
         assertEquals(listOf(10L), api.syncSinceSeqs)
         assertEquals(false, payload.canLoadMoreAfter)
         assertEquals("idle", payload.newerMessagesStatus)
+        assertEquals(
+            listOf("current body", "recovered body"),
+            localStore.readThread(ThreadId("thread-m1"))?.messages?.map { it.body }
+        )
+        assertEquals(
+            listOf("current body", "recovered body"),
+            dataSource.readCachedPayload(route, trimToLatestThreadWindow = false)?.messages?.map { it.body }
+        )
         scope.cancel()
     }
 
