@@ -156,6 +156,20 @@ decoration API.
   - focused `SlockMarkdownTest`;
   - `:shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin`.
 
+## Kuikly Fork Versioning
+
+Do not publish Slock-patched Kuikly artifacts with the exact upstream Maven
+version after the first local validation pass. Release candidates and shipped
+builds should use an explicit Slock patch suffix such as `-raft.1`,
+`-raft.2`, etc. Reusing the upstream version makes Gradle/Maven cache state
+ambiguous, especially for renderer fixes where a stale AAR can still package
+successfully.
+
+For local development before a suffixed artifact is cut, put `mavenLocal()`
+before remote repositories, publish the patched Kuikly artifact with the app's
+expected version, and verify the packaged APK by bytecode/decompile proof before
+trusting screenshots.
+
 ## Non-Goals
 
 - Do not split long inline code into multiple placeholder chips.
