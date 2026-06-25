@@ -2258,6 +2258,13 @@ internal fun SharedThreadRouteContent(
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
+    val headerProjectionSource =
+        remember(headerProjectionInput, directoryConversationProjection, lastAcceptedHeaderProjection) {
+            headerProjectionInput.stableProjectionSource(
+                current = directoryConversationProjection,
+                previous = lastAcceptedHeaderProjection
+            )
+        }
     val stableHeaderProjection =
         remember(headerProjectionInput, directoryConversationProjection, lastAcceptedHeaderProjection) {
             headerProjectionInput.stableProjection(
@@ -2266,8 +2273,25 @@ internal fun SharedThreadRouteContent(
             )
         }
     LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
+        val previous = lastAcceptedHeaderProjection
         val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::accepts)
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            bridge.log(
+                "thread_header_dm_diag stage=accept_check " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${previous.headerProjectionDiagnostics()} " +
+                    "accepted=${accepted != null}"
+            )
+        }
         if (accepted != null) {
+            if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                bridge.log(
+                    "thread_header_dm_diag stage=accepted_store " +
+                        "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                        "stored=${accepted.headerProjectionDiagnostics()}"
+                )
+            }
             lastAcceptedHeaderProjection = accepted
         }
     }
@@ -2275,6 +2299,47 @@ internal fun SharedThreadRouteContent(
         remember(headerProjectionInput, stableHeaderProjection) {
             headerProjectionInput.displayModel(stableHeaderProjection)
         }
+    val headerProjectionMapDiagnostics =
+        remember(directoryConversationProjections) {
+            directoryConversationProjections.headerProjectionMapDiagnostics()
+        }
+    val initialHeaderRouteDiagnostics =
+        remember(initialPayload) {
+            initialPayload.headerRouteDiagnostics()
+        }
+    val payloadHeaderRouteDiagnostics =
+        remember(payload) {
+            payload.headerRouteDiagnostics()
+        }
+    LaunchedEffect(
+        currentSession?.currentServerId,
+        headerProjectionInput,
+        conversationDirectoryLookupIds,
+        headerProjectionMapDiagnostics,
+        directoryConversationProjection,
+        lastAcceptedHeaderProjection,
+        headerProjectionSource,
+        stableHeaderProjection,
+        headerDisplayModel,
+        initialHeaderRouteDiagnostics,
+        payloadHeaderRouteDiagnostics
+    ) {
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            bridge.log(
+                "thread_header_dm_diag stage=render " +
+                    "serverId=${currentSession?.currentServerId ?: "null"} " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "initialRoute=$initialHeaderRouteDiagnostics " +
+                    "stateRoute=$payloadHeaderRouteDiagnostics " +
+                    "projectionMap=$headerProjectionMapDiagnostics " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${lastAcceptedHeaderProjection.headerProjectionDiagnostics()} " +
+                    "stableSource=$headerProjectionSource " +
+                    "stable=${stableHeaderProjection.headerProjectionDiagnostics()} " +
+                    "final=${headerDisplayModel.headerDisplayDiagnostics()}"
+            )
+        }
+    }
     val renderedPayload = remember(payload) {
         payload
             .withSharedShellEventCapabilities()

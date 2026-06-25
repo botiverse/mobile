@@ -65,6 +65,98 @@ internal fun ThreadHeaderProjectionInput.stableProjection(
 ): SharedConversationDirectoryProjection? =
     current?.takeIf(::accepts) ?: previous?.takeIf(::accepts)
 
+internal fun ThreadHeaderProjectionInput.stableProjectionSource(
+    current: SharedConversationDirectoryProjection?,
+    previous: SharedConversationDirectoryProjection?
+): String =
+    when {
+        current?.takeIf(::accepts) != null -> "current"
+        previous?.takeIf(::accepts) != null -> "previous"
+        else -> "fallback"
+    }
+
+internal fun ThreadHeaderProjectionInput.headerProjectionDiagnostics(): String =
+    buildString {
+        append("surface=").append(surfaceKind.headerDiagnosticValue())
+        append(" lookupIds=").append(lookupIds.headerDiagnosticList())
+    }
+
+internal fun Map<String, SharedConversationDirectoryProjection>.headerProjectionMapDiagnostics(): String =
+    buildString {
+        append("count=").append(size)
+        append(" keys=").append(keys.sorted().headerDiagnosticList())
+        if (isNotEmpty()) {
+            append(" entries=")
+            append(
+                entries
+                    .sortedBy { it.key }
+                    .take(6)
+                    .joinToString(prefix = "[", postfix = "]") { (key, projection) ->
+                        "${key.headerDiagnosticValue()}->${projection.headerProjectionDiagnostics()}"
+                    }
+            )
+            if (size > 6) append("+").append(size - 6)
+        }
+    }
+
+internal fun SharedConversationDirectoryProjection?.headerProjectionDiagnostics(): String =
+    this?.let { projection ->
+        buildString {
+            append("{server=").append(projection.serverId.headerDiagnosticValue())
+            append(" canonical=").append(projection.canonicalChannelId.headerDiagnosticValue())
+            append(" aliases=").append(projection.aliases.sorted().headerDiagnosticList())
+            append(" surface=").append(projection.surfaceKind.headerDiagnosticValue())
+            append(" channelKind=").append(projection.channelKind.headerDiagnosticValue())
+            append(" title=").append(projection.title.headerDiagnosticValue())
+            append(" subtitle=").append(projection.subtitle.headerDiagnosticValue())
+            append(" avatar=").append(projection.avatarWireValue.headerAvatarDiagnosticValue())
+            append(" avatarLabel=").append(projection.avatarLabel.headerDiagnosticValue())
+            append(" peerMemberId=").append(projection.peerMemberId.headerDiagnosticValue())
+            append(" presence=").append(projection.presence?.name ?: "null")
+            append(" agentStatus=").append(projection.agentStatus?.name ?: "null")
+            append(" parentChannelId=").append(projection.parentChannelId.headerDiagnosticValue())
+            append(" parentMessageId=").append(projection.parentMessageId.headerDiagnosticValue())
+            append(" joined=").append(projection.joined)
+            append(" archived=").append(projection.archived)
+            append("}")
+        }
+    } ?: "null"
+
+internal fun ThreadHeaderDisplayModel.headerDisplayDiagnostics(): String =
+    buildString {
+        append("{title=").append(title.headerDiagnosticValue())
+        append(" subtitle=").append(subtitle.headerDiagnosticValue())
+        append(" surface=").append(surfaceKind.headerDiagnosticValue())
+        append(" channelKind=").append(channelKind.headerDiagnosticValue())
+        append(" dmPeerAvatar=").append(dmPeerAvatarWireValue.headerAvatarDiagnosticValue())
+        append(" dmPeerAvatarLabel=").append(dmPeerAvatarLabel.headerDiagnosticValue())
+        append(" dmPeerMemberId=").append(dmPeerMemberId.headerDiagnosticValue())
+        append(" dmPeerGravatar=").append(dmPeerGravatarUrl.headerAvatarDiagnosticValue())
+        append("}")
+    }
+
+internal fun KuiklyThreadScreenPayload.headerRouteDiagnostics(): String =
+    buildString {
+        append("{instanceId=").append(instanceId.headerDiagnosticValue())
+        append(" status=").append(status.headerDiagnosticValue())
+        append(" surface=").append(surfaceKind.headerDiagnosticValue())
+        append(" channelKind=").append(channelKind.headerDiagnosticValue())
+        append(" sourceThreadId=").append(sourceThreadId.headerDiagnosticValue())
+        append(" streamChannelId=").append(streamChannelId.headerDiagnosticValue())
+        append(" parentChannelId=").append(parentChannelId.headerDiagnosticValue())
+        append(" parentMessageId=").append(parentMessageId.headerDiagnosticValue())
+        append(" parentSurface=").append(parentSurfaceKind.headerDiagnosticValue())
+        append(" parentChannelKind=").append(parentChannelKind.headerDiagnosticValue())
+        append(" dmPeerMemberId=").append(dmPeerMemberId.headerDiagnosticValue())
+        append(" dmPeerName=").append(dmPeerName.headerDiagnosticValue())
+        append(" dmPeerAvatar=").append(dmPeerAvatarUrl.headerAvatarDiagnosticValue())
+        append(" dmPeerAvatarLabel=").append(dmPeerAvatarLabel.headerDiagnosticValue())
+        append(" dmPeerGravatar=").append(dmPeerGravatarUrl.headerAvatarDiagnosticValue())
+        append(" title=").append(title.headerDiagnosticValue())
+        append(" subtitle=").append(subtitle.headerDiagnosticValue())
+        append("}")
+    }
+
 private data class DirectMessageThreadHeaderProjectionInput(
     private val routePayload: KuiklyThreadScreenPayload,
     override val lookupIds: List<String>
@@ -303,3 +395,22 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
 
 private fun String?.normalizedHeaderChannelKind(): String? =
     this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
+private fun String?.headerDiagnosticValue(maxLength: Int = 120): String =
+    this
+        ?.replace('\n', ' ')
+        ?.replace('\r', ' ')
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.take(maxLength)
+        ?: "null"
+
+private fun String?.headerAvatarDiagnosticValue(): String =
+    this.headerDiagnosticValue(maxLength = 180)
+
+private fun Iterable<String>.headerDiagnosticList(maxItems: Int = 8): String {
+    val values = map { it.headerDiagnosticValue() }
+    val visible = values.take(maxItems)
+    val suffix = if (values.size > maxItems) "+${values.size - maxItems}" else ""
+    return visible.joinToString(prefix = "[", postfix = "]$suffix")
+}
