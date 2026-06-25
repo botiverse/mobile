@@ -83,8 +83,10 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
+private const val ActivityNearTopThresholdPx = 50
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -474,12 +476,36 @@ private fun SharedActivityList(
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var previousTopItemKey by remember { mutableStateOf<String?>(null) }
+    var pendingUpdateCount by remember { mutableStateOf(0) }
+    val scrollScope = rememberCoroutineScope()
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     LaunchedEffect(snapshot.items) {
         val selected = selectedItemKey
         if (selected != null && snapshot.items.none { it.key == selected }) {
             selectedItemKey = null
         }
+    }
+    LaunchedEffect(snapshot.items) {
+        val nearTop = listState.isActivityNearTop()
+        val increment = activityPendingUpdateIncrement(previousTopItemKey, snapshot.items, nearTop)
+        if (increment > 0) {
+            pendingUpdateCount += increment
+        }
+        if (nearTop && snapshot.items.isNotEmpty()) {
+            pendingUpdateCount = 0
+            listState.scrollToItem(0)
+        }
+        previousTopItemKey = snapshot.items.firstOrNull()?.key
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isActivityNearTop() }
+            .distinctUntilChanged()
+            .collect { nearTop ->
+                if (nearTop) {
+                    pendingUpdateCount = 0
+                }
+            }
     }
     LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
         snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
@@ -542,6 +568,22 @@ private fun SharedActivityList(
                 }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
+        }
+        if (pendingUpdateCount > 0) {
+            SlockBrutalActionButton(
+                label = "↑ $pendingUpdateCount new update${if (pendingUpdateCount == 1) "" else "s"}",
+                onClick = {
+                    scrollScope.launch {
+                        listState.scrollToItem(0)
+                        pendingUpdateCount = 0
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                minHeight = 30.dp,
+                minWidth = 0.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
         }
         activeMenuItem?.let { item ->
             SlockBaseMenuOverlay(
@@ -1036,6 +1078,21 @@ private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int)
     if (lastActivityRowIndex < 1) return false
     val visibleLastIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return false
     return visibleLastIndex >= lastActivityRowIndex - 3
+}
+
+private fun LazyListState.isActivityNearTop(): Boolean =
+    firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
+
+internal fun activityPendingUpdateIncrement(
+    previousTopItemKey: String?,
+    currentItems: List<InboxItem>,
+    nearTop: Boolean
+): Int {
+    if (nearTop || previousTopItemKey == null) return 0
+    val currentTopItemKey = currentItems.firstOrNull()?.key ?: return 0
+    if (currentTopItemKey == previousTopItemKey) return 0
+    val previousTopIndex = currentItems.indexOfFirst { it.key == previousTopItemKey }
+    return if (previousTopIndex > 0) previousTopIndex else 1
 }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {

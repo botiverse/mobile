@@ -16,6 +16,54 @@ import kotlin.test.assertEquals
 
 class SharedInboxPanelTest {
     @Test
+    fun activityPendingUpdateIncrementCountsPrependedRowsWhenAwayFromTop() {
+        val items =
+            listOf(
+                activityItem(key = "channel:channel-new-1"),
+                activityItem(key = "channel:channel-new-2"),
+                activityItem(key = "channel:channel-old-top"),
+                activityItem(key = "channel:channel-old-next")
+            )
+
+        assertEquals(
+            2,
+            activityPendingUpdateIncrement(
+                previousTopItemKey = "channel:channel-old-top",
+                currentItems = items,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementStaysHiddenNearTop() {
+        val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
+
+        assertEquals(
+            0,
+            activityPendingUpdateIncrement(
+                previousTopItemKey = "channel:channel-old-top",
+                currentItems = items,
+                nearTop = true
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementUsesSingleFallbackWhenAnchorDisappears() {
+        val items = listOf(activityItem(key = "channel:channel-new"))
+
+        assertEquals(
+            1,
+            activityPendingUpdateIncrement(
+                previousTopItemKey = "channel-old-top",
+                currentItems = items,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
     fun activityTimeLabelFormatsLatestActivityBeforeRendering() {
         val item =
             activityItem(
@@ -268,11 +316,12 @@ class SharedInboxPanelTest {
     }
 
     private fun activityItem(
+        key: String = "activity-1",
         latestActivityAt: String? = null,
         lastMessageAt: String? = null
     ): InboxItem =
         InboxItem(
-            key = "activity-1",
+            key = key,
             kind = InboxItemKind.Channel,
             channelId = ChannelId("channel-1"),
             channelName = "general",
