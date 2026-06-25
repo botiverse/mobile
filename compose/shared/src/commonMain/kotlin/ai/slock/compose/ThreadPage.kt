@@ -1325,13 +1325,19 @@ internal fun shouldStartThreadTasksJoin(
     payload.status == "content" &&
         payload.supportsChannelTasks() &&
         startedThreadId != taskChannelId.value &&
-        payload.resolvedAuxiliaryThreadId()?.let { it == taskChannelId.value } == true
+        payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
     if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     if (status == "loading") return null
     return timelineChannelId
+}
+
+internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(): String? {
+    val timelineChannelId = resolvedAuxiliaryThreadId() ?: return null
+    if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
+    return parentChannelId.nonBlank() ?: timelineChannelId
 }
 
 private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
@@ -2483,7 +2489,7 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    val taskChannelId = resolvedAuxiliaryThreadId?.let(::ChannelId)
+    val taskChannelId = payload.resolvedTaskLookupChannelId()?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
         taskChannelId?.let { resolvedTaskChannelId ->
             viewModel(key = "shared-thread-tasks-${resolvedTaskChannelId.value}") {

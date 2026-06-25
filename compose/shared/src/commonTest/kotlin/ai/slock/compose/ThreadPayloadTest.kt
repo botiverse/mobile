@@ -3946,7 +3946,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadTasksJoinUsesResolvedAuxiliaryThreadId() {
+    fun threadTasksJoinUsesParentChannelForReplyThreadTaskStatusHydration() {
         val launchPayload =
             KuiklyThreadScreenPayload(
                 instanceId = "activity-thread",
@@ -3964,11 +3964,13 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-m1",
                 status = "content"
             )
-        val resolvedTaskChannelId = resolvedPayload.resolvedAuxiliaryThreadId()?.let(::ChannelId)
+        val resolvedTaskChannelId = resolvedPayload.resolvedTaskLookupChannelId()?.let(::ChannelId)
 
-        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("wrong-thread")))
+        assertEquals("thread-m1", resolvedPayload.resolvedAuxiliaryThreadId())
+        assertEquals("channel-1", resolvedPayload.resolvedTaskLookupChannelId())
+        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("channel-1")))
         assertTrue(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
-        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = ChannelId("wrong-thread")))
+        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = ChannelId("thread-m1")))
     }
 
     @Test
