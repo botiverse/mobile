@@ -48,6 +48,7 @@ class SharedActivityStore(
     private var localWriteThrough: ComposeLocalWriteThrough? = localWriteThrough
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var scope: CoroutineScope = scope
+    private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
 
     fun updateRuntimeIntegrations(
         localWriteThrough: ComposeLocalWriteThrough? = null,
@@ -88,6 +89,7 @@ class SharedActivityStore(
 
     fun reset() {
         clear()
+        unreadClearOverrides = emptyMap()
         _state.value = SharedActivityState()
     }
 
@@ -194,20 +196,28 @@ class SharedActivityStore(
         _state.value =
             when (result) {
                 is DataResult.Content -> {
-                    val pageItems = result.data.items.withSenderAvatarProfiles(senderProfiles)
+                    val pageItems =
+                        result.data.items
+                            .withSenderAvatarProfiles(senderProfiles)
+                            .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                     val items =
                         if (append) {
-                            (current.items + pageItems).distinctBy { it.key }
+                            (current.items + pageItems.items).distinctBy { it.key }
                         } else {
-                            pageItems
+                            pageItems.items
                         }
                     val nextState =
                         current.copy(
                             snapshot =
                                 result.data.copy(
                                     items = items,
-                                    totalCount = result.data.totalCount,
-                                    totalUnreadCount = result.data.totalUnreadCount,
+                                    totalCount =
+                                        if (current.selectedFilter == InboxFilter.Unread) {
+                                            maxOf(0, result.data.totalCount - pageItems.removedUnreadRows)
+                                        } else {
+                                            result.data.totalCount
+                                        },
+                                    totalUnreadCount = maxOf(0, result.data.totalUnreadCount - pageItems.suppressedUnreadCount),
                                     hasMore = result.data.hasMore,
                                     nextOffset = result.data.nextOffset
                                 ),
@@ -284,6 +294,7 @@ class SharedActivityStore(
                 totalCount = if (previous.selectedFilter == InboxFilter.Unread) 0 else snapshot.totalCount,
                 totalUnreadCount = 0
             )
+        rememberUnreadCleared(snapshot.items)
         _state.value = previous.copy(snapshot = updatedSnapshot, errorCode = null)
         scope.launch {
             val serverId = currentServerId()
@@ -294,6 +305,7 @@ class SharedActivityStore(
                 onUnreadCountsChanged()
                 load(refresh = true, pullRefresh = false)
             } else {
+                forgetUnreadCleared(snapshot.items)
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_all_read_failed")
             }
@@ -332,6 +344,7 @@ class SharedActivityStore(
             return
         }
         val key = item.key
+        rememberUnreadCleared(item)
         val updatedItems =
             if (previous.selectedFilter == InboxFilter.Unread) {
                 snapshot.items.filterNot { it.key == key }
@@ -359,6 +372,7 @@ class SharedActivityStore(
             localWriteThrough?.clearConversationUnread(targetChannelId, "shared_activity_mark_read", serverId)
             val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
+                forgetUnreadCleared(key)
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_read_failed")
             } else {
@@ -378,6 +392,7 @@ class SharedActivityStore(
         val wasUnread = item.unreadCount > 0
         val optimisticUnreadCount = item.unreadCount.takeIf { it > 0 } ?: 1
         val key = item.key
+        forgetUnreadCleared(key)
         val updatedItems =
             snapshot.items.map { existing ->
                 if (existing.key == key) {
@@ -476,7 +491,90 @@ class SharedActivityStore(
         } catch (_: Throwable) {
             emptyMap()
         }
+
+    private fun rememberUnreadCleared(items: List<InboxItem>) {
+        val unreadItems = items.filter { it.unreadCount > 0 }
+        if (unreadItems.isEmpty()) return
+        unreadClearOverrides =
+            unreadClearOverrides +
+                unreadItems.associate { item ->
+                    item.key to ActivityUnreadClearOverride(item.activityUnreadAnchor())
+                }
+    }
+
+    private fun rememberUnreadCleared(item: InboxItem) {
+        if (item.unreadCount <= 0) return
+        unreadClearOverrides =
+            unreadClearOverrides +
+                (item.key to ActivityUnreadClearOverride(item.activityUnreadAnchor()))
+    }
+
+    private fun forgetUnreadCleared(items: List<InboxItem>) {
+        if (unreadClearOverrides.isEmpty()) return
+        val keys = items.mapTo(mutableSetOf()) { it.key }
+        unreadClearOverrides = unreadClearOverrides.filterKeys { it !in keys }
+    }
+
+    private fun forgetUnreadCleared(key: String) {
+        if (key in unreadClearOverrides) {
+            unreadClearOverrides = unreadClearOverrides - key
+        }
+    }
+
+    private fun List<InboxItem>.reconcileLocallyClearedUnreadItems(filter: InboxFilter): ActivityUnreadReconcileResult {
+        if (unreadClearOverrides.isEmpty()) {
+            return ActivityUnreadReconcileResult(items = this)
+        }
+        val nextOverrides = unreadClearOverrides.toMutableMap()
+        val reconciled = mutableListOf<InboxItem>()
+        var suppressedUnreadCount = 0
+        var removedUnreadRows = 0
+        for (item in this) {
+            val override = nextOverrides[item.key]
+            if (override == null) {
+                reconciled += item
+                continue
+            }
+            if (item.unreadCount <= 0) {
+                nextOverrides.remove(item.key)
+                reconciled += item
+                continue
+            }
+            val incomingAnchor = item.activityUnreadAnchor()
+            val staleUnread =
+                override.unreadAnchor == null ||
+                    incomingAnchor == override.unreadAnchor
+            if (staleUnread) {
+                suppressedUnreadCount += item.unreadCount
+                val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                if (filter == InboxFilter.Unread) {
+                    removedUnreadRows += 1
+                } else {
+                    reconciled += clearedItem
+                }
+            } else {
+                nextOverrides.remove(item.key)
+                reconciled += item
+            }
+        }
+        unreadClearOverrides = nextOverrides
+        return ActivityUnreadReconcileResult(
+            items = reconciled,
+            suppressedUnreadCount = suppressedUnreadCount,
+            removedUnreadRows = removedUnreadRows
+        )
+    }
 }
+
+private data class ActivityUnreadClearOverride(
+    val unreadAnchor: MessageId?
+)
+
+private data class ActivityUnreadReconcileResult(
+    val items: List<InboxItem>,
+    val suppressedUnreadCount: Int = 0,
+    val removedUnreadRows: Int = 0
+)
 
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,

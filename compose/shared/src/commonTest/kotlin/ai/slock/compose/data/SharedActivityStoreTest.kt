@@ -95,6 +95,70 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun staleActivityRefreshAfterMarkReadDoesNotRestoreUnread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val unreadRow = activityItem("channel-1", unreadCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalUnreadCount = 2))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalUnreadCount = 2))
+
+        val row = store.state.value.items.single()
+        assertEquals(0, row.unreadCount)
+        assertEquals(null, row.firstUnreadMessageId)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleUnreadFilterRefreshAfterMarkReadDoesNotRestoreRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val unreadRow = activityItem("channel-1", unreadCount = 2)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalCount = 1, totalUnreadCount = 2))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalCount = 1, totalUnreadCount = 2))
+
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun markReadAllowsLaterUnreadWithDifferentAnchor() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val unreadRow = activityItem("channel-1", unreadCount = 1)
+        val laterUnreadRow =
+            unreadRow.copy(
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("first-channel-1-new")
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalUnreadCount = 1))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        inbox.completeNextSnapshot(snapshot(listOf(laterUnreadRow), totalUnreadCount = 1))
+
+        val row = store.state.value.items.single()
+        assertEquals(1, row.unreadCount)
+        assertEquals(MessageId("first-channel-1-new"), row.firstUnreadMessageId)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun markUnreadCallsUnreadEndpointAndRefreshes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val read = FakeReadReceiptRepository()
@@ -474,7 +538,11 @@ class SharedActivityStoreTest {
             DataResult.Content(InboxDoneResult(channelId))
 
         fun completeNext(item: InboxItem) {
-            pending.removeAt(0).complete(DataResult.Content(snapshot(listOf(item))))
+            completeNextSnapshot(snapshot(listOf(item)))
+        }
+
+        fun completeNextSnapshot(snapshot: InboxSnapshot) {
+            pending.removeAt(0).complete(DataResult.Content(snapshot))
         }
     }
 
