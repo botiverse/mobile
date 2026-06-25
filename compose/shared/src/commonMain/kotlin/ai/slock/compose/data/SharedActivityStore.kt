@@ -36,15 +36,34 @@ class SharedActivityStore(
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
-    private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    localWriteThrough: ComposeLocalWriteThrough? = null,
     private val activityStateCache: SharedActivityStateCache? = null,
-    private val onUnreadCountsChanged: () -> Unit = {},
-    private val scope: CoroutineScope
+    onUnreadCountsChanged: () -> Unit = {},
+    scope: CoroutineScope
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var localWriteThrough: ComposeLocalWriteThrough? = localWriteThrough
+    private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
+    private var scope: CoroutineScope = scope
+
+    fun updateRuntimeIntegrations(
+        localWriteThrough: ComposeLocalWriteThrough? = null,
+        onUnreadCountsChanged: (() -> Unit)? = null,
+        scope: CoroutineScope? = null
+    ) {
+        if (localWriteThrough != null) {
+            this.localWriteThrough = localWriteThrough
+        }
+        if (onUnreadCountsChanged != null) {
+            this.onUnreadCountsChanged = onUnreadCountsChanged
+        }
+        if (scope != null) {
+            this.scope = scope
+        }
+    }
 
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {

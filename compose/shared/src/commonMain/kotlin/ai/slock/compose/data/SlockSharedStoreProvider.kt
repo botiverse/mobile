@@ -23,6 +23,7 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -40,12 +41,47 @@ internal class SlockSharedStoreProvider private constructor(
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
+    private var homeActivityStore: SharedActivityStore? = null
+
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
             database = sqlDatabase,
             fallback = localDataStore,
             currentServerId = currentServerId
         )
+
+    fun getOrCreateHomeActivityStore(
+        inboxRepository: InboxRepository,
+        readReceiptRepository: ReadReceiptRepository,
+        conversationRepository: ConversationRepository,
+        memberRepository: MemberRepository? = null,
+        localWriteThrough: ComposeLocalWriteThrough? = null,
+        activityStateCache: SharedActivityStateCache? = this.activityStateCache,
+        onUnreadCountsChanged: (() -> Unit)? = null,
+        scope: CoroutineScope
+    ): SharedActivityStore {
+        homeActivityStore
+            ?.also { store ->
+                store.updateRuntimeIntegrations(
+                    localWriteThrough = localWriteThrough,
+                    onUnreadCountsChanged = onUnreadCountsChanged,
+                    scope = scope
+                )
+                return store
+            }
+        return SharedActivityStore(
+            authStore = authStore,
+            inboxRepository = inboxRepository,
+            readReceiptRepository = readReceiptRepository,
+            conversationRepository = conversationRepository,
+            memberRepository = memberRepository,
+            serverMembersStore = serverMembersStore,
+            localWriteThrough = localWriteThrough,
+            activityStateCache = activityStateCache,
+            onUnreadCountsChanged = onUnreadCountsChanged ?: {},
+            scope = scope
+        ).also { homeActivityStore = it }
+    }
 
     companion object {
         fun create(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
