@@ -6560,7 +6560,7 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        listState.scrollThreadItemToViewportCenter(targetIndex)
+        listState.scrollThreadItemToFocusedViewport(targetIndex)
         delay(ThreadFocusedMessageHighlightDurationMs)
         if (activeFocusedMessageId == targetMessageId) {
             activeFocusedMessageId = null
@@ -7448,7 +7448,7 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
-private suspend fun LazyListState.scrollThreadItemToViewportCenter(itemIndex: Int) {
+private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: Int) {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
         return
     }
@@ -7461,7 +7461,7 @@ private suspend fun LazyListState.scrollThreadItemToViewportCenter(itemIndex: In
         }
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
         val offset =
-            threadFocusedItemCenterScrollOffset(
+            threadFocusedItemScrollOffset(
                 itemSize = item.size,
                 viewportHeight = viewportHeight
             )
@@ -7569,11 +7569,12 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     return 0
 }
 
-internal fun threadFocusedItemCenterScrollOffset(
+internal fun threadFocusedItemScrollOffset(
     itemSize: Int,
     viewportHeight: Int
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
+    if (itemSize >= viewportHeight) return 0
     return (itemSize - viewportHeight) / 2
 }
 
