@@ -4870,7 +4870,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         status = if (cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty()) "empty" else "content",
         sourceThreadId = sourceThreadId,
         surfaceKind = surfaceKind,
-        channelKind = channelKind,
+        channelKind = channelKind ?: base.channelKind,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,

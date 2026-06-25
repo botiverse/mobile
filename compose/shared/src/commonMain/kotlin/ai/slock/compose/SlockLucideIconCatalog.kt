@@ -98,6 +98,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Package("package"),
     Paperclip("paperclip"),
     PanelBottomOpen("panel-bottom-open"),
+    Pause("pause"),
     Pencil("pencil"),
     Pin("pin"),
     PinOff("pin-off"),

@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.BridgeAttachmentDownloadProgress
 import ai.slock.compose.base.Utils
+import ai.slock.compose.base.toBridgeAttachmentDownloadProgress
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockAnchorPlacement
@@ -19,6 +20,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +58,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
@@ -73,6 +76,7 @@ private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewLoadingLabel = "Loading..."
+private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -109,6 +113,7 @@ internal class ComposeSlockFilePreviewPage : ai.slock.compose.base.BasePager() {
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val notifyModule = remember(pager.pagerId) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
     val networkClient =
@@ -154,9 +159,36 @@ private fun SlockFilePreviewStandalonePageContent() {
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
+    var activeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
+    DisposableEffect(notifyModule) {
+        val callbackRef =
+            notifyModule.addNotify(SlockFilePreviewAttachmentDownloadEvent) { data ->
+                val progress = data?.toBridgeAttachmentDownloadProgress() ?: return@addNotify
+                val currentDownloadId = activeDownloadId ?: return@addNotify
+                if (progress.downloadId != currentDownloadId) return@addNotify
+                downloadProgress = progress
+                when (progress.status) {
+                    "paused" -> downloadStatus = "paused"
+                    "progress", "resumed" -> downloadStatus = "downloading"
+                    "cancelled" -> {
+                        downloadStatus = "idle"
+                        downloadMessage = "Download stopped"
+                        activeDownloadId = null
+                    }
+                    "failed" -> {
+                        downloadStatus = "failed"
+                        downloadMessage = "Download failed"
+                        activeDownloadId = null
+                    }
+                }
+            }
+        onDispose {
+            notifyModule.removeNotify(SlockFilePreviewAttachmentDownloadEvent, callbackRef)
+        }
+    }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
         val nextPayload =
             when (payload.source) {
@@ -187,20 +219,30 @@ private fun SlockFilePreviewStandalonePageContent() {
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                 ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                 ?: return "Unable to download attachment"
+        val downloadId = activeDownloadId ?: currentPayload.filePreviewDownloadId()
+        activeDownloadId = downloadId
         val result =
             bridge.openAttachment(
                 url = externalUrl,
                 attachmentId = currentPayload.attachmentCacheId(),
                 fileName = currentPayload.attachmentCacheFileName(),
                 mimeType = currentPayload.externalMimeType,
+                downloadId = downloadId,
                 onProgress = { progress ->
-                    downloadProgress = progress
+                    if (progress.downloadId.isBlank() || progress.downloadId == activeDownloadId) {
+                        downloadProgress = progress
+                    }
                 }
             )
         return when (result?.optString("status").orEmpty()) {
             "opened", "" -> {
                 attachmentCacheState = result?.optBoolean("cached", true) ?: true
+                activeDownloadId = null
                 null
+            }
+            "cancelled" -> {
+                activeDownloadId = null
+                "Download stopped"
             }
             "no_app" -> result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
             "storage_failed" -> result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
@@ -208,26 +250,43 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     fun requestExternalOpen() {
-        if (!canOpenWith || downloadStatus == "downloading") return
+        if (!canOpenWith || downloadStatus == "downloading" || downloadStatus == "paused") return
         downloadStatus = "downloading"
         downloadMessage = ""
-        downloadProgress = SlockFilePreviewInitialDownloadProgress
+        activeDownloadId = payload.filePreviewDownloadId()
+        downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
         coroutineScope.launch {
             val error = openPayloadExternally(payload)
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
                 downloadProgress = null
+                activeDownloadId = null
             } else {
-                downloadStatus = "failed"
+                downloadStatus = if (error == "Download stopped") "idle" else "failed"
                 downloadMessage = error
                 downloadProgress = null
+                activeDownloadId = null
                 bridge.toast(error)
             }
         }
     }
+    fun requestDownloadControl(action: String) {
+        val downloadId = activeDownloadId ?: return
+        when (action) {
+            "pause" -> downloadStatus = "paused"
+            "resume" -> downloadStatus = "downloading"
+            "stop" -> {
+                downloadStatus = "idle"
+                downloadMessage = "Download stopped"
+            }
+        }
+        coroutineScope.launch {
+            bridge.attachmentDownloadControl(downloadId = downloadId, action = action)
+        }
+    }
     fun requestDeleteDownload() {
-        if (!canOpenWith || !attachmentCacheState || downloadStatus == "downloading") return
+        if (!canOpenWith || !attachmentCacheState || downloadStatus == "downloading" || downloadStatus == "paused") return
         coroutineScope.launch {
             val result =
                 bridge.deleteAttachmentCache(
@@ -287,14 +346,18 @@ private fun SlockFilePreviewStandalonePageContent() {
             onOpenUrl = {},
             downloadStatusLabel =
                 when (downloadStatus) {
-                    "downloading" -> slockFilePreviewDownloadStatusLabel(downloadProgress)
+                    "downloading", "paused" -> slockFilePreviewDownloadStatusLabel(downloadProgress)
                     "failed" -> downloadMessage.ifBlank { "Download failed" }
                     else -> null
             },
-            downloadInProgress = downloadStatus == "downloading",
+            downloadInProgress = downloadStatus == "downloading" || downloadStatus == "paused",
+            downloadPaused = downloadStatus == "paused",
             downloadProgressPercent = downloadProgress?.percent,
             downloadCached = attachmentCacheState,
             onDownload = if (canOpenWith) ::requestExternalOpen else null,
+            onPauseDownload = { requestDownloadControl("pause") },
+            onResumeDownload = { requestDownloadControl("resume") },
+            onStopDownload = { requestDownloadControl("stop") },
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -705,17 +768,25 @@ internal fun SlockFilePreviewPayloadContent(
     onOpenUrl: (String) -> Unit,
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
+    downloadPaused: Boolean = false,
     downloadProgressPercent: Int? = null,
     downloadCached: Boolean = false,
     onDownload: (() -> Unit)? = null,
+    onPauseDownload: (() -> Unit)? = null,
+    onResumeDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
     when (payload.kind) {
         "markdown" ->
             SlockFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
                 modifier = modifier.fillMaxSize()
             ) {
                 SlockFilePreviewMarkdownPanel(
@@ -737,6 +808,9 @@ internal fun SlockFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
                 modifier = modifier.fillMaxSize()
             ) {
                 SlockFilePreviewTextPanel(
@@ -753,6 +827,9 @@ internal fun SlockFilePreviewPayloadContent(
                     statusLabel = downloadStatusLabel,
                     showProgress = downloadInProgress,
                     progressPercent = downloadProgressPercent,
+                    downloadPaused = downloadPaused,
+                    onToggleDownload = onToggleDownload,
+                    onStopDownload = onStopDownload,
                     modifier = modifier.fillMaxSize()
                 ) {
                     SlockFilePreviewImagePanel(
@@ -784,6 +861,9 @@ internal fun SlockFilePreviewPayloadContent(
                     actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                     actionEnabled = !downloadInProgress,
                     onAction = onDownload,
+                    downloadPaused = downloadPaused,
+                    onToggleDownload = onToggleDownload,
+                    onStopDownload = onStopDownload,
                     modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
                 )
             }
@@ -820,6 +900,9 @@ internal fun SlockFilePreviewPayloadContent(
                 actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                 actionEnabled = !downloadInProgress,
                 onAction = onDownload,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
                 modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
             )
     }
@@ -920,17 +1003,20 @@ internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownl
     val percent = progress?.percent
     val speedLabel = progress?.bytesPerSecond.slockFilePreviewSpeedLabel()
     val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.slockFilePreviewSizeLabel()
+    val verb = if (progress?.status == "paused") "Paused" else "Downloading"
     val primary =
         when {
-            percent != null -> "Downloading $percent%"
-            downloadedLabel != null -> "Downloading $downloadedLabel"
-            else -> "Downloading..."
+            percent != null -> "$verb $percent%"
+            downloadedLabel != null -> "$verb $downloadedLabel"
+            else -> "$verb..."
         }
     return listOfNotNull(primary, speedLabel).joinToString(" · ")
 }
 
 internal val SlockFilePreviewInitialDownloadProgress =
     BridgeAttachmentDownloadProgress(
+        downloadId = "",
+        status = "progress",
         percent = 0,
         downloadedBytes = 0L,
         totalBytes = null,
@@ -970,6 +1056,13 @@ private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
         .ifBlank { name }
         .ifBlank { path }
         .ifBlank { "attachment" }
+
+private fun SlockFilePreviewPayload.filePreviewDownloadId(): String =
+    listOf(source, attachmentCacheId(), attachmentCacheFileName())
+        .joinToString(":")
+        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
+        .take(160)
+        .ifBlank { "file-preview-download" }
 
 private fun SlockFilePreviewPayload.isAndroidPackageArchive(): Boolean {
     val mime = externalMimeType.substringBefore(';').trim()
@@ -1061,6 +1154,9 @@ internal fun SlockFilePreviewGenericCard(
     actionIcon: SlockLucideIconName? = null,
     actionEnabled: Boolean = true,
     onAction: (() -> Unit)? = null,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1126,6 +1222,14 @@ internal fun SlockFilePreviewGenericCard(
                 minHeight = 40.dp
             )
         }
+        if (showProgress && onToggleDownload != null && onStopDownload != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Sm))
+            SlockFilePreviewDownloadControls(
+                paused = downloadPaused,
+                onToggle = onToggleDownload,
+                onStop = onStopDownload
+            )
+        }
     }
 }
 
@@ -1173,6 +1277,9 @@ private fun SlockFilePreviewDownloadStatusOverlay(
     statusLabel: String?,
     showProgress: Boolean,
     progressPercent: Int?,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -1183,6 +1290,9 @@ private fun SlockFilePreviewDownloadStatusOverlay(
                 statusLabel = statusLabel ?: "Downloading...",
                 showProgress = showProgress,
                 progressPercent = progressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -1194,6 +1304,9 @@ private fun SlockFilePreviewDownloadStatusBar(
     statusLabel: String,
     showProgress: Boolean,
     progressPercent: Int?,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1215,6 +1328,45 @@ private fun SlockFilePreviewDownloadStatusBar(
         if (showProgress) {
             SlockFilePreviewProgressBar(progressPercent = progressPercent)
         }
+        if (showProgress && onToggleDownload != null && onStopDownload != null) {
+            SlockFilePreviewDownloadControls(
+                paused = downloadPaused,
+                onToggle = onToggleDownload,
+                onStop = onStopDownload
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadControls(
+    paused: Boolean,
+    onToggle: () -> Unit,
+    onStop: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockBrutalActionButton(
+            label = if (paused) "Resume" else "Pause",
+            onClick = onToggle,
+            leadingIcon = if (paused) SlockLucideIconName.Play else SlockLucideIconName.Pause,
+            minWidth = 92.dp,
+            minHeight = 34.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+        )
+        SlockBrutalActionButton(
+            label = "Stop",
+            onClick = onStop,
+            leadingIcon = SlockLucideIconName.Square,
+            minWidth = 82.dp,
+            minHeight = 34.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+        )
     }
 }
 

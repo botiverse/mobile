@@ -293,6 +293,7 @@ internal class BridgeModule : Module() {
         attachmentId: String,
         fileName: String,
         mimeType: String? = null,
+        downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -301,6 +302,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
+            downloadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("downloadId", it) }
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -326,6 +328,27 @@ internal class BridgeModule : Module() {
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
                 callbackRef?.let { removeCallback(it) }
+            }
+        }
+
+    suspend fun attachmentDownloadControl(downloadId: String, action: String): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("downloadId", downloadId)
+            methodArgs.put("action", action)
+            val result =
+                toNative(
+                    methodName = ATTACHMENT_DOWNLOAD_CONTROL,
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (continuation.isActive) {
+                            continuation.resume(payload)
+                        }
+                    },
+                    syncCall = false
+                )
+            continuation.invokeOnCancellation {
+                result.callbackRef?.let { removeCallback(it) }
             }
         }
 
@@ -774,6 +797,7 @@ internal class BridgeModule : Module() {
         const val OPEN_ATTACHMENT = "openAttachment"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
+        const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"
@@ -799,13 +823,15 @@ internal class BridgeModule : Module() {
 }
 
 internal data class BridgeAttachmentDownloadProgress(
+    val downloadId: String = "",
+    val status: String = "progress",
     val percent: Int?,
     val downloadedBytes: Long,
     val totalBytes: Long?,
     val bytesPerSecond: Long? = null
 )
 
-private fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
+internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
     val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
     val downloadedBytes = optString("downloadedBytes").toLongOrNull() ?: 0L
     val bytesPerSecond = optString("bytesPerSecond").toLongOrNull()?.takeIf { it > 0L }
@@ -814,8 +840,10 @@ private fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDow
             ?.coerceIn(0, 100)
             ?: totalBytes?.let { total ->
                 if (total <= 0L) null else ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
-            }
+    }
     return BridgeAttachmentDownloadProgress(
+        downloadId = optString("downloadId"),
+        status = optString("status").ifBlank { "progress" },
         percent = percent,
         downloadedBytes = downloadedBytes,
         totalBytes = totalBytes,

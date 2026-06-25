@@ -21,6 +21,22 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun downloadStatusLabelShowsPausedState() {
+        val label =
+            slockFilePreviewDownloadStatusLabel(
+                BridgeAttachmentDownloadProgress(
+                    status = "paused",
+                    percent = 42,
+                    downloadedBytes = 4L * 1024L * 1024L,
+                    totalBytes = 10L * 1024L * 1024L,
+                    bytesPerSecond = null
+                )
+            )
+
+        assertEquals("Paused 42%", label)
+    }
+
+    @Test
     fun downloadStatusLabelFallsBackToDownloadedBytesWhenPercentUnknown() {
         val label =
             slockFilePreviewDownloadStatusLabel(
