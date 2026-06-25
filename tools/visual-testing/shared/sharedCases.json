@@ -327,6 +327,78 @@
       }
     },
     {
+      "id": "components.thread.composer.image-preview",
+      "title": "Thread Composer Image Preview",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.composer.image-preview.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "ready-image-preview",
+          "name": "Ready Image Preview",
+          "props": {
+            "draft": "Uploading the design crop for review.",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.composer.image-preview']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_image_preview",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.thread.composer.file-previews",
+      "title": "Thread Composer File Previews",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.composer.file-previews.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "mixed-file-upload-states",
+          "name": "Mixed File Upload States",
+          "props": {
+            "draft": "Attaching build artifacts and logs.",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.composer.file-previews']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_file_previews",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "components.thread.header.states",
       "title": "Thread Header States",
       "surface": "thread",
@@ -3059,6 +3131,90 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerChannelSuggestions",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.composer.image-preview",
+      "title": "Thread Composer Image Preview",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput",
+            "SortableAttachment"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#components.thread.composer.image-preview"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page",
+            "ComposerAttachmentTray",
+            "ComposerAttachmentTile"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerImagePreview",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.composer.file-previews",
+      "title": "Thread Composer File Previews",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput pending file chips vs Android connected visual-only rendering of ThreadComposerContent with ready, uploading, and failed generic file attachment states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput",
+            "SortableAttachment"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#components.thread.composer.file-previews"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page",
+            "ComposerAttachmentTray",
+            "ComposerAttachmentTile"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerFilePreviews",
           "source": "kmp-shared"
         },
         {
