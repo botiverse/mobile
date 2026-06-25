@@ -119,6 +119,55 @@ class SharedConversationDirectoryStoreTest {
     }
 
     @Test
+    fun upsertConversationDeletesStaleUniqueAliasesForCanonicalThread() = runBlocking {
+        val logs = mutableListOf<String>()
+        val database = createDatabase()
+        val store = SharedConversationDirectoryStore(database, clock = { 1234L }, logger = logs::add)
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = channelSummary(id = "parent-channel", name = "all"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+        store.upsertConversation(
+            serverId = serverId,
+            conversation =
+                replyThreadSummary(
+                    id = "reply-stream-1",
+                    parentChannelId = "parent-channel",
+                    name = "Thread one",
+                    summaryChannelId = "parent-channel"
+                ),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+        database.queries.upsertConversationAlias(
+            serverId = serverId.value,
+            aliasId = "parent-channel",
+            aliasKind = SharedConversationAliasKind.Channel.name,
+            canonicalChannelId = "reply-stream-1",
+            lastSyncedAtMs = 1L
+        )
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation =
+                replyThreadSummary(
+                    id = "reply-stream-1",
+                    parentChannelId = "parent-channel",
+                    name = "Thread one",
+                    summaryChannelId = "parent-channel"
+                ),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        val state = store.observeServer(serverId).first()
+        assertEquals(emptyMap(), state.duplicateAliases)
+        assertTrue(logs.none { it.contains("conversation_directory_alias_conflict") })
+        assertEquals("all", assertNotNull(store.resolveProjection(serverId, "parent-channel")).title)
+        assertEquals("Thread one", assertNotNull(store.resolveProjection(serverId, "reply-stream-1")).title)
+    }
+
+    @Test
     fun projectionFlowEmitsWhenChannelEntityChanges() = runBlocking {
         val store = createStore()
         store.upsertConversation(
@@ -144,9 +193,13 @@ class SharedConversationDirectoryStoreTest {
     }
 
     private fun createStore(logger: (String) -> Unit = {}): SharedConversationDirectoryStore {
+        return SharedConversationDirectoryStore(createDatabase(), clock = { 1234L }, logger = logger)
+    }
+
+    private fun createDatabase(): SlockSqlDatabase {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         SlockSqlDatabase.Schema.create(driver).value
-        return SharedConversationDirectoryStore(SlockSqlDatabase(driver), clock = { 1234L }, logger = logger)
+        return SlockSqlDatabase(driver)
     }
 
     private fun channelSummary(id: String, name: String): ConversationSummary =

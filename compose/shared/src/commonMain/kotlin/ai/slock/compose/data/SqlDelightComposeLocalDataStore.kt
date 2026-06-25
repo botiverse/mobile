@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.resolveThreadRouteIdentity
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -477,6 +478,10 @@ internal class SqlDelightComposeLocalDataStore(
             updatedAtLabel = channel.lastMessageAt,
             lastSyncedAtMs = now
         )
+        deleteConversationAliasesForCanonical(
+            serverId = serverId,
+            canonicalChannelId = canonicalChannelId
+        )
         channel.conversationAliases(canonicalChannelId).forEach { alias ->
             upsertConversationAlias(
                 serverId = serverId,
@@ -495,8 +500,13 @@ internal class SqlDelightComposeLocalDataStore(
 
     private fun ConversationSummary.conversationAliases(canonicalChannelId: String): Set<StoredConversationAlias> =
         buildSet {
+            val routeIdentity = resolveThreadRouteIdentity()
             add(StoredConversationAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
-            channelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Channel)) }
+            channelId
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+                ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
+                ?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Channel)) }
             threadId.value.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Thread)) }
             thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Stream)) }
             thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentChannel)) }

@@ -146,6 +146,10 @@ internal class SharedConversationDirectoryStore(
                 updatedAtLabel = merged.updatedAtLabel,
                 lastSyncedAtMs = now
             )
+            database.queries.deleteConversationAliasesForCanonical(
+                serverId = serverId.value,
+                canonicalChannelId = canonicalChannelId
+            )
             conversation.aliases(canonicalChannelId).forEach { alias ->
                 database.queries.upsertConversationAlias(
                     serverId = serverId.value,

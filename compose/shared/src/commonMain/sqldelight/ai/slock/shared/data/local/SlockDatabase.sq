@@ -288,6 +288,11 @@ WHERE serverId = ?
   AND aliasId = ?
 ORDER BY aliasKind ASC;
 
+deleteConversationAliasesForCanonical:
+DELETE FROM conversationAliasEntity
+WHERE serverId = ?
+  AND canonicalChannelId = ?;
+
 selectThreadForParentMessage:
 SELECT *
 FROM channelEntity

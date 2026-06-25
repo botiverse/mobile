@@ -23,6 +23,7 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.threadIdentity
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -236,6 +237,64 @@ class SqlDelightComposeLocalDataStoreTest {
         val dmByMember = assertNotNull(directory.resolveProjection(serverId, "agent-1"))
         assertEquals("Codex Agent", dmByMember.title)
         assertEquals(AgentStatus.Working, dmByMember.agentStatus)
+    }
+
+    @Test
+    fun writeThreadRewritesStaleParentChannelAliasForReplyThread() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+        val parentMessage =
+            Message(
+                id = MessageId("message-1"),
+                threadId = ThreadId("parent-channel"),
+                channelId = ChannelId("parent-channel"),
+                seq = 1,
+                author = member,
+                timestampLabel = "20:00",
+                body = "parent"
+            )
+        val threadId = threadIdentity(ChannelId("parent-channel"), parentMessage.id)
+        val snapshot =
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = threadId,
+                        channelId = ChannelId("parent-channel"),
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("parent-channel"),
+                                parentMessageId = parentMessage.id,
+                                streamChannelId = ChannelId("reply-stream-1")
+                            ),
+                        kind = ConversationKind.Thread,
+                        name = "Thread"
+                    ),
+                parentMessage = parentMessage,
+                messages = emptyList(),
+                lastSeq = 1
+            )
+
+        store.writeThread(snapshot)
+        database.queries.upsertConversationAlias(
+            serverId = serverId.value,
+            aliasId = "parent-channel",
+            aliasKind = SharedConversationAliasKind.Channel.name,
+            canonicalChannelId = "reply-stream-1",
+            lastSyncedAtMs = 1L
+        )
+        store.writeThread(snapshot)
+
+        val directory = SharedConversationDirectoryStore(database)
+        val state = directory.observeServer(serverId).first()
+        assertEquals(emptyMap(), state.duplicateAliases)
+        assertEquals(null, directory.resolveProjection(serverId, "parent-channel"))
+        assertEquals("Thread", assertNotNull(directory.resolveProjection(serverId, "reply-stream-1")).title)
     }
 
     private fun createDatabase(): SlockSqlDatabase {
