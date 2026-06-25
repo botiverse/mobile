@@ -84,6 +84,8 @@ private val ComposerAgentActivityDotSize = 8.dp
 private val ComposerChannelSuggestionIconSize = 22.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
+private const val ThreadComposerVisualPreviewUri =
+    "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
 private val threadComposerContentPayloadKeys =
     setOf(
@@ -523,6 +525,50 @@ private fun threadComposerVisualFixture(
         "as_task_selected" -> base.copy(seedAsTask = true, seedText = "Review the Android composer crop")
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
         "channel_suggestions" -> base.copy(seedText = "#", suggestionsOpen = true)
+        "image_preview" ->
+            base.copy(
+                seedText = "Uploading the design crop for review.",
+                pendingAttachments =
+                    listOf(
+                        KuiklyPendingAttachmentItem(
+                            id = "visual-att-image-preview",
+                            fileName = "composer-preview.png",
+                            sizeLabel = "128 KB",
+                            mimeType = "image/png",
+                            previewUri = ThreadComposerVisualPreviewUri,
+                            status = "ready"
+                        )
+                    )
+            )
+        "file_previews" ->
+            base.copy(
+                seedText = "Attaching build artifacts and logs.",
+                pendingAttachments =
+                    listOf(
+                        KuiklyPendingAttachmentItem(
+                            id = "visual-att-report",
+                            fileName = "release-notes.pdf",
+                            sizeLabel = "428 KB",
+                            mimeType = "application/pdf",
+                            status = "ready"
+                        ),
+                        KuiklyPendingAttachmentItem(
+                            id = "picked-logs",
+                            fileName = "android-smoke-log.zip",
+                            sizeLabel = "1.8 MB",
+                            mimeType = "application/zip",
+                            status = "uploading"
+                        ),
+                        KuiklyPendingAttachmentItem(
+                            id = "picked-trace",
+                            fileName = "oversized-trace.jsonl",
+                            sizeLabel = "8.4 MB",
+                            mimeType = "application/json",
+                            status = "failed",
+                            errorCode = "too_large"
+                        )
+                    )
+            )
         else -> base
     }
 }
