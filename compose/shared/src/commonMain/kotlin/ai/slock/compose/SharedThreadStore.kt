@@ -182,7 +182,7 @@ internal class SharedThreadDataSource(
     suspend fun readSession(): StoredAuthSession? = sessionStore.readSession()
 
     fun cachePayload(payload: KuiklyThreadScreenPayload) {
-        val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return
+        val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         val cacheablePayload =
             payload
                 .withoutTransientLocalSendingMessages()
@@ -2358,7 +2358,7 @@ internal class SharedThreadStore(
                 }
                 dataSource.writeRealtimeEvents(
                     events = listOf(event),
-                    activeConversationId = existing.sourceThreadId ?: existing.streamChannelId
+                    activeConversationId = existing.resolveThreadRouteIdentity().timelineChannelId
                 )
             }.onFailure { throwable ->
                 if (throwable is CancellationException) throw throwable
@@ -3368,11 +3368,11 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()
 
 private fun KuiklyThreadScreenPayload.shouldReadPersistentCandidateBeforeFirstFrame(): Boolean {
-    return sourceThreadId?.isNotBlank() == true
+    return resolveThreadRouteIdentity().timelineChannelId != null
 }
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
-    sourceThreadId?.takeIf { it.isNotBlank() }
+    resolveThreadRouteIdentity().timelineChannelId
 
 private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolean =
     matchesResolvedReplyThreadTimeline(

@@ -2089,10 +2089,11 @@ internal fun SharedThreadRouteContent(
         }
     val threadState by threadViewModel.state.collectAsState()
     val payload = threadState.payload
-    var currentSession by remember(initialPayload.instanceId) {
+    val initialThreadInstanceKey = initialRouteIdentity.instanceKey
+    var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
-    var currentServerSlug by remember(initialPayload.instanceId) {
+    var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
     val conversationDirectoryLookupIds =
@@ -2129,22 +2130,28 @@ internal fun SharedThreadRouteContent(
             .withSharedShellEventCapabilities()
             .withConversationHeader(effectiveConversationHeaderState.entryFor(payload))
     }
+    val payloadRouteIdentity = remember(payload) {
+        payload.resolveThreadRouteIdentity()
+    }
+    val threadInstanceKey = payloadRouteIdentity.instanceKey
+    val threadTimelineKey =
+        payloadRouteIdentity.timelineChannelId
+            ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
-    val auxiliaryRouteKey = resolvedAuxiliaryThreadId ?: "pending-${initialPayload.instanceId}"
     LaunchedEffect(resolvedAuxiliaryThreadId, active) {
         if (active) {
             onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
         }
     }
-    var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
-    var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
-    var createAgentComputerServerId by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
-    var createAgentComputerServerResolved by remember(initialPayload.instanceId) { mutableStateOf(false) }
-    var attachmentOpenStates by remember(initialPayload.instanceId) {
+    var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
+    var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
-    var attachmentCommentsDialogState by remember(initialPayload.instanceId) {
+    var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
@@ -2154,15 +2161,8 @@ internal fun SharedThreadRouteContent(
     var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
-    val payloadRouteIdentity = remember(payload) {
-        payload.resolveThreadRouteIdentity()
-    }
-    val threadRouteKey =
-        payloadRouteIdentity.timelineKey
-            ?: initialRouteIdentity.timelineKey
-            ?: payloadRouteIdentity.instanceKey
 
-    LaunchedEffect(authStore, initialPayload.instanceId) {
+    LaunchedEffect(authStore, initialThreadInstanceKey) {
         val session = authStore.readSession()
         currentSession = session
         currentServerSlug = session?.currentServerSlug()
@@ -2174,7 +2174,7 @@ internal fun SharedThreadRouteContent(
             phase = "thread_open_start",
             routeName = "kuikly_thread",
             event = "instant",
-            threadId = initialRouteIdentity.timelineKey ?: initialRouteIdentity.instanceKey,
+            threadId = initialRouteIdentity.instanceKey,
             metadata =
                 mapOf(
                     "status" to initialPayload.status.ifBlank { "unknown" },
@@ -2187,14 +2187,14 @@ internal fun SharedThreadRouteContent(
         attachmentCommentsDialogState = null
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
-    LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
-        if (firstRenderLoggedThreadId != threadRouteKey) {
-            firstRenderLoggedThreadId = threadRouteKey
+    LaunchedEffect(threadInstanceKey, threadTimelineKey, payload.status, payload.messages.size) {
+        if (firstRenderLoggedThreadId != threadInstanceKey) {
+            firstRenderLoggedThreadId = threadInstanceKey
             bridge.performanceMarker(
                 phase = "thread_first_render",
                 routeName = "kuikly_thread",
                 event = "instant",
-                threadId = threadRouteKey,
+                threadId = threadTimelineKey ?: threadInstanceKey,
                 metadata =
                     mapOf(
                         "status" to payload.status.ifBlank { "unknown" },
@@ -2203,17 +2203,17 @@ internal fun SharedThreadRouteContent(
                     )
             )
             bridge.log(
-                "thread_first_render threadId=${threadRouteKey.orEmpty()} status=${payload.status} " +
+                "thread_first_render threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} status=${payload.status} " +
                     "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
             )
         }
-        if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadRouteKey) {
-            firstContentLoggedThreadId = threadRouteKey
+        if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
+            firstContentLoggedThreadId = threadInstanceKey
             bridge.performanceMarker(
                 phase = "thread_payload_ready",
                 routeName = "kuikly_thread",
                 event = "instant",
-                threadId = threadRouteKey,
+                threadId = threadTimelineKey ?: threadInstanceKey,
                 metadata =
                     mapOf(
                         "status" to payload.status.ifBlank { "unknown" },
@@ -2223,12 +2223,12 @@ internal fun SharedThreadRouteContent(
                     )
             )
             bridge.log(
-                "thread_payload_ready_gate threadId=${threadRouteKey.orEmpty()} " +
+                "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
                     "status=${payload.status} messages=${payload.messages.size} " +
                     "source=${payload.threadRenderDiagnosticsSource()}"
             )
-            if (performanceSnapshotLoggedThreadId != threadRouteKey) {
-                performanceSnapshotLoggedThreadId = threadRouteKey
+            if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
+                performanceSnapshotLoggedThreadId = threadInstanceKey
                 delay(ThreadFirstContentTaskJoinDelayMs)
                 val firstFrameReason =
                     if (payload.isRenderableEmptyReplyThread()) {
@@ -2238,7 +2238,7 @@ internal fun SharedThreadRouteContent(
                     }
                 requestKuiklyThreadPerformanceSnapshot(
                     bridge = bridge,
-                    threadId = threadRouteKey.orEmpty(),
+                    threadId = (threadTimelineKey ?: threadInstanceKey).orEmpty(),
                     reason = firstFrameReason,
                     status = payload.status.ifBlank { "unknown" }
                 )
@@ -2292,11 +2292,11 @@ internal fun SharedThreadRouteContent(
             ?: emptyChannelSuggestionsFlow
     }
     val filesViewModel: SharedThreadFilesViewModel =
-        viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
+        viewModel(key = "shared-thread-files-$threadInstanceKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
-        viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {
+        viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
     val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
@@ -2337,7 +2337,7 @@ internal fun SharedThreadRouteContent(
         routeAuthRequired(code)
     }
 
-    LaunchedEffect(composerDraftViewModel, initialPayload.instanceId, resolvedAuxiliaryThreadId) {
+    LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
         val composer =
             renderedPayload
                 .resolveThreadComposer()
@@ -2365,7 +2365,7 @@ internal fun SharedThreadRouteContent(
             )
         )
     }
-    LaunchedEffect(realtimeEventSignal?.sequence, initialPayload.instanceId) {
+    LaunchedEffect(realtimeEventSignal?.sequence, threadInstanceKey) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
         val activeReplyParentMessageId =
             initialPayload.originParentMessageId
@@ -2389,15 +2389,15 @@ internal fun SharedThreadRouteContent(
             )
         }
     }
-    LaunchedEffect(realtimeCacheInvalidationSequence, initialPayload.instanceId) {
+    LaunchedEffect(realtimeCacheInvalidationSequence, threadInstanceKey) {
         if (realtimeCacheInvalidationSequence <= 0L) return@LaunchedEffect
         threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
     }
-    LaunchedEffect(realtimeGapSignal?.sequence, initialPayload.instanceId) {
+    LaunchedEffect(realtimeGapSignal?.sequence, threadInstanceKey) {
         val signal = realtimeGapSignal ?: return@LaunchedEffect
         threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(signal.serverSeq))
     }
-    LaunchedEffect(payload.sourceThreadId, payload.tasks) {
+    LaunchedEffect(threadTimelineKey, payload.tasks) {
         if (tasksViewModel != null && payload.tasks.isNotEmpty()) {
             val taskSummaries = payload.tasks.map { it.toTaskSummary() }
             tasksViewModel.dispatch(
@@ -2410,7 +2410,7 @@ internal fun SharedThreadRouteContent(
             )
         }
     }
-    LaunchedEffect(threadRouteKey, taskChannelId?.value, payload.status) {
+    LaunchedEffect(threadTimelineKey, taskChannelId?.value, payload.status) {
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
             return@LaunchedEffect
         }
@@ -2422,7 +2422,7 @@ internal fun SharedThreadRouteContent(
         lastTasksJoinResultKey = null
         tasksJoinStartedAt = TimeSource.Monotonic.markNow()
         bridge.log(
-            "thread_tasks_join_start threadId=${threadRouteKey.orEmpty()} reason=after_first_content"
+            "thread_tasks_join_start threadId=${threadTimelineKey.orEmpty()} reason=after_first_content"
         )
         tasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
     }
@@ -2432,22 +2432,21 @@ internal fun SharedThreadRouteContent(
         startedTasksJoinThreadId = startedTasksJoinThreadId,
         lastTasksJoinResultKey = lastTasksJoinResultKey,
         tasksJoinStartedAt = tasksJoinStartedAt,
-        threadRouteKey = threadRouteKey,
+        threadRouteKey = threadTimelineKey,
         onLogged = { resultKey -> lastTasksJoinResultKey = resultKey },
         log = { message -> bridge.log(message) }
     )
 
     val routeFilesPayload =
-        remember(payload.filesPayload, payload.instanceId) {
+        remember(payload.filesPayload, threadInstanceKey) {
             payload.filesPayload
                 .trim()
                 .takeIf { it.isNotBlank() && it != "{}" }
                 ?.let { parseThreadFilesPayload(it, payload.instanceId) }
         }
     LaunchedEffect(
-        renderedPayload.instanceId,
-        renderedPayload.sourceThreadId,
-        renderedPayload.streamChannelId,
+        threadInstanceKey,
+        threadTimelineKey,
         renderedPayload.filesPayload,
         resolvedAuxiliaryThreadId
     ) {
@@ -2459,9 +2458,9 @@ internal fun SharedThreadRouteContent(
             )
         )
     }
-    var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
-    var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
-    var attachmentNoPreviewState by remember(payload.instanceId) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
+    var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
+    var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
+    var attachmentNoPreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -2505,7 +2504,7 @@ internal fun SharedThreadRouteContent(
             renderedPayload = renderedPayload,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
         )
-    var deferredAttachmentSend by remember(payload.instanceId) {
+    var deferredAttachmentSend by remember(threadInstanceKey) {
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val routeUiState =
@@ -2516,10 +2515,10 @@ internal fun SharedThreadRouteContent(
             )
         }
     val renderedThread = routeUiState.thread
-    var firstContentExtrasVisible by remember(threadRouteKey, renderedThread.status) {
+    var firstContentExtrasVisible by remember(threadInstanceKey, renderedThread.status) {
         mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
     }
-    LaunchedEffect(threadRouteKey, renderedThread.status) {
+    LaunchedEffect(threadInstanceKey, renderedThread.status) {
         if (renderedThread.shouldStageThreadFirstContentExtras()) {
             firstContentExtrasVisible = false
             delay(ThreadFirstContentExtrasDelayMs)
@@ -3096,6 +3095,7 @@ internal fun SharedThreadRouteContent(
     }
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
+            threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
@@ -5321,6 +5321,7 @@ private fun ThreadTasksJoinResultLogger(
 
 @Composable
 private fun ThreadPageContent(
+    threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
@@ -5368,10 +5369,10 @@ private fun ThreadPageContent(
             onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
         }
     }
-    var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
-    var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
+    var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
-    var threadContentReadyForComposer by remember(payload.instanceId, payload.status) {
+    var threadContentReadyForComposer by remember(threadInstanceKey, payload.status) {
         mutableStateOf(payload.status != "content")
     }
     val showComposerForSelectedTab =
@@ -5383,12 +5384,9 @@ private fun ThreadPageContent(
             threadContentReady = threadContentReadyForComposer
         )
     val taskPanelChannelId =
-        remember(taskChannelId, payload.sourceThreadId, payload.instanceId) {
+        remember(taskChannelId, threadInstanceKey) {
             taskChannelId
-                ?: payload.sourceThreadId
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ChannelId)
-                ?: ChannelId(payload.instanceId)
+                ?: ChannelId(threadInstanceKey)
         }
     val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
         when (tag.kind) {
@@ -5454,6 +5452,7 @@ private fun ThreadPageContent(
                 } else when (selectedTab) {
                     KuiklyThreadTab.Chat ->
                         ThreadChatTabWithLinkedTasksProjection(
+                            threadInstanceKey = threadInstanceKey,
                             payload = payload,
                             activeDraftRecords = activeDraftRecords,
                             tasksViewModel = tasksViewModel,
@@ -5491,6 +5490,7 @@ private fun ThreadPageContent(
                         )
                     KuiklyThreadTab.Files ->
                         ThreadFilesTab(
+                            threadInstanceKey = threadInstanceKey,
                             filesViewModel = filesViewModel,
                             attachmentOpenStates = attachmentOpenStates,
                             onAuthRequired = onFilesAuthRequired,
@@ -5912,6 +5912,7 @@ private fun ThreadPageTabs(
 
 @Composable
 private fun ThreadChatTabWithLinkedTasksProjection(
+    threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     tasksViewModel: SharedTasksViewModel?,
@@ -5967,6 +5968,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         )
 
     ThreadChatTab(
+        threadInstanceKey = threadInstanceKey,
         payload = payload,
         activeDraftRecords = activeDraftRecords,
         composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -5989,6 +5991,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
 
 @Composable
 private fun ThreadChatTab(
+    threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
@@ -6011,6 +6014,7 @@ private fun ThreadChatTab(
         "loading" ->
             if (payload.originStatus != "none") {
                 ThreadMessagesList(
+                    threadInstanceKey = threadInstanceKey,
                     payload = payload,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6043,6 +6047,7 @@ private fun ThreadChatTab(
         "empty" ->
             if (payload.originStatus != "none") {
                 ThreadMessagesList(
+                    threadInstanceKey = threadInstanceKey,
                     payload = payload,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6062,13 +6067,14 @@ private fun ThreadChatTab(
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
-                LaunchedEffect(payload.instanceId, payload.status) {
+                LaunchedEffect(threadInstanceKey, payload.status) {
                     onThreadContentReady()
                 }
                 ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
             }
         else ->
             ThreadMessagesList(
+                threadInstanceKey = threadInstanceKey,
                 payload = payload,
                 activeDraftRecords = activeDraftRecords,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6092,6 +6098,7 @@ private fun ThreadChatTab(
 
 @Composable
 private fun ThreadMessagesList(
+    threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
@@ -6111,7 +6118,7 @@ private fun ThreadMessagesList(
     onThreadContentReady: () -> Unit = {}
 ) {
     if (payload.messages.isEmpty() && payload.originStatus == "none") {
-        LaunchedEffect(payload.instanceId, payload.status) {
+        LaunchedEffect(threadInstanceKey, payload.status) {
             onThreadContentReady()
         }
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
@@ -6138,34 +6145,34 @@ private fun ThreadMessagesList(
     // `LaunchedEffect(message.id, sessionMarker)` inside `items()`, this
     // yields exactly one log per row per Thread session, scoped to a
     // single session so later Threads do not see stale logs.
-    val threadRowProbeSessionMarker = remember(payload.sourceThreadId, payload.instanceId) {
+    val threadRowProbeSessionMarker = remember(threadInstanceKey) {
         ThreadRowProbeNextSessionId.value()
     }
-    val firstViewportProbe = remember(payload.sourceThreadId, payload.instanceId) {
+    val firstViewportProbe = remember(threadInstanceKey) {
         ThreadFirstViewportProbe(threadRowProbeSessionMarker)
     }
-    var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
-    var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
-    var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
-    var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
-    var allowBottomAutoAnchor by remember(payload.instanceId) {
+    var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
+    var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
+    var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(true)
     }
-    var initialBottomAnchorReady by remember(payload.instanceId) {
+    var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
-    LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
+    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
         if (initialBottomAnchorReady || latestItemIndex < 0) {
             onThreadContentReady()
         }
     }
-    var latestLocalSendBottomAnchorActiveKey by remember(payload.instanceId) { mutableStateOf<String?>(null) }
-    var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }
-    var userScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }
-    var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
-    var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
-    var activeFocusedMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
-    var consumedFocusedMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var userScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
+    var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
+    var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var consumedFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     val latestMessageLayoutKey = remember(
         payload.originStatus,
         payload.canLoadMoreBefore,
@@ -6221,9 +6228,9 @@ private fun ThreadMessagesList(
                 canLoadMoreAfter = payload.canLoadMoreAfter
             ) + if (showReplyEmptyState) 1 else 0
         }
-    var pendingOlderPageAnchor by remember(payload.instanceId) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
-    var previousOlderMessagesStatus by remember(payload.instanceId) { mutableStateOf(payload.olderMessagesStatus) }
-    LaunchedEffect(payload.instanceId, payload.messages.size, lazyItemCount) {
+    var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
+    var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(payload.olderMessagesStatus) }
+    LaunchedEffect(threadInstanceKey, payload.messages.size, lazyItemCount) {
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
             val stats = listState.threadLazyWindowStats(payload, lazyItemCount)
@@ -6257,7 +6264,7 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
     }
-    LaunchedEffect(payload.instanceId, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
         }
@@ -6274,7 +6281,7 @@ private fun ThreadMessagesList(
                 }
             }
     }
-    LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
+    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
         if (latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
         snapshotFlow {
             ThreadBottomAnchorCorrectionState(
@@ -6291,7 +6298,7 @@ private fun ThreadMessagesList(
             }
     }
     LaunchedEffect(
-        payload.instanceId,
+        threadInstanceKey,
         payload.canLoadMoreBefore,
         payload.olderMessagesStatus,
         initialBottomAnchorReady,
@@ -6316,7 +6323,7 @@ private fun ThreadMessagesList(
             }
     }
     LaunchedEffect(
-        payload.instanceId,
+        threadInstanceKey,
         payload.olderMessagesStatus,
         payload.messages.size,
         payload.messages.firstOrNull()?.id
@@ -6338,7 +6345,7 @@ private fun ThreadMessagesList(
         }
         previousOlderMessagesStatus = payload.olderMessagesStatus
     }
-    LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorKey, latestItemIndex) {
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
             return@LaunchedEffect
         }
@@ -6346,7 +6353,7 @@ private fun ThreadMessagesList(
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
     }
-    LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorActiveKey) {
+    LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorActiveKey) {
         val anchorKey = latestLocalSendBottomAnchorActiveKey ?: return@LaunchedEffect
         val startUserScrollGeneration = latestLocalSendBottomAnchorStartUserScrollGeneration
         listState.awaitThreadMessagesLayoutFrame()
@@ -6372,7 +6379,7 @@ private fun ThreadMessagesList(
         }
     }
     LaunchedEffect(
-        payload.instanceId,
+        threadInstanceKey,
         payload.focusedMessageId,
         payload.messages.size,
         lazyItemCount
@@ -6399,7 +6406,7 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
         }
     }
-    LaunchedEffect(payload.instanceId, payload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, payload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
         if (latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
             payload.focusedMessageId
@@ -6443,7 +6450,7 @@ private fun ThreadMessagesList(
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
         }
     }
-    LaunchedEffect(payload.instanceId, composerKeyboardInsetDp, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, composerKeyboardInsetDp, latestItemIndex) {
         val shouldAnchor =
             shouldAnchorThreadKeyboardBottomOnInsetChange(
                 ThreadKeyboardBottomAnchorState(
@@ -9999,6 +10006,7 @@ private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
 
 @Composable
 private fun ThreadFilesTab(
+    threadInstanceKey: String,
     filesViewModel: SharedThreadFilesViewModel,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
@@ -10007,7 +10015,7 @@ private fun ThreadFilesTab(
 ) {
     val filesState by filesViewModel.state.collectAsState()
     val payload = filesState.payload
-    LaunchedEffect(payload.instanceId) {
+    LaunchedEffect(threadInstanceKey) {
         if (payload.shouldFetchInitialFiles()) {
             filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
         }

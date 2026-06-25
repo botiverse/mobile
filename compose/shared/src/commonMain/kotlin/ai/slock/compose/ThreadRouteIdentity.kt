@@ -5,7 +5,10 @@ internal data class ThreadRouteIdentity(
     val instanceKey: String,
     val timelineKey: String?,
     val canRenderTimelineCandidates: Boolean
-)
+) {
+    val timelineChannelId: String?
+        get() = timelineKey?.takeIf { it.isNotBlank() }
+}
 
 internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val surface = surfaceKind.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel

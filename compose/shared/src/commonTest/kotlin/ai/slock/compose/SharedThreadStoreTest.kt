@@ -152,6 +152,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun threadRouteTimelineChannelIdOwnsMemoryCacheKey() {
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val unresolved =
+            contentPayloadForRoute(
+                base =
+                    unresolvedReplyPayload(parentMessageId = "m1").copy(
+                        sourceThreadId = "channel-1",
+                        streamChannelId = null
+                    ),
+                body = "must not cache under parent",
+                id = "reply-unresolved"
+            )
+        val resolved =
+            contentPayloadForRoute(
+                base = replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
+                body = "resolved reply body",
+                id = "reply-resolved",
+                channelId = "thread-m1"
+            )
+
+        dataSource.cachePayload(unresolved)
+        assertNull(dataSource.cachedPayload("channel-1"))
+
+        dataSource.cachePayload(resolved)
+        assertEquals("resolved reply body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
+    }
+
+    @Test
     fun unresolvedReplyStartDoesNotRenderPreviousResolvedReplyTimeline() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
