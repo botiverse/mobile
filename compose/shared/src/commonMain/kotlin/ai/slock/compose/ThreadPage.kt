@@ -3726,7 +3726,14 @@ internal fun SharedThreadRouteContent(
                     bridge.toast("Unable to open ${itemId.take(32)}")
                 }
                 action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
-                    bridge.toast("Unable to open #${itemId.removePrefix("#").take(31)}")
+                    coroutineScope.launch {
+                        val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
+                        if (loadingPayload == null) {
+                            bridge.toast("Unable to open #${itemId.removePrefix("#").take(31)}")
+                        } else {
+                            onOpenThreadPayload(loadingPayload)
+                        }
+                    }
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
                     bridge.toast("Unable to open ${itemId.take(32)}")

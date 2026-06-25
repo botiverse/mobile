@@ -14,6 +14,8 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockTimeFormat12Hour
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
@@ -25,6 +27,7 @@ import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.data.InboxItem
+import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
@@ -60,6 +63,89 @@ import kotlinx.serialization.json.Json
 
 class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun markdownChannelLaunchPayloadResolvesChannelNameToIdentityOnlyRoute() {
+        val payload =
+            buildMarkdownChannelLaunchPayload(
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        instanceId = "current-thread",
+                        alignOwnMessagesRight = true,
+                        localOffsetMinutes = 480,
+                        timeFormat = SlockTimeFormat12Hour
+                    ),
+                home =
+                    markdownChannelHomeSnapshot(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-general-id"),
+                            channelId = ChannelId("channel-general-id"),
+                            channelType = "channel",
+                            kind = ConversationKind.Channel,
+                            name = "general"
+                        )
+                    ),
+                channelLabel = "#General"
+            )
+
+        checkNotNull(payload)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.channelKind)
+        assertEquals("channel-general-id", payload.sourceThreadId)
+        assertEquals("channel-general-id", payload.streamChannelId)
+        assertEquals("chat", payload.selectedTab)
+        assertEquals("loading", payload.status)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(true, payload.alignOwnMessagesRight)
+        assertEquals(480, payload.localOffsetMinutes)
+        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+    }
+
+    @Test
+    fun markdownChannelLaunchPayloadPreservesJointChannelKind() {
+        val payload =
+            buildMarkdownChannelLaunchPayload(
+                currentPayload = KuiklyThreadScreenPayload(),
+                home =
+                    markdownChannelHomeSnapshot(
+                        ConversationSummary(
+                            threadId = ThreadId("joint-local-id"),
+                            channelId = ChannelId("joint-local-id"),
+                            channelType = "joint",
+                            kind = ConversationKind.Joint,
+                            name = "members专修"
+                        )
+                    ),
+                channelLabel = "members专修"
+            )
+
+        checkNotNull(payload)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("joint", payload.channelKind)
+        assertEquals("joint-local-id", payload.streamChannelId)
+    }
+
+    @Test
+    fun markdownChannelLaunchPayloadRejectsUnknownOrAmbiguousChannelNames() {
+        val home =
+            markdownChannelHomeSnapshot(
+                ConversationSummary(
+                    threadId = ThreadId("channel-a"),
+                    channelId = ChannelId("channel-a"),
+                    kind = ConversationKind.Channel,
+                    name = "design"
+                ),
+                ConversationSummary(
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    kind = ConversationKind.Channel,
+                    name = "Design"
+                )
+            )
+
+        assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#missing"))
+        assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#design"))
+    }
 
     @Test
     fun threadComposerOnlyShowsOnChatTab() {
@@ -4181,4 +4267,19 @@ class ThreadPayloadTest {
         assertEquals("hello", files.first().bytes.decodeToString())
         assertEquals(null, files.first().fileRef)
     }
+
+    private fun markdownChannelHomeSnapshot(vararg channels: ConversationSummary): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Server"),
+            currentMember =
+                MemberProfile(
+                    id = MemberId("member-1"),
+                    displayName = "Member",
+                    handle = "member",
+                    kind = MemberKind.Human
+                ),
+            channels = channels.toList(),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
 }

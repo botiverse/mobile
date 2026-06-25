@@ -96,6 +96,7 @@ import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
+import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
@@ -866,6 +867,19 @@ internal class SharedThreadDataSource(
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }
+    }
+
+    suspend fun markdownChannelLaunchPayload(
+        currentPayload: KuiklyThreadScreenPayload,
+        channelLabel: String
+    ): KuiklyThreadScreenPayload? {
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        val home = localWriteThrough?.readHomeSnapshot(serverId) ?: return null
+        return buildMarkdownChannelLaunchPayload(
+            currentPayload = currentPayload,
+            home = home,
+            channelLabel = channelLabel
+        )
     }
 
     suspend fun removeChannelMember(
@@ -3339,6 +3353,46 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             emptyDetail = base.emptyDetail
         )
     }
+
+internal fun buildMarkdownChannelLaunchPayload(
+    currentPayload: KuiklyThreadScreenPayload,
+    home: HomeSnapshot,
+    channelLabel: String
+): KuiklyThreadScreenPayload? {
+    val key = channelLabel.markdownChannelLookupKey()
+    if (key.isBlank()) return null
+    val matches =
+        home.channels
+            .filter { it.name.markdownChannelLookupKey() == key }
+            .distinctBy { it.messageStreamChannelId().value }
+    if (matches.size != 1) return null
+    val channel = matches.single()
+    val routeIdentity = channel.resolveThreadRouteIdentity()
+    val streamChannelId =
+        routeIdentity.timelineChannelId
+            ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
+            ?: return null
+    return WireThreadLaunchPayload(
+        instanceId = "shared-shell-thread-$streamChannelId",
+        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        channelKind = routeIdentity.routeKind,
+        sourceThreadId = streamChannelId,
+        streamChannelId = streamChannelId,
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
+        localOffsetMinutes = currentPayload.localOffsetMinutes,
+        todayEpochDay = currentPayload.todayEpochDay,
+        nowEpochMillis = currentPayload.nowEpochMillis,
+        timeFormat = currentPayload.timeFormat
+    ).toInitialPayload("shared-shell-thread-$streamChannelId")
+}
+
+private fun String.markdownChannelLookupKey(): String =
+    trim()
+        .removePrefix("#")
+        .trim()
+        .lowercase()
 
 private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
     if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {
