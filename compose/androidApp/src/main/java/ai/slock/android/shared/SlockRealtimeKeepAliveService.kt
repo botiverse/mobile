@@ -28,6 +28,12 @@ internal class SlockRealtimeKeepAliveService : Service() {
             }
             else -> {
                 val source = intent?.getStringExtra(EXTRA_SOURCE).takeUnless { it.isNullOrBlank() } ?: "service_start"
+                if (!AndroidRealtimeKeepAliveController.isForegroundKeepAliveEnabled(applicationContext)) {
+                    AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("preference_disabled")
+                    satisfyForegroundStartContractBeforeStop(source, "preference_disabled")
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(applicationContext)) {
                     AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
                     satisfyForegroundStartContractBeforeStop(source, "missing_session")
@@ -95,7 +101,7 @@ internal class SlockRealtimeKeepAliveService : Service() {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                 }
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(getString(R.string.notification_realtime_keep_alive_title))
             .setContentText(getString(R.string.notification_realtime_keep_alive_text))
@@ -111,6 +117,8 @@ internal class SlockRealtimeKeepAliveService : Service() {
             .setShowWhen(false)
             .setContentIntent(contentIntent)
             .build()
+        notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
+        return notification
     }
 
     private fun ensureNotificationChannel() {

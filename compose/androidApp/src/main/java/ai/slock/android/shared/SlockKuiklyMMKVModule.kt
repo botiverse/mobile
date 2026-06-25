@@ -3,8 +3,10 @@ package ai.slock.android.shared
 import android.content.Context
 import android.util.Base64
 import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import ai.slock.compose.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
 import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
+import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.StoredAuthSession
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
@@ -61,6 +63,11 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             mmapID = json.optNullableString("mmapID"),
             key = key,
             encodedSession = json.optString("value").takeIf { json.optString("type") == "string" }
+        )
+        maybeUpdateForegroundKeepAlive(
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            value = json.optString("value").takeIf { json.optString("type") == "string" }
         )
         return null
     }
@@ -153,6 +160,11 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
                 key = key,
                 encodedSession = entry.optString("value").takeIf { entry.optString("type", "string") == "string" }
             )
+            maybeUpdateForegroundKeepAlive(
+                mmapID = json.optNullableString("mmapID"),
+                key = key,
+                value = entry.optString("value").takeIf { entry.optString("type", "string") == "string" }
+            )
         }
         return null
     }
@@ -169,6 +181,19 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             selectedServerId = session?.currentServerId,
             selectedServerSlug = session?.selectedServerSlug
         )
+    }
+
+    private fun maybeUpdateForegroundKeepAlive(mmapID: String?, key: String, value: String?) {
+        if (mmapID != SlockLocalPreferenceStore.KuiklyNamespace ||
+            key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+        ) {
+            return
+        }
+        if (value == "true") {
+            AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
+        } else {
+            AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
+        }
     }
 
     private fun JSONObject.optNullableString(name: String): String? =

@@ -28,6 +28,7 @@ import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
+import ai.slock.compose.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
 import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
@@ -3174,8 +3175,15 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                     preferenceBusy = settingsState.actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && settingsState.actionState.inProgress,
+                    foregroundKeepAliveBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_KEEP_ALIVE && settingsState.actionState.inProgress,
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
+                        if (enabled) {
+                            onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
+                        }
+                    },
+                    onForegroundKeepAlivePreferenceChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetForegroundKeepAlivePreference(enabled))
                         if (enabled) {
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         }
@@ -4029,7 +4037,9 @@ private fun SettingsNotificationsContent(
     bottomContentPadding: Dp,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
+    foregroundKeepAliveBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
+    onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
     onServerMuteChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
@@ -4065,7 +4075,9 @@ private fun SettingsNotificationsContent(
                         actionState = actionState,
                         notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                         preferenceBusy = preferenceBusy,
+                        foregroundKeepAliveBusy = foregroundKeepAliveBusy,
                         onNotificationPreferenceChange = onNotificationPreferenceChange,
+                        onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
                         onPermission = onPermission,
                         onSettings = onSettings,
                         onTest = onTest
@@ -4098,7 +4110,9 @@ private fun SettingsPushStatusCard(
     actionState: SharedSettingsActionState?,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
+    foregroundKeepAliveBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
+    onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit
@@ -4118,6 +4132,20 @@ private fun SettingsPushStatusCard(
             enabled = !preferenceBusy
         )
         SettingsFormDivider()
+        SettingsFormDetailText(
+            "Keep realtime connected in the background with an Android foreground service. This shows a persistent service notification while enabled."
+        )
+        SegmentedControl(
+            selectedValue = if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) "enabled" else "disabled",
+            options =
+                listOf(
+                    SegmentedControlOption("enabled", "Keep alive", SlockLucideIconName.Activity),
+                    SegmentedControlOption("disabled", "Normal", SlockLucideIconName.Bell)
+                ),
+            onValueSelected = { onForegroundKeepAlivePreferenceChange(it == "enabled") },
+            enabled = !foregroundKeepAliveBusy
+        )
+        SettingsFormDivider()
         SlockBrutalActionButton(
             // task #90: Don't use actionState.statusFor here — that
             // helper would render "Saved" on success completion of the
@@ -4131,7 +4159,11 @@ private fun SettingsPushStatusCard(
             leadingIcon = SlockLucideIconName.Settings,
             backgroundColor = SlockColor.SurfaceWhite
         )
-        if (actionState?.let { it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_SETTINGS) && it.errorCode != null } == true) {
+        if (actionState?.let {
+                it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS) &&
+                    it.errorCode != null
+            } == true
+        ) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -12913,7 +12945,9 @@ private fun SettingsVisualNotificationsContent() {
         bottomContentPadding = SlockSpacing.Lg,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
+        foregroundKeepAliveBusy = false,
         onNotificationPreferenceChange = {},
+        onForegroundKeepAlivePreferenceChange = {},
         onServerMuteChange = {},
         onPermission = {},
         onSettings = {},

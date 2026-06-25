@@ -2654,14 +2654,23 @@ class SharedSettingsStoreTest {
     }
 
     private class FakeNotificationPreferenceRepository(
-        var enabled: Boolean = false
+        var enabled: Boolean = false,
+        var foregroundKeepAliveEnabled: Boolean = false
     ) : NotificationPreferenceRepository {
         override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
-            NotificationPreferenceSnapshot(enabled)
+            NotificationPreferenceSnapshot(
+                enabled = enabled,
+                foregroundKeepAliveEnabled = foregroundKeepAliveEnabled
+            )
 
         override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
             this.enabled = enabled
-            return NotificationPreferenceSnapshot(enabled)
+            return getNotificationPreference()
+        }
+
+        override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+            foregroundKeepAliveEnabled = enabled
+            return getNotificationPreference()
         }
     }
 
