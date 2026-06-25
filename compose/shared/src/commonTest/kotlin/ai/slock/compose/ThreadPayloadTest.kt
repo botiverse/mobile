@@ -645,7 +645,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("thread-launch-1", payload.instanceId)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
         assertEquals("loading", payload.status)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals("channel-1", payload.streamChannelId)
@@ -878,7 +878,7 @@ class ThreadPayloadTest {
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("Channel", payload.title)
+        assertEquals("首页专修", payload.title)
         assertEquals("首页专修", headerDisplay.title)
         assertEquals("Home repair", headerDisplay.subtitle)
         assertEquals(null, payload.dmPeerName)
@@ -912,7 +912,7 @@ class ThreadPayloadTest {
         assertEquals("ops-room", headerDisplay.title)
         assertEquals("Operations", headerDisplay.subtitle)
         assertEquals("private", headerDisplay.channelKind)
-        assertEquals("Channel", payload.title)
+        assertEquals("general", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals("channel", payload.channelKind)
         assertEquals("channel-1", payload.sourceThreadId)
@@ -1354,7 +1354,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
-        assertEquals("Channel", payload.title)
+        assertEquals("general", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals("channel-1", payload.sourceThreadId)
@@ -1374,7 +1374,7 @@ class ThreadPayloadTest {
             payload.settingsActions.map { it.id }
         )
         val composer = payload.resolveThreadComposer()
-        assertEquals("Message #Channel", composer.placeholder)
+        assertEquals("Message #general", composer.placeholder)
         assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
         assertEquals("channel-1", composer.streamChannelId)
         assertEquals("idle", composer.composerMode)

@@ -285,22 +285,24 @@ class SlockHomeComponentsTest {
                 kind = "channel",
                 fallbackName = "raft-mobile"
             )
-        val directoryProjection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "channel-1",
-                aliases = setOf("channel-1"),
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = "channel",
-                title = "channel-1"
-            )
+        listOf("channel-1", "Channel").forEach { genericTitle ->
+            val directoryProjection =
+                SharedConversationDirectoryProjection(
+                    serverId = "server-1",
+                    canonicalChannelId = "channel-1",
+                    aliases = setOf("channel-1"),
+                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    title = genericTitle
+                )
 
-        val item =
-            SharedHomeConversationRowProjector(
-                directoryProjections = mapOf("channel-1" to directoryProjection)
-            ).project(seed)
+            val item =
+                SharedHomeConversationRowProjector(
+                    directoryProjections = mapOf("channel-1" to directoryProjection)
+                ).project(seed)
 
-        assertEquals("raft-mobile", item.name)
+            assertEquals("raft-mobile", item.name)
+        }
     }
 
     @Test
