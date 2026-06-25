@@ -20,8 +20,14 @@ import ai.slock.compose.model.RuntimeModelInfo
 import ai.slock.compose.model.supportsRuntimeApiUrl
 import ai.slock.compose.model.supportsRuntimeCommand
 import ai.slock.compose.model.supportsRuntimeFastMode
+import ai.slock.compose.model.supportsRuntimeCustomModelName
 import ai.slock.compose.model.supportsRuntimeReasoningEffort
 import ai.slock.compose.model.validateAgentName
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +54,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -268,18 +275,29 @@ internal fun createAgentRuntimeDropdownItems(
     machineRuntimeIds: List<String> = emptyList(),
     allowStaticFallback: Boolean = true
 ): List<CreateAgentDropdownItem> {
-    val knownSupportedRuntimes = RUNTIMES.filter { it.supported }
     val machineRuntimeIdsNormalized = normalizeCreateAgentRuntimeIds(machineRuntimeIds)
-    val sourceIds =
-        machineRuntimeIdsNormalized
-            .takeIf { it.isNotEmpty() }
-            ?: knownSupportedRuntimes.map { it.id }.takeIf { allowStaticFallback }
-            ?: emptyList()
-    return sourceIds.map { runtimeId ->
-        val knownRuntime = knownSupportedRuntimes.firstOrNull { it.id == runtimeId }
+    if (machineRuntimeIdsNormalized.isEmpty()) {
+        return if (allowStaticFallback) {
+            RUNTIMES.filter { it.supported }.map { runtime ->
+                CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
+            }
+        } else {
+            emptyList()
+        }
+    }
+    val available = machineRuntimeIdsNormalized.toSet()
+    return RUNTIMES.map { runtime ->
+        val selectable = runtime.supported && runtime.id in available
+        val unavailableSuffix =
+            when {
+                !runtime.supported -> " (coming soon)"
+                runtime.id !in available -> " (not installed)"
+                else -> ""
+            }
         CreateAgentDropdownItem(
-            id = runtimeId,
-            label = knownRuntime?.displayName ?: getRuntimeDisplayName(runtimeId)
+            id = runtime.id,
+            label = runtime.displayName + unavailableSuffix,
+            enabled = selectable
         )
     }
 }
@@ -324,15 +342,20 @@ internal fun createAgentInitialMachineSelection(
 
 internal fun createAgentModelDropdownItems(
     runtime: String,
-    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
+    allowCustomModel: Boolean = true
 ): List<CreateAgentModelDropdownItem> {
     val modelOptions =
         runtimeModelsOverride
             .takeIf { it.isNotEmpty() }
             ?.map { RuntimeModelInfo(it.id, it.label, it.verified) }
             ?: RUNTIME_MODELS[runtime].orEmpty()
-    return modelOptions.map { CreateAgentModelDropdownItem(id = it.id, label = it.label) } +
-        CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
+    val presets = modelOptions.map { CreateAgentModelDropdownItem(id = it.id, label = it.label) }
+    return if (allowCustomModel) {
+        presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
+    } else {
+        presets
+    }
 }
 
 internal fun createAgentModelPresetIds(
@@ -394,6 +417,7 @@ internal fun SharedCreateAgentDialog(
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
     runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    runtimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
@@ -429,7 +453,9 @@ internal fun SharedCreateAgentDialog(
     }
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
-    val runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty()
+    val runtimeModelKey = selectedMachineId?.let { it to runtime }
+    val runtimeModelsOverride = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }.orEmpty()
+    val runtimeModelsLoading = runtimeModelKey?.let { it in runtimeModelLoadsInFlight } ?: false
 
     fun resetRuntimeForMachine(machineId: String) {
         val machine = machines.firstOrNull { it.id == machineId }
@@ -660,6 +686,7 @@ internal fun SharedCreateAgentDialog(
                             customModelName = customModelName,
                             onCustomModelNameChange = { customModelName = it },
                             runtimeModelsOverride = runtimeModelsOverride,
+                            runtimeModelsLoading = runtimeModelsLoading,
                             onRuntimeModelsRefresh = {
                                 selectedMachineId?.let { machineId ->
                                     onRuntimeModelsRequest(machineId, runtime, true)
@@ -859,6 +886,7 @@ internal fun AdvancedRuntimeSection(
     customModelName: String,
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
+    runtimeModelsLoading: Boolean = false,
     onRuntimeModelsRefresh: () -> Unit = {},
     machineRuntimeIds: List<String> = emptyList(),
     runtimeAvailabilityError: String? = null,
@@ -882,7 +910,13 @@ internal fun AdvancedRuntimeSection(
 ) {
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
-    val modelOptions = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
+    val customModelSupported = supportsRuntimeCustomModelName(runtime)
+    val modelOptions =
+        createAgentModelDropdownItems(
+            runtime = runtime,
+            runtimeModelsOverride = runtimeModelsOverride,
+            allowCustomModel = customModelSupported
+        )
     val runtimeOptions = createAgentRuntimeDropdownItems(
         machineRuntimeIds = machineRuntimeIds,
         allowStaticFallback = runtimeAvailabilityError == null
@@ -985,7 +1019,8 @@ internal fun AdvancedRuntimeSection(
             label = "Model",
             required = false,
             actionIcon = SlockLucideIconName.RefreshCw,
-            actionEnabled = enabled,
+            actionEnabled = enabled && !runtimeModelsLoading,
+            loading = runtimeModelsLoading,
             onAction = onRuntimeModelsRefresh
         )
         val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
@@ -1032,13 +1067,6 @@ internal fun AdvancedRuntimeSection(
                     )
                 }
             }
-        }
-        if (modelOptions.size == 1) {
-            Text(
-                text = "No preset models available for this runtime yet.",
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
-            )
         }
         if (supportsRuntimeReasoningEffort(runtime)) {
             SlockBrutalSectionLabel(label = "Reasoning")
@@ -1148,6 +1176,7 @@ private fun CreateAgentSectionLabelWithAction(
     required: Boolean = false,
     actionIcon: SlockLucideIconName,
     actionEnabled: Boolean,
+    loading: Boolean = false,
     onAction: () -> Unit
 ) {
     Row(
@@ -1162,13 +1191,38 @@ private fun CreateAgentSectionLabelWithAction(
                     .clickable(enabled = actionEnabled) { onAction() },
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(
-                actionIcon,
-                modifier = Modifier.size(13.dp),
-                color = if (actionEnabled) SlockColor.TextMutedGrayArgb else "#33000000"
-            )
+            if (loading) {
+                SlockCreateAgentSpinnerIcon()
+            } else {
+                SlockLucideIcon(
+                    actionIcon,
+                    modifier = Modifier.size(13.dp),
+                    color = if (actionEnabled) SlockColor.TextMutedGrayArgb else "#33000000"
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun SlockCreateAgentSpinnerIcon() {
+    val transition = rememberInfiniteTransition(label = "create-agent-runtime-model-spinner")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "create-agent-runtime-model-spinner-rotation"
+    )
+    SlockLucideIcon(
+        SlockLucideIconName.Loader,
+        modifier = Modifier
+            .size(13.dp)
+            .graphicsLayer { rotationZ = rotation },
+        color = SlockColor.TextMutedGrayArgb
+    )
 }
 
 @Composable

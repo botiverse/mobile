@@ -30,8 +30,16 @@ class SharedCreateAgentDialogTest {
                 listOf("codex", "claude", "custom-runtime", "codex", " ")
             )
 
-        assertEquals(listOf("codex", "claude", "custom-runtime"), items.map { it.id })
-        assertEquals(listOf("Codex CLI", "Claude Code", "custom-runtime"), items.map { it.label })
+        assertEquals(
+            listOf("claude", "codex", "antigravity", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
+            items.map { it.id }
+        )
+        assertEquals("Claude Code", items.first { it.id == "claude" }.label)
+        assertEquals("Codex CLI", items.first { it.id == "codex" }.label)
+        assertEquals("Pi (not installed)", items.first { it.id == "pi" }.label)
+        assertTrue(items.first { it.id == "claude" }.enabled)
+        assertTrue(items.first { it.id == "codex" }.enabled)
+        assertFalse(items.first { it.id == "pi" }.enabled)
         assertFalse(items.any { it.custom })
     }
 
@@ -159,6 +167,15 @@ class SharedCreateAgentDialogTest {
             listOf("server-sonnet", "server-opus", CREATE_AGENT_CUSTOM_MODEL_ID),
             items.map { it.id }
         )
+    }
+
+    @Test
+    fun modelDropdownCanHideCustomOptionForRuntimesWithoutCustomModels() {
+        val items = createAgentModelDropdownItems("opencode", allowCustomModel = false)
+
+        assertTrue(items.isNotEmpty())
+        assertFalse(items.any { it.custom })
+        assertFalse(items.any { it.id == CREATE_AGENT_CUSTOM_MODEL_ID })
     }
 
     @Test

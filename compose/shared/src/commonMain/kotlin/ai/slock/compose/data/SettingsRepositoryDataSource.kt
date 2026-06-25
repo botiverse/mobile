@@ -693,7 +693,7 @@ class RealSettingsRepository(
             SettingsComputerRuntimeModelsSnapshot(
                 machineId = normalizedMachineId,
                 runtime = it.runtime,
-                models = it.models,
+                models = it.models.map { model -> model.id },
                 defaultModel = it.defaultModel
             )
         }

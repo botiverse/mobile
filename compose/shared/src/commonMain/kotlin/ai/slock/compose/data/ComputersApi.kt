@@ -1,12 +1,17 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.RuntimeModelInfo
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private val computersApiJson = Json {
     ignoreUnknownKeys = true
@@ -162,7 +167,7 @@ internal class SlockComputersApiClient(
             ComputerRuntimeModelsResponseDto.serializer()
         ) { wire ->
             ComputerRuntimeModelsSummary(
-                models = wire.models,
+                models = wire.models.mapNotNull { it.toRuntimeModelInfo() },
                 runtime = runtime,
                 modelCount = wire.models.size,
                 defaultModel = wire.defaultModel
@@ -218,7 +223,7 @@ internal data class ComputerWorkspacePage(
 )
 internal data class ComputerRuntimeModelsSummary(
     val runtime: String,
-    val models: List<String>,
+    val models: List<RuntimeModelInfo>,
     val modelCount: Int,
     val defaultModel: String?
 )
@@ -387,10 +392,24 @@ private fun ComputerWorkspaceDto.toSummary(): ComputerWorkspaceSummary? {
 
 @Serializable
 private data class ComputerRuntimeModelsResponseDto(
-    val models: List<String>,
+    val models: List<JsonElement>,
     @SerialName("default")
     val defaultModel: String? = null
 )
+
+private fun JsonElement.toRuntimeModelInfo(): RuntimeModelInfo? {
+    val primitive = runCatching { jsonPrimitive }.getOrNull()
+    if (primitive != null && primitive.isString) {
+        val id = primitive.contentOrNull?.trim().orEmpty()
+        return id.takeIf { it.isNotBlank() }?.let { RuntimeModelInfo(id = it, label = it) }
+    }
+    val obj = runCatching { jsonObject }.getOrNull() ?: return null
+    val id = obj["id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+    if (id.isBlank()) return null
+    val label = obj["label"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } ?: id
+    val verified = obj["verified"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    return RuntimeModelInfo(id = id, label = label, verified = verified)
+}
 
 @Serializable
 private data class ComputerCommandResponseDto(val ok: Boolean)

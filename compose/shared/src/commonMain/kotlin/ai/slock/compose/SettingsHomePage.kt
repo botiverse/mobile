@@ -8788,9 +8788,7 @@ private fun SharedMembersScreen(
                     createAgentRuntimeModelScope.launch {
                         when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
                             is DataResult.Content -> {
-                                if (result.data.isNotEmpty()) {
-                                    createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
-                                }
+                                createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
                             }
                             is DataResult.Empty -> Unit
                             is DataResult.Error ->
@@ -8926,6 +8924,7 @@ private fun SharedMembersScreen(
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                 createAgentLoadMachines = loadMachines,
                 createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
                 createAgentLoadRuntimeModels = loadRuntimeModels,
                 inviteHumanSubmit = inviteHumanSubmit,
                 inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
