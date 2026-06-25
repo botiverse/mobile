@@ -147,9 +147,31 @@ class SharedThreadStoreTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, channel.surfaceKind)
         assertEquals("channel:same-stream", channel.instanceKey)
         assertEquals("same-stream", channel.timelineKey)
+        assertEquals("channel", channel.channelKind)
+        assertEquals("channel", channel.routeKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, dm.surfaceKind)
         assertEquals("dm:same-stream", dm.instanceKey)
         assertEquals("same-stream", dm.timelineKey)
+        assertEquals(null, dm.channelKind)
+        assertEquals("dm", dm.routeKind)
+    }
+
+    @Test
+    fun conversationSummaryThreadRouteIdentityCarriesJointChannelKind() {
+        val identity =
+            ConversationSummary(
+                threadId = ThreadId("joint-1"),
+                channelId = ChannelId("joint-1"),
+                channelType = "joint",
+                kind = ConversationKind.Joint,
+                name = "partner"
+            ).resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, identity.surfaceKind)
+        assertEquals("joint", identity.channelKind)
+        assertEquals("joint", identity.routeKind)
+        assertEquals("joint:joint-1", identity.instanceKey)
+        assertEquals("joint-1", identity.timelineKey)
     }
 
     @Test
@@ -2517,6 +2539,49 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
+        assertEquals("repository body", payload.messages.single().body)
+    }
+
+    @Test
+    fun fetchThreadPayloadCarriesRepositoryJointChannelKind() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "joint-1",
+                            body = "repository body",
+                            conversation =
+                                ConversationSummary(
+                                    threadId = ThreadId("joint-1"),
+                                    channelId = ChannelId("joint-1"),
+                                    channelType = "joint",
+                                    kind = ConversationKind.Joint,
+                                    name = "partner"
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                sourceThreadId = "joint-1",
+                streamChannelId = "joint-1",
+                channelKind = "channel"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("joint-1")), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("joint", payload.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
         assertEquals("repository body", payload.messages.single().body)
     }
 
