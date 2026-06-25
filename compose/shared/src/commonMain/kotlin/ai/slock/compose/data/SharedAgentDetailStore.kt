@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.MembersAgentLifecycleAction
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberKind
@@ -402,7 +403,7 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
     val nextDetail =
         if (this.agentId == agentId) {
-            detail?.withAgentActivity(event)
+            detail?.withAgentActivity(event, observedAtMillis)
         } else {
             detail
         }
@@ -475,30 +476,110 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
     if (!preserveSequencedActivity || agentActivitySeq[agentId] == null) return incoming
     val currentDetail = detail
     if (currentDetail?.agentId != agentId) return incoming
-    val currentSummary = currentDetail.summary ?: return incoming
-    val incomingSummary = incoming.summary ?: return incoming
+    val currentSummary = currentDetail.summary
+    val incomingSummary = incoming.summary
+    val currentLiveActivityIds = currentDetail.activity
+        .filter { it.id.startsWith(RealtimeAgentActivityIdPrefix) }
+        .map { it.id }
+        .toSet()
+    val nextActivity =
+        if (currentLiveActivityIds.isEmpty()) {
+            incoming.activity
+        } else {
+            (incoming.activity + currentDetail.activity.filter { it.id in currentLiveActivityIds })
+                .dedupeAgentActivityEntries()
+                .takeLast(MaxAgentActivityEntries)
+        }
+    val nextSummary =
+        if (currentSummary != null && incomingSummary != null) {
+            incomingSummary.copy(
+                status = currentSummary.status ?: incomingSummary.status,
+                activity = currentSummary.activity ?: incomingSummary.activity,
+                activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail
+            )
+        } else {
+            incomingSummary
+        }
     return incoming.copy(
-        summary = incomingSummary.copy(
-            status = currentSummary.status ?: incomingSummary.status,
-            activity = currentSummary.activity ?: incomingSummary.activity,
-            activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail
-        )
+        summary = nextSummary,
+        activity = nextActivity
     )
 }
 
-private fun AgentDetailSnapshot.withAgentActivity(event: MemberPresenceUpdated): AgentDetailSnapshot {
-    val currentSummary = summary ?: return this
+private fun AgentDetailSnapshot.withAgentActivity(
+    event: MemberPresenceUpdated,
+    observedAtMillis: Long
+): AgentDetailSnapshot {
+    val currentSummary = summary
     val activityLabel = event.agentStatus?.label
     return copy(
-        summary = currentSummary.copy(
+        summary = currentSummary?.copy(
             status = activityLabel ?: currentSummary.status,
             activity = activityLabel ?: currentSummary.activity,
             activityDetail = event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail
-        )
+        ),
+        activity = activity.withRealtimeAgentActivity(event, observedAtMillis)
     )
 }
 
+private fun List<AgentActivityEntry>.withRealtimeAgentActivity(
+    event: MemberPresenceUpdated,
+    observedAtMillis: Long
+): List<AgentActivityEntry> {
+    val entry = event.toRealtimeAgentActivityEntry(observedAtMillis) ?: return this
+    val last = lastOrNull()
+    if (last != null && last.isDuplicateAgentStatusEntry(entry, observedAtMillis)) return this
+    return (this + entry)
+        .dedupeAgentActivityEntries()
+        .takeLast(MaxAgentActivityEntries)
+}
+
+private fun MemberPresenceUpdated.toRealtimeAgentActivityEntry(
+    observedAtMillis: Long
+): AgentActivityEntry? {
+    val activity = agentStatus ?: return null
+    val activityKey = activity.name.lowercase()
+    val detail = statusLabel.nonBlankOrNull()
+    val idSuffix = serverSeq?.let { "seq:$it" }
+        ?: "${observedAtMillis}:${activityKey}:${detail.orEmpty()}"
+    return AgentActivityEntry(
+        id = "$RealtimeAgentActivityIdPrefix${memberId.value}:$idSuffix",
+        type = "status",
+        title = activity.toAgentActivityTitle(detail),
+        body = detail,
+        timestamp = observedAtMillis.toString(),
+        statusActivity = activityKey,
+        statusDetail = detail,
+        refTextEnabled = true
+    )
+}
+
+private fun AgentStatus.toAgentActivityTitle(detail: String?): String =
+    when {
+        this == AgentStatus.Online -> "Idle"
+        this == AgentStatus.Offline && detail == "Stopped" -> "Stopped"
+        this == AgentStatus.Disconnected -> "Disconnected"
+        this == AgentStatus.Error -> "Error"
+        else -> label
+    }
+
+private fun AgentActivityEntry.isDuplicateAgentStatusEntry(
+    next: AgentActivityEntry,
+    nextObservedAtMillis: Long
+): Boolean {
+    if (type != "status" || next.type != "status") return false
+    if (statusActivity != next.statusActivity || statusDetail != next.statusDetail) return false
+    val previousTimestamp = timestamp?.toLongOrNull() ?: return false
+    return nextObservedAtMillis - previousTimestamp in 0 until 1000
+}
+
+private fun List<AgentActivityEntry>.dedupeAgentActivityEntries(): List<AgentActivityEntry> =
+    distinctBy { it.id.ifBlank { "${it.type}:${it.timestamp.orEmpty()}:${it.body.orEmpty()}:${it.statusActivity.orEmpty()}" } }
+
 private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
+
+private const val RealtimeAgentActivityIdPrefix = "realtime:"
+private const val MaxAgentActivityEntries = 50
 
 private fun String.memberComputerLabelOrNull(): String? =
     removePrefix(MemberComputerBadgePrefix).takeIf { startsWith(MemberComputerBadgePrefix) && it.isNotBlank() }

@@ -28,7 +28,8 @@ class SharedAgentDetailStoreTest {
     private fun detailWithSummary(
         status: String? = null,
         activity: String? = null,
-        activityDetail: String? = null
+        activityDetail: String? = null,
+        activityEntries: List<AgentActivityEntry> = emptyList()
     ) = testDetail.copy(
         summary = AgentDetailSummary(
             id = testMemberId.value,
@@ -36,7 +37,8 @@ class SharedAgentDetailStoreTest {
             status = status,
             activity = activity,
             activityDetail = activityDetail
-        )
+        ),
+        activity = activityEntries
     )
 
     private fun activityEvent(
@@ -358,6 +360,10 @@ class SharedAgentDetailStoreTest {
         assertEquals(10L, state.agentActivitySeq[testMemberId])
         assertEquals(100L, state.agentActivityObservedAt[testMemberId])
         assertEquals(1L, state.agentActivityVersions[testMemberId])
+        assertEquals(1, state.detail?.activity?.size)
+        assertEquals("realtime:agent-1:seq:10", state.detail?.activity?.single()?.id)
+        assertEquals("Working", state.detail?.activity?.single()?.title)
+        assertEquals("Building", state.detail?.activity?.single()?.body)
     }
 
     @Test
@@ -383,6 +389,8 @@ class SharedAgentDetailStoreTest {
         assertEquals("Working", summary?.status)
         assertEquals("Working", summary?.activity)
         assertEquals("Building", summary?.activityDetail)
+        assertEquals("realtime:agent-1:seq:10", s.state.value.detail?.activity?.single()?.id)
+        assertEquals("Building", s.state.value.detail?.activity?.single()?.body)
     }
 
     @Test
@@ -432,5 +440,67 @@ class SharedAgentDetailStoreTest {
         assertEquals("Reading context", state.detail?.summary?.activityDetail)
         assertNull(state.agentActivitySeq[testMemberId])
         assertEquals(1L, state.agentActivityVersions[testMemberId])
+        assertEquals("Thinking", state.detail?.activity?.single()?.title)
+        assertEquals("Reading context", state.detail?.activity?.single()?.body)
+    }
+
+    @Test
+    fun agentActivityUpdateAppendsToVisibleActivityLog() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(
+                    status = "Offline",
+                    activity = "Offline",
+                    activityEntries = listOf(
+                        AgentActivityEntry(
+                            id = "rest:older",
+                            type = "status",
+                            title = "Idle",
+                            body = "Waiting",
+                            timestamp = "100"
+                        )
+                    )
+                )
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building", serverSeq = 10L),
+                observedAtMillis = 200L
+            )
+        )
+
+        val rows = s.state.value.detail?.activity.orEmpty()
+        assertEquals(listOf("rest:older", "realtime:agent-1:seq:10"), rows.map { it.id })
+        assertEquals("Working", rows.last().title)
+        assertEquals("Building", rows.last().body)
+        assertEquals("working", rows.last().statusActivity)
+        assertEquals("200", rows.last().timestamp)
+    }
+
+    @Test
+    fun duplicateAgentActivityUpdateWithinOneSecondDoesNotAppend() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building"),
+                observedAtMillis = 200L
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building"),
+                observedAtMillis = 500L
+            )
+        )
+
+        assertEquals(1, s.state.value.detail?.activity?.size)
     }
 }
