@@ -3,7 +3,6 @@ package ai.slock.compose
 import ai.slock.compose.resources.MR
 import com.tencent.kuikly.compose.resources.DrawableResource
 import com.tencent.kuikly.compose.resources.InternalResourceApi
-import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.tmm.kmmresource.resource.AssetResource
 
 internal data class ThreadReactionAtlasResource(
@@ -30,6 +29,7 @@ internal data class ThreadReactionSpriteRect(
 internal data class ThreadReactionSprite(
     val name: String,
     val value: String,
+    val image: AssetResource,
     val rect: ThreadReactionSpriteRect,
     val labels: Map<String, String>
 ) {
@@ -78,6 +78,9 @@ internal data class ThreadReactionSpriteCatalog(
             if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > atlas.width || rect.y + rect.height > atlas.height) {
                 errors += "Reaction ${sprite.name} rect is outside the atlas"
             }
+            if (!sprite.image.originalPath.endsWith(".png")) {
+                errors += "Reaction ${sprite.name} image is not a PNG asset"
+            }
         }
         return errors
     }
@@ -85,13 +88,20 @@ internal data class ThreadReactionSpriteCatalog(
 
 @OptIn(InternalResourceApi::class)
 internal val ThreadReactionSpriteAtlasDrawableResource: DrawableResource =
-    DrawableResource(ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl(""))
+    DrawableResource(MR.assets.reactions.reaction_atlas_v1.toKuiklyAssetUrl())
 
 internal val ThreadReactionSpriteAtlasResource = ThreadReactionAtlasResource(
     image = MR.assets.reactions.reaction_atlas_v1,
     manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
-    imageUrl = ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl("")
+    imageUrl = MR.assets.reactions.reaction_atlas_v1.toKuiklyAssetUrl()
 )
+
+@OptIn(InternalResourceApi::class)
+internal fun ThreadReactionSprite.toDrawableResource(): DrawableResource =
+    DrawableResource(image.toKuiklyAssetUrl())
+
+private fun AssetResource.toKuiklyAssetUrl(): String =
+    "assets://$originalPath"
 
 internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     schemaVersion = 1,
@@ -107,42 +117,49 @@ internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
         ThreadReactionSprite(
             name = "thumbs_up",
             value = "👍",
+            image = MR.assets.reactions.reaction_thumbs_up_v1,
             rect = ThreadReactionSpriteRect(x = 0, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Thumbs up", "zh-Hans" to "点赞", "zh-Hant" to "讚")
         ),
         ThreadReactionSprite(
             name = "heart",
             value = "❤️",
+            image = MR.assets.reactions.reaction_heart_v1,
             rect = ThreadReactionSpriteRect(x = 72, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Heart", "zh-Hans" to "爱心", "zh-Hant" to "愛心")
         ),
         ThreadReactionSprite(
             name = "party",
             value = "🎉",
+            image = MR.assets.reactions.reaction_party_v1,
             rect = ThreadReactionSpriteRect(x = 144, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Celebrate", "zh-Hans" to "庆祝", "zh-Hant" to "慶祝")
         ),
         ThreadReactionSprite(
             name = "eyes",
             value = "👀",
+            image = MR.assets.reactions.reaction_eyes_v1,
             rect = ThreadReactionSpriteRect(x = 216, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Eyes", "zh-Hans" to "关注", "zh-Hant" to "關注")
         ),
         ThreadReactionSprite(
             name = "fire",
             value = "🔥",
+            image = MR.assets.reactions.reaction_fire_v1,
             rect = ThreadReactionSpriteRect(x = 288, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Fire", "zh-Hans" to "火", "zh-Hant" to "火")
         ),
         ThreadReactionSprite(
             name = "laugh",
             value = "😂",
+            image = MR.assets.reactions.reaction_laugh_v1,
             rect = ThreadReactionSpriteRect(x = 360, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Laugh", "zh-Hans" to "大笑", "zh-Hant" to "大笑")
         ),
         ThreadReactionSprite(
             name = "done",
             value = "✅",
+            image = MR.assets.reactions.reaction_done_v1,
             rect = ThreadReactionSpriteRect(x = 432, y = 0, width = 72, height = 72),
             labels = mapOf("en" to "Done", "zh-Hans" to "完成", "zh-Hant" to "完成")
         )
