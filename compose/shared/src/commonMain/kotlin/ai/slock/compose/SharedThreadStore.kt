@@ -2496,7 +2496,11 @@ internal class SharedThreadStore(
                 cached
                     ?.takeIf { candidate -> candidate.coversRealtimeProjection(previous = existing, direct = merged) }
                     ?: merged
-            val stableSelected = selected.preserveStableTimelineFrom(existing)
+            val stableSelected =
+                selected.preserveStableTimelineFrom(
+                    previous = existing,
+                    preserveSelectedReactions = false
+                )
             val emitted =
                 reducePayloadPatch(cachePayload = true) { currentPayload ->
                     if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
@@ -2517,7 +2521,11 @@ internal class SharedThreadStore(
                 )
             }
         } else {
-            val stableMerged = merged.preserveStableTimelineFrom(existing)
+            val stableMerged =
+                merged.preserveStableTimelineFrom(
+                    previous = existing,
+                    preserveSelectedReactions = false
+                )
             reducePayloadPatch(cachePayload = true) { currentPayload ->
                 currentPayload.withContentPatchFrom(stableMerged)
             }
@@ -3309,11 +3317,13 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
 }
 
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
-    previous: KuiklyThreadScreenPayload
+    previous: KuiklyThreadScreenPayload,
+    preserveSelectedReactions: Boolean = true
 ): KuiklyThreadScreenPayload {
     val stableMessages =
         messages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
+            .withSelectedReactionsFrom(previous.messages, preserveSelectedReactions)
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
     val preservePreviousOrigin = shouldPreserveLoadedOriginFrom(previous)
     val stableOrigin =
@@ -3322,13 +3332,15 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
             originMessage != null && originMessage == previous.originMessage -> previous.originMessage
             else -> originMessage
         }
+    val reactionStableOrigin =
+        stableOrigin?.withSelectedReactionsFrom(previous.originMessage, preserveSelectedReactions)
     val stableTasks =
         tasks
             .preserveStableItemsFrom(previous.tasks) { item -> item.id }
             .withReferencedThreadTasksFrom(
                 previous = previous.tasks,
                 messages = stableMessages,
-                originMessage = stableOrigin
+                originMessage = reactionStableOrigin
             )
     val stableOriginParentMessageId =
         if (preservePreviousOrigin) {
@@ -3345,7 +3357,7 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     if (
         stableMessages === messages &&
         stableTasks === tasks &&
-        stableOrigin === originMessage &&
+        reactionStableOrigin === originMessage &&
         stableOriginParentMessageId == originParentMessageId &&
         stableOriginPreview == originPreview &&
         stableOriginStatus == originStatus &&
@@ -3355,7 +3367,7 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     }
     return copy(
         messages = stableMessages,
-        originMessage = stableOrigin,
+        originMessage = reactionStableOrigin,
         originPreview = stableOriginPreview,
         originParentMessageId = stableOriginParentMessageId,
         originStatus = stableOriginStatus,
@@ -3409,6 +3421,51 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
         reusedAnyReference -> stableItems
         else -> this
     }
+}
+
+private fun List<KuiklyThreadMessageItem>.withSelectedReactionsFrom(
+    previous: List<KuiklyThreadMessageItem>,
+    enabled: Boolean
+): List<KuiklyThreadMessageItem> {
+    if (!enabled || isEmpty() || previous.isEmpty()) return this
+    val previousById = previous.associateBy { it.id }
+    var changed = false
+    val merged =
+        map { message ->
+            val previousMessage = previousById[message.id] ?: return@map message
+            val nextMessage = message.withSelectedReactionsFrom(previousMessage, enabled = true)
+            changed = changed || nextMessage !== message
+            nextMessage
+        }
+    return if (changed) merged else this
+}
+
+private fun KuiklyThreadMessageItem.withSelectedReactionsFrom(
+    previous: KuiklyThreadMessageItem?,
+    enabled: Boolean
+): KuiklyThreadMessageItem {
+    if (!enabled || previous == null) return this
+    val selectedPrevious = previous.reactions.filter { it.selected && it.count > 0 }
+    if (selectedPrevious.isEmpty()) return this
+    val nextReactions = reactions.withSelectedReactionsFrom(selectedPrevious)
+    return if (nextReactions === reactions) this else copy(reactions = nextReactions)
+}
+
+private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
+    selectedPrevious: List<KuiklyThreadReactionItem>
+): List<KuiklyThreadReactionItem> {
+    var changed = false
+    val byEmoji = associateBy { it.emoji }.toMutableMap()
+    selectedPrevious.forEach { previousReaction ->
+        val incoming = byEmoji[previousReaction.emoji]
+        if (incoming == null || !incoming.selected || incoming.count <= 0) {
+            byEmoji[previousReaction.emoji] =
+                incoming?.copy(count = maxOf(incoming.count, previousReaction.count), selected = true)
+                    ?: previousReaction
+            changed = true
+        }
+    }
+    return if (changed) byEmoji.values.toList() else this
 }
 
 private fun List<KuiklyThreadTaskItem>.withReferencedThreadTasksFrom(

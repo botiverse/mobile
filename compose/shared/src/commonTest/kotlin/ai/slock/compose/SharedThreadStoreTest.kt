@@ -721,6 +721,57 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun stableTimelinePreservesSelectedReactionFromCurrentPayload() {
+        val baseMessage = contentPayload("reactable body").messages.single()
+        val current =
+            contentPayload("reactable body").copy(
+                messages =
+                    listOf(
+                        baseMessage.copy(
+                            reactions = listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true))
+                        )
+                    )
+            )
+        val staleRefresh =
+            contentPayload("reactable body").copy(
+                messages = listOf(baseMessage.copy(reactions = emptyList()))
+            )
+
+        val preserved = staleRefresh.preserveStableTimelineFrom(current)
+
+        assertEquals(
+            listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true)),
+            preserved.messages.single().reactions
+        )
+    }
+
+    @Test
+    fun stableTimelineCanDisableSelectedReactionPreservationForRealtimeRemoval() {
+        val baseMessage = contentPayload("reactable body").messages.single()
+        val current =
+            contentPayload("reactable body").copy(
+                messages =
+                    listOf(
+                        baseMessage.copy(
+                            reactions = listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true))
+                        )
+                    )
+            )
+        val realtimeRemoval =
+            contentPayload("reactable body").copy(
+                messages = listOf(baseMessage.copy(reactions = emptyList()))
+            )
+
+        val removed =
+            realtimeRemoval.preserveStableTimelineFrom(
+                previous = current,
+                preserveSelectedReactions = false
+            )
+
+        assertEquals(emptyList(), removed.messages.single().reactions)
+    }
+
+    @Test
     fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
