@@ -33,3 +33,9 @@ internal fun threadHeaderSafeTitle(
     identityIds: Set<String> = emptySet()
 ): String =
     threadHeaderSafeTitleOrNull(raw, identityIds) ?: threadHeaderFallbackTitle(surfaceKind)
+
+internal fun String.isGenericThreadHeaderFallbackLabel(): Boolean =
+    equals("Channel", ignoreCase = true) ||
+        equals("Direct Message", ignoreCase = true) ||
+        equals("Thread", ignoreCase = true) ||
+        equals(ThreadReplyPageTitle, ignoreCase = true)

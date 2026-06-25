@@ -5037,16 +5037,10 @@ private fun KuiklyThreadScreenPayload.snapshotConversationName(threadIdValue: St
     val identityIds = conversationHeaderFallbackIds() + threadIdValue
     val isGeneric =
         candidate == null ||
-            candidate.isThreadHeaderFallbackLabel() ||
+            candidate.isGenericThreadHeaderFallbackLabel() ||
             threadHeaderIdentityLikeTitle(candidate, identityIds)
     return if (isGeneric) threadIdValue else candidate
 }
-
-private fun String.isThreadHeaderFallbackLabel(): Boolean =
-    equals("Channel", ignoreCase = true) ||
-        equals("Direct Message", ignoreCase = true) ||
-        equals("Thread", ignoreCase = true) ||
-        equals(ThreadReplyPageTitle, ignoreCase = true)
 
 private fun KuiklyThreadScreenPayload.toThreadSnapshot(
     currentUserId: String? = null,

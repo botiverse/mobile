@@ -177,6 +177,7 @@ import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedConversationDirectoryProjection
+import ai.slock.compose.data.SharedConversationDirectorySource
 import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSavedStateCache
@@ -9100,6 +9101,16 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
+            LaunchedEffect(conversationDirectoryStore, snapshot.server.id, snapshot.channels, snapshot.directMessages) {
+                val store = conversationDirectoryStore ?: return@LaunchedEffect
+                (snapshot.channels + snapshot.directMessages).forEach { conversation ->
+                    store.upsertConversation(
+                        serverId = snapshot.server.id,
+                        conversation = conversation,
+                        source = SharedConversationDirectorySource.DenormalizedSeed
+                    )
+                }
+            }
             val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
                 .collectAsState(emptySet())
             val draftProjection =
@@ -11946,10 +11957,11 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     directoryProjection: SharedConversationDirectoryProjection? = null
-): SlockHomeConversationItem =
-    SlockHomeConversationItem(
+): SlockHomeConversationItem {
+    val title = resolvedDirectoryTitle(directoryProjection)
+    return SlockHomeConversationItem(
         id = id,
-        name = directoryProjection?.title ?: fallbackName,
+        name = title,
         kind = kind,
         channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: fallbackChannelType,
         unreadCount = unreadCount,
@@ -11965,6 +11977,27 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived
     )
+}
+
+private fun SharedHomeConversationRowSeed.resolvedDirectoryTitle(
+    directoryProjection: SharedConversationDirectoryProjection?
+): String =
+    directoryProjection
+        ?.title
+        ?.takeUnless { title -> title.isGenericHomeDirectoryTitle(directoryProjection) }
+        ?: fallbackName
+
+private fun String.isGenericHomeDirectoryTitle(
+    directoryProjection: SharedConversationDirectoryProjection
+): Boolean {
+    val candidate = threadHeaderCandidateTitle(this) ?: return true
+    val identityIds =
+        directoryProjection.aliases +
+            directoryProjection.canonicalChannelId +
+            setOfNotNull(directoryProjection.parentChannelId, directoryProjection.parentMessageId)
+    return candidate.isGenericThreadHeaderFallbackLabel() ||
+        threadHeaderIdentityLikeTitle(candidate, identityIds)
+}
 
 private fun Presence?.toSharedPresence(): SlockPresence? =
     when (this) {

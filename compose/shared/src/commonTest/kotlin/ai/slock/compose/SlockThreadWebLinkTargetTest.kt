@@ -52,7 +52,10 @@ class SlockThreadWebLinkTargetTest {
         assertEquals("channel-123", payload.streamChannelId)
         assertEquals(null, payload.originParentMessageId)
         assertEquals("none", payload.originStatus)
-        assertEquals("Message #Channel", payload.resolveThreadComposer().placeholder)
+        assertEquals(
+            "Message #Channel",
+            payload.resolveThreadComposer(displayName = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)).placeholder
+        )
         assertEquals(false, payload.resolveThreadComposer().enabled)
     }
 }

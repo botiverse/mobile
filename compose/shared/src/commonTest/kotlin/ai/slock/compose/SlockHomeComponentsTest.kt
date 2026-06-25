@@ -278,6 +278,32 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationItemDoesNotLetGenericDirectoryTitleReplaceFallbackName() {
+        val seed =
+            SharedHomeConversationRowSeed(
+                id = "channel-1",
+                kind = "channel",
+                fallbackName = "raft-mobile"
+            )
+        val directoryProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "channel-1"
+            )
+
+        val item =
+            SharedHomeConversationRowProjector(
+                directoryProjections = mapOf("channel-1" to directoryProjection)
+            ).project(seed)
+
+        assertEquals("raft-mobile", item.name)
+    }
+
+    @Test
     fun homeConversationItemUsesAgentDmAvatarFallbackWhenAvatarMissing() {
         val conversation =
             ConversationSummary(
