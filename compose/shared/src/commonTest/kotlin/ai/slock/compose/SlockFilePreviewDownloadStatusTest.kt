@@ -159,7 +159,7 @@ class SlockFilePreviewDownloadStatusTest {
                 SlockFilePreviewPayload(externalFileName = "logs.zip")
             )
 
-        assertEquals(SlockLucideIconName.Archive, icon)
+        assertEquals(SlockLucideIconName.FileArchive, icon)
     }
 
     @Test
@@ -170,5 +170,45 @@ class SlockFilePreviewDownloadStatusTest {
             )
 
         assertEquals(SlockLucideIconName.FileCode, icon)
+    }
+
+    @Test
+    fun fileIconUsesTypeForPlainTextFiles() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "notes.txt")
+            )
+
+        assertEquals(SlockLucideIconName.FileType, icon)
+    }
+
+    @Test
+    fun fileIconUsesPresentationForPowerPointFiles() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "deck.pptx")
+            )
+
+        assertEquals(SlockLucideIconName.Presentation, icon)
+    }
+
+    @Test
+    fun fileIconUsesVideoForMp4Files() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "clip.mp4")
+            )
+
+        assertEquals(SlockLucideIconName.FileVideoCamera, icon)
+    }
+
+    @Test
+    fun fileIconUsesSpreadsheetForWorkbookFiles() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "budget.xlsx")
+            )
+
+        assertEquals(SlockLucideIconName.FileSpreadsheet, icon)
     }
 }

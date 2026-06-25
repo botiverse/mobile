@@ -1061,43 +1061,116 @@ internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): Slo
     val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
     return when {
         payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
-        mime.startsWith("image/") ||
-            extension in setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp") ->
-            SlockLucideIconName.Image
-        mime.startsWith("text/") ||
-            extension in setOf("csv", "log", "md", "markdown", "pdf", "rtf", "text", "txt") ->
-            SlockLucideIconName.FileText
-        mime in setOf(
-            "application/javascript",
-            "application/json",
-            "application/typescript",
-            "application/x-javascript",
-            "application/xml",
-            "text/css",
-            "text/html",
-            "text/javascript",
-            "text/xml"
-        ) ||
-            extension in setOf(
-                "c", "cc", "cpp", "css", "go", "h", "html", "java", "js", "json", "kt", "kts",
-                "m", "mm", "py", "rb", "rs", "sh", "swift", "toml", "ts", "tsx", "xml", "yaml", "yml"
-            ) ->
+        mime.startsWith("image/") || extension in SlockFilePreviewImageExtensions ->
+            SlockLucideIconName.FileImage
+        mime.startsWith("video/") || extension in SlockFilePreviewVideoExtensions ->
+            SlockLucideIconName.FileVideoCamera
+        mime.startsWith("audio/") || extension in SlockFilePreviewAudioExtensions ->
+            SlockLucideIconName.FileMusic
+        mime in SlockFilePreviewArchiveMimeTypes || extension in SlockFilePreviewArchiveExtensions ->
+            SlockLucideIconName.FileArchive
+        mime in SlockFilePreviewSpreadsheetMimeTypes || extension in SlockFilePreviewSpreadsheetExtensions ->
+            SlockLucideIconName.FileSpreadsheet
+        mime in SlockFilePreviewPresentationMimeTypes || extension in SlockFilePreviewPresentationExtensions ->
+            SlockLucideIconName.Presentation
+        mime in SlockFilePreviewJsonMimeTypes || extension in SlockFilePreviewJsonExtensions ->
+            SlockLucideIconName.FileBraces
+        mime in SlockFilePreviewTerminalMimeTypes || extension in SlockFilePreviewTerminalExtensions ->
+            SlockLucideIconName.FileTerminal
+        mime in SlockFilePreviewCodeMimeTypes || extension in SlockFilePreviewCodeExtensions ->
             SlockLucideIconName.FileCode
-        mime in setOf(
-            "application/gzip",
-            "application/java-archive",
-            "application/vnd.rar",
-            "application/x-7z-compressed",
-            "application/x-gzip",
-            "application/x-rar-compressed",
-            "application/x-tar",
-            "application/zip"
-        ) ||
-            extension in setOf("7z", "aar", "gz", "jar", "rar", "tar", "tgz", "war", "zip") ->
-            SlockLucideIconName.Archive
+        extension in SlockFilePreviewTypedTextExtensions ->
+            SlockLucideIconName.FileType
+        mime.startsWith("text/") ||
+            extension in SlockFilePreviewDocumentExtensions ->
+            SlockLucideIconName.FileText
         else -> SlockLucideIconName.File
     }
 }
+
+private val SlockFilePreviewImageExtensions =
+    setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp")
+
+private val SlockFilePreviewVideoExtensions =
+    setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
+
+private val SlockFilePreviewAudioExtensions =
+    setOf("aac", "aiff", "flac", "m4a", "mid", "midi", "mp3", "oga", "ogg", "opus", "wav", "weba", "wma")
+
+private val SlockFilePreviewArchiveExtensions =
+    setOf("7z", "aar", "bz2", "dmg", "gz", "jar", "rar", "tar", "tgz", "war", "xz", "zip")
+
+private val SlockFilePreviewSpreadsheetExtensions =
+    setOf("csv", "numbers", "ods", "tsv", "xls", "xlsm", "xlsx")
+
+private val SlockFilePreviewPresentationExtensions =
+    setOf("key", "odp", "pps", "ppsx", "ppt", "pptx")
+
+private val SlockFilePreviewJsonExtensions =
+    setOf("geojson", "json", "json5")
+
+private val SlockFilePreviewTerminalExtensions =
+    setOf("bash", "bat", "cmd", "fish", "ps1", "sh", "zsh")
+
+private val SlockFilePreviewCodeExtensions =
+    setOf(
+        "c", "cc", "cpp", "cs", "css", "dart", "go", "h", "hpp", "html", "java", "js", "jsx",
+        "kt", "kts", "lua", "m", "mm", "php", "py", "rb", "rs", "sql", "swift", "toml", "ts",
+        "tsx", "vue", "xml", "yaml", "yml"
+    )
+
+private val SlockFilePreviewTypedTextExtensions =
+    setOf("log", "text", "txt")
+
+private val SlockFilePreviewDocumentExtensions =
+    setOf("doc", "docx", "md", "markdown", "odt", "pages", "pdf", "rtf")
+
+private val SlockFilePreviewArchiveMimeTypes =
+    setOf(
+        "application/gzip",
+        "application/java-archive",
+        "application/vnd.rar",
+        "application/x-7z-compressed",
+        "application/x-bzip2",
+        "application/x-gzip",
+        "application/x-rar-compressed",
+        "application/x-tar",
+        "application/zip"
+    )
+
+private val SlockFilePreviewSpreadsheetMimeTypes =
+    setOf(
+        "application/vnd.ms-excel",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/tab-separated-values"
+    )
+
+private val SlockFilePreviewPresentationMimeTypes =
+    setOf(
+        "application/vnd.ms-powerpoint",
+        "application/vnd.oasis.opendocument.presentation",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+
+private val SlockFilePreviewJsonMimeTypes =
+    setOf("application/geo+json", "application/json", "application/ld+json")
+
+private val SlockFilePreviewTerminalMimeTypes =
+    setOf("application/x-sh", "application/x-shellscript", "text/x-shellscript")
+
+private val SlockFilePreviewCodeMimeTypes =
+    setOf(
+        "application/javascript",
+        "application/typescript",
+        "application/x-javascript",
+        "application/xml",
+        "text/css",
+        "text/html",
+        "text/javascript",
+        "text/xml"
+    )
 
 private fun slockFilePreviewPrimaryActionIcon(payload: SlockFilePreviewPayload, cached: Boolean): SlockLucideIconName =
     when {
