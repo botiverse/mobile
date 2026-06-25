@@ -171,6 +171,7 @@ import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -7898,12 +7899,14 @@ private fun ThreadSystemMessageRow(
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = annotatedSystemBody,
             style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
+            textAlign = TextAlign.Center,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
