@@ -143,15 +143,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadMessageRowLongCodeBlock() {
+    fun captureThreadMessageRowLongInlineCode() {
         captureKmpComponentCase(
-            caseId = "components.thread.message-row.long-code-block",
+            caseId = "components.thread.message-row.long-inline-code",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-message-row-long-code-block")
-                    .put("visualFixture", "long_code_block"),
-            crop = THREAD_MESSAGE_ROW_LONG_CODE_BLOCK_CROP
+                    .put("instanceId", "visual-thread-message-row-long-inline-code")
+                    .put("visualFixture", "long_inline_code"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
         )
     }
 
@@ -1154,7 +1154,7 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 394
             )
-        private val THREAD_MESSAGE_ROW_LONG_CODE_BLOCK_CROP =
+        private val THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,

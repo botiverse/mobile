@@ -4868,7 +4868,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
-internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_CODE_BLOCK = "long_code_block"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 
 internal fun threadVisualFixture(
     fixture: String,
@@ -5037,11 +5037,11 @@ internal fun threadVisualFixture(
                         enabled = false
                     )
             )
-        THREAD_MESSAGE_VISUAL_FIXTURE_LONG_CODE_BLOCK ->
+        THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ->
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
-                subtitle = "Long code block fixture",
+                subtitle = "Long inline code fixture",
                 status = "content",
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
@@ -5056,7 +5056,7 @@ internal fun threadVisualFixture(
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
-                            id = "msg_long_code_block_visual",
+                            id = "msg_long_inline_code_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorKind = "agent",
@@ -5064,31 +5064,11 @@ internal fun threadVisualFixture(
                             timestampLabel = "06/25 05:55",
                             messageType = "Chat",
                             body =
-                                """
-                                Long code block preview:
-
-                                ```kotlin
-                                data class RenderPlan(
-                                    val messageId: String,
-                                    val viewportWidthDp: Int,
-                                    val codeBlockShouldRemainReadable: Boolean,
-                                    val longLine: String = "alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu"
-                                )
-
-                                fun buildPreview(plan: RenderPlan): String {
-                                    val header = "message=${'$'}{plan.messageId} width=${'$'}{plan.viewportWidthDp}"
-                                    val lines = listOf(
-                                        header,
-                                        "inline code stays separate from fenced blocks",
-                                        "long fenced code should keep a stable dark panel"
-                                    )
-                                    return lines.joinToString(separator = "\n")
-                                }
-                                ```
-
-                                End of preview.
-                                """.trimIndent(),
-                            threadChannelId = "thread-msg-long-code-block-visual"
+                                "Long inline code preview: `reply/channel-markdown/msg-inline-visual/" +
+                                    "composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/" +
+                                    "without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu` " +
+                                    "should wrap as inline code with the same yellow box and black frame style as short inline code.",
+                            threadChannelId = "thread-msg-long-inline-code-visual"
                         )
                     ),
                 members =

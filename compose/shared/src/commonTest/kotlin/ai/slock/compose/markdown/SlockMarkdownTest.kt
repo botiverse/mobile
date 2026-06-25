@@ -139,12 +139,14 @@ class SlockMarkdownTest {
         assertFalse(inlineContent.keys.any { it.startsWith("slock-code:") })
 
         val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
-        val inlineCodeText =
+        val inlineCodeAnnotations =
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
-                .map { annotated.text.substring(it.start, it.end) }
+        val inlineCodeText = inlineCodeAnnotations.map { annotated.text.substring(it.start, it.end) }
 
         assertEquals("short inline-code long very-long-inline-code-value-that-should-wrap-normally", annotated.text)
         assertEquals(listOf(shortCode, longCode), inlineCodeText)
+        assertEquals("short ".length, inlineCodeAnnotations.first().start)
+        assertEquals("short inline-code long ".length, inlineCodeAnnotations.last().start)
     }
 
     @Test

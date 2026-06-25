@@ -221,19 +221,19 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun longCodeBlockVisualFixtureContainsFencedCodeBlock() {
-        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_CODE_BLOCK, "visual-thread-message-row-long-code-block")
+    fun longInlineCodeVisualFixtureContainsSingleCodeSpan() {
+        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE, "visual-thread-message-row-long-inline-code")
         val message = payload.messages.single()
 
-        assertEquals("visual-thread-message-row-long-code-block", payload.instanceId)
+        assertEquals("visual-thread-message-row-long-inline-code", payload.instanceId)
         assertEquals("channel-markdown", payload.streamChannelId)
         assertFalse(payload.showReplyActions)
         assertFalse(payload.showTaskOpenActions)
         assertEquals("Cindy", message.authorName)
-        assertTrue(message.body.contains("```kotlin"))
-        assertTrue(message.body.contains("data class RenderPlan"))
-        assertTrue(message.body.contains("alpha-beta-gamma-delta-epsilon"))
-        assertTrue(message.body.contains("```"))
+        assertFalse(message.body.contains("```"))
+        assertEquals(2, message.body.count { it == '`' })
+        assertTrue(message.body.contains("reply/channel-markdown/msg-inline-visual"))
+        assertTrue(message.body.contains("owner-key-consumes-thread-route-identity-only"))
     }
 
     @Test
