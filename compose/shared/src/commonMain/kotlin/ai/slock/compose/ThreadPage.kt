@@ -231,7 +231,7 @@ internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
 internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
-    backgroundRefreshing ||
+    (backgroundRefreshing && messages.isEmpty() && originMessage == null && originPreview.isNullOrBlank()) ||
         (
             status == "loading" &&
                 messages.isEmpty() &&
