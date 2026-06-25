@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 class ThreadNewerMessagesActionSpecTest {
 
     @Test
-    fun defaultState_hasNoLeadingIcon() {
+    fun newerDefaultState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("idle")
 
         assertEquals("Load new messages", spec.label)
@@ -16,7 +16,7 @@ class ThreadNewerMessagesActionSpecTest {
     }
 
     @Test
-    fun loadingState_hasNoLeadingIcon() {
+    fun newerLoadingState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("loading")
 
         assertEquals("Loading new messages…", spec.label)
@@ -25,11 +25,32 @@ class ThreadNewerMessagesActionSpecTest {
     }
 
     @Test
-    fun errorState_hasNoLeadingIcon() {
+    fun newerErrorState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("error")
 
         assertEquals("Retry new messages", spec.label)
         assertEquals("retryLoadNewer", spec.event)
         assertNull(spec.leadingIcon)
+    }
+
+    @Test
+    fun olderLoadingState_hasNoLeadingIcon() {
+        val spec = threadOlderMessagesStatusSpec(canLoadMoreBefore = true)
+
+        assertEquals("Loading older messages…", spec.label)
+        assertNull(spec.leadingIcon)
+        assertNull(spec.secondaryLabel)
+    }
+
+    @Test
+    fun olderBeginningState_hasNoLeadingIcon() {
+        val spec = threadOlderMessagesStatusSpec(
+            canLoadMoreBefore = false,
+            secondaryLabel = "1 reply"
+        )
+
+        assertEquals("Beginning of conversation", spec.label)
+        assertNull(spec.leadingIcon)
+        assertEquals("1 reply", spec.secondaryLabel)
     }
 }

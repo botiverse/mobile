@@ -6702,16 +6702,9 @@ private fun ThreadMessagesList(
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
                         payload.canLoadMoreBefore ->
-                            ThreadHistoryStatusRow(
-                                label = "Loading older messages…",
-                                iconName = SlockLucideIconName.LoaderCircle
-                            )
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload))
                         else ->
-                            ThreadHistoryStatusRow(
-                                label = "Beginning of conversation",
-                                iconName = SlockLucideIconName.Flag,
-                                secondaryLabel = payload.threadBeginningReplyCountLabel()
-                            )
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload))
                     }
                 }
             }
@@ -6968,6 +6961,28 @@ internal data class ThreadInlineActionSpec(
     val event: String,
     val leadingIcon: SlockLucideIconName? = null
 )
+
+internal data class ThreadHistoryStatusSpec(
+    val label: String,
+    val leadingIcon: SlockLucideIconName? = null,
+    val secondaryLabel: String? = null
+)
+
+internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): ThreadHistoryStatusSpec =
+    threadOlderMessagesStatusSpec(
+        canLoadMoreBefore = payload.canLoadMoreBefore,
+        secondaryLabel = payload.threadBeginningReplyCountLabel()
+    )
+
+internal fun threadOlderMessagesStatusSpec(
+    canLoadMoreBefore: Boolean,
+    secondaryLabel: String? = null
+): ThreadHistoryStatusSpec =
+    if (canLoadMoreBefore) {
+        ThreadHistoryStatusSpec(label = "Loading older messages…")
+    } else {
+        ThreadHistoryStatusSpec(label = "Beginning of conversation", secondaryLabel = secondaryLabel)
+    }
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
@@ -7722,9 +7737,7 @@ private fun ThreadInlineActionRow(
 
 @Composable
 private fun ThreadHistoryStatusRow(
-    label: String,
-    iconName: SlockLucideIconName,
-    secondaryLabel: String? = null
+    spec: ThreadHistoryStatusSpec
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
@@ -7734,22 +7747,24 @@ private fun ThreadHistoryStatusRow(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(
-                iconName,
-                modifier = Modifier.size(14.dp),
-                color = "#FF6B7280"
-            )
-            Spacer(Modifier.width(6.dp))
+            spec.leadingIcon?.let { iconName ->
+                SlockLucideIcon(
+                    iconName,
+                    modifier = Modifier.size(14.dp),
+                    color = "#FF6B7280"
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
-                text = label,
+                text = spec.label,
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
         }
-        if (!secondaryLabel.isNullOrBlank()) {
+        if (!spec.secondaryLabel.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(
-                text = secondaryLabel,
+                text = spec.secondaryLabel,
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
