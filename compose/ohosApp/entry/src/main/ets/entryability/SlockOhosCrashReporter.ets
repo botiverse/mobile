@@ -72,7 +72,7 @@ export class SlockOhosCrashReporter {
         ? diagnostics.slice(diagnostics.length - RECENT_DIAGNOSTICS_MAX_CHARS)
         : diagnostics;
     const lines: string[] = [
-      'Slock OHOS crash log',
+      'Raft OHOS crash log',
       `Crash at: ${new Date().toString()}`,
       `Bundle: ${bundleInfo.name}`,
       `Version name: ${bundleInfo.versionName}`,

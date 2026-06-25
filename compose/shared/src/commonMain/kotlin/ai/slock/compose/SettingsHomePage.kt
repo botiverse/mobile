@@ -13138,7 +13138,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
                 SettingsServerJoinLinkSnapshot(
                     id = "link_1",
                     label = "Design review link",
-                    url = "https://app.slock.ai/join/design",
+                    url = "https://app.raft.build/join/design",
                     maxUsesLabel = "25 max",
                     usageLabel = "8 used",
                     expiresAtLabel = "2026-07-01T09:00:00Z"

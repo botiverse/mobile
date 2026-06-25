@@ -78,10 +78,10 @@ private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
 private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_NAME = "Product UX Designer"
-private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@slock.ai"
+private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@raft.build"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
-private const val AUTH_TERMS_URL = "https://slock.ai/terms"
-private const val AUTH_PRIVACY_URL = "https://slock.ai/privacy"
+private const val AUTH_TERMS_URL = "https://raft.build/terms"
+private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
 private val MobileHiddenSocialAuthProviders = setOf(AuthProvider.Google, AuthProvider.GitHub)
 

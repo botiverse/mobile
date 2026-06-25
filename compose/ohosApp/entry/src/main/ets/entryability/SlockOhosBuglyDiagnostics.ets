@@ -300,7 +300,7 @@ export class SlockOhosBuglyDiagnostics {
     bundleInfo: bundleManager.BundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT)
   ): string {
     return [
-      'Slock OHOS diagnostics',
+      'Raft OHOS diagnostics',
       `Exported at: ${new Date().toString()}`,
       `Bundle: ${bundleInfo.name}`,
       `Version name: ${bundleInfo.versionName}`,
@@ -371,7 +371,7 @@ export class SlockOhosBuglyDiagnostics {
     const params = new TDDiagUploadParams();
     params.files = files;
     params.tag = 'slock_diagnostics';
-    params.summary = `Slock diagnostics ${bundleInfo.versionName}`;
+    params.summary = `Raft diagnostics ${bundleInfo.versionName}`;
     params.extraInfo = SlockOhosBuglyDiagnostics.uploadExtraInfo(context);
     params.queryKey = `slock-${Date.now()}`;
     TDDiag.uploadLogFiles(params);
