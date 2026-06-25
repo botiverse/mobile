@@ -723,6 +723,51 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentSliceDoesNotOwnMembersWhenNetworkPayloadIncludesMembers() {
+        val loadedMember = KuiklyThreadMemberItem(id = "u1", displayName = "Artin")
+        val loadedCandidate = KuiklyThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
+        val networkMember = KuiklyThreadMemberItem(id = "u2", displayName = "Network User")
+        val networkCandidate = KuiklyThreadMemberItem(id = "agent-2", displayName = "Network Agent", kind = "agent")
+        val current =
+            contentPayload("cached body").copy(
+                membersCount = 2,
+                members = listOf(loadedMember),
+                memberCandidates = listOf(loadedCandidate),
+                canAddMembers = false,
+                addMemberStatus = "submitting",
+                addMemberErrorCode = "member_exists",
+                removeMemberStatus = "removing",
+                removingMemberId = "u1",
+                removeMemberErrorCode = "remove_failed"
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                membersCount = 99,
+                members = listOf(networkMember),
+                memberCandidates = listOf(networkCandidate),
+                canAddMembers = true,
+                addMemberStatus = "idle",
+                addMemberErrorCode = null,
+                removeMemberStatus = "idle",
+                removingMemberId = null,
+                removeMemberErrorCode = null
+            )
+
+        val payload = current.withContentSliceFrom(networkPatch)
+
+        assertEquals("network body", payload.messages.single().body)
+        assertEquals(2, payload.membersCount)
+        assertEquals(listOf(loadedMember), payload.members)
+        assertEquals(listOf(loadedCandidate), payload.memberCandidates)
+        assertFalse(payload.canAddMembers)
+        assertEquals("submitting", payload.addMemberStatus)
+        assertEquals("member_exists", payload.addMemberErrorCode)
+        assertEquals("removing", payload.removeMemberStatus)
+        assertEquals("u1", payload.removingMemberId)
+        assertEquals("remove_failed", payload.removeMemberErrorCode)
+    }
+
+    @Test
     fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
