@@ -137,7 +137,7 @@ CREATE TABLE attachmentEntity (
 
 CREATE INDEX attachmentEntity_messageId ON attachmentEntity(messageId);
 
-CREATE TABLE messageReactionEntity (
+CREATE TABLE messageReactionCacheEntity (
   messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
   reactorKind TEXT NOT NULL,
   reactorId TEXT NOT NULL,
@@ -148,8 +148,8 @@ CREATE TABLE messageReactionEntity (
   PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
 );
 
-CREATE INDEX messageReactionEntity_messageId ON messageReactionEntity(messageId);
-CREATE INDEX messageReactionEntity_reactor ON messageReactionEntity(reactorKind, reactorId);
+CREATE INDEX messageReactionCacheEntity_messageId ON messageReactionCacheEntity(messageId);
+CREATE INDEX messageReactionCacheEntity_reactor ON messageReactionCacheEntity(reactorKind, reactorId);
 
 CREATE TABLE savedMessageEntity (
   serverId TEXT NOT NULL,
@@ -538,11 +538,11 @@ WHERE messageId = ?
 ORDER BY sortOrder, id;
 
 deleteReactionsForMessage:
-DELETE FROM messageReactionEntity
+DELETE FROM messageReactionCacheEntity
 WHERE messageId = ?;
 
 upsertMessageReaction:
-INSERT OR REPLACE INTO messageReactionEntity(
+INSERT OR REPLACE INTO messageReactionCacheEntity(
   messageId,
   reactorKind,
   reactorId,
@@ -553,7 +553,7 @@ INSERT OR REPLACE INTO messageReactionEntity(
 ) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 deleteMessageReaction:
-DELETE FROM messageReactionEntity
+DELETE FROM messageReactionCacheEntity
 WHERE messageId = ?
   AND reactorKind = ?
   AND reactorId = ?
@@ -561,7 +561,7 @@ WHERE messageId = ?
 
 selectReactionsForMessage:
 SELECT *
-FROM messageReactionEntity
+FROM messageReactionCacheEntity
 WHERE messageId = ?
 ORDER BY sortOrder, emoji, reactorKind, reactorId;
 

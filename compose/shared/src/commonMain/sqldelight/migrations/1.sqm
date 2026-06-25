@@ -1,1 +1,15 @@
-ALTER TABLE messageReactionEntity ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0;
+DROP TABLE IF EXISTS messageReactionEntity;
+
+CREATE TABLE messageReactionCacheEntity (
+  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
+  reactorKind TEXT NOT NULL,
+  reactorId TEXT NOT NULL,
+  emoji TEXT NOT NULL,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAtMs INTEGER,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
+);
+
+CREATE INDEX messageReactionCacheEntity_messageId ON messageReactionCacheEntity(messageId);
+CREATE INDEX messageReactionCacheEntity_reactor ON messageReactionCacheEntity(reactorKind, reactorId);
