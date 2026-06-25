@@ -347,6 +347,7 @@ class RealtimeEventMapperTest {
                   "agentId": "agent-1",
                   "activity": "online",
                   "detail": "",
+                  "timestamp": 1782367200000,
                   "entries": [
                     { "kind": "compaction_started" }
                   ],

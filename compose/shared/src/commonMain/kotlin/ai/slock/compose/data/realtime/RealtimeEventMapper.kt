@@ -391,7 +391,7 @@ private data class AgentActivityDto(
     val activity: String? = null,
     val detail: String? = null,
     val entries: List<JsonObject> = emptyList(),
-    val timestamp: String? = null,
+    val timestamp: JsonElement? = null,
     val serverSeq: Long? = null,
 )
 
