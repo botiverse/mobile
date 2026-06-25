@@ -9,6 +9,7 @@ data class InboxItem(
     val kind: InboxItemKind,
     val channelId: ChannelId,
     val channelName: String,
+    val channelKind: ConversationKind? = null,
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
     val firstUnreadMessageId: MessageId? = null,
@@ -38,7 +39,9 @@ data class InboxItem(
     val participantIds: List<MemberId> = emptyList(),
     val taskNumber: Int? = null,
     val taskStatus: TaskStatus? = null,
-    val taskClaimedByName: String? = null
+    val taskClaimedByName: String? = null,
+    val mentionActionId: String? = null,
+    val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
 
 @Serializable
@@ -958,6 +961,7 @@ enum class SettingsSectionAvailability {
     NoPermission
 }
 
+@Serializable
 data class PendingMentionAction(
     val resolutionId: String,
     val messageId: MessageId? = null,
