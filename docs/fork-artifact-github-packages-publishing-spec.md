@@ -345,10 +345,17 @@ For the first implementation branch after this spec:
 
 ## First Kuikly Publish Implementation
 
-The initial publish path is implemented by:
+The runnable publish path belongs in the Kuikly fork repo, not in Slock. The
+initial local KuiklyUI branch is:
 
-- `scripts/publish_kuikly_fork_github.sh`
-- `.github/workflows/publish-kuikly-fork.yml`
+- Repo: `bytemain/KuiklyUI`
+- Local branch: `slock/publish-kuikly-raft2`
+- Local commit: `19a65e8e ci: publish Slock Kuikly fork artifacts`
+
+That KuiklyUI branch contains:
+
+- `scripts/publish_slock_fork_github.sh`
+- `.github/workflows/publish-slock-fork.yml`
 
 The script avoids patching `third_party/kuikly-ui` for the first remote publish.
 Instead it generates a temporary Gradle init script that:
@@ -365,30 +372,30 @@ repository URL is empty. Passing `username`/`password` directly to the fork woul
 select that empty URL path. The init script adds a usable GitHub Packages
 repository without modifying the fork.
 
-Manual local dry-run example:
+Manual local dry-run example, from the KuiklyUI repo:
 
 ```bash
 GITHUB_PACKAGES_OWNER=bytemain \
-GITHUB_PACKAGES_REPOSITORY=slock \
+GITHUB_PACKAGES_REPOSITORY=KuiklyUI \
 GITHUB_ACTOR=<github-user> \
 GITHUB_TOKEN=<token-with-packages-write> \
 SLOCK_PUBLISH_DRY_RUN=1 \
 SLOCK_PUBLISH_FAMILY=all \
-scripts/publish_kuikly_fork_github.sh
+scripts/publish_slock_fork_github.sh
 ```
 
 Real publish example:
 
 ```bash
 GITHUB_PACKAGES_OWNER=bytemain \
-GITHUB_PACKAGES_REPOSITORY=slock \
+GITHUB_PACKAGES_REPOSITORY=KuiklyUI \
 GITHUB_ACTOR=<github-user> \
 GITHUB_TOKEN=<token-with-packages-write> \
 KUIKLY_FORK_REF=<expected-kuikly-commit-or-ref> \
 KUIKLY_VERSION=2.21.0 \
 KUIKLY_VERSION_SUFFIX=raft.2 \
 SLOCK_PUBLISH_FAMILY=all \
-scripts/publish_kuikly_fork_github.sh
+scripts/publish_slock_fork_github.sh
 ```
 
 The default remote coordinates are:
@@ -398,11 +405,12 @@ The default remote coordinates are:
 
 CI usage:
 
-1. Start `.github/workflows/publish-kuikly-fork.yml` manually.
-2. Set `dry_run=true` first.
-3. Confirm the workflow resolves the intended Kuikly source ref and lists
+1. Push the KuiklyUI branch/commit to `bytemain/KuiklyUI`.
+2. Start `.github/workflows/publish-slock-fork.yml` manually in KuiklyUI.
+3. Set `dry_run=true` first.
+4. Confirm the workflow resolves the intended Kuikly source ref and lists
    `publish...ToGitHubPackagesRepository` tasks.
-4. Re-run with `dry_run=false` only after the target package namespace is
+5. Re-run with `dry_run=false` only after the target package namespace is
    confirmed and package write access is available.
 
 Important prerequisite: the Kuikly fork ref used in CI must be reachable from
