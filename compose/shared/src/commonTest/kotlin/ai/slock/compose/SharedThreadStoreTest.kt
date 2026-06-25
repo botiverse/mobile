@@ -3594,14 +3594,16 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewDoesNotCrossContextWindowNewerGap() = runBlocking {
+    fun realtimeMessageNewAcrossContextWindowNewerGapSyncsMissingWindow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m11", seq = 11)
+            )
         val dataSource =
             SharedThreadDataSource(
-                networkApi =
-                    FakeThreadApi(
-                        bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
-                    ),
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3617,8 +3619,11 @@ class SharedThreadStoreTest {
         )
 
         val payload = store.state.value.payload
-        assertEquals(listOf("m10"), payload.messages.map { it.id })
-        assertTrue(payload.canLoadMoreAfter)
+        assertEquals(listOf("m10", "m11"), payload.messages.map { it.id })
+        assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
         scope.cancel()
     }
 
