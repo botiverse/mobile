@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedConversationDirectoryStoreTest {
@@ -98,6 +99,33 @@ class SharedConversationDirectoryStoreTest {
 
         assertEquals("Codex Agent", assertNotNull(store.resolveProjection(serverId, "dm-channel-1")).title)
         assertEquals("Codex Agent", assertNotNull(store.resolveProjection(serverId, "agent-1")).title)
+    }
+
+    @Test
+    fun channelReplyMetadataDoesNotCreateReplyThreadDirectoryAliases() = runBlocking {
+        val store = createStore()
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation =
+                ConversationSummary(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    kind = ConversationKind.Channel,
+                    name = "general",
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("parent-1"),
+                            streamChannelId = ChannelId("reply-thread-1")
+                        )
+                ),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        assertEquals("general", assertNotNull(store.resolveProjection(serverId, "channel-1")).title)
+        assertNull(store.resolveProjection(serverId, "reply-thread-1"))
+        assertNull(store.resolveProjection(serverId, "parent-1"))
     }
 
     @Test

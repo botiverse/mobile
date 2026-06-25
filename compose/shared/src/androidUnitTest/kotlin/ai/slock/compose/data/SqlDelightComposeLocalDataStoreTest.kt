@@ -423,6 +423,98 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
+    fun homeChannelReplyMetadataDoesNotPersistReplyThreadAliases() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+
+        store.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(serverId, name = "Slock"),
+                currentMember = member,
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            kind = ConversationKind.Channel,
+                            name = "general",
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("parent-1"),
+                                    streamChannelId = ChannelId("reply-thread-1")
+                                )
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            )
+        )
+
+        val directory = SharedConversationDirectoryStore(database)
+        assertEquals("general", assertNotNull(directory.resolveProjection(serverId, "channel-1")).title)
+        assertEquals(null, directory.resolveProjection(serverId, "reply-thread-1"))
+        assertEquals(null, directory.resolveProjection(serverId, "parent-1"))
+    }
+
+    @Test
+    fun writeThroughChannelReplyMetadataDoesNotPersistAsReplyThread() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+        val writer = ComposeLocalWriteThrough(store)
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation =
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            kind = ConversationKind.Channel,
+                            name = "general",
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("parent-1"),
+                                    streamChannelId = ChannelId("reply-thread-1")
+                                )
+                        ),
+                    messages =
+                        listOf(
+                            Message(
+                                id = MessageId("message-1"),
+                                threadId = ThreadId("channel-1"),
+                                seq = 1,
+                                author = member,
+                                timestampLabel = "20:00",
+                                body = "hello"
+                            )
+                        )
+                )
+            ),
+            source = "messages_channel"
+        )
+
+        val restored = assertNotNull(store.readThread(ThreadId("channel-1")))
+        assertEquals(1, restored.messages.size)
+        assertEquals(ChannelId("channel-1"), restored.messages.single().channelId)
+        assertEquals(null, store.readThread(ThreadId("reply-thread-1")))
+        assertEquals(null, SharedConversationDirectoryStore(database).resolveProjection(serverId, "reply-thread-1"))
+    }
+
+    @Test
     fun writeThreadRewritesStaleParentChannelAliasForReplyThread() = runBlocking {
         val database = createDatabase()
         val store =

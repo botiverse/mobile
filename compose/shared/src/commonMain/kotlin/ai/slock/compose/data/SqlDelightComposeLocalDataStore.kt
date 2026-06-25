@@ -167,7 +167,7 @@ internal class SqlDelightComposeLocalDataStore(
         val queries = database.queries
         database.transaction {
             val channel = snapshot.conversation
-            val messageChannelId = channel.messageStreamChannelId()
+            val messageChannelId = channel.storageCanonicalChannelId()
             queries.upsertConversationChannel(
                 serverId = serverId.value,
                 channel = channel,
@@ -467,7 +467,7 @@ internal class SqlDelightComposeLocalDataStore(
         serverId: String,
         channel: ConversationSummary,
         now: Long,
-        canonicalChannelId: String = channel.messageStreamChannelId().value,
+        canonicalChannelId: String = channel.storageCanonicalChannelId().value,
         replyCount: Long = 0L
     ) {
         val existing = selectChannel(serverId, canonicalChannelId).executeAsOneOrNull()
@@ -504,8 +504,8 @@ internal class SqlDelightComposeLocalDataStore(
             type = incomingType,
             name = storedName,
             description = storedDescription,
-            parentChannelId = channel.thread?.parentChannelId?.value,
-            parentMessageId = channel.thread?.parentMessageId?.value,
+            parentChannelId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentChannelId?.value else null,
+            parentMessageId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentMessageId?.value else null,
             avatarUrl = storedAvatarUrl,
             presence = storedPresence,
             agentStatus = storedAgentStatus,
@@ -561,7 +561,7 @@ internal class SqlDelightComposeLocalDataStore(
         return value == canonicalChannelId ||
             value == channel.threadId.value ||
             value == channel.channelId?.value ||
-            value == channel.thread?.streamChannelId?.value
+            (channel.kind == ConversationKind.Thread && value == channel.thread?.streamChannelId?.value)
     }
 
     private data class StoredConversationAlias(
@@ -572,6 +572,7 @@ internal class SqlDelightComposeLocalDataStore(
     private fun ConversationSummary.conversationAliases(canonicalChannelId: String): Set<StoredConversationAlias> =
         buildSet {
             val routeIdentity = resolveThreadRouteIdentity()
+            val isReplyThread = kind == ConversationKind.Thread
             add(StoredConversationAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
             channelId
                 ?.value
@@ -579,10 +580,19 @@ internal class SqlDelightComposeLocalDataStore(
                 ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
                 ?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Channel)) }
             threadId.value.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Thread)) }
-            thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Stream)) }
-            thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentChannel)) }
-            thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentMessage)) }
+            if (isReplyThread) {
+                thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Stream)) }
+                thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentChannel)) }
+                thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentMessage)) }
+            }
             presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.PresenceMember)) }
+        }
+
+    private fun ConversationSummary.storageCanonicalChannelId(): ChannelId =
+        if (kind == ConversationKind.Thread) {
+            messageStreamChannelId()
+        } else {
+            channelId ?: ChannelId(threadId.value)
         }
 
     private fun decodeMetadata(value: String): Map<String, String> =

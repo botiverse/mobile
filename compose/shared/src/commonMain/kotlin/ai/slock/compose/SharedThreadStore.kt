@@ -1574,8 +1574,7 @@ internal class SharedThreadDataSource(
     ): ThreadSnapshot {
         val isReplyThread =
             basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
-                conversation.kind == ConversationKind.Thread ||
-                conversation.thread != null
+                conversation.kind == ConversationKind.Thread
         if (!isReplyThread) return this
         val parentMessageId =
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -4883,7 +4882,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         baseHasReplyThreadIdentity ||
             (
                 !baseTargetsParentConversation &&
-                    (conversation.kind == ConversationKind.Thread || conversation.thread != null)
+                    conversation.kind == ConversationKind.Thread
                 )
     val parentId =
         if (routeIsReplyThread) {
@@ -4915,9 +4914,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val streamChannelId =
         base.streamChannelId
-            ?: conversation.thread?.streamChannelId?.value
             ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-                null
+                conversation.thread?.streamChannelId?.value
             } else {
                 conversation.channelId?.value ?: conversation.threadId.value
             }
@@ -4942,9 +4940,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val sourceThreadId =
         base.sourceThreadId
-            ?: conversation.thread?.streamChannelId?.value
             ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-                null
+                conversation.thread?.streamChannelId?.value
             } else {
                 conversation.channelId?.value ?: conversation.threadId.value
             }

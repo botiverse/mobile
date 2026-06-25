@@ -194,17 +194,18 @@ private fun ThreadRouteId.focusedMessageIdOrNull(): MessageId? =
 internal fun ThreadSnapshot.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {
     val conversationThread = conversation.thread
     val parent = parentMessage
+    val isThreadConversation = conversation.kind == ConversationKind.Thread
     val parentChannel =
         parent?.channelId
-            ?: conversationThread?.parentChannelId
+            ?: if (isThreadConversation) conversationThread?.parentChannelId else null
             ?: conversation.threadId.parentChannelIdOrNull()
     val parentMessageId =
         parent?.id
-            ?: conversationThread?.parentMessageId
+            ?: if (isThreadConversation) conversationThread?.parentMessageId else null
             ?: conversation.threadId.parentMessageIdOrNull()
     val isReplyThread =
-        conversation.kind == ConversationKind.Thread ||
-            conversationThread != null ||
+        isThreadConversation ||
+            parent != null ||
             (parentChannel != null && parentMessageId != null)
     val streamChannelId = conversation.messageStreamChannelId()
     return if (isReplyThread && parentChannel != null && parentMessageId != null && streamChannelId != null) {
@@ -246,14 +247,21 @@ internal data class ThreadFallbackProof(
             fallbackHeader: ConversationSummary?,
             fallbackParentMessage: Message?
         ): ThreadFallbackProof {
-            val snapshotStreamChannelId = snapshotConversation.messageStreamChannelId()
+            val snapshotIsThread = snapshotConversation.kind == ConversationKind.Thread
+            val fallbackHeaderIsThread = fallbackHeader?.kind == ConversationKind.Thread
+            val snapshotStreamChannelId =
+                if (snapshotIsThread) {
+                    snapshotConversation.messageStreamChannelId()
+                } else {
+                    snapshotConversation.channelId ?: ChannelId(snapshotConversation.threadId.value)
+                }
             val snapshotParentChannelId =
                 snapshotParentMessage?.channelId
-                    ?: snapshotConversation.thread?.parentChannelId
+                    ?: if (snapshotIsThread) snapshotConversation.thread?.parentChannelId else null
                     ?: snapshotConversation.threadId.parentChannelIdOrNull()
             val snapshotParentMessageId =
                 snapshotParentMessage?.id
-                    ?: snapshotConversation.thread?.parentMessageId
+                    ?: if (snapshotIsThread) snapshotConversation.thread?.parentMessageId else null
                     ?: snapshotConversation.threadId.parentMessageIdOrNull()
             val fallbackParentPairMatchesSnapshot =
                 fallbackParentMessage != null &&
@@ -279,7 +287,8 @@ internal data class ThreadFallbackProof(
             val safeParentMessageId = snapshotParentMessageId ?: safeParentMessage?.id
             val fallbackHeaderThread = fallbackHeader?.thread
             val fallbackHeaderParentPairMatches =
-                fallbackHeaderThread != null &&
+                fallbackHeaderIsThread &&
+                    fallbackHeaderThread != null &&
                     safeParentChannelId != null &&
                     safeParentMessageId != null &&
                     fallbackHeaderThread.parentChannelId == safeParentChannelId &&
@@ -296,7 +305,8 @@ internal data class ThreadFallbackProof(
                     safeParentMessage != null &&
                     fallbackHeader.channelId == safeParentMessage.channelId
             val fallbackHeaderStreamMatches =
-                fallbackHeader?.explicitMessageStreamChannelId() != null &&
+                fallbackHeaderIsThread &&
+                    fallbackHeader?.explicitMessageStreamChannelId() != null &&
                     fallbackHeader.explicitMessageStreamChannelId() == snapshotStreamChannelId
             val safeHeader =
                 fallbackHeader?.takeIf {

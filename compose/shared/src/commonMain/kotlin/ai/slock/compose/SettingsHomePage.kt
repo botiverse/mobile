@@ -12100,10 +12100,25 @@ internal fun buildAppShellThreadPayload(
     anchorMessageId: String? = null
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
-    val streamChannelId = conversation.threadStreamChannelId()
-    val parentChannelId = conversation.threadParentChannelId()
-    val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val streamChannelId =
+        if (isReplyThread) {
+            conversation.threadStreamChannelId()
+        } else {
+            conversation.channelId?.value ?: conversation.threadId.value
+        }
+    val parentChannelId =
+        if (isReplyThread) {
+            conversation.threadParentChannelId()
+        } else {
+            null
+        }
+    val parentMessageId =
+        if (isReplyThread) {
+            conversation.threadParentMessageId()
+        } else {
+            null
+        }
     val routeChannelKind = conversation.resolveThreadRouteIdentity().channelKind
     val parentSurfaceKind =
         if (isReplyThread) {

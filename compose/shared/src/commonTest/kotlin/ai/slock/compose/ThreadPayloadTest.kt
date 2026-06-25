@@ -2478,6 +2478,19 @@ class ThreadPayloadTest {
         assertEquals(null, initialPayload.parentChannelId)
         assertEquals(null, initialPayload.parentMessageId)
         assertEquals(null, initialPayload.originParentMessageId)
+
+        val appShellPayload = buildAppShellThreadPayload(conversation)
+        val appShellComposer = appShellPayload.resolveThreadComposer()
+        assertEquals(KuiklyThreadSurfaceKind.Channel, appShellPayload.surfaceKind)
+        assertEquals("channel-1", appShellPayload.sourceThreadId)
+        assertEquals("channel-1", appShellPayload.streamChannelId)
+        assertEquals(null, appShellPayload.parentChannelId)
+        assertEquals(null, appShellPayload.parentMessageId)
+        assertEquals(null, appShellPayload.originParentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, appShellComposer.surfaceKind)
+        assertEquals("channel-1", appShellComposer.streamChannelId)
+        assertEquals(null, appShellComposer.mentionChannelId)
+        assertEquals(null, appShellComposer.parentMessageId)
     }
 
     @Test

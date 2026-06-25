@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.KuiklyThreadSurfaceKind
 import ai.slock.compose.resolveThreadRouteIdentity
 import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
@@ -110,7 +111,7 @@ internal class SharedConversationDirectoryStore(
         conversation: ConversationSummary,
         source: SharedConversationDirectorySource
     ) {
-        val canonicalChannelId = conversation.messageStreamChannelId().value
+        val canonicalChannelId = conversation.directoryCanonicalChannelId().value
         val now = clock()
         val existing = database.queries.selectChannel(serverId.value, canonicalChannelId).executeAsOneOrNull()
         val merged = mergeConversation(existing, conversation, source, canonicalChannelId)
@@ -329,8 +330,8 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
                 ?.takeUnless { isGenericDisplayName(it, additionalIdentityIds = setOf(canonicalChannelId)) }
                 ?: canonicalChannelId,
         description = subtitle?.takeIf { it.isNotBlank() },
-        parentChannelId = thread?.parentChannelId?.value,
-        parentMessageId = thread?.parentMessageId?.value,
+        parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
+        parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         avatarUrl = conversationDirectoryAvatarWireValue(),
         presence = presence?.name,
         agentStatus = agentStatus?.name,
@@ -359,6 +360,7 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
 private fun ConversationSummary.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
     buildSet {
         val routeIdentity = resolveThreadRouteIdentity()
+        val isReplyThread = kind == ConversationKind.Thread
         add(ConversationDirectoryAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
         channelId
             ?.value
@@ -366,10 +368,19 @@ private fun ConversationSummary.aliases(canonicalChannelId: String): Set<Convers
             ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
             ?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Channel)) }
         threadId.value.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Thread)) }
-        thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Stream)) }
-        thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentChannel)) }
-        thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentMessage)) }
+        if (isReplyThread) {
+            thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Stream)) }
+            thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentChannel)) }
+            thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentMessage)) }
+        }
         presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.PresenceMember)) }
+    }
+
+private fun ConversationSummary.directoryCanonicalChannelId(): ChannelId =
+    if (kind == ConversationKind.Thread) {
+        messageStreamChannelId()
+    } else {
+        channelId ?: ChannelId(threadId.value)
     }
 
 private fun ChannelEntity.toProjection(
@@ -447,7 +458,7 @@ private fun String.isGenericDirectoryTitle(
         this == canonicalChannelId ||
         this == conversation.threadId.value ||
         this == conversation.channelId?.value ||
-        this == conversation.thread?.streamChannelId?.value
+        (conversation.kind == ConversationKind.Thread && this == conversation.thread?.streamChannelId?.value)
 
 private fun String.isGenericDirectoryChannelType(): Boolean =
     isBlank() || equals("channel", ignoreCase = true)

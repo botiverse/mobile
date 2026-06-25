@@ -232,7 +232,7 @@ class ComposeLocalWriteThrough(
         fallbackHeader: ConversationSummary? = null,
         fallbackParentMessage: Message? = null
     ): Boolean {
-        val snapshotStreamChannelId = snapshot.conversation.messageStreamChannelId()
+        val snapshotStreamChannelId = snapshot.conversation.writeThroughCanonicalChannelId()
         val storedConversation =
             store.readThread(snapshot.conversation.threadId)?.conversation
                 ?: fallbackThreadId
@@ -272,7 +272,7 @@ class ComposeLocalWriteThrough(
             } else {
                 conversationWithResolvedMetadata.withTitleFallback(fallbackProof.header)
             }
-        val streamChannelId = conversation.messageStreamChannelId()
+        val streamChannelId = conversation.writeThroughCanonicalChannelId()
         val messages =
             (listOfNotNull(resolvedParentMessage) + snapshot.messages)
                 .map { message ->
@@ -1193,6 +1193,13 @@ private fun HomeSnapshot.directMessageAvatarWireValuesByMemberId(): Map<String, 
 
 private fun List<Message>.latestSeq(): Long =
     maxOfOrNull { it.seq ?: 0L } ?: 0L
+
+private fun ConversationSummary.writeThroughCanonicalChannelId(): ChannelId =
+    if (kind == ConversationKind.Thread) {
+        messageStreamChannelId()
+    } else {
+        channelId ?: ChannelId(threadId.value)
+    }
 
 private inline fun <T> List<T>.logIds(crossinline value: (T) -> String): String =
     take(8).joinToString(prefix = "[", postfix = if (size > 8) ",…]" else "]") { value(it) }

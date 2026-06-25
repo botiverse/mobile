@@ -1,8 +1,12 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ThreadConversation
+import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -199,5 +203,69 @@ class ThreadCandidateProofGateTest {
             )
 
         assertTrue(proof is ThreadIdentityProof.Accepted)
+    }
+
+    @Test
+    fun channelSummaryReplyMetadataDoesNotBecomeReplyThreadRouteProof() {
+        val route =
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("channel-1"),
+                                parentMessageId = MessageId("parent-1"),
+                                streamChannelId = ChannelId("reply-thread-1")
+                            )
+                    ),
+                messages = emptyList()
+            ).toThreadRouteId()
+
+        assertEquals(ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1")), route)
+    }
+
+    @Test
+    fun nonThreadFallbackProofIgnoresReplyMetadataOnChannelSummary() {
+        val proof =
+            ThreadFallbackProof.resolve(
+                snapshotConversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("channel-1"),
+                                parentMessageId = MessageId("parent-1"),
+                                streamChannelId = ChannelId("reply-thread-1")
+                            )
+                    ),
+                snapshotParentMessage = null,
+                storedConversation = null,
+                fallbackThreadId = ThreadId("reply-thread-1"),
+                fallbackHeader =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("channel-1"),
+                                parentMessageId = MessageId("parent-1"),
+                                streamChannelId = ChannelId("reply-thread-1")
+                            )
+                    ),
+                fallbackParentMessage = null
+            )
+
+        assertEquals("general", proof.header?.name)
+        assertEquals(null, proof.parentMessage)
+        assertEquals(null, proof.aliasThreadId)
     }
 }
