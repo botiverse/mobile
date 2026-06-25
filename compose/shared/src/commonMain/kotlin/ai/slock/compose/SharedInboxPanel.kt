@@ -43,6 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.animation.core.FiniteAnimationSpec
+import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.snap
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -76,14 +80,17 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
@@ -286,77 +293,119 @@ private fun SharedActivityPanelContent(
             onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
         )
         val snapshot = state.snapshot
+        val swipeFilters = remember { InboxFilter.entries.toList() }
+        val selectedSwipeIndex = swipeFilters.indexOf(state.selectedFilter)
+        val swipePreviewTabs = remember { swipeFilters.map { it.toActivitySwipeTabSpec() } }
+        var dragDistancePx by remember(state.selectedFilter) { mutableStateOf(0f) }
+        var dragActive by remember(state.selectedFilter) { mutableStateOf(false) }
+        val density = LocalDensity.current
+        val maxPreviewOffsetPx = with(density) { SlockTopTabBarDefaults.SwipePreviewMaxOffset.toPx() }
+        val previewOffsetPx =
+            slockSwipePreviewOffset(
+                horizontalDistance = dragDistancePx,
+                maxOffsetPx = maxPreviewOffsetPx,
+                hasPrevious = selectedSwipeIndex > 0,
+                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeFilters.lastIndex,
+                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
+            )
+        val settleSpec: FiniteAnimationSpec<Float> =
+            if (dragActive) snap() else tween(durationMillis = SlockTopTabBarDefaults.SwipeSettleAnimationMs)
+        val visualOffsetPx by animateFloatAsState(
+            targetValue = previewOffsetPx,
+            animationSpec = settleSpec
+        )
         Box(
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .slockSwipeSelection(
-                        items = InboxFilter.entries.toList(),
+                        items = swipeFilters,
                         selected = state.selectedFilter,
                         enabled = true,
+                        onDragActiveChange = { active ->
+                            dragActive = active
+                            if (!active) {
+                                dragDistancePx = 0f
+                            }
+                        },
+                        onDragDistanceChange = { dragDistancePx = it },
                         onSelectedChange = { onIntent(SharedActivityIntent.SetFilter(it)) }
                     )
         ) {
-            when {
-                snapshot == null && state.loading ->
-                    SharedActivityStateBody(
-                        title = "Loading...",
-                        detail = "",
-                        loading = true,
-                        bottomContentPadding = bottomContentPadding
-                    )
-                snapshot == null && state.errorCode != null ->
-                    SharedActivityRefreshableStateBody(
-                        title = "Could not load activity",
-                        detail = state.errorCode,
-                        actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
-                        onAction = { onIntent(SharedActivityIntent.Refresh) },
-                        refreshing = state.refreshing,
-                        pullRefreshing = state.pullRefreshing,
-                        onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
-                        bottomContentPadding = bottomContentPadding,
-                        listState = listState
-                    )
-                snapshot == null ->
-                    SharedActivityRefreshableStateBody(
-                        title = "Activity is empty",
-                        detail = state.selectedFilter.emptyCopy(),
-                        refreshing = state.refreshing,
-                        pullRefreshing = state.pullRefreshing,
-                        onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
-                        bottomContentPadding = bottomContentPadding,
-                        listState = listState
-                    )
-                snapshot.items.isEmpty() ->
-                    SharedActivityRefreshableStateBody(
-                        title =
-                            when (state.selectedFilter) {
-                                InboxFilter.Mentions -> "No mentions yet"
-                                InboxFilter.Unread -> "No unread chats"
-                                InboxFilter.All -> "Activity is empty"
-                            },
-                        detail = state.selectedFilter.emptyCopy(),
-                        refreshing = state.refreshing,
-                        pullRefreshing = state.pullRefreshing,
-                        onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
-                        bottomContentPadding = bottomContentPadding,
-                        listState = listState
-                    )
-                else ->
-                    SharedActivityList(
-                        snapshot = snapshot,
-                        senderProfiles = state.senderProfiles,
-                        refreshing = state.refreshing,
-                        pullRefreshing = state.pullRefreshing,
-                        loadingMore = state.loadingMore,
-                        loadMoreErrorCode = state.loadMoreErrorCode,
-                        onOpenMessage = onOpenMessage,
-                        onIntent = onIntent,
-                        bottomContentPadding = bottomContentPadding,
-                        timeContext = timeContext,
-                        listState = listState
-                    )
+            SlockSwipeSelectionPreview(
+                previous = swipePreviewTabs.getOrNull(selectedSwipeIndex - 1),
+                next = swipePreviewTabs.getOrNull(selectedSwipeIndex + 1),
+                visualOffsetPx = visualOffsetPx,
+                thresholdOffsetPx = maxPreviewOffsetPx
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(visualOffsetPx.roundToInt(), 0) }
+                        .background(SlockColor.SurfaceWhite)
+            ) {
+                when {
+                    snapshot == null && state.loading ->
+                        SharedActivityStateBody(
+                            title = "Loading...",
+                            detail = "",
+                            loading = true,
+                            bottomContentPadding = bottomContentPadding
+                        )
+                    snapshot == null && state.errorCode != null ->
+                        SharedActivityRefreshableStateBody(
+                            title = "Could not load activity",
+                            detail = state.errorCode,
+                            actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
+                            onAction = { onIntent(SharedActivityIntent.Refresh) },
+                            refreshing = state.refreshing,
+                            pullRefreshing = state.pullRefreshing,
+                            onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                            bottomContentPadding = bottomContentPadding,
+                            listState = listState
+                        )
+                    snapshot == null ->
+                        SharedActivityRefreshableStateBody(
+                            title = "Activity is empty",
+                            detail = state.selectedFilter.emptyCopy(),
+                            refreshing = state.refreshing,
+                            pullRefreshing = state.pullRefreshing,
+                            onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                            bottomContentPadding = bottomContentPadding,
+                            listState = listState
+                        )
+                    snapshot.items.isEmpty() ->
+                        SharedActivityRefreshableStateBody(
+                            title =
+                                when (state.selectedFilter) {
+                                    InboxFilter.Mentions -> "No mentions yet"
+                                    InboxFilter.Unread -> "No unread chats"
+                                    InboxFilter.All -> "Activity is empty"
+                                },
+                            detail = state.selectedFilter.emptyCopy(),
+                            refreshing = state.refreshing,
+                            pullRefreshing = state.pullRefreshing,
+                            onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                            bottomContentPadding = bottomContentPadding,
+                            listState = listState
+                        )
+                    else ->
+                        SharedActivityList(
+                            snapshot = snapshot,
+                            senderProfiles = state.senderProfiles,
+                            refreshing = state.refreshing,
+                            pullRefreshing = state.pullRefreshing,
+                            loadingMore = state.loadingMore,
+                            loadMoreErrorCode = state.loadMoreErrorCode,
+                            onOpenMessage = onOpenMessage,
+                            onIntent = onIntent,
+                            bottomContentPadding = bottomContentPadding,
+                            timeContext = timeContext,
+                            listState = listState
+                        )
+                }
             }
         }
     }
@@ -987,6 +1036,18 @@ private val InboxFilter.label: String
             InboxFilter.Unread -> "Unread"
             InboxFilter.Mentions -> "Mentions"
         }
+
+private fun InboxFilter.toActivitySwipeTabSpec(): SlockTabSpec<InboxFilter> =
+    SlockTabSpec(
+        key = this,
+        label = label,
+        iconName =
+            when (this) {
+                InboxFilter.All -> SlockLucideIconName.Activity
+                InboxFilter.Unread -> SlockLucideIconName.Mail
+                InboxFilter.Mentions -> SlockLucideIconName.AtSign
+            }
+    )
 
 private fun InboxFilter.emptyCopy(): String =
     when (this) {

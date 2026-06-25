@@ -248,7 +248,7 @@ internal fun slockSwipePreviewOffset(
 }
 
 @Composable
-private fun <T> SlockSwipeSelectionPreview(
+internal fun <T> SlockSwipeSelectionPreview(
     previous: SlockTabSpec<T>?,
     next: SlockTabSpec<T>?,
     visualOffsetPx: Float,
