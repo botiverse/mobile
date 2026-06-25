@@ -3179,7 +3179,7 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
             emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
-        ).withDirectMessageHeaderFallback(base)
+        )
     } else {
         copy(
             instanceId = base.instanceId.ifBlank { instanceId },
@@ -3197,38 +3197,8 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
-        ).withDirectMessageHeaderFallback(base)
+        )
     }
-
-private fun KuiklyThreadScreenPayload.withDirectMessageHeaderFallback(
-    fallback: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload {
-    if (!shouldPreserveDirectMessageHeaderForPatch(fallback)) return this
-    val fallbackName = fallback.safeDirectMessagePeerNameFromPatch()
-    val currentName = safeDirectMessagePeerNameFromPatch()
-    val nextName = currentName ?: fallbackName
-    val currentAvatar = dmPeerAvatarUrl?.takeIf { it.isNotBlank() }
-    val fallbackAvatar = fallback.dmPeerAvatarUrl?.takeIf { it.isNotBlank() }
-    val nextAvatar = currentAvatar ?: fallbackAvatar
-    val nextLabel =
-        dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
-            ?: fallback.dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
-    val nextGravatar =
-        dmPeerGravatarUrl?.takeIf { it.isNotBlank() }
-            ?: fallback.dmPeerGravatarUrl
-                ?.takeIf {
-                    fallbackAvatar.isNonGravatarAvatarWireValue() ||
-                        !nextAvatar.isNonGravatarAvatarWireValue()
-                }
-                ?.takeIf { it.isNotBlank() }
-    return copy(
-        title = nextName ?: title,
-        dmPeerName = nextName,
-        dmPeerAvatarUrl = nextAvatar,
-        dmPeerAvatarLabel = nextLabel,
-        dmPeerGravatarUrl = nextGravatar
-    )
-}
 
 private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
     if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {
@@ -4112,43 +4082,6 @@ private fun List<String>.cleanActionCardIds(): List<String> =
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
-    val preserveDirectMessageHeader = shouldPreserveDirectMessageHeaderForPatch(patch)
-    val patchDirectMessageName =
-        if (patch.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
-            patch.safeDirectMessagePeerNameFromPatch()
-        } else {
-            null
-        }
-    val nextDmPeerName =
-        if (preserveDirectMessageHeader) {
-            patchDirectMessageName ?: dmPeerName
-        } else {
-            patch.dmPeerName
-        }
-    val nextDmPeerAvatarUrl =
-        if (preserveDirectMessageHeader) {
-            mergeDirectMessagePatchAvatar(dmPeerAvatarUrl, patch.dmPeerAvatarUrl)
-        } else {
-            patch.dmPeerAvatarUrl
-        }
-    val nextDmPeerAvatarLabel =
-        if (preserveDirectMessageHeader) {
-            patch.dmPeerAvatarLabel?.takeIf { it.isNotBlank() } ?: dmPeerAvatarLabel
-        } else {
-            patch.dmPeerAvatarLabel
-        }
-    val nextDmPeerGravatarUrl =
-        if (preserveDirectMessageHeader) {
-            patch.dmPeerGravatarUrl?.takeIf { !nextDmPeerAvatarUrl.isNonGravatarAvatarWireValue() } ?: dmPeerGravatarUrl
-        } else {
-            patch.dmPeerGravatarUrl
-        }
-    val nextTitle =
-        if (preserveDirectMessageHeader) {
-            patchDirectMessageName ?: title
-        } else {
-            patch.title
-        }
     val hasMembersPatch =
         patch.membersCount > 0 ||
             patch.members.isNotEmpty() ||
@@ -4162,7 +4095,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
             }
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
-        title = nextTitle,
+        title = patch.title,
         subtitle = nextSubtitle,
         surfaceKind = patch.surfaceKind,
         channelKind = patch.channelKind,
@@ -4214,58 +4147,12 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showTaskOpenActions = patch.showTaskOpenActions,
         showTaskStatusActions = patch.showTaskStatusActions,
         joinLabel = patch.joinLabel,
-        dmPeerName = nextDmPeerName,
-        dmPeerAvatarUrl = nextDmPeerAvatarUrl,
-        dmPeerAvatarLabel = nextDmPeerAvatarLabel,
-        dmPeerGravatarUrl = nextDmPeerGravatarUrl
+        dmPeerName = patch.dmPeerName,
+        dmPeerAvatarUrl = patch.dmPeerAvatarUrl,
+        dmPeerAvatarLabel = patch.dmPeerAvatarLabel,
+        dmPeerGravatarUrl = patch.dmPeerGravatarUrl
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
-
-private fun KuiklyThreadScreenPayload.shouldPreserveDirectMessageHeaderForPatch(
-    patch: KuiklyThreadScreenPayload
-): Boolean {
-    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return false
-    if (patch.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return false
-    val currentIds =
-        listOfNotNull(sourceThreadId, streamChannelId)
-            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
-            .toSet()
-    if (currentIds.isEmpty()) return false
-    val patchIds =
-        listOfNotNull(patch.sourceThreadId, patch.streamChannelId)
-            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
-            .toSet()
-    return patchIds.any { it in currentIds }
-}
-
-private fun KuiklyThreadScreenPayload.safeDirectMessagePeerNameFromPatch(): String? {
-    val identityIds =
-        listOfNotNull(sourceThreadId, streamChannelId)
-            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
-            .toSet()
-    return dmPeerName
-        ?.takeIf { it.isNotBlank() }
-        ?.let { threadHeaderSafeTitleOrNull(it, identityIds) }
-        ?: title
-            .takeIf { it != threadHeaderFallbackTitle(KuiklyThreadSurfaceKind.DirectMessage) }
-            ?.let { threadHeaderSafeTitleOrNull(it, identityIds) }
-}
-
-private fun mergeDirectMessagePatchAvatar(
-    currentAvatarWireValue: String?,
-    patchAvatarWireValue: String?
-): String? {
-    val patchAvatar = patchAvatarWireValue?.takeIf { it.isNotBlank() }
-    val currentAvatar = currentAvatarWireValue?.takeIf { it.isNotBlank() }
-    if (patchAvatar == null) return currentAvatar
-    if (currentAvatar.isNonGravatarAvatarWireValue() && patchAvatar.isGravatarAvatarWireValue()) {
-        return currentAvatar
-    }
-    return patchAvatar
-}
-
-private fun String?.isNonGravatarAvatarWireValue(): Boolean =
-    !isNullOrBlank() && !isGravatarAvatarWireValue()
 
 internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(
@@ -4784,16 +4671,16 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 }
             }
             .sortedByThreadTimeline()
+    val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+    val safeDirectMessagePeerName = conversation.safeDisplayNameOrNull().takeIf { isDirectMessage }
     val headerContext =
         SharedThreadHeaderContextStore.conversationContext(
             surfaceKind = surfaceKind,
             conversation = conversation,
             originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
-            parentMessageId = parentId,
-            dmPeerName = base.dmPeerName?.takeIf { it.isNotBlank() }
+            parentMessageId = parentId
     )
     val dmPeerAvatar = conversation.avatarSlotResolution()
-    val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
     val isAgentDirectMessage =
         isDirectMessage && conversation.directMessagePeerType.equals("agent", ignoreCase = true)
     val resolvedComposer =
@@ -4834,20 +4721,20 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         canSend = conversation.permissions.canSend,
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
-        dmPeerName = base.dmPeerName ?: conversation.name.takeIf { isDirectMessage },
+        dmPeerName = safeDirectMessagePeerName,
         dmPeerAvatarUrl =
             resolveDirectMessagePeerAvatar(
-                baseAvatarWireValue = base.dmPeerAvatarUrl,
+                baseAvatarWireValue = null,
                 conversationAvatar = dmPeerAvatar,
                 isDirectMessage = isDirectMessage,
                 isAgentDirectMessage = isAgentDirectMessage
             ),
-        dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
+        dmPeerAvatarLabel = safeDirectMessagePeerName?.take(2)?.uppercase(),
         dmPeerGravatarUrl =
             if (isAgentDirectMessage) {
                 null
             } else {
-                base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
+                conversation.gravatarUrl.takeIf { isDirectMessage }
             }
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
@@ -4887,6 +4774,7 @@ private fun ThreadSnapshot.withConversationHeaderFallback(
 ): ThreadSnapshot {
     fallback ?: return this
     val current = conversation
+    if (current.kind == ConversationKind.DirectMessage) return this
     val fallbackName = fallback.safeDisplayNameOrNull()
     val nextName =
         if (fallbackName != null && current.nameIsBlankOrIdentity()) {

@@ -30,6 +30,71 @@ internal data class SharedConversationHeaderState(
     }
 }
 
+internal data class ThreadHeaderDisplayModel(
+    val title: String,
+    val subtitle: String?,
+    val surfaceKind: String,
+    val channelKind: String,
+    val dmPeerAvatarWireValue: String? = null,
+    val dmPeerAvatarLabel: String = title.take(2).uppercase(),
+    val dmPeerGravatarUrl: String? = null
+)
+
+internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
+    entry: SharedConversationHeaderEntry?
+): ThreadHeaderDisplayModel {
+    val header = entry?.takeIf { it.surfaceKind == surfaceKind }
+    return when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> {
+            val titleCandidate =
+                header?.title
+                    ?: dmPeerName
+                    ?: title
+            val displayTitle = threadHeaderDisplayTitle(titleCandidate, surfaceKind)
+            ThreadHeaderDisplayModel(
+                title = displayTitle,
+                subtitle = null,
+                surfaceKind = surfaceKind,
+                channelKind = channelKind,
+                dmPeerAvatarWireValue = header?.avatarWireValue ?: dmPeerAvatarUrl,
+                dmPeerAvatarLabel =
+                    header?.avatarLabel?.takeIf { it.isNotBlank() }
+                        ?: dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
+                        ?: displayTitle.take(2).uppercase(),
+                dmPeerGravatarUrl = header?.gravatarUrl ?: dmPeerGravatarUrl
+            )
+        }
+        KuiklyThreadSurfaceKind.Channel -> {
+            val titleCandidate = header?.title ?: title
+            ThreadHeaderDisplayModel(
+                title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
+                subtitle = header?.subtitle ?: subtitle,
+                surfaceKind = surfaceKind,
+                channelKind = header?.channelKind ?: channelKind
+            )
+        }
+        else ->
+            ThreadHeaderDisplayModel(
+                title = threadHeaderDisplayTitle(title, surfaceKind),
+                subtitle = subtitle,
+                surfaceKind = surfaceKind,
+                channelKind = channelKind
+            )
+    }
+}
+
+internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            existingThreadChannelHeaderSubtitle(subtitle)
+                ?: threadChannelHeaderSubtitle(title)
+        KuiklyThreadSurfaceKind.DirectMessage ->
+            title.takeIf { it.isNotBlank() }?.let { raw ->
+                if (raw.startsWith("@")) raw else "@${raw.removePrefix("@")}"
+            }
+        else -> title.takeIf { it.isNotBlank() }
+    }
+
 internal fun sharedConversationHeaderState(
     conversations: List<ConversationSummary>
 ): SharedConversationHeaderState =
