@@ -723,7 +723,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startUsesHomeHeaderAndMembershipForImmediateLoadingPayloadWhenTitleIsIdentity() = runBlocking {
+    fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
@@ -760,9 +760,9 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertEquals("loading", payload.status)
-        assertEquals("all", payload.title)
-        assertEquals("General updates", payload.subtitle)
-        assertEquals("public", payload.channelKind)
+        assertEquals("Channel", payload.title)
+        assertEquals(null, payload.subtitle)
+        assertEquals("channel", payload.channelKind)
         assertEquals(false, payload.joined)
         assertEquals(false, payload.canSend)
         assertEquals(false, payload.composer.enabled)

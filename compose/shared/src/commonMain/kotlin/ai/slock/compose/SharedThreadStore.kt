@@ -96,7 +96,6 @@ import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
-import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
@@ -234,9 +233,9 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun withConversationHeaderFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return basePayload
-        return basePayload.withConversationHeaderFallback(resolveConversationHeaderFallback(basePayload, session))
+        return basePayload.withConversationAccessFallback(resolveConversationHeaderFallback(basePayload, session))
     }
 
     suspend fun withKnownMarkdownChannelNames(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -1508,7 +1507,7 @@ internal class SharedThreadDataSource(
                 fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase)
-                        ?.withConversationHeaderFallback(headerFallback)
+                        ?.withConversationAccessFallback(headerFallback)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?.withCachedSenderProfiles(session)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
@@ -1517,7 +1516,7 @@ internal class SharedThreadDataSource(
                 DataResult.Content(
                     initialData.data
                         .withReplyParentMessageFromContext(basePayload)
-                        .withConversationHeaderFallback(headerFallback)
+                        .withConversationAccessFallback(headerFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                         .withCachedSenderProfiles(session)
                 )
@@ -1542,7 +1541,7 @@ internal class SharedThreadDataSource(
         }
         return DataResult.Content(
             context
-                .withConversationHeaderFallback(headerFallback)
+                .withConversationAccessFallback(headerFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
                 .withCachedSenderProfiles(session)
         )
@@ -1627,7 +1626,7 @@ internal class SharedThreadDataSource(
                 val payload =
                     initialResult.data
                         .withReplyParentMessageFromContext(resolvedBase)
-                        .withConversationHeaderFallback(headerFallback)
+                        .withConversationAccessFallback(headerFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
                 DataResult.Content(
@@ -2093,7 +2092,7 @@ internal class SharedThreadStore(
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val headerResolvedInitialPayload =
             dataSource.withKnownMarkdownChannelNames(
-                dataSource.withConversationHeaderFallback(routeCandidatePayload)
+                dataSource.withConversationAccessFallback(routeCandidatePayload)
             ).withoutTransientLocalSendingMessages()
         val routeContextPayload = headerResolvedInitialPayload
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
@@ -4951,30 +4950,13 @@ private fun ThreadSnapshot.matchesFocusedThreadRoute(
     return focusedMessage.channelId?.value == routeId || focusedMessage.threadId.value == routeId
 }
 
-private fun ThreadSnapshot.withConversationHeaderFallback(
+private fun ThreadSnapshot.withConversationAccessFallback(
     fallback: ConversationSummary?
 ): ThreadSnapshot {
     fallback ?: return this
     val current = conversation
     if (current.kind == ConversationKind.DirectMessage) return this
-    val fallbackName = fallback.safeDisplayNameOrNull()
-    val nextName =
-        if (fallbackName != null && current.nameIsBlankOrIdentity()) {
-            fallbackName
-        } else {
-            current.name
-        }
-    val nextConversation =
-        current.withPreviewMembershipFallback(fallback).copy(
-            name = nextName,
-            subtitle = current.subtitle ?: fallback.subtitle,
-            channelType = current.channelType ?: fallback.channelType,
-            avatarUrl = current.avatarUrl ?: fallback.avatarUrl,
-            avatar = current.avatar ?: fallback.avatar,
-            gravatarUrl = current.gravatarUrl ?: fallback.gravatarUrl,
-            memberCount = current.memberCount ?: fallback.memberCount,
-            permissions = fallback.permissions.takeIf { current.permissions == ConversationPermissions() } ?: current.permissions
-        )
+    val nextConversation = current.withPreviewMembershipFallback(fallback)
     return if (nextConversation == current) this else copy(conversation = nextConversation)
 }
 

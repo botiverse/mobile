@@ -1095,7 +1095,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
 
-        val renderedPayload = payload.withConversationHeaderFallback(fallback)
+        val renderedPayload = payload.withReplyThreadHeaderFallback(fallback)
 
         assertEquals(ThreadReplyPageTitle, renderedPayload.title)
         assertEquals("#general", renderedPayload.subtitle)
@@ -1121,7 +1121,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
 
-        val renderedPayload = payload.withConversationHeaderFallback(fallback)
+        val renderedPayload = payload.withReplyThreadHeaderFallback(fallback)
 
         assertEquals("#product", renderedPayload.subtitle)
     }

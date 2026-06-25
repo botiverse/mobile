@@ -140,48 +140,20 @@ internal fun KuiklyThreadScreenPayload.conversationHeaderEntryFrom(
     return entry.takeIf { lookupIds.any(entry.ids::contains) }
 }
 
-internal fun KuiklyThreadScreenPayload.withConversationHeader(
-    entry: SharedConversationHeaderEntry?
-): KuiklyThreadScreenPayload {
-    if (entry == null) return this
-    return when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage ->
-            copy(
-                title = entry.title,
-                subtitle = entry.subtitle,
-                dmPeerMemberId = entry.dmPeerMemberId,
-                dmPeerName = entry.title,
-                dmPeerAvatarUrl = entry.avatarWireValue,
-                dmPeerAvatarLabel = entry.avatarLabel,
-                dmPeerGravatarUrl = entry.gravatarUrl
-            )
-        KuiklyThreadSurfaceKind.Channel ->
-            copy(
-                title = entry.title,
-                subtitle = entry.subtitle,
-                channelKind = entry.channelKind
-            )
-        else -> this
-    }
-}
-
-internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
+internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
     fallback: ConversationSummary?
 ): KuiklyThreadScreenPayload {
     fallback ?: return this
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-        return withReplyThreadHeaderFallback(fallback)
-    }
-    val entry = conversationHeaderEntryFrom(fallback) ?: return this
-    val headerPayload = withConversationHeader(entry)
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return this
+    conversationHeaderEntryFrom(fallback) ?: return this
     return if (!fallback.joined) {
-        headerPayload.copy(
+        copy(
             joined = false,
             canSend = fallback.permissions.canSend,
-            composer = headerPayload.composer.copy(enabled = false)
+            composer = composer.copy(enabled = false)
         )
     } else {
-        headerPayload
+        this
     }
 }
 
