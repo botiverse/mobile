@@ -37,37 +37,33 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
     val header = entry?.takeIf { it.surfaceKind == surfaceKind }
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
-            val titleCandidate =
-                header?.title
-                    ?: dmPeerName
-                    ?: title
+            val titleCandidate = header?.title
             val displayTitle = threadHeaderDisplayTitle(titleCandidate, surfaceKind)
             ThreadHeaderDisplayModel(
                 title = displayTitle,
                 subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = channelKind,
-                dmPeerAvatarWireValue = header?.avatarWireValue ?: dmPeerAvatarUrl,
+                dmPeerAvatarWireValue = header?.avatarWireValue,
                 dmPeerAvatarLabel =
                     header?.avatarLabel?.takeIf { it.isNotBlank() }
-                        ?: dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
                 dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId,
-                dmPeerGravatarUrl = header?.gravatarUrl ?: dmPeerGravatarUrl
+                dmPeerGravatarUrl = header?.gravatarUrl
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
-            val titleCandidate = header?.title ?: title
+            val titleCandidate = header?.title
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
-                subtitle = header?.subtitle ?: subtitle,
+                subtitle = header?.subtitle,
                 surfaceKind = surfaceKind,
                 channelKind = header?.channelKind ?: channelKind
             )
         }
         else ->
             ThreadHeaderDisplayModel(
-                title = threadHeaderDisplayTitle(title, surfaceKind),
+                title = threadHeaderDisplayTitle(null, surfaceKind),
                 subtitle = subtitle,
                 surfaceKind = surfaceKind,
                 channelKind = channelKind
@@ -89,12 +85,12 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = directory.channelKind,
-                dmPeerAvatarWireValue = directory.avatarWireValue ?: dmPeerAvatarUrl,
+                dmPeerAvatarWireValue = directory.avatarWireValue,
                 dmPeerAvatarLabel =
                     directory.avatarLabel.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
                 dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId,
-                dmPeerGravatarUrl = dmPeerGravatarUrl
+                dmPeerGravatarUrl = null
             )
         }
         KuiklyThreadSurfaceKind.Channel ->

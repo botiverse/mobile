@@ -376,7 +376,7 @@ internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
     subtitle?.trim()?.takeIf { it.startsWith("#") }?.let(::threadChannelHeaderSubtitle)
 
 internal fun threadHeaderDisplayTitle(
-    title: String,
+    title: String?,
     surfaceKind: String = KuiklyThreadSurfaceKind.Channel
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)

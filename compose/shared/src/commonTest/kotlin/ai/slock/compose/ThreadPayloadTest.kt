@@ -922,6 +922,60 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun channelHeaderIgnoresPayloadTitleWithoutDirectoryProjection() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "wrong-network-title",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint"
+            )
+
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(null)
+
+        assertEquals("Channel", headerDisplay.title)
+        assertEquals("joint", headerDisplay.channelKind)
+    }
+
+    @Test
+    fun contentSliceDoesNotOverwriteHeaderTitleFromNetworkPayload() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "Channel",
+                subtitle = null,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint"
+            )
+        val networkPatch =
+            payload.copy(
+                title = "1fe17699-4cc4-4331-bb98-f7a327b947ac",
+                subtitle = "network subtitle",
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "user-1",
+                            authorName = "Artin",
+                            body = "body"
+                        )
+                    )
+            )
+
+        val merged = payload.withContentSliceFrom(networkPatch)
+
+        assertEquals("Channel", merged.title)
+        assertEquals(null, merged.subtitle)
+        assertEquals("content", merged.status)
+        assertEquals(listOf("m1"), merged.messages.map { it.id })
+    }
+
+    @Test
     fun jointPayloadIgnoresGenericChannelDirectoryProjection() {
         val payload =
             KuiklyThreadScreenPayload(
@@ -1727,7 +1781,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun contentPatchUsesPatchHeaderContextInsteadOfSeededReplyOrigin() {
+    fun contentSliceUsesPatchHeaderContextInsteadOfSeededReplyOrigin() {
         val origin =
             KuiklyThreadMessageItem(
                 id = "message-1",
@@ -1770,7 +1824,7 @@ class ThreadPayloadTest {
                 originStatus = "none"
             )
 
-        val payload = current.withContentPatchFrom(patch)
+        val payload = current.withContentSliceFrom(patch)
 
         assertEquals("content", payload.status)
         assertEquals(ThreadReplyPageTitle, payload.title)
@@ -1783,7 +1837,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun contentPatchReplacesThreadChromeWhenRouteChangesToChannel() {
+    fun contentSliceReplacesThreadChromeWhenRouteChangesToChannel() {
         val current =
             KuiklyThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream-1",
@@ -1850,7 +1904,7 @@ class ThreadPayloadTest {
                 originMessage = null
             )
 
-        val payload = current.withContentPatchFrom(patch)
+        val payload = current.withContentSliceFrom(patch)
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("public", payload.channelKind)

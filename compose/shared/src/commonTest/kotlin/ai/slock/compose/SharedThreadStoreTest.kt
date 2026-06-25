@@ -458,30 +458,30 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun contentPatchPreservesReplyThreadChannelSubtitleWhenNetworkPayloadOmitsIt() {
+    fun contentSlicePreservesReplyThreadChannelSubtitleWhenNetworkPayloadOmitsIt() {
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val current = contentPayloadForRoute(route, "cached body").copy(subtitle = "#general")
         val networkPatch = contentPayloadForRoute(route, "network body").copy(subtitle = null)
 
-        val payload = current.withContentPatchFrom(networkPatch)
+        val payload = current.withContentSliceFrom(networkPatch)
 
         assertEquals("#general", payload.subtitle)
         assertEquals("network body", payload.messages.single().body)
     }
 
     @Test
-    fun contentPatchClearsNonReplySubtitleWhenNetworkPayloadOmitsIt() {
+    fun contentSliceDoesNotOwnNonReplyHeaderSubtitle() {
         val current = contentPayload("cached body").copy(subtitle = "General updates")
         val networkPatch = contentPayload("network body").copy(subtitle = null)
 
-        val payload = current.withContentPatchFrom(networkPatch)
+        val payload = current.withContentSliceFrom(networkPatch)
 
-        assertNull(payload.subtitle)
+        assertEquals("General updates", payload.subtitle)
         assertEquals("network body", payload.messages.single().body)
     }
 
     @Test
-    fun contentPatchDoesNotOwnDirectMessageHeaderMetadata() {
+    fun contentSliceDoesNotOwnDirectMessageHeaderMetadata() {
         val current =
             directMessagePayload().copy(
                 status = "content",
@@ -507,7 +507,7 @@ class SharedThreadStoreTest {
                 dmPeerGravatarUrl = null
             )
 
-        val payload = current.withContentPatchFrom(networkPatch)
+        val payload = current.withContentSliceFrom(networkPatch)
         val headerDisplay =
             payload.threadHeaderDisplayModel(
                 payload.conversationHeaderEntryFrom(
@@ -569,7 +569,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun contentPatchDoesNotProtectAgentDirectMessageHeaderFromIncomingPatch() {
+    fun contentSliceDoesNotOwnAgentDirectMessageHeaderMetadata() {
         val current =
             directMessagePayload().copy(
                 title = "Product-UX-Designer",
@@ -603,13 +603,13 @@ class SharedThreadStoreTest {
                 dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
             )
 
-        val payload = current.withContentPatchFrom(networkPatch)
+        val payload = current.withContentSliceFrom(networkPatch)
 
         assertEquals("Product-UX-Designer", payload.title)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
-        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
+        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
         assertEquals("PU", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerGravatarUrl)
+        assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("network body", payload.messages.single().body)
     }
 
@@ -695,7 +695,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun contentPatchKeepsLoadedMembersWhenNetworkPayloadOmitsMembers() {
+    fun contentSliceKeepsLoadedMembersWhenNetworkPayloadOmitsMembers() {
         val loadedMember = KuiklyThreadMemberItem(id = "u1", displayName = "Artin")
         val loadedCandidate = KuiklyThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
         val current =
@@ -710,7 +710,7 @@ class SharedThreadStoreTest {
             )
         val networkPatch = contentPayload("network body")
 
-        val payload = current.withContentPatchFrom(networkPatch)
+        val payload = current.withContentSliceFrom(networkPatch)
 
         assertEquals("network body", payload.messages.single().body)
         assertEquals(2, payload.membersCount)

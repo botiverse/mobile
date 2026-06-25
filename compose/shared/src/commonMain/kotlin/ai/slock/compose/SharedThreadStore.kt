@@ -2194,7 +2194,7 @@ internal class SharedThreadStore(
                         "thread_persistent_cache_patch threadId=$threadId status=${patch.status} " +
                             "messages=${patch.messages.size} " + patch.originDiagnostics()
                     )
-                    currentPayload.withContentPatchFrom(patch)
+                    currentPayload.withContentSliceFrom(patch)
                 }
             }
         } else {
@@ -2238,7 +2238,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
                 return@reducePayloadPatch currentPayload
             }
-            currentPayload.withContentPatchFrom(loadingBase)
+            currentPayload.withContentSliceFrom(loadingBase)
         }
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
@@ -2283,7 +2283,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)) {
                     return@reducePayloadPatch currentPayload
                 }
-                currentPayload.withContentPatchFrom(nextPayload)
+                currentPayload.withContentSliceFrom(nextPayload)
             }
         diagnosticsLogger?.invoke(
             "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -2352,7 +2352,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)) {
                     return@reducePayloadPatchAndWriteCache currentPayload
                 }
-                currentPayload.withContentPatchFrom(patch)
+                currentPayload.withContentSliceFrom(patch)
             }
         diagnosticsLogger?.invoke(
             "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
@@ -2521,7 +2521,7 @@ internal class SharedThreadStore(
                     if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
                     }
-                    currentPayload.withContentPatchFrom(stableSelected)
+                    currentPayload.withContentSliceFrom(stableSelected)
                 }
             diagnosticsLogger?.invoke(
                 "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
@@ -2557,7 +2557,7 @@ internal class SharedThreadStore(
                     preserveSelectedReactions = false
                 )
             reducePayloadPatch(cachePayload = true) { currentPayload ->
-                currentPayload.withContentPatchFrom(stableMerged)
+                currentPayload.withContentSliceFrom(stableMerged)
             }
         }
     }
@@ -2573,7 +2573,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(routePayload, "thread_realtime_cache", "apply", currentPayload)) {
                     return@reducePayloadPatch currentPayload
                 }
-                currentPayload.withContentPatchFrom(cached.preserveStableTimelineFrom(currentPayload))
+                currentPayload.withContentSliceFrom(cached.preserveStableTimelineFrom(currentPayload))
             }
         diagnosticsLogger?.invoke(
             "thread_realtime_cache_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
@@ -2784,7 +2784,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
                 return@reducePayloadPatch currentPayload
             }
-            currentPayload.withContentPatchFrom(nextPayload)
+            currentPayload.withContentSliceFrom(nextPayload)
         }
     }
 
@@ -2831,7 +2831,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(existing, "thread_page", "newer_apply", currentPayload)) {
                 return@reducePayloadPatch currentPayload
             }
-            currentPayload.withContentPatchFrom(nextPayload)
+            currentPayload.withContentSliceFrom(nextPayload)
         }
     }
 
@@ -2910,7 +2910,7 @@ internal class SharedThreadStore(
                             if (!routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)) {
                                 return@reducePayloadPatch currentPayload
                             }
-                            currentPayload.withContentPatchFrom(selected)
+                            currentPayload.withContentSliceFrom(selected)
                         }
                         val nextSinceSeq = selected.messages.mapNotNull { it.seq }.maxOrNull() ?: nextRequest.sinceSeq
                         val fetchedFullPage = pageMessages.size >= SharedThreadPaging.pageSize
@@ -2935,7 +2935,7 @@ internal class SharedThreadStore(
                     if (!routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
                     }
-                    currentPayload.withContentPatchFrom(nextPayload)
+                    currentPayload.withContentSliceFrom(nextPayload)
                 }
                 return
             }
@@ -2964,7 +2964,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(currentPayload, "thread_send", "append_apply", payload)) {
                 return@reducePayloadPatch payload
             }
-            payload.withContentPatchFrom(selected)
+            payload.withContentSliceFrom(selected)
         }
     }
 
@@ -3024,7 +3024,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(currentPayload, "thread_send", "replace_apply", payload)) {
                 return@reducePayloadPatch payload
             }
-            payload.withContentPatchFrom(selected)
+            payload.withContentSliceFrom(selected)
         }
     }
 
@@ -3063,7 +3063,7 @@ internal class SharedThreadStore(
             if (!routeStillCurrent(currentPayload, "thread_reaction", "mutation_apply", payload)) {
                 return@reducePayloadPatch payload
             }
-            payload.withContentPatchFrom(selected)
+            payload.withContentSliceFrom(selected)
         }
     }
 
@@ -4270,23 +4270,18 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .filter { it.isNotBlank() }
         .distinct()
 
-internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
     val hasMembersPatch =
         patch.membersCount > 0 ||
             patch.members.isNotEmpty() ||
             patch.memberCandidates.isNotEmpty()
-    val nextSubtitle =
-        patch.subtitle
-            ?: if (patch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && !patch.showModeTabs) {
-                existingThreadChannelHeaderSubtitle(subtitle)
-            } else {
-                null
-            }
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
-        title = patch.title,
-        subtitle = nextSubtitle,
+        // Header display is owned by the conversation resolver/directory SSOT.
+        // Content refreshes must not publish title/avatar candidates through this legacy payload merge.
+        title = title,
+        subtitle = subtitle,
         surfaceKind = patch.surfaceKind,
         channelKind = patch.channelKind,
         sourceThreadId = patch.sourceThreadId,
@@ -4337,10 +4332,10 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showTaskOpenActions = patch.showTaskOpenActions,
         showTaskStatusActions = patch.showTaskStatusActions,
         joinLabel = patch.joinLabel,
-        dmPeerName = patch.dmPeerName,
-        dmPeerAvatarUrl = patch.dmPeerAvatarUrl,
-        dmPeerAvatarLabel = patch.dmPeerAvatarLabel,
-        dmPeerGravatarUrl = patch.dmPeerGravatarUrl
+        dmPeerName = dmPeerName,
+        dmPeerAvatarUrl = dmPeerAvatarUrl,
+        dmPeerAvatarLabel = dmPeerAvatarLabel,
+        dmPeerGravatarUrl = dmPeerGravatarUrl
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
