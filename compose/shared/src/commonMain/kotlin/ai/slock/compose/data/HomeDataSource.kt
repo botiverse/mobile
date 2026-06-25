@@ -46,6 +46,12 @@ class SharedHomeDataSource(
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
     private val typedComputersApi = computersApi?.let(::SlockComputersApiClient)
 
+    data class AgentDirectMessageStatusPatch(
+        val snapshot: HomeSnapshot,
+        val changed: Boolean,
+        val directMessages: List<ConversationSummary> = emptyList()
+    )
+
     suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
@@ -105,19 +111,43 @@ class SharedHomeDataSource(
                 return DataResult.Error(ScreenError(code = "home_network", retryable = true))
             }
         val result = parseHome(payload, session)
-            .withAgentDirectMessageStatuses(resolvedServerId, priority)
         diagnosticsLogger("home_bootstrap_result ${result.homeDiagnosticsSummary()} stage=parse")
         localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
     }
 
-    private suspend fun DataResult<HomeSnapshot>.withAgentDirectMessageStatuses(
+    suspend fun refreshAgentDirectMessageStatuses(
+        snapshot: HomeSnapshot,
+        priority: DataRequestPriority = DataRequestPriority.Background
+    ): AgentDirectMessageStatusPatch {
+        if (snapshot.directMessages.none { it.isAgentDirectMessage }) {
+            return AgentDirectMessageStatusPatch(snapshot, changed = false)
+        }
+        val patched = snapshot.withAgentDirectMessageStatuses(snapshot.server.id, priority)
+        val changed = patched != snapshot
+        val changedDirectMessages =
+            if (changed) {
+                patched.directMessages.filter { patchedConversation ->
+                    patchedConversation.isAgentDirectMessage &&
+                        patchedConversation != snapshot.directMessages.firstOrNull { it.threadId == patchedConversation.threadId }
+                }
+            } else {
+                emptyList()
+            }
+        return AgentDirectMessageStatusPatch(
+            snapshot = patched,
+            changed = changed,
+            directMessages = changedDirectMessages
+        )
+    }
+
+    suspend fun writeHomeSnapshot(snapshot: HomeSnapshot, source: String): Boolean =
+        localWriteThrough?.writeHomeResult(DataResult.Content(snapshot), source) ?: false
+
+    private suspend fun HomeSnapshot.withAgentDirectMessageStatuses(
         serverId: ServerId,
         priority: DataRequestPriority
-    ): DataResult<HomeSnapshot> {
-        val content = this as? DataResult.Content ?: return this
-        val snapshot = content.data
-        if (snapshot.directMessages.none { it.isAgentDirectMessage }) return this
+    ): HomeSnapshot {
         val repository = memberRepository ?: return this
         val membersResult =
             try {
@@ -125,7 +155,7 @@ class SharedHomeDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
-                diagnosticsLogger("home_agent_status_enrich_skip result=exception errorType=${throwable.safeHomeDiagnosticsType()}")
+                diagnosticsLogger("home_agent_status_refresh_failed result=exception errorType=${throwable.safeHomeDiagnosticsType()}")
                 return this
             }
         val members =
@@ -133,15 +163,15 @@ class SharedHomeDataSource(
                 is DataResult.Content -> membersResult.data.members
                 is DataResult.Empty -> return this
                 is DataResult.Error -> {
-                    diagnosticsLogger("home_agent_status_enrich_skip result=error code=${membersResult.error.code}")
+                    diagnosticsLogger("home_agent_status_refresh_failed result=error code=${membersResult.error.code}")
                     return this
                 }
                 is DataResult.NoPermission -> {
-                    diagnosticsLogger("home_agent_status_enrich_skip result=no_permission code=${membersResult.blocker.code}")
+                    diagnosticsLogger("home_agent_status_refresh_failed result=no_permission code=${membersResult.blocker.code}")
                     return this
                 }
             }
-        return DataResult.Content(snapshot.withAgentDirectMessageStatuses(members))
+        return withAgentDirectMessageStatuses(members)
     }
 
     suspend fun readCachedHome(serverId: ServerId? = null): DataResult<HomeSnapshot> {

@@ -924,7 +924,10 @@ class SharedHomeStoreTest {
         assertEquals(Presence.Offline, beforeContent.snapshot.directMessages.single().presence)
         assertEquals(Presence.Offline, beforeContent.baseSnapshot.directMessages.single().presence)
         assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
-        assertEquals(listOf("home_realtime_dirty serverId=server-1 reason=presence"), logs)
+        assertEquals(
+            listOf("home_realtime_dirty serverId=server-1 reason=presence"),
+            logs.filter { it.startsWith("home_realtime_dirty ") }
+        )
 
         store.accept(SharedHomeIntent.SetSurfaceVisible(true))
         val visibleContent = store.state.value.content as SharedHomeContentState.Content

@@ -129,6 +129,7 @@ internal class SharedThreadDataSource(
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
+    private val diagnosticsLogger: (String) -> Unit = {},
     /**
      * Task #43: shared create-agent coordinator used by the action-card
      * path. Mirrors the field on `SharedMembersDataSource`; the actual
@@ -172,6 +173,7 @@ internal class SharedThreadDataSource(
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
+        diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator
     )
 
@@ -612,12 +614,11 @@ internal class SharedThreadDataSource(
                         session = session
                     )
                         .withCachedSenderProfiles(session)
-                        .withSenderProfiles(session)
                 )
             }
         val payload =
             when (payloadResult) {
-                is DataResult.Content -> payloadResult.data.withSavedStatus(session)
+                is DataResult.Content -> payloadResult.data
                 is DataResult.Empty ->
                     if (resolvedBasePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                         payloadResult.reason == EmptyReason.NoMessages
@@ -719,12 +720,17 @@ internal class SharedThreadDataSource(
 
     suspend fun enrichSenderProfiles(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return payload
-        return payload.withSenderProfiles(session)
+        return payload.withSenderProfiles(session, DataRequestPriority.Background)
     }
 
     suspend fun enrichCachedSenderProfiles(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return payload
         return payload.withCachedSenderProfiles(session)
+    }
+
+    suspend fun enrichSavedStatus(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val session = readSession() ?: return payload
+        return payload.withSavedStatus(session)
     }
 
     /**
@@ -1448,7 +1454,7 @@ internal class SharedThreadDataSource(
                 )
             }
         return when (result) {
-            is DataResult.Content -> DataResult.Content(result.data.withSavedStatus(session))
+            is DataResult.Content -> DataResult.Content(result.data)
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
@@ -1465,7 +1471,6 @@ internal class SharedThreadDataSource(
         return result.map { snapshot ->
             transform(snapshot)
                 .withCachedSenderProfiles(session)
-                .withSenderProfiles(session)
         }
     }
 
@@ -1506,7 +1511,6 @@ internal class SharedThreadDataSource(
                         ?.withConversationHeaderFallback(headerFallback)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?.withCachedSenderProfiles(session)
-                        ?.withSenderProfiles(session)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
             initialData != null ->
@@ -1516,7 +1520,6 @@ internal class SharedThreadDataSource(
                         .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                         .withCachedSenderProfiles(session)
-                        .withSenderProfiles(session)
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
         }
@@ -1542,7 +1545,6 @@ internal class SharedThreadDataSource(
                 .withConversationHeaderFallback(headerFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
                 .withCachedSenderProfiles(session)
-                .withSenderProfiles(session)
         )
     }
 
@@ -1628,7 +1630,6 @@ internal class SharedThreadDataSource(
                         .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
-                        .withSenderProfiles(session)
                 DataResult.Content(
                     if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
                         payload.toEmptyReplyThreadPayload()
@@ -1719,7 +1720,8 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
-        session: StoredAuthSession
+        session: StoredAuthSession,
+        priority: DataRequestPriority = DataRequestPriority.Visible
     ): KuiklyThreadScreenPayload {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
         val homeAvatarByMemberId =
@@ -1735,13 +1737,28 @@ internal class SharedThreadDataSource(
                 null -> emptyMap()
                 else ->
                     try {
-                        when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                        when (val result = repository.getMembers(priority, serverId)) {
                             is DataResult.Content -> result.data.members.associateBy { it.id.value }
-                            else -> emptyMap()
+                            is DataResult.Empty -> emptyMap()
+                            is DataResult.Error -> {
+                                diagnosticsLogger(
+                                    "thread_sender_profiles_refresh_failed stage=members result=error code=${result.error.code}"
+                                )
+                                emptyMap()
+                            }
+                            is DataResult.NoPermission -> {
+                                diagnosticsLogger(
+                                    "thread_sender_profiles_refresh_failed stage=members result=no_permission code=${result.blocker.code}"
+                                )
+                                emptyMap()
+                            }
                         }
                     } catch (cancellation: CancellationException) {
                         throw cancellation
-                    } catch (_: Throwable) {
+                    } catch (throwable: Throwable) {
+                        diagnosticsLogger(
+                            "thread_sender_profiles_refresh_failed stage=members errorType=${throwable.safeThreadDiagnosticsType()}"
+                        )
                         emptyMap()
                     }
             }
@@ -1789,11 +1806,26 @@ internal class SharedThreadDataSource(
                     result.data.agents
                         .mapNotNull { it.toThreadSenderProfile(serverId) }
                         .associateBy { it.id.value }
-                else -> emptyMap()
+                is DataResult.Empty -> emptyMap()
+                is DataResult.Error -> {
+                    diagnosticsLogger(
+                        "thread_sender_profiles_refresh_failed stage=agents result=error code=${result.error.code}"
+                    )
+                    emptyMap()
+                }
+                is DataResult.NoPermission -> {
+                    diagnosticsLogger(
+                        "thread_sender_profiles_refresh_failed stage=agents result=no_permission code=${result.blocker.code}"
+                    )
+                    emptyMap()
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } catch (_: Throwable) {
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "thread_sender_profiles_refresh_failed stage=agents errorType=${throwable.safeThreadDiagnosticsType()}"
+            )
             emptyMap()
         }
     }
@@ -1815,14 +1847,23 @@ internal class SharedThreadDataSource(
                 repository.checkSavedMessages(serverId, messageIds)
             } catch (cancellation: CancellationException) {
                 throw cancellation
-            } catch (_: Throwable) {
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "thread_saved_status_refresh_failed errorType=${throwable.safeThreadDiagnosticsType()}"
+                )
                 return this
             }
         return when (result) {
             is DataResult.Content -> withSavedMessageIds(result.data.savedIds.map { it.value }.toSet())
-            is DataResult.Empty,
-            is DataResult.Error,
-            is DataResult.NoPermission -> this
+            is DataResult.Empty -> this
+            is DataResult.Error -> {
+                diagnosticsLogger("thread_saved_status_refresh_failed result=error code=${result.error.code}")
+                this
+            }
+            is DataResult.NoPermission -> {
+                diagnosticsLogger("thread_saved_status_refresh_failed result=no_permission code=${result.blocker.code}")
+                this
+            }
         }
     }
 }
@@ -1946,6 +1987,7 @@ internal class SharedThreadStore(
     private val _state = MutableStateFlow(SharedThreadState())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     private var loadJob: Job? = null
+    private var secondaryTimelineRefreshJob: Job? = null
     private var readAllInFlightMarker: ThreadReadAllMarker? = null
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
@@ -1955,6 +1997,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.Start,
             SharedThreadIntent.Refresh -> {
                 loadJob?.cancel()
+                secondaryTimelineRefreshJob?.cancel()
+                secondaryTimelineRefreshJob = null
                 loadJob =
                     scope.launch {
                         accept(intent)
@@ -2057,6 +2101,8 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        secondaryTimelineRefreshJob?.cancel()
+        secondaryTimelineRefreshJob = null
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
@@ -2257,10 +2303,54 @@ internal class SharedThreadStore(
                 nextPayload.originDiagnostics()
         )
         if (emitted && visiblePayload != null) {
-            // Explicit Refresh must always re-fetch members, even if
-            // the thread is already in Loaded state.
-            loadMembers(force = true)
+            launchSecondaryTimelineRefresh(basePayload)
         }
+    }
+
+    private fun launchSecondaryTimelineRefresh(routePayload: KuiklyThreadScreenPayload) {
+        secondaryTimelineRefreshJob?.cancel()
+        secondaryTimelineRefreshJob =
+            scope.launch {
+                refreshSecondaryTimelineData(routePayload)
+            }
+    }
+
+    private suspend fun refreshSecondaryTimelineData(routePayload: KuiklyThreadScreenPayload) {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val beforeFetch = _state.value.payload
+        if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "start", beforeFetch)) {
+            return
+        }
+        if (!beforeFetch.hasRenderableThreadContent()) {
+            return
+        }
+        val enriched =
+            dataSource.enrichSavedStatus(
+                dataSource.enrichSenderProfiles(beforeFetch)
+            )
+        val latest = _state.value.payload
+        if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)) {
+            diagnosticsLogger?.invoke(
+                "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "ignored=true reason=stale_route durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return
+        }
+        val patch =
+            enriched
+                .withRouteContext(routePayload)
+                .preserveStableTimelineFrom(latest)
+        val emitted =
+            reducePayloadPatch(cachePayload = true) { currentPayload ->
+                if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)) {
+                    return@reducePayloadPatch currentPayload
+                }
+                currentPayload.withContentPatchFrom(patch)
+            }
+        diagnosticsLogger?.invoke(
+            "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "emitted=$emitted messages=${patch.messages.size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
     }
 
     /**
@@ -5000,3 +5090,6 @@ private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
         assigneeName = assignee?.displayName,
         updatedAtLabel = updatedAtLabel
     )
+
+private fun Throwable.safeThreadDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
