@@ -45,6 +45,7 @@ class SharedHomeSearchSavedStore(
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
         when (intent) {
+            SharedHomeSearchSavedIntent.ClearSavedSummary -> clearSavedSummary()
             SharedHomeSearchSavedIntent.OpenSearch -> {
                 val search = _state.value.search
                 if (search.senderFilters.isEmpty() && !search.senderFiltersLoading) {
@@ -133,6 +134,10 @@ class SharedHomeSearchSavedStore(
                 scheduleSearchRefresh()
             }
         }
+    }
+
+    private fun clearSavedSummary() {
+        _state.value = _state.value.copy(saved = SharedHomeSavedPanelState())
     }
 
     fun clear() {
@@ -795,6 +800,7 @@ private fun List<String>.toggleSenderId(senderId: String): List<String> {
 }
 
 sealed interface SharedHomeSearchSavedIntent {
+    data object ClearSavedSummary : SharedHomeSearchSavedIntent
     data object OpenSearch : SharedHomeSearchSavedIntent
     data object OpenSaved : SharedHomeSearchSavedIntent
     data object RefreshSaved : SharedHomeSearchSavedIntent

@@ -42,6 +42,31 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun clearSavedSummaryDropsSavedCountsButKeepsSearchState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+
+        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
+
+        store.dispatch(SharedHomeSearchSavedIntent.ClearSavedSummary)
+
+        assertEquals(emptyList(), store.state.value.saved.items)
+        assertEquals(0, store.state.value.saved.totalCount)
+        assertEquals(false, store.state.value.saved.loaded)
+        assertEquals("release", store.state.value.search.query)
+        scope.cancel()
+    }
+
+    @Test
     fun openSavedRefreshesLoadedPanelOnReentry() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
