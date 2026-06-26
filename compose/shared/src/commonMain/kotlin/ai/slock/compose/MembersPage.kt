@@ -488,10 +488,12 @@ private val membersHumanDetailVisualMember = MemberProfile(
     handle = "@artin",
     kind = MemberKind.Human,
     description = "Owner",
-    roleDescription = "Server owner",
-    avatar = AvatarReference.Pixel("user"),
+    roleDescription = "Owner",
+    email = "artin@slock.ai",
     avatarLabel = "A",
-    presence = Presence.Active
+    presence = Presence.Active,
+    joinedAt = "2026-06-18T00:00:00.000Z",
+    membershipStatus = "active"
 )
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
@@ -1396,6 +1398,9 @@ private fun MemberDetailPageContent() {
                     onCopyMemberId = {
                         provider.copyMemberId(member)
                     },
+                    onRemoveMember = {
+                        provider.bridge.settingsEvent(payload.instanceId, "removeMember", member.id.value)
+                    },
                     onOpenUrl = { provider.bridge.openUrl(it) },
                     agentDetailActions = agentDetailActions,
                     onUpdateAgentProfile = { request ->
@@ -1444,6 +1449,9 @@ private fun MemberDetailPageContent() {
                 },
                 onCopyMemberId = {
                     provider.copyMemberId(current.member)
+                },
+                onRemoveMember = {
+                    provider.bridge.settingsEvent(payload.instanceId, "removeMember", current.member.id.value)
                 },
                 onOpenUrl = { provider.bridge.openUrl(it) },
                 onUpdateAgentProfile = null,
@@ -1497,6 +1505,7 @@ private fun MemberDetailVisualSeedContent(
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
+        onRemoveMember = {},
         onOpenUrl = {},
         onUpdateAgentProfile = { DataResult.Content(seed.member) },
         onUploadAgentAvatar = null,
@@ -2090,6 +2099,7 @@ private fun MembersDetailContent(
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
+    onRemoveMember: (() -> Unit)? = null,
     onOpenUrl: (String) -> Unit,
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
@@ -2597,6 +2607,9 @@ private fun MembersDetailContent(
                             MembersHumanDetailSections(
                                 member = member,
                                 timeContext = timeContext,
+                                onRemoveMember = onRemoveMember?.takeIf {
+                                    member.membershipStatus != "removed"
+                                },
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         }
@@ -2782,6 +2795,7 @@ private fun MembersDetailHeader(
     val headerMetaLabel = if (deleted) "Deleted" else member.detailHandle
     val avatarClick = onAvatarClick
     val topSafeArea = slockTopSafeAreaPadding()
+    val messageButtonWidth = if (member.kind == MemberKind.Human) 104.dp else MembersHeaderMessageButtonWidth
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -2792,7 +2806,7 @@ private fun MembersDetailHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(topSafeArea + SlockSize.PageHeaderContentHeight)
-                .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 12.dp, bottom = 8.dp),
+                .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 24.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
@@ -2849,7 +2863,7 @@ private fun MembersDetailHeader(
                 // SlockBrutalActionButton with minHeight=MembersActionSize gives 32 + 3dp
                 // shadow = 35dp outer, aligned.
                 minHeight = MembersActionSize,
-                modifier = Modifier.width(MembersHeaderMessageButtonWidth),
+                modifier = Modifier.width(messageButtonWidth),
                 onClick = onOpenDirectMessage
             )
             if (member.kind == MemberKind.Agent) {
@@ -2870,12 +2884,6 @@ private fun MembersDetailHeader(
                             )
                         )
                     }
-                )
-            } else {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Copy,
-                    onClick = onCopyMemberId,
-                    size = MembersActionSize
                 )
             }
         }
@@ -3384,6 +3392,7 @@ private fun MembersAgentRuntimeErrorBanner(
 private fun MembersHumanDetailSections(
     member: MemberProfile,
     timeContext: SlockTimeContext,
+    onRemoveMember: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -3394,6 +3403,9 @@ private fun MembersHumanDetailSections(
         MembersHumanDescriptionSection(member)
         MembersHumanInfoSection(member, timeContext)
         MembersHumanCreatedAgentsSection(member)
+        if (onRemoveMember != null) {
+            MembersHumanActionsSection(onRemoveMember)
+        }
     }
 }
 
@@ -3552,7 +3564,7 @@ private fun MembersHumanCreatedAgentsSection(member: MemberProfile) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            MembersDetailSectionTitle("CREATED AGENTS", modifier = Modifier.weight(1f))
+            MembersDetailSectionTitle("CREATED AGENTS")
             Text(
                 text = createdAgents.size.toString(),
                 style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -3579,6 +3591,28 @@ private fun MembersHumanCreatedAgentsSection(member: MemberProfile) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle("ACTIONS")
+        SlockBrutalActionButton(
+            label = "Remove Member",
+            leadingIcon = SlockLucideIconName.Trash2,
+            minHeight = 40.dp,
+            backgroundColor = SlockColor.AccentRed,
+            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = 3.dp),
+            onClick = onRemoveMember
+        )
     }
 }
 
