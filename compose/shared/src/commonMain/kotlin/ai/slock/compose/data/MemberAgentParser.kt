@@ -621,6 +621,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = role?.toSettingsLabel(),
+        email = email?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
