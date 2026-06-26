@@ -694,6 +694,48 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadProgressiveOlderWindowDoesNotRenderAsHistoryBoundary() {
+        val progressivePayload =
+            KuiklyThreadScreenPayload(
+                messages = listOf(testThreadMessage("reply-latest")),
+                canLoadMoreBefore = false,
+                olderMessagesStatus = ThreadProgressiveWindowStatus
+            )
+
+        assertEquals(0, progressivePayload.latestMessageListItemIndex())
+        assertEquals(
+            1,
+            threadMessagesLazyItemCount(
+                originStatus = progressivePayload.originStatus,
+                showHistoryBoundary = false,
+                messagesCount = progressivePayload.messages.size,
+                canLoadMoreAfter = progressivePayload.canLoadMoreAfter
+            )
+        )
+    }
+
+    @Test
+    fun threadRealOlderBoundaryReturnsAfterProgressiveWindowReachesPayloadEdge() {
+        val fullPayload =
+            KuiklyThreadScreenPayload(
+                messages = listOf(testThreadMessage("reply-0"), testThreadMessage("reply-1")),
+                canLoadMoreBefore = false,
+                olderMessagesStatus = "idle"
+            )
+
+        assertEquals(2, fullPayload.latestMessageListItemIndex())
+        assertEquals(
+            3,
+            threadMessagesLazyItemCount(
+                originStatus = fullPayload.originStatus,
+                showHistoryBoundary = true,
+                messagesCount = fullPayload.messages.size,
+                canLoadMoreAfter = fullPayload.canLoadMoreAfter
+            )
+        )
+    }
+
+    @Test
     fun threadProgressiveMessageWindowDoesNotCountSystemMessagesAsBusinessRows() {
         val messages =
             listOf(
