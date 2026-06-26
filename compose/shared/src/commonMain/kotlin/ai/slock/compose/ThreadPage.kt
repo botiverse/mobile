@@ -10352,7 +10352,8 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
             )
             Text(
                 text = action.label,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                style = (if (action.enabled) SlockType.ButtonBold else SlockType.Body)
+                    .copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
