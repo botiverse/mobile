@@ -6992,11 +6992,11 @@ private fun ThreadMessagesList(
                         }
                     }
                     .alpha(
-                        if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
-                            1f
-                        } else {
-                            0f
-                        }
+                        threadMessagesListAlpha(
+                            initialBottomAnchorReady = initialBottomAnchorReady,
+                            latestItemIndex = latestItemIndex,
+                            revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
+                        )
                     )
                     .bouncesEnable(false),
                 verticalArrangement = Arrangement.Bottom,
@@ -7596,6 +7596,12 @@ internal fun shouldRevealInitialThreadBottomAnchor(state: ThreadInitialBottomAnc
         state.isAtRenderedBottom &&
         state.attempt >= ThreadBottomAnchorMinimumAttempts &&
         (state.isContentReady || state.attempt >= ThreadInitialBottomAnchorAttempts - 1)
+
+internal fun threadMessagesListAlpha(
+    initialBottomAnchorReady: Boolean,
+    latestItemIndex: Int,
+    revealLatestLocalSendBeforeInitialAnchor: Boolean
+): Float = 1f
 
 internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
     val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
