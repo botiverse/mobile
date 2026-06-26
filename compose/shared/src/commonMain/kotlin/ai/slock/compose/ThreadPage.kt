@@ -114,11 +114,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import com.tencent.kuikly.compose.animation.core.RepeatMode
-import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
-import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
@@ -160,7 +156,6 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -8108,7 +8103,6 @@ private fun ThreadSystemMessageRow(
     timestampLabel: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
-    var pressed by remember(message.id) { mutableStateOf(false) }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, timestampLabel, expanded) {
             if (expanded) {
@@ -8136,22 +8130,7 @@ private fun ThreadSystemMessageRow(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .threadMessagePressOutline(pressed)
-                .pointerInput(message.id) {
-                    detectTapGestures(
-                        onPress = {
-                            pressed = true
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                pressed = false
-                            }
-                        },
-                        onTap = {
-                            expanded = !expanded
-                        }
-                    )
-                }
+                .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -8549,17 +8528,6 @@ private fun ThreadMessageLocalSendStatus(
 
 @Composable
 private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "thread-message-sending-spinner")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 900),
-                repeatMode = RepeatMode.Restart
-            ),
-        label = "thread-message-sending-spinner-rotation"
-    )
     Box(
         modifier =
             modifier
@@ -8569,10 +8537,7 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
     ) {
         SlockLucideIcon(
             SlockLucideIconName.Loader,
-            modifier =
-                Modifier
-                    .size(14.dp)
-                    .graphicsLayer { rotationZ = rotation },
+            modifier = Modifier.size(14.dp),
             color = SlockColor.TextMutedGrayArgb
         )
     }
