@@ -62,6 +62,7 @@ import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.model.AgentProfile
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_CUSTOM
@@ -91,6 +92,7 @@ import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampClockWithSeconds
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
+import ai.slock.compose.model.toMemberProfile
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
@@ -243,7 +245,10 @@ private fun String?.toMembersAgentDetailTabOrNull(): MembersAgentDetailTab? {
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
-    data class Content(val detail: AgentDetailSnapshot) : MembersAgentDetailLoadState
+    data class Content(
+        val detail: AgentDetailSnapshot,
+        val refreshing: Boolean = false
+    ) : MembersAgentDetailLoadState
     data class NoPermission(val code: String) : MembersAgentDetailLoadState
     data class Error(val code: String) : MembersAgentDetailLoadState
     data object Empty : MembersAgentDetailLoadState
@@ -252,7 +257,7 @@ private sealed interface MembersAgentDetailLoadState {
 private fun SharedAgentDetailState.toMembersAgentDetailLoadState(): MembersAgentDetailLoadState =
     when (detailLoadStatus) {
         SharedAgentDetailLoadStatus.Idle -> MembersAgentDetailLoadState.Idle
-        SharedAgentDetailLoadStatus.Loading -> detail?.let(MembersAgentDetailLoadState::Content)
+        SharedAgentDetailLoadStatus.Loading -> detail?.let { MembersAgentDetailLoadState.Content(it, refreshing = true) }
             ?: MembersAgentDetailLoadState.Loading
         SharedAgentDetailLoadStatus.Content -> detail?.let(MembersAgentDetailLoadState::Content)
             ?: MembersAgentDetailLoadState.Empty
@@ -1067,8 +1072,8 @@ private class MemberDetailRouteProvider(
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
         if (!hasMatchingDetail) {
             agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
-            agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
         }
+        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
         when (val detailResult = memberRepository.getAgentDetail(DataRequestPriority.Visible, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
@@ -1705,6 +1710,7 @@ private fun JSONObject?.toMemberProfile(): MemberProfile {
         kind = optString("kind").toMemberKind(),
         description = optNullableString("description"),
         roleDescription = optNullableString("roleDescription"),
+        email = optNullableString("email"),
         avatarUrl = optNullableString("avatarUrl"),
         gravatarHash = optNullableString("gravatarHash"),
         avatar = AvatarReference.fromWireValue(avatarWireValue),
@@ -2099,7 +2105,10 @@ private fun MembersDetailContent(
     val agentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-                ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
+                ?: member.toSlockAgentStatusIndicatorState(
+                    summaryStatus = detail?.summary?.status,
+                    summaryActivity = detail?.summary?.activity
+                )
         } else {
             null
         }
@@ -2574,6 +2583,7 @@ private fun MembersDetailContent(
                         item {
                             MembersHumanDetailSections(
                                 member = member,
+                                timeContext = timeContext,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         }
@@ -3263,17 +3273,13 @@ private fun MembersAgentDetailStateNotice(
 ) {
     val message =
         when (state) {
-            // Loading state is intentionally silent (#51 follow-up from @Cindy / @artin):
-            // the body banner with "Loading agent profile..." is intrusive when the
-            // detail is re-fetched after a dropdown action (e.g. lifecycle action or
-            // refresh), and a new fetch typically completes fast enough that the
-            // user-facing in-progress indicator on the action itself is enough.
-            MembersAgentDetailLoadState.Loading -> null
+            MembersAgentDetailLoadState.Loading -> "Loading agent profile..."
             MembersAgentDetailLoadState.Empty -> "Agent profile metadata is unavailable."
             is MembersAgentDetailLoadState.Error -> "Could not load agent profile: ${state.code}"
             is MembersAgentDetailLoadState.NoPermission -> "Private agent surfaces are hidden: ${state.code}"
-            MembersAgentDetailLoadState.Idle,
-            is MembersAgentDetailLoadState.Content -> null
+            MembersAgentDetailLoadState.Idle -> null
+            is MembersAgentDetailLoadState.Content ->
+                if (state.refreshing) "Refreshing agent profile..." else null
         }
     val privateMessage =
         if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
@@ -3362,18 +3368,255 @@ private fun MembersAgentRuntimeErrorBanner(
 }
 
 @Composable
-private fun MembersHumanDetailSections(member: MemberProfile, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-        MembersDetailSection(title = "PROFILE") {
-            MembersDetailField("Kind", member.kind.name)
-            MembersDetailField("Role", member.detailRoleLabel)
-            MembersDetailField("Handle", member.detailHandle)
-            MembersDetailField("Member ID", member.id.value)
+private fun MembersHumanDetailSections(
+    member: MemberProfile,
+    timeContext: SlockTimeContext,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        MembersHumanProfileSummary(member)
+        MembersHumanDescriptionSection(member)
+        MembersHumanInfoSection(member, timeContext)
+        MembersHumanCreatedAgentsSection(member)
+    }
+}
+
+@Composable
+private fun MembersHumanProfileSummary(member: MemberProfile) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = SlockSpacing.Md),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        MembersAvatar(
+            member = member,
+            avatarSize = 74.dp,
+            statusSize = 0.dp,
+            showStatusOverlay = false
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = member.displayName,
+                style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (member.membershipStatus == "removed") {
+                MembersHumanRoleChip("Removed", SlockColor.EmptyStateGray)
+            }
         }
-        MembersDetailSection(title = "STATUS") {
-            MembersDetailField("Status", member.detailStatusLabel)
-            MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
+    }
+}
+
+@Composable
+private fun MembersHumanDescriptionSection(member: MemberProfile) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle("DESCRIPTION")
+        val descriptionMissing = member.description.isNullOrBlank()
+        Text(
+            text = member.description?.takeIf { it.isNotBlank() } ?: "No description",
+            style = SlockType.Body.copy(
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                fontStyle = if (descriptionMissing) FontStyle.Italic else FontStyle.Normal
+            ),
+            color = if (descriptionMissing) {
+                SlockColor.TextMutedGray.copy(alpha = 0.75f)
+            } else {
+                SlockColor.TextBlack
+            }
+        )
+    }
+}
+
+@Composable
+private fun MembersHumanInfoSection(
+    member: MemberProfile,
+    timeContext: SlockTimeContext
+) {
+    val joined = member.joinedAt?.takeIf { it.isNotBlank() }?.membersAgentCreatedDate(timeContext)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle("INFO")
+        MembersHumanInfoItem(label = "Role") {
+            MembersHumanRoleChip(
+                label = member.roleDescription?.takeIf { it.isNotBlank() } ?: "Member",
+                backgroundColor = member.membersHumanRoleChipColor()
+            )
         }
+        member.email?.takeIf { it.isNotBlank() }?.let { email ->
+            MembersHumanInfoItem(label = "Email") {
+                Text(
+                    text = email,
+                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        joined?.takeIf { it.isNotBlank() }?.let { joinedDate ->
+            MembersHumanInfoItem(label = "Joined") {
+                Text(
+                    text = joinedDate,
+                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersHumanInfoItem(
+    label: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        content()
+    }
+}
+
+@Composable
+private fun MembersHumanRoleChip(
+    label: String,
+    backgroundColor: Color
+) {
+    Box(
+        modifier = Modifier
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(backgroundColor)
+            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun MembersHumanCreatedAgentsSection(member: MemberProfile) {
+    val createdAgents = member.createdAgents
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            MembersDetailSectionTitle("CREATED AGENTS", modifier = Modifier.weight(1f))
+            Text(
+                text = createdAgents.size.toString(),
+                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            )
+        }
+        if (createdAgents.isEmpty()) {
+            Text(
+                text = "No created agents",
+                style = SlockType.Body.copy(
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    fontStyle = FontStyle.Italic
+                ),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.75f)
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                createdAgents.forEach { agent ->
+                    MembersHumanCreatedAgentRow(agent)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersHumanCreatedAgentRow(agent: AgentProfile) {
+    val profile = remember(agent) { agent.toMemberProfile() }
+    val statusDisplayState = profile.toSlockAgentStatusIndicatorState(
+        summaryStatus = agent.statusLabel,
+        summaryActivity = agent.statusLabel
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.25f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MembersAvatar(
+            member = profile,
+            avatarSize = 32.dp,
+            statusSize = 0.dp,
+            showStatusOverlay = false
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = profile.displayName,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+                    ?: profile.detailRoleLabel,
+                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        SlockStatusIndicator(
+            color = statusDisplayState.color,
+            size = 10.dp,
+            pulsing = statusDisplayState.pulsing
+        )
     }
 }
 
@@ -5039,6 +5282,7 @@ private fun MembersAgentCreatedAgentRow(
 ) {
     val profile = remember(agent) { agent.toMemberProfile() }
     val statusDisplayState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value)
+        ?: profile.toSlockAgentStatusIndicatorState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -5076,9 +5320,9 @@ private fun MembersAgentCreatedAgentRow(
             )
         }
         SlockStatusIndicator(
-            color = statusDisplayState?.color ?: SlockColor.EmptyStateGray,
+            color = statusDisplayState.color,
             size = 10.dp,
-            pulsing = statusDisplayState?.pulsing == true
+            pulsing = statusDisplayState.pulsing
         )
     }
 }
@@ -6624,6 +6868,21 @@ internal fun MemberProfile.membersAgentStatusDisplayState(
     )
 }
 
+private fun MemberProfile.toSlockAgentStatusIndicatorState(
+    summaryStatus: String? = null,
+    summaryActivity: String? = null
+): SlockAgentStatusIndicatorState {
+    val display = membersAgentStatusDisplayState(
+        summaryStatus = summaryStatus,
+        summaryActivity = summaryActivity
+    )
+    return SlockAgentStatusIndicatorState(
+        status = display.status,
+        color = display.color,
+        pulsing = display.pulsing
+    )
+}
+
 private val MemberProfile.detailHandle: String
     get() = handle.takeIf { it.isNotBlank() }?.let { if (it.startsWith("@")) it else "@$it" } ?: id.value
 
@@ -6635,6 +6894,14 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.Human -> "Human member"
                 MemberKind.System -> "System"
             }
+
+private fun MemberProfile.membersHumanRoleChipColor(): Color =
+    when (roleDescription?.trim()?.lowercase()) {
+        "owner" -> SlockColor.AccentOrange
+        "admin" -> SlockColor.AccentPink
+        "member" -> SlockColor.AccentLavender
+        else -> if (membershipStatus == "removed") SlockColor.EmptyStateGray else SlockColor.AccentLavender
+    }
 
 private val MemberProfile.detailStatusLabel: String
     get() =
@@ -6690,7 +6957,6 @@ private fun JsonElement.membersAgentActivityErrorMessage(): String? =
         is JsonObject -> membersAgentActivityErrorMessage()
         is JsonArray -> firstNotNullOfOrNull { it.membersAgentActivityErrorMessage() }
         is JsonPrimitive -> contentOrNull?.trim()?.takeIf { it.isNotBlank() }
-        else -> null
     }
 
 private fun JsonObject.membersAgentActivityErrorMessage(): String? {

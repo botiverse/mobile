@@ -189,6 +189,29 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun setDetailLoadingKeepsSeedDetailVisibleDuringRefresh() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Agent One",
+                    handle = "agent-one",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working
+                )
+            )
+        )
+
+        s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
+
+        val state = s.state.value
+        assertEquals(SharedAgentDetailLoadStatus.Loading, state.detailLoadStatus)
+        assertEquals(testMemberId, state.detail?.agentId)
+        assertEquals("Working", state.detail?.summary?.status)
+    }
+
+    @Test
     fun selectMemberResetsTransientState() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))

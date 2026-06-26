@@ -203,6 +203,7 @@ data class MemberProfile(
     val kind: MemberKind,
     val description: String? = null,
     val roleDescription: String? = null,
+    val email: String? = null,
     val avatarUrl: String? = null,
     val gravatarHash: String? = null,
     val avatar: AvatarReference? = null,
