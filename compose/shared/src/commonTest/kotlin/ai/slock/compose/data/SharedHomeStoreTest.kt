@@ -478,6 +478,83 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun agentSessionRefreshDoesNotReloadVisibleHomeSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+        logs.clear()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Agents,
+                        reason = "agent:session",
+                        serverId = ServerId("server-1"),
+                        subjectId = "agent-1"
+                    )
+            )
+        )
+
+        assertEquals(emptyList(), api.calls)
+        assertContains(logs, "home_realtime_refresh_lightweight scope=Agents reason=agent:session")
+        scope.cancel()
+    }
+
+    @Test
+    fun machineRefreshUpdatesNotificationsWithoutReloadingVisibleHomeSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
+        val computersApi = RecordingComputersApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = api,
+                    announcementsApi = announcementsApi,
+                    computersApi = computersApi
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+        announcementsApi.calls.clear()
+        computersApi.calls.clear()
+        logs.clear()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Machines,
+                        reason = "machine:status",
+                        serverId = ServerId("server-1"),
+                        subjectId = "machine-1"
+                    )
+            )
+        )
+
+        assertEquals(emptyList(), api.calls)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(listOf("GET machines:server-1"), computersApi.calls)
+        assertContains(logs, "home_realtime_refresh_lightweight scope=Machines reason=machine:status")
+        scope.cancel()
+    }
+
+    @Test
     fun duplicatePresenceDoesNotReloadVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
