@@ -34,16 +34,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.animation.core.FiniteAnimationSpec
-import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.snap
-import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -72,14 +67,11 @@ import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
@@ -92,7 +84,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
@@ -281,141 +272,15 @@ private fun SharedActivityPanelContent(
             onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
             onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
         )
-        val swipeFilters = remember { InboxFilter.entries.toList() }
-        val selectedSwipeIndex = swipeFilters.indexOf(state.selectedFilter)
-        val swipePreviewTabs = remember { swipeFilters.map { it.toActivitySwipeTabSpec() } }
-        var dragDistancePx by remember(state.selectedFilter) { mutableStateOf(0f) }
-        var dragActive by remember(state.selectedFilter) { mutableStateOf(false) }
-        var settleTransition by remember { mutableStateOf<SlockSwipeSettleTransition<InboxFilter>?>(null) }
-        var contentWidthPx by remember { mutableStateOf(0f) }
-        val density = LocalDensity.current
-        val maxPreviewOffsetPx = with(density) { SlockTopTabBarDefaults.SwipePreviewMaxOffset.toPx() }
-        val activeSettleTransition = settleTransition
-        val settleTravelWidthPx =
-            slockSwipeTravelWidth(
-                containerWidthPx = contentWidthPx,
-                fallbackWidthPx = maxPreviewOffsetPx
-            )
-        val dragVisualOffsetPx =
-            slockSwipeDragOffset(
-                horizontalDistance = dragDistancePx,
-                travelWidthPx = settleTravelWidthPx,
-                fallbackOffsetPx = maxPreviewOffsetPx,
-                hasPrevious = selectedSwipeIndex > 0,
-                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeFilters.lastIndex,
-                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
-            )
-        val activeDragTransition =
-            if (activeSettleTransition == null && dragActive) {
-                slockSwipeDragTransition(
-                    items = swipeFilters,
-                    selected = state.selectedFilter,
-                    visualOffsetPx = dragVisualOffsetPx
-                )
-            } else {
-                null
-            }
-        val visualTargetOffsetPx =
-            activeSettleTransition?.let {
-                slockSwipeSettleTargetOffset(
-                    travelWidthPx = settleTravelWidthPx,
-                    directionSign = it.directionSign
-                )
-            } ?: dragVisualOffsetPx
-        val settleSpec: FiniteAnimationSpec<Float> =
-            if (dragActive) snap() else tween(durationMillis = SlockTopTabBarDefaults.SwipeSettleAnimationMs)
-        val visualOffsetPx by key(state.selectedFilter) {
-            animateFloatAsState(
-                targetValue = visualTargetOffsetPx,
-                animationSpec = settleSpec,
-                finishedListener = { finishedValue ->
-                    val transition = settleTransition ?: return@animateFloatAsState
-                    val targetOffset =
-                        slockSwipeSettleTargetOffset(
-                            travelWidthPx = slockSwipeTravelWidth(
-                                containerWidthPx = contentWidthPx,
-                                fallbackWidthPx = maxPreviewOffsetPx
-                            ),
-                            directionSign = transition.directionSign
-                        )
-                    if (abs(finishedValue - targetOffset) <= 0.5f) {
-                        onIntent(SharedActivityIntent.SetFilter(transition.to))
-                        settleTransition = null
-                    }
-                }
-            )
-        }
-        val activityContent: @Composable (InboxFilter, Modifier) -> Unit = { filter, contentModifier ->
-            SharedActivityBodyContent(
-                state =
-                    if (filter == state.selectedFilter) {
-                        state
-                    } else {
-                        SharedActivityState(selectedFilter = filter, loading = true)
-                    },
-                onOpenMessage = onOpenMessage,
-                onIntent = onIntent,
-                bottomContentPadding = bottomContentPadding,
-                timeContext = timeContext,
-                listState = listState,
-                modifier = contentModifier
-            )
-        }
-        Box(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clipToBounds()
-                    .onSizeChanged { contentWidthPx = it.width.toFloat() }
-                    .slockSwipeSelection(
-                        items = swipeFilters,
-                        selected = state.selectedFilter,
-                        enabled = SlockTopTabBarDefaults.SwipeGesturesEnabled,
-                        onDragActiveChange = { active ->
-                            dragActive = active
-                            if (!active) {
-                                dragDistancePx = 0f
-                            }
-                        },
-                        onDragDistanceChange = { dragDistancePx = it },
-                        onSelectedChange = { next ->
-                            val nextSwipeIndex = swipeFilters.indexOf(next)
-                            val directionSign =
-                                slockSwipeDirectionSign(
-                                    currentIndex = selectedSwipeIndex,
-                                    nextIndex = nextSwipeIndex
-                                )
-                            if (directionSign == 0 || settleTravelWidthPx <= 0f) {
-                                onIntent(SharedActivityIntent.SetFilter(next))
-                            } else {
-                                settleTransition =
-                                    SlockSwipeSettleTransition(
-                                        from = state.selectedFilter,
-                                        to = next,
-                                        directionSign = directionSign
-                                    )
-                            }
-                        }
-                    )
-        ) {
-            if (activeSettleTransition == null && activeDragTransition == null) {
-                SlockSwipeSelectionPreview(
-                    previous = swipePreviewTabs.getOrNull(selectedSwipeIndex - 1),
-                    next = swipePreviewTabs.getOrNull(selectedSwipeIndex + 1),
-                    visualOffsetPx = visualOffsetPx,
-                    thresholdOffsetPx = maxPreviewOffsetPx
-                )
-            }
-            SlockSwipeSlidingContent(
-                selected = state.selectedFilter,
-                transition = activeSettleTransition,
-                dragTransition = activeDragTransition,
-                visualOffsetPx = visualOffsetPx,
-                travelWidthPx = settleTravelWidthPx,
-                content = activityContent
-            )
-        }
+        SharedActivityBodyContent(
+            state = state,
+            onOpenMessage = onOpenMessage,
+            onIntent = onIntent,
+            bottomContentPadding = bottomContentPadding,
+            timeContext = timeContext,
+            listState = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        )
     }
 }
 
@@ -1119,18 +984,6 @@ private val InboxFilter.label: String
             InboxFilter.Unread -> "Unread"
             InboxFilter.Mentions -> "Mentions"
         }
-
-private fun InboxFilter.toActivitySwipeTabSpec(): SlockTabSpec<InboxFilter> =
-    SlockTabSpec(
-        key = this,
-        label = label,
-        iconName =
-            when (this) {
-                InboxFilter.All -> SlockLucideIconName.Activity
-                InboxFilter.Unread -> SlockLucideIconName.Mail
-                InboxFilter.Mentions -> SlockLucideIconName.AtSign
-            }
-    )
 
 private fun InboxFilter.emptyCopy(): String =
     when (this) {
