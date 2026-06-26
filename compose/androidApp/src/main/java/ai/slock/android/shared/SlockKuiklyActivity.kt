@@ -2048,6 +2048,7 @@ internal class SlockKuiklyBridgeModule(
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
+        val recentLogs = SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(appContext)
         return buildString {
             appendLine("Raft diagnostics")
             appendLine()
@@ -2075,6 +2076,10 @@ internal class SlockKuiklyBridgeModule(
                 }
             )
             appendDiagnosticsLine("Attachment", "App-owned diagnostics JSONL files are included in this zip when available.")
+            appendLine()
+            appendLine("Recent logs")
+            appendLine()
+            appendLine(recentLogs.trim().ifBlank { "No local diagnostics log files are currently available." })
         }
     }
 

@@ -7822,8 +7822,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("copyLogs", SlockLucideIconName.Copy, "Copy diagnostics", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Share diagnostics", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Export logs", "Export environment, status, and recent app JSONL logs.", status = if (diagnosticsExportAvailable) "Export" else "Disabled", enabled = diagnosticsExportAvailable),
                             KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized diagnostics with support.", status = "Send", enabled = true)
                         )
                 )
