@@ -163,10 +163,10 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun latestMessageListItemIndex_originMessageDoesNotParticipateInScrollableItems() {
+    fun latestMessageListItemIndex_originMessageParticipatesInScrollableItemsAgain() {
         val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
             .latestMessageListItemIndexPublic()
-        assertEquals(2, sig)
+        assertEquals(3, sig)
     }
 
     @Test
@@ -214,8 +214,8 @@ class ThreadBottomAnchorSignatureTest {
             )
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
-        assertEquals(2, latestIndex)
-        assertEquals(2, threadInitialFirstVisibleItemIndex(latestIndex))
+        assertEquals(3, latestIndex)
+        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(
@@ -600,7 +600,6 @@ class ThreadBottomAnchorSignatureTest {
             shouldRevealInitialThreadBottomAnchor(
                 ThreadInitialBottomAnchorState(
                     canScrollToLatest = true,
-                    isContentReady = true,
                     isAtRenderedBottom = false,
                     attempt = 12
                 )
@@ -611,7 +610,6 @@ class ThreadBottomAnchorSignatureTest {
             shouldRevealInitialThreadBottomAnchor(
                 ThreadInitialBottomAnchorState(
                     canScrollToLatest = true,
-                    isContentReady = true,
                     isAtRenderedBottom = true,
                     attempt = 1
                 )
@@ -622,31 +620,8 @@ class ThreadBottomAnchorSignatureTest {
             shouldRevealInitialThreadBottomAnchor(
                 ThreadInitialBottomAnchorState(
                     canScrollToLatest = false,
-                    isContentReady = true,
                     isAtRenderedBottom = true,
                     attempt = 12
-                )
-            )
-        )
-        assertEquals(
-            false,
-            shouldRevealInitialThreadBottomAnchor(
-                ThreadInitialBottomAnchorState(
-                    canScrollToLatest = true,
-                    isContentReady = false,
-                    isAtRenderedBottom = true,
-                    attempt = 2
-                )
-            )
-        )
-        assertEquals(
-            false,
-            shouldRevealInitialThreadBottomAnchor(
-                ThreadInitialBottomAnchorState(
-                    canScrollToLatest = true,
-                    isContentReady = false,
-                    isAtRenderedBottom = true,
-                    attempt = 11
                 )
             )
         )
@@ -655,7 +630,6 @@ class ThreadBottomAnchorSignatureTest {
             shouldRevealInitialThreadBottomAnchor(
                 ThreadInitialBottomAnchorState(
                     canScrollToLatest = true,
-                    isContentReady = true,
                     isAtRenderedBottom = true,
                     attempt = 2
                 )

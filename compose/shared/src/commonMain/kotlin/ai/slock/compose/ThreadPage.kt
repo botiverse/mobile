@@ -172,7 +172,6 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.IntSize
@@ -218,7 +217,6 @@ private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_me
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
-private const val ThreadFirstContentExtrasDelayMs = 96L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
@@ -237,14 +235,6 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Bo
                 originMessage == null &&
                 originPreview.isNullOrBlank()
         )
-
-internal fun KuiklyThreadScreenPayload.shouldStageThreadFirstContentExtras(): Boolean =
-    status == "content" && !hasInitialFullRendererMarkdown()
-
-private fun KuiklyThreadScreenPayload.hasInitialFullRendererMarkdown(): Boolean =
-    messages
-        .takeLast(ThreadInitialMarkdownPreparseMessageCount)
-        .any { message -> message.body.preparedSlockMarkdownFullRendererContentOrNull() != null }
 
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
@@ -343,7 +333,6 @@ private object ThreadLocalSendNextId {
 internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 internal const val ThreadReplyEmptyTitle = "No replies yet"
-private const val ThreadRichContentVisibleMessageBuffer = 1
 internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -2927,18 +2916,6 @@ internal fun SharedThreadRouteContent(
             )
         }
     val renderedThread = routeUiState.thread
-    var firstContentExtrasVisible by remember(threadInstanceKey, renderedThread.status) {
-        mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
-    }
-    LaunchedEffect(threadInstanceKey, renderedThread.status) {
-        if (renderedThread.shouldStageThreadFirstContentExtras()) {
-            firstContentExtrasVisible = false
-            delay(ThreadFirstContentExtrasDelayMs)
-            firstContentExtrasVisible = true
-        } else {
-            firstContentExtrasVisible = true
-        }
-    }
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -3539,7 +3516,7 @@ internal fun SharedThreadRouteContent(
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
-            contentExtrasVisible = firstContentExtrasVisible,
+            contentExtrasVisible = true,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
             onFilesAuthRequired = { code -> routeAuthRequired(code) },
             onOpenFilesAttachment = { attachment, imageGroup ->
@@ -7062,12 +7039,6 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
-    val density = LocalDensity.current
-    val initialContentLayoutKey =
-        renderPayload.threadInitialContentLayoutKey()
-    val initialMessageMinHeightsPx = remember(initialContentLayoutKey, density) {
-        renderPayload.threadInitialMessageMinHeightsPx(density)
-    }
     val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
     val lazyItemCount =
         remember(
@@ -7086,47 +7057,6 @@ private fun ThreadMessagesList(
         }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(payload.olderMessagesStatus) }
-    var richContentMessageRange by remember(threadInstanceKey) {
-        mutableStateOf(
-            threadInitialRichContentMessageRange(
-                messagesCount = renderPayload.messages.size,
-                focusedMessageIndex = focusedMessageIndex
-            )
-        )
-    }
-    var measuredMessageHeightsPx by remember(threadInstanceKey) { mutableStateOf<Map<String, Int>>(emptyMap()) }
-    val focusedAnchorMessage =
-        renderPayload.focusedMessageId
-            ?.takeIf { it.isNotBlank() }
-            ?.let { messageId -> renderPayload.messages.firstOrNull { message -> message.id == messageId } }
-    val latestAnchorMessage = renderPayload.messages.lastOrNull()
-    val focusedMessageRequiresMeasuredRichHeight =
-        focusedAnchorMessage.requiresThreadMeasuredRichHeight()
-    val latestMessageRequiresMeasuredRichHeight =
-        latestAnchorMessage.requiresThreadMeasuredRichHeight()
-    val focusedMessageMeasuredHeightPx =
-        focusedAnchorMessage
-            ?.let { message -> measuredMessageHeightsPx[message.id] }
-            ?: 0
-    val latestMessageMeasuredHeightPx =
-        latestAnchorMessage
-            ?.let { message -> measuredMessageHeightsPx[message.id] }
-            ?: 0
-    LaunchedEffect(
-        threadInstanceKey,
-        renderPayload.messages.size,
-        renderPayload.messages.firstOrNull()?.id,
-        renderPayload.messages.lastOrNull()?.id,
-        focusedMessageIndex
-    ) {
-        if (listState.layoutInfo.visibleItemsInfo.isEmpty()) {
-            richContentMessageRange =
-                threadInitialRichContentMessageRange(
-                    messagesCount = renderPayload.messages.size,
-                    focusedMessageIndex = focusedMessageIndex
-                )
-        }
-    }
     LaunchedEffect(threadInstanceKey, renderPayload.messages.size, lazyItemCount) {
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
@@ -7177,23 +7107,6 @@ private fun ThreadMessagesList(
                     allowBottomAutoAnchor = nextAllow
                 }
             }
-    }
-    LaunchedEffect(
-        threadInstanceKey,
-        renderPayload.messages.size,
-        renderPayload.messages.firstOrNull()?.id,
-        renderPayload.messages.lastOrNull()?.id,
-        focusedMessageIndex,
-        lazyItemCount
-    ) {
-        snapshotFlow {
-            listState.threadVisibleRichContentMessageRange(
-                payload = renderPayload,
-                fallbackFocusedMessageIndex = focusedMessageIndex
-            )
-        }
-            .distinctUntilChanged()
-            .collect { range -> richContentMessageRange = range }
     }
     LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
         if (latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
@@ -7296,9 +7209,7 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         renderPayload.focusedMessageId,
         renderPayload.messages.size,
-        lazyItemCount,
-        focusedMessageRequiresMeasuredRichHeight,
-        focusedMessageMeasuredHeightPx
+        lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (targetMessageId == consumedFocusedMessageId && activeFocusedMessageId == null) {
@@ -7312,37 +7223,9 @@ private fun ThreadMessagesList(
         if (!listState.canScrollToThreadItem(targetIndex)) {
             return@LaunchedEffect
         }
-        val targetMessageIndex = targetIndex - renderPayload.firstMessageListItemIndex()
-        richContentMessageRange =
-            threadBufferedMessageRange(
-                firstMessageIndex = targetMessageIndex,
-                lastMessageIndex = targetMessageIndex,
-                messagesCount = renderPayload.messages.size
-            )
         if (!listState.isThreadItemVisible(targetIndex)) {
             listState.scrollToItem(targetIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
-            return@LaunchedEffect
-        }
-        if (
-            focusedMessageRequiresMeasuredRichHeight &&
-            !isThreadMeasuredRichHeightReady(focusedMessageMeasuredHeightPx)
-        ) {
-            diagnosticsLogger(
-                "thread_focused_message_anchor result=waiting_for_measured_rich_height " +
-                    "messageId=$targetMessageId targetIndex=$targetIndex"
-            )
-            return@LaunchedEffect
-        }
-        if (!listState.awaitThreadItemMeasuredHeight(
-                itemIndex = targetIndex,
-                minHeightsByListItemIndex = initialMessageMinHeightsPx
-            )
-        ) {
-            diagnosticsLogger(
-                "thread_focused_message_anchor result=missing_measured_height " +
-                    "messageId=$targetMessageId targetIndex=$targetIndex"
-            )
             return@LaunchedEffect
         }
         activeFocusedMessageId = targetMessageId
@@ -7350,8 +7233,7 @@ private fun ThreadMessagesList(
         initialBottomAnchorReady = true
         val didFocus =
             listState.scrollThreadItemToFocusedViewport(
-                itemIndex = targetIndex,
-                minHeightsByListItemIndex = initialMessageMinHeightsPx
+                itemIndex = targetIndex
             )
         if (!didFocus) {
             diagnosticsLogger(
@@ -7371,9 +7253,7 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         renderPayload.focusedMessageId,
         latestMessageLayoutKey,
-        latestItemIndex,
-        latestMessageRequiresMeasuredRichHeight,
-        latestMessageMeasuredHeightPx
+        latestItemIndex
     ) {
         if (latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
@@ -7389,22 +7269,11 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@LaunchedEffect
         }
-        if (
-            latestMessageRequiresMeasuredRichHeight &&
-            !isThreadMeasuredRichHeightReady(latestMessageMeasuredHeightPx)
-        ) {
-            diagnosticsLogger(
-                "thread_initial_bottom_anchor result=waiting_for_measured_rich_height " +
-                    "latestItemIndex=$latestItemIndex"
-            )
-            return@LaunchedEffect
-        }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
                 val anchored =
                     listState.anchorInitialThreadBottomToLatest(
-                        latestItemIndex = latestItemIndex,
-                        minHeightsByListItemIndex = initialMessageMinHeightsPx
+                        latestItemIndex = latestItemIndex
                     )
                 if (anchored) {
                     initialBottomAnchorReady = true
@@ -7465,39 +7334,6 @@ private fun ThreadMessagesList(
         pendingKeyboardBottomAnchor = false
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        if (renderPayload.hasThreadOriginItem()) {
-            ThreadOriginCard(
-                payload = payload,
-                linkedTasksByMessageLookup = linkedTasksByMessageLookup,
-                highlightedMentions = highlightedMentions,
-                pendingActionCardIds = pendingActionCardIds,
-                attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                currentServerSlug = currentServerSlug,
-                contentExtrasVisible = contentExtrasVisible,
-                knownMarkdownChannelNames = knownMarkdownChannelNames,
-                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                diagnosticsLogger = diagnosticsLogger,
-                onThreadEvent = onThreadEvent,
-                onOpenMember = onOpenMember,
-                onShowActions = { message, anchor ->
-                    actionMenuAnchor = anchor
-                    actionMessageId = message.id
-                    diagnosticsLogger(
-                        "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                    )
-                },
-                onOpenTaskStatusMenu = { message, anchor ->
-                    taskStatusMenuMessageId = message.id
-                    taskStatusMenuAnchor = anchor
-                },
-                onMentionAuthor = onMentionAuthor,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                onOpenMarkdownTag = onOpenMarkdownTag,
-                onOpenMarkdownUrl = onOpenMarkdownUrl
-            )
-        }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 state = listState,
@@ -7520,6 +7356,41 @@ private fun ThreadMessagesList(
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
+            if (renderPayload.hasThreadOriginItem()) {
+                item(key = ThreadOriginListItemKey) {
+                    ThreadOriginCard(
+                        payload = payload,
+                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                        highlightedMentions = highlightedMentions,
+                        pendingActionCardIds = pendingActionCardIds,
+                        attachmentOpenStates = attachmentOpenStates,
+                        attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        currentServerSlug = currentServerSlug,
+                        contentExtrasVisible = contentExtrasVisible,
+                        knownMarkdownChannelNames = knownMarkdownChannelNames,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        diagnosticsLogger = diagnosticsLogger,
+                        onThreadEvent = onThreadEvent,
+                        onOpenMember = onOpenMember,
+                        onShowActions = { message, anchor ->
+                            actionMenuAnchor = anchor
+                            actionMessageId = message.id
+                            diagnosticsLogger(
+                                "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                            )
+                        },
+                        onOpenTaskStatusMenu = { message, anchor ->
+                            taskStatusMenuMessageId = message.id
+                            taskStatusMenuAnchor = anchor
+                        },
+                        onMentionAuthor = onMentionAuthor,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        onOpenMarkdownTag = onOpenMarkdownTag,
+                        onOpenMarkdownUrl = onOpenMarkdownUrl
+                    )
+                }
+            }
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
@@ -7548,21 +7419,7 @@ private fun ThreadMessagesList(
                 }
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
-                val isRichContentEnabled = contentExtrasVisible && absoluteMessageIndex in richContentMessageRange
-                val shouldCacheMeasuredHeight = remember(message.messageType) {
-                    message.shouldCacheMeasuredThreadRowHeight()
-                }
-                val messageMinimumHeight =
-                    with(density) {
-                        val cachedHeightPx =
-                            if (shouldCacheMeasuredHeight) {
-                                measuredMessageHeightsPx[message.id]
-                            } else {
-                                null
-                            }
-                                ?: message.threadInitialMessageMinHeightDp().toPx().roundToInt()
-                        cachedHeightPx.toDp()
-                    }
+                val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
                     if (isRichContentEnabled) {
                         remember(message.id, message.metadata) { message.threadActionCardSignature() }
@@ -7600,8 +7457,7 @@ private fun ThreadMessagesList(
                                 "hasActionCard=${actionCard != null} " +
                                 "attachmentCount=${message.attachments.size} " +
                                 "threadId=${payload.sourceThreadId.orEmpty()} " +
-                                "messagesTotal=${payload.messages.size} richContentRange=${richContentMessageRange.first}.." +
-                                "${richContentMessageRange.last} " +
+                                "messagesTotal=${payload.messages.size} richContentEnabled=$isRichContentEnabled " +
                                 "renderMessages=${renderPayload.messages.size}"
                         )
                     }
@@ -7625,15 +7481,8 @@ private fun ThreadMessagesList(
                 Box(
                     modifier =
                         Modifier
-                            .heightIn(min = messageMinimumHeight)
-                            .onGloballyPositioned { coordinates ->
+                            .onGloballyPositioned {
                                 firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
-                                if (isRichContentEnabled && shouldCacheMeasuredHeight) {
-                                    val measuredHeight = coordinates.size.height
-                                    if (measuredHeight > 0 && measuredMessageHeightsPx[message.id] != measuredHeight) {
-                                        measuredMessageHeightsPx = measuredMessageHeightsPx + (message.id to measuredHeight)
-                                    }
-                                }
                             }
                 ) {
                     if (isSystemMessage && actionCard == null) {
@@ -7829,6 +7678,7 @@ private fun ThreadMessagesList(
 
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
+private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 internal data class ThreadInlineActionSpec(
     val label: String,
@@ -7871,7 +7721,8 @@ internal fun threadMessagesLazyItemCount(
     messagesCount: Int,
     canLoadMoreAfter: Boolean
 ): Int =
-    (if (showHistoryBoundary) 1 else 0) +
+    (if (originStatus != "none") 1 else 0) +
+        (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
@@ -7891,78 +7742,8 @@ private data class ThreadLazyWindowStats(
     val visibleMessages: Int
 )
 
-private data class ThreadVisibleMessageRange(
-    val firstVisibleMessageIndex: Int,
-    val lastVisibleMessageIndex: Int
-)
-
 private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
     "message:$index:${messageId.take(8)}"
-
-private fun LazyListState.threadVisibleMessageRange(
-    payload: KuiklyThreadScreenPayload
-): ThreadVisibleMessageRange {
-    val firstMessageListItemIndex = payload.firstMessageListItemIndex()
-    val visibleMessageIndexes =
-        layoutInfo.visibleItemsInfo.mapNotNull { item ->
-            (item.index - firstMessageListItemIndex)
-                .takeIf { it in payload.messages.indices }
-        }
-    return ThreadVisibleMessageRange(
-        firstVisibleMessageIndex = visibleMessageIndexes.firstOrNull() ?: -1,
-        lastVisibleMessageIndex = visibleMessageIndexes.lastOrNull() ?: -1
-    )
-}
-
-internal fun threadInitialRichContentMessageRange(
-    messagesCount: Int,
-    focusedMessageIndex: Int = -1
-): IntRange {
-    if (messagesCount <= 0) return 1..0
-    val anchor =
-        if (focusedMessageIndex >= 0) {
-            focusedMessageIndex.coerceIn(0, messagesCount - 1)
-        } else {
-            messagesCount - 1
-        }
-    return threadBufferedMessageRange(
-        firstMessageIndex = anchor,
-        lastMessageIndex = anchor,
-        messagesCount = messagesCount
-    )
-}
-
-internal fun threadBufferedMessageRange(
-    firstMessageIndex: Int,
-    lastMessageIndex: Int,
-    messagesCount: Int,
-    buffer: Int = ThreadRichContentVisibleMessageBuffer
-): IntRange {
-    if (messagesCount <= 0 || firstMessageIndex < 0 || lastMessageIndex < 0) return 1..0
-    val first = firstMessageIndex.coerceAtMost(lastMessageIndex)
-    val last = lastMessageIndex.coerceAtLeast(firstMessageIndex)
-    val start = (first - buffer.coerceAtLeast(0)).coerceAtLeast(0)
-    val end = (last + buffer.coerceAtLeast(0)).coerceAtMost(messagesCount - 1)
-    return start..end
-}
-
-private fun LazyListState.threadVisibleRichContentMessageRange(
-    payload: KuiklyThreadScreenPayload,
-    fallbackFocusedMessageIndex: Int = -1
-): IntRange {
-    val visible = threadVisibleMessageRange(payload)
-    if (visible.firstVisibleMessageIndex < 0 || visible.lastVisibleMessageIndex < 0) {
-        return threadInitialRichContentMessageRange(
-            messagesCount = payload.messages.size,
-            focusedMessageIndex = fallbackFocusedMessageIndex
-        )
-    }
-    return threadBufferedMessageRange(
-        firstMessageIndex = visible.firstVisibleMessageIndex,
-        lastMessageIndex = visible.lastVisibleMessageIndex,
-        messagesCount = payload.messages.size
-    )
-}
 
 private fun LazyListState.threadLazyWindowStats(
     payload: KuiklyThreadScreenPayload,
@@ -8062,10 +7843,11 @@ private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
     originStatus != "none"
 
 private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
-    0
+    if (hasThreadOriginItem()) 1 else 0
 
 private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
+    if (hasThreadOriginItem()) index += 1
     if (hasThreadHistoryBoundaryItem()) index += 1
     return index
 }
@@ -8180,7 +7962,6 @@ internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonS
 
 internal data class ThreadInitialBottomAnchorState(
     val canScrollToLatest: Boolean,
-    val isContentReady: Boolean,
     val isAtRenderedBottom: Boolean,
     val attempt: Int
 )
@@ -8188,8 +7969,7 @@ internal data class ThreadInitialBottomAnchorState(
 internal fun shouldRevealInitialThreadBottomAnchor(state: ThreadInitialBottomAnchorState): Boolean =
     state.canScrollToLatest &&
         state.isAtRenderedBottom &&
-        state.attempt >= ThreadBottomAnchorMinimumAttempts &&
-        state.isContentReady
+        state.attempt >= ThreadBottomAnchorMinimumAttempts
 
 internal fun threadMessagesListAlpha(
     initialBottomAnchorReady: Boolean,
@@ -8222,73 +8002,6 @@ internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String?
         append(':')
         append(latest.pendingSendContext.attachmentIds.size)
     }
-}
-
-private fun KuiklyThreadScreenPayload.threadInitialContentLayoutKey(): String =
-    buildString {
-        append(originStatus)
-        append(':')
-        append(hasThreadHistoryBoundaryItem())
-        append(':')
-        append(canLoadMoreAfter)
-        append(':')
-        append(messages.size)
-        messages.forEach { message ->
-            append('|')
-            append(message.id)
-            append(':')
-            append(message.messageType)
-            append(':')
-            append(message.body.length)
-            append(':')
-            append(message.attachments.size)
-            append(':')
-            append(message.taskId.orEmpty())
-            append(':')
-            append(message.replyCount)
-            append(':')
-            append(message.unreadReplyCount)
-        }
-    }
-
-private fun KuiklyThreadScreenPayload.threadInitialMessageMinHeightsPx(density: Density): Map<Int, Int> {
-    if (messages.isEmpty()) return emptyMap()
-    val firstMessageIndex = firstMessageListItemIndex()
-    return messages.mapIndexed { index, message ->
-        val minHeightPx =
-            with(density) {
-                message.threadInitialMessageMinHeightDp().toPx().roundToInt()
-            }
-        firstMessageIndex + index to minHeightPx
-    }.toMap()
-}
-
-internal fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
-    if (isSystemMessage()) {
-        return ThreadSystemMessageCollapsedMinHeight
-    }
-    val bodyLines = body.threadInitialMarkdownLineEstimate()
-    val bodyHeight = if (bodyLines > 0) bodyLines * 16f else 0f
-    val attachmentHeight = attachments.size.coerceAtMost(2) * 44f
-    val footerHeight =
-        if (replyCount > 0 || unreadReplyCount > 0 || !taskId.isNullOrBlank() || reactions.any { it.count > 0 }) {
-            28f
-        } else {
-            0f
-        }
-    return (48f + bodyHeight + attachmentHeight + footerHeight)
-        .coerceAtLeast(58f)
-        .coerceAtMost(260f)
-        .dp
-}
-
-private fun String.threadInitialMarkdownLineEstimate(): Int {
-    if (isBlank()) return 0
-    val softWrappedLines =
-        lineSequence()
-            .map { line -> (line.length / ThreadInitialMarkdownEstimatedCharsPerLine) + 1 }
-            .sum()
-    return softWrappedLines.coerceIn(1, ThreadInitialMarkdownMaxEstimatedLines)
 }
 
 private fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
@@ -8375,8 +8088,7 @@ private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
 
 private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
-    latestItemIndex: Int,
-    minHeightsByListItemIndex: Map<Int, Int>
+    latestItemIndex: Int
 ): Boolean {
     if (latestItemIndex < 0) return true
     repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
@@ -8391,19 +8103,13 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
             scrollToItem(latestItemIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
-        awaitThreadMessagesLayoutStability(latestItemIndex, minHeightsByListItemIndex)
-        val contentReady = isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)
-        if (contentReady) {
-            scrollLatestItemToRenderedBottom(latestItemIndex)
-        } else {
-            scrollToItem(latestItemIndex)
-        }
+        awaitThreadMessagesLayoutStability(latestItemIndex)
+        scrollLatestItemToRenderedBottom(latestItemIndex)
         delay(ThreadLayoutStabilityFrameDelayMs)
 
         val anchorState =
             ThreadInitialBottomAnchorState(
                 canScrollToLatest = canScrollToLatest,
-                isContentReady = contentReady,
                 isAtRenderedBottom = isLatestItemAtRenderedBottom(latestItemIndex),
                 attempt = attempt
             )
@@ -8415,10 +8121,7 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
         return false
     }
     scrollToItem(latestItemIndex)
-    awaitThreadMessagesLayoutStability(latestItemIndex, minHeightsByListItemIndex)
-    if (!isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)) {
-        return false
-    }
+    awaitThreadMessagesLayoutStability(latestItemIndex)
     scrollLatestItemToRenderedBottom(latestItemIndex)
     delay(ThreadLayoutStabilityFrameDelayMs)
     return isLatestItemAtRenderedBottom(latestItemIndex)
@@ -8445,10 +8148,7 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
-private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
-    itemIndex: Int,
-    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
-): Boolean {
+private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: Int): Boolean {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
         return false
     }
@@ -8457,14 +8157,6 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
         if (item == null) {
             scrollToItem(itemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            return@repeat
-        }
-        if (!isThreadMeasuredItemReady(
-                itemSize = item.size,
-                minHeight = minHeightsByListItemIndex[itemIndex] ?: 0
-            )
-        ) {
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@repeat
         }
@@ -8482,15 +8174,13 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
 }
 
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
-    latestItemIndex: Int,
-    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
+    latestItemIndex: Int
 ): Boolean {
     var previous: ThreadMessagesLayoutStabilitySnapshot? = null
     var stableFrames = 0
     repeat(ThreadLayoutStabilityMaxFrames) {
         val current = threadMessagesLayoutStabilitySnapshot(latestItemIndex)
-        val contentReady = isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)
-        if (current.canAnchor && contentReady && current == previous) {
+        if (current.canAnchor && current == previous) {
             stableFrames += 1
             if (stableFrames >= ThreadLayoutStabilityRequiredFrames) {
                 return true
@@ -8503,70 +8193,6 @@ private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
     }
     return false
 }
-
-private suspend fun LazyListState.awaitThreadItemMeasuredHeight(
-    itemIndex: Int,
-    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
-): Boolean {
-    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) return false
-    repeat(ThreadLayoutStabilityMaxFrames) {
-        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
-        if (item == null) {
-            scrollToItem(itemIndex)
-        } else if (
-            isThreadMeasuredItemReady(
-                itemSize = item.size,
-                minHeight = minHeightsByListItemIndex[itemIndex] ?: 0
-            )
-        ) {
-            return true
-        }
-        delay(ThreadLayoutStabilityFrameDelayMs)
-    }
-    return false
-}
-
-private fun LazyListState.isInitialThreadContentReady(
-    latestItemIndex: Int,
-    minHeightsByListItemIndex: Map<Int, Int>
-): Boolean {
-    val layoutInfo = layoutInfo
-    if (latestItemIndex < 0 || layoutInfo.totalItemsCount <= latestItemIndex) return false
-    val visibleItems = layoutInfo.visibleItemsInfo
-    val latestItem = visibleItems.firstOrNull { it.index == latestItemIndex } ?: return false
-    if (!isThreadMeasuredItemReady(
-            itemSize = latestItem.size,
-            minHeight = minHeightsByListItemIndex[latestItemIndex] ?: 0
-        )
-    ) {
-        return false
-    }
-    if (minHeightsByListItemIndex.isEmpty()) return true
-    return visibleItems
-        .asSequence()
-        .filter { item -> minHeightsByListItemIndex.containsKey(item.index) }
-        .all { item ->
-            isThreadMeasuredItemReady(
-                itemSize = item.size,
-                minHeight = minHeightsByListItemIndex[item.index] ?: 0
-            )
-        }
-}
-
-internal fun isThreadMeasuredItemReady(itemSize: Int, minHeight: Int): Boolean {
-    if (itemSize <= 0) return false
-    if (minHeight <= 0) return true
-    return itemSize + ThreadInitialContentHeightTolerancePx >= minHeight
-}
-
-internal fun isThreadMeasuredRichHeightReady(measuredHeightPx: Int): Boolean =
-    measuredHeightPx > 0
-
-internal fun KuiklyThreadMessageItem?.requiresThreadMeasuredRichHeight(): Boolean =
-    this != null && !isSystemMessage()
-
-internal fun KuiklyThreadMessageItem.shouldCacheMeasuredThreadRowHeight(): Boolean =
-    !isSystemMessage()
 
 private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
     latestItemIndex: Int
@@ -8691,10 +8317,6 @@ private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
-private const val ThreadInitialContentHeightTolerancePx = 8
-private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
-private const val ThreadInitialMarkdownMaxEstimatedLines = 8
-private val ThreadSystemMessageCollapsedMinHeight = 32.dp
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
