@@ -5789,7 +5789,7 @@ private fun ThreadPageContent(
         remember(payload.members) {
             { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
         }
-    val selectThreadTab: (KuiklyThreadTab, SlockSelectionChangeSource) -> Unit = { tab, _ ->
+    val selectThreadTab: (KuiklyThreadTab) -> Unit = { tab ->
         selectedTab = tab
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
@@ -5881,8 +5881,6 @@ private fun ThreadPageContent(
                     onSelectedKeyChange = selectThreadTab,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     itemKeyPrefix = "thread-tab",
-                    swipeEnabled = SlockTopTabBarDefaults.SwipeGesturesEnabled,
-                    canSwipe = { activeModal == null },
                     content = renderThreadTabContent
                 )
             } else {
