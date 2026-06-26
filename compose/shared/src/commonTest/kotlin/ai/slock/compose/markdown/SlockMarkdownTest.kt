@@ -253,6 +253,32 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownTextStyleRaisesLineHeightForInlineChips() {
+        val style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+
+        val resolvedStyle = slockMarkdownTextStyleWithInlineLineHeight(style)
+        val typography = slockMarkdownTypography(style)
+
+        assertEquals(24.sp, resolvedStyle.lineHeight)
+        assertEquals(24.sp, typography.text.lineHeight)
+        assertEquals(24.sp, typography.paragraph.lineHeight)
+        assertEquals(24.sp, typography.inlineCode.lineHeight)
+        assertEquals(SlockType.Body.fontFamily, resolvedStyle.fontFamily)
+    }
+
+    @Test
+    fun markdownTextStyleKeepsRoomierLineHeight() {
+        val style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 28.sp)
+
+        val resolvedStyle = slockMarkdownTextStyleWithInlineLineHeight(style)
+        val typography = slockMarkdownTypography(style)
+
+        assertEquals(28.sp, resolvedStyle.lineHeight)
+        assertEquals(28.sp, typography.text.lineHeight)
+        assertEquals(28.sp, typography.inlineCode.lineHeight)
+    }
+
+    @Test
     fun plainTextFastPathOnlyAcceptsBodiesWithoutMarkdownWork() {
         assertTrue("Short plain reply.".shouldUseSlockMarkdownPlainTextFastPath())
         assertTrue("中文普通消息 123".shouldUseSlockMarkdownPlainTextFastPath())

@@ -1021,11 +1021,17 @@ private fun FontWeight?.slockMarkdownTextConstWeight(): String =
         else -> "400"
     }
 
+private val SlockMarkdownBodyFontSize = 14.sp
+private val SlockMarkdownBodyLineHeight = 24.sp
+
 @Composable
 fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
-    textStyle: TextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+    textStyle: TextStyle = SlockType.Body.copy(
+        fontSize = SlockMarkdownBodyFontSize,
+        lineHeight = SlockMarkdownBodyLineHeight
+    ),
     highlightedMentions: Set<String> = emptySet(),
     knownChannelNames: Set<String>? = null,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
@@ -1073,8 +1079,11 @@ fun SlockMarkdownBody(
         } else {
             modifier.fillMaxWidth()
         }
+    val markdownTextStyle = remember(textStyle) {
+        slockMarkdownTextStyleWithInlineLineHeight(textStyle)
+    }
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
-        val resolvedStyle = textStyle.withResolvedSlockFontFamily()
+        val resolvedStyle = markdownTextStyle
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             KuiklyText(
                 text = content,
@@ -1101,10 +1110,10 @@ fun SlockMarkdownBody(
     val currentOnOpenUrl = rememberUpdatedState(onOpenUrl)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
-    val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
+    val typography = remember(markdownTextStyle) { slockMarkdownTypography(markdownTextStyle) }
     val inlineCodeTextStyle =
-        remember(textStyle) {
-            slockMarkdownInlineCodeTextStyle(textStyle.withResolvedSlockFontFamily())
+        remember(markdownTextStyle) {
+            slockMarkdownInlineCodeTextStyle(markdownTextStyle)
         }
     val tokenPlan = remember(content, highlightedMentions, knownChannelNames) {
         SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions, knownChannelNames)
@@ -1138,7 +1147,7 @@ fun SlockMarkdownBody(
         )
     }
     if (content.shouldUseSlockMarkdownInlineTextFastPath()) {
-        val resolvedStyle = textStyle.withResolvedSlockFontFamily()
+        val resolvedStyle = markdownTextStyle
         val renderStartedAt = TimeSource.Monotonic.markNow()
         val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle, tokenPlan.signature)
         val (renderedText, cacheHit) =
@@ -1269,6 +1278,7 @@ fun SlockMarkdownBody(
 // Text measure even when nothing actually changed.
 private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
+private val SlockMarkdownMinimumInlineLineHeight = 24.sp
 
 private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
     DefaultMarkdownColors(
@@ -1285,8 +1295,23 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
         tableStroke = SlockColor.BorderBlack
     )
 
-internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+internal fun slockMarkdownTextStyleWithInlineLineHeight(base: TextStyle): TextStyle {
     val resolvedBase = base.withResolvedSlockFontFamily()
+    val minLineHeight =
+        maxOf(
+            SlockMarkdownMinimumInlineLineHeight.value,
+            resolvedBase.fontSize.takeIf { it.isSpecified }?.value ?: 0f
+        )
+    val lineHeight = resolvedBase.lineHeight.takeIf { it.isSpecified }?.value
+    return if (lineHeight != null && lineHeight >= minLineHeight) {
+        resolvedBase
+    } else {
+        resolvedBase.copy(lineHeight = minLineHeight.sp)
+    }
+}
+
+internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+    val resolvedBase = slockMarkdownTextStyleWithInlineLineHeight(base)
     val codeBlock =
         SlockType.Caption.copy(
             fontSize = 14.sp,

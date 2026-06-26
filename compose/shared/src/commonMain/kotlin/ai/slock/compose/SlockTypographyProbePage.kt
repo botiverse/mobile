@@ -115,7 +115,7 @@ private fun TypographyMarkdownProbeSection() {
     ) {
         Text("Message Body Path", style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         Text(
-            text = "SlockMarkdownBody · 14sp/20sp · regular",
+            text = "SlockMarkdownBody · 14sp/24sp · regular",
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
@@ -124,7 +124,7 @@ private fun TypographyMarkdownProbeSection() {
             textStyle = MessageBodyProbeStyle
         )
         Text(
-            text = "SlockMarkdownBody · 14sp/20sp · medium probe",
+            text = "SlockMarkdownBody · 14sp/24sp · medium probe",
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
