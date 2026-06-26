@@ -2,6 +2,30 @@ pluginManagement {
     val slockRoot = settingsDir.parentFile
     val mavenLocal = File(System.getProperty("user.home"), ".m2/repository")
 
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesKuiklyBase() {
+        maven {
+            name = "GitHubPackagesKuiklyBase"
+            url = uri("https://maven.pkg.github.com/bytemain/KuiklyBase-components")
+            content {
+                includeModule("com.tencent.kuiklybase.resource.generator", "com.tencent.kuiklybase.resource.generator.gradle.plugin")
+                includeModule("com.tencent.kuiklybase", "resource-generator")
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
+            }
+            credentials {
+                username = providers.gradleProperty("githubPackagesUsername").orNull
+                    ?: providers.gradleProperty("gpr.user").orNull
+                    ?: System.getenv("GITHUB_PACKAGES_USERNAME")
+                    ?: System.getenv("GITHUB_ACTOR")
+                    ?: ""
+                password = providers.gradleProperty("githubPackagesToken").orNull
+                    ?: providers.gradleProperty("gpr.key").orNull
+                    ?: System.getenv("GITHUB_PACKAGES_TOKEN")
+                    ?: System.getenv("GITHUB_TOKEN")
+                    ?: ""
+            }
+        }
+    }
+
     fun mavenArtifactExists(groupPath: String, artifactId: String, version: String): Boolean =
         File(mavenLocal, "$groupPath/$artifactId/$version/$artifactId-$version.pom").isFile ||
             File(mavenLocal, "$groupPath/$artifactId/$version/$artifactId-$version.module").isFile
@@ -102,6 +126,7 @@ pluginManagement {
         google()
         gradlePluginPortal()
         mavenCentral()
+        githubPackagesKuiklyBase()
         mavenLocal()
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
@@ -110,9 +135,33 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesKuiklyBase() {
+        maven {
+            name = "GitHubPackagesKuiklyBase"
+            url = uri("https://maven.pkg.github.com/bytemain/KuiklyBase-components")
+            content {
+                includeModule("com.tencent.kuiklybase", "resource-core")
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
+            }
+            credentials {
+                username = providers.gradleProperty("githubPackagesUsername").orNull
+                    ?: providers.gradleProperty("gpr.user").orNull
+                    ?: System.getenv("GITHUB_PACKAGES_USERNAME")
+                    ?: System.getenv("GITHUB_ACTOR")
+                    ?: ""
+                password = providers.gradleProperty("githubPackagesToken").orNull
+                    ?: providers.gradleProperty("gpr.key").orNull
+                    ?: System.getenv("GITHUB_PACKAGES_TOKEN")
+                    ?: System.getenv("GITHUB_TOKEN")
+                    ?: ""
+            }
+        }
+    }
+
     repositories {
         google()
         mavenCentral()
+        githubPackagesKuiklyBase()
         mavenLocal()
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")

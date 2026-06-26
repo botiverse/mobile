@@ -14,23 +14,18 @@ plugins {
 
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
-val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
+val generatedTmmCommonRootDir = layout.buildDirectory.dir("generated/tmm-res-common")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
 val prepareTmmCommonResources by tasks.registering(Sync::class) {
     from(commonTmmResourceInputDir)
-    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
-}
-val stageTmmCommonSources by tasks.registering(Sync::class) {
-    dependsOn("generateMRcommonMain")
-    outputs.upToDateWhen { false }
-    from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
-    into(generatedTmmCommonSourceDir.map { it.dir("src") })
+    into(generatedTmmCommonRootDir.map { it.dir("commonMain/res") })
 }
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
     multiplatformResourcesPrefix = "slock_"
     multiplatformResourcesClassName = "MR"
+    commonGeneratedDir = generatedTmmCommonRootDir.get().asFile.path
 }
 
 kotlin {
@@ -63,7 +58,6 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
-            kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
@@ -76,14 +70,14 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("io.ktor:ktor-client-mock:2.3.7")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
             }
         }
         val androidMain by getting {
@@ -152,49 +146,28 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
-fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
-    kotlin.setSrcDirs(
-        kotlin.srcDirs.filterNot { sourceDir ->
-            sourceDir.path.replace(File.separatorChar, '/')
-                .endsWith("/build/generated/tmm-res/commonMain/src")
-        }
-    )
-}
-
-afterEvaluate {
-    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension>("kotlin") {
-        sourceSets.named("commonMain").configure {
-            removeGeneratedTmmPluginCommonSourceDir()
-        }
-    }
-}
-
 tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+    dependsOn("generateMRcommonMain", "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+    dependsOn("generateMRcommonMain", "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
+    dependsOn("generateMRcommonMain", "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
+    dependsOn("generateMRcommonMain", "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
+    dependsOn("generateMRcommonMain", "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
-}
-
-tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
-    mustRunAfter(stageTmmCommonSources)
 }
 
 tasks.matching { task ->
