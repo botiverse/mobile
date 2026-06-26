@@ -6865,23 +6865,11 @@ private fun ThreadMessagesList(
                 ?.let { focusedMessageId -> payload.messages.indexOfFirst { it.id == focusedMessageId } }
                 ?: -1
         }
-    val suppressThreadOriginFirstFocusedMessage =
-        remember(payload.originStatus, focusedMessageIndex) {
-            threadShouldSuppressOriginFirstFocusedMessage(
-                focusedMessageIndex = focusedMessageIndex,
-                hasThreadOriginItem = payload.hasThreadOriginItem()
-            )
-        }
-    val progressiveFocusedMessageIndex =
-        threadProgressiveFocusedMessageIndex(
-            focusedMessageIndex = focusedMessageIndex,
-            hasThreadOriginItem = payload.hasThreadOriginItem()
-        )
     val initialProgressiveMessageWindow =
-        remember(payload.messages, payload.messages.lastOrNull()?.id, progressiveFocusedMessageIndex) {
+        remember(payload.messages, payload.messages.lastOrNull()?.id, focusedMessageIndex) {
             threadInitialProgressiveMessageWindow(
                 messages = payload.messages,
-                focusedMessageIndex = progressiveFocusedMessageIndex
+                focusedMessageIndex = focusedMessageIndex
             )
         }
     var progressiveWindowStarted by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -6919,20 +6907,13 @@ private fun ThreadMessagesList(
             renderMessages,
             hasProgressiveMessageWindow,
             hasProgressiveOlderWindow,
-            hasProgressiveNewerWindow,
-            suppressThreadOriginFirstFocusedMessage
+            hasProgressiveNewerWindow
         ) {
-            if (!hasProgressiveMessageWindow && !suppressThreadOriginFirstFocusedMessage) {
+            if (!hasProgressiveMessageWindow) {
                 payload
             } else {
                 payload.copy(
                     messages = renderMessages,
-                    focusedMessageId =
-                        if (suppressThreadOriginFirstFocusedMessage) {
-                            null
-                        } else {
-                            payload.focusedMessageId
-                        },
                     canLoadMoreBefore = hasProgressiveOlderWindow || payload.canLoadMoreBefore,
                     canLoadMoreAfter = hasProgressiveNewerWindow || payload.canLoadMoreAfter,
                     olderMessagesStatus = if (hasProgressiveOlderWindow) "loading" else payload.olderMessagesStatus,
@@ -6943,7 +6924,7 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         currentProgressivePayloadKey,
-        progressiveFocusedMessageIndex,
+        focusedMessageIndex,
         initialProgressiveMessageWindow
     ) {
         if (!initialProgressiveMessageWindow.isFull(payload.messages.size) &&
@@ -6952,7 +6933,7 @@ private fun ThreadMessagesList(
             progressiveWindowStarted = true
             progressiveMessageWindow = initialProgressiveMessageWindow
             progressivePayloadKey = currentProgressivePayloadKey
-            val event = if (progressiveFocusedMessageIndex >= 0) "focused_start" else "start"
+            val event = if (focusedMessageIndex >= 0) "focused_start" else "start"
             diagnosticsLogger(
                 "thread_progressive_message_window event=$event instance=$threadInstanceKey " +
                     "messagesTotal=${payload.messages.size} renderStart=${initialProgressiveMessageWindow.startInclusive} " +
@@ -7012,7 +6993,7 @@ private fun ThreadMessagesList(
         initialBottomAnchorReady,
         hasProgressiveMessageWindow,
         messageWindow,
-        progressiveFocusedMessageIndex,
+        focusedMessageIndex,
         payload.messages.size
     ) {
         if (!initialBottomAnchorReady || !hasProgressiveMessageWindow) return@LaunchedEffect
@@ -7021,7 +7002,7 @@ private fun ThreadMessagesList(
             threadNextProgressiveMessageWindow(
                 messages = payload.messages,
                 currentWindow = messageWindow,
-                focusedMessageIndex = progressiveFocusedMessageIndex
+                focusedMessageIndex = focusedMessageIndex
             )
         if (nextWindow != progressiveMessageWindow) {
             progressiveMessageWindow = nextWindow
@@ -7378,6 +7359,38 @@ private fun ThreadMessagesList(
         pendingKeyboardBottomAnchor = false
     }
     Column(modifier = Modifier.fillMaxSize()) {
+        if (renderPayload.hasThreadOriginItem()) {
+            ThreadOriginCard(
+                payload = payload,
+                linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
+                attachmentOpenStates = attachmentOpenStates,
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                currentServerSlug = currentServerSlug,
+                contentExtrasVisible = contentExtrasVisible,
+                knownMarkdownChannelNames = knownMarkdownChannelNames,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                diagnosticsLogger = diagnosticsLogger,
+                onThreadEvent = onThreadEvent,
+                onOpenMember = onOpenMember,
+                onShowActions = { message, anchor ->
+                    actionMenuAnchor = anchor
+                    actionMessageId = message.id
+                    diagnosticsLogger(
+                        "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                    )
+                },
+                onOpenTaskStatusMenu = { message, anchor ->
+                    taskStatusMenuMessageId = message.id
+                    taskStatusMenuAnchor = anchor
+                },
+                onMentionAuthor = onMentionAuthor,
+                agentStatusResolver = agentStatusResolver,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl
+            )
+        }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 state = listState,
@@ -7400,40 +7413,6 @@ private fun ThreadMessagesList(
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
-            if (renderPayload.hasThreadOriginItem()) {
-                item(key = ThreadOriginListItemKey) {
-                    ThreadOriginCard(
-                        payload = payload,
-                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
-                        highlightedMentions = highlightedMentions,
-                        pendingActionCardIds = pendingActionCardIds,
-                        attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
-                        currentServerSlug = currentServerSlug,
-                        contentExtrasVisible = contentExtrasVisible,
-                        knownMarkdownChannelNames = knownMarkdownChannelNames,
-                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                        diagnosticsLogger = diagnosticsLogger,
-                        onThreadEvent = onThreadEvent,
-                        onOpenMember = onOpenMember,
-                        onShowActions = { message, anchor ->
-                            actionMenuAnchor = anchor
-                            actionMessageId = message.id
-                            diagnosticsLogger(
-                                "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                            )
-                        },
-                        onOpenTaskStatusMenu = { message, anchor ->
-                            taskStatusMenuMessageId = message.id
-                            taskStatusMenuAnchor = anchor
-                        },
-                        onMentionAuthor = onMentionAuthor,
-                        agentStatusResolver = agentStatusResolver,
-                        onOpenMarkdownTag = onOpenMarkdownTag,
-                        onOpenMarkdownUrl = onOpenMarkdownUrl
-                    )
-                }
-            }
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
@@ -7719,8 +7698,6 @@ private fun ThreadMessagesList(
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
-private const val ThreadOriginListItemKey = "thread-page:origin"
-
 internal data class ThreadInlineActionSpec(
     val label: String,
     val event: String,
@@ -7762,8 +7739,7 @@ internal fun threadMessagesLazyItemCount(
     messagesCount: Int,
     canLoadMoreAfter: Boolean
 ): Int =
-    (if (originStatus != "none") 1 else 0) +
-        (if (showHistoryBoundary) 1 else 0) +
+    (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
@@ -7814,22 +7790,6 @@ internal fun threadInitialProgressiveMessageWindow(
             messages = messages,
             targetBusinessMessageCount = ThreadInitialBottomRenderWindowMessageCount
         )
-    }
-
-internal fun threadShouldSuppressOriginFirstFocusedMessage(
-    focusedMessageIndex: Int,
-    hasThreadOriginItem: Boolean
-): Boolean =
-    hasThreadOriginItem && focusedMessageIndex == 0
-
-internal fun threadProgressiveFocusedMessageIndex(
-    focusedMessageIndex: Int,
-    hasThreadOriginItem: Boolean
-): Int =
-    if (threadShouldSuppressOriginFirstFocusedMessage(focusedMessageIndex, hasThreadOriginItem)) {
-        -1
-    } else {
-        focusedMessageIndex
     }
 
 internal fun threadProgressiveBottomRenderPayloadKey(
@@ -8095,11 +8055,10 @@ private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
     originStatus != "none"
 
 private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
-    if (hasThreadOriginItem()) 1 else 0
+    0
 
 private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
-    if (hasThreadOriginItem()) index += 1
     if (hasThreadHistoryBoundaryItem()) index += 1
     return index
 }

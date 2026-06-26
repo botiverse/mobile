@@ -163,10 +163,10 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun latestMessageListItemIndex_originMessageParticipatesInScrollableItems() {
+    fun latestMessageListItemIndex_originMessageDoesNotParticipateInScrollableItems() {
         val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
             .latestMessageListItemIndexPublic()
-        assertEquals(3, sig)
+        assertEquals(2, sig)
     }
 
     @Test
@@ -190,7 +190,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun latestLocalSendBottomAnchor_defaultsReplyThreadOriginListToLatestItem() {
+    fun latestLocalSendBottomAnchor_defaultsReplyThreadReplyListToLatestItem() {
         val pendingContext =
             KuiklyThreadPendingSendContext(
                 channelId = "parent-channel",
@@ -214,8 +214,8 @@ class ThreadBottomAnchorSignatureTest {
             )
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
-        assertEquals(3, latestIndex)
-        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
+        assertEquals(2, latestIndex)
+        assertEquals(2, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(
