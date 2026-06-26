@@ -125,13 +125,43 @@ internal data class MarkdownInlineTokenPlan(
     val content: String,
     val tokens: List<MarkdownInlineToken>
 ) {
+    private val tagTokensByStart: List<MarkdownInlineToken> =
+        tokens.filter { it.tag != null }.sortedBy { it.range.first }
+
     val signature: String =
         tokens.joinToString(separator = "|") { token ->
             "${token.id}:${token.kind}:${token.range.first}-${token.range.last}:${token.label}:${token.highlighted}"
         }
 
     fun tagTokens(): List<MarkdownInlineToken> =
-        tokens.filter { it.tag != null }
+        tagTokensByStart
+
+    fun tagTokensInRange(start: Int, endExclusive: Int): List<MarkdownInlineToken> {
+        if (tagTokensByStart.isEmpty()) return emptyList()
+        var low = 0
+        var high = tagTokensByStart.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (tagTokensByStart[mid].range.first < start) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        var index = low
+        var result: MutableList<MarkdownInlineToken>? = null
+        while (index < tagTokensByStart.size) {
+            val token = tagTokensByStart[index]
+            if (token.range.first >= endExclusive) break
+            if (token.range.last < endExclusive) {
+                val values = result ?: mutableListOf<MarkdownInlineToken>().also { result = it }
+                values += token
+            }
+            index++
+        }
+        return result ?: emptyList()
+    }
 
     fun inlineCodeTokens(): List<MarkdownInlineToken> =
         tokens.filter { it.kind == MarkdownInlineTokenKind.InlineCode }
@@ -603,10 +633,7 @@ internal fun slockMarkdownAnnotator(
             val nodeText = child.getTextInNode(markdownContent).toString()
             val nodeStart = child.startOffset
             val nodeEndExclusive = nodeStart + nodeText.length
-            val nodeTokens =
-                inlineTagTokens.filter { token ->
-                    token.range.first >= nodeStart && token.range.last < nodeEndExclusive
-                }
+            val nodeTokens = tokenPlan.tagTokensInRange(nodeStart, nodeEndExclusive)
             if (nodeTokens.isEmpty()) return@markdownAnnotator false
 
             var cursor = 0

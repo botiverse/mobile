@@ -506,6 +506,17 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineTagPlanFindsTokensForTextNodeRange() {
+        val body = "Ping @artin for #405 and #markdown专修:7933cf78"
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body)
+
+        assertEquals(listOf("@artin"), plan.tagTokensInRange(0, 12).map { it.label })
+        assertEquals(listOf("#405"), plan.tagTokensInRange(12, 22).map { it.label })
+        assertEquals(listOf("#markdown专修:7933cf78"), plan.tagTokensInRange(22, body.length).map { it.label })
+        assertTrue(plan.tagTokensInRange(5, 8).isEmpty())
+    }
+
+    @Test
     fun inlineCodeWidthHelpersStillMatchOldChromeConstants() {
         val fallbackWidth = slockMarkdownInlineCodeWidthSp("mimo")
         val inlineContent =

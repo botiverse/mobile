@@ -138,20 +138,26 @@ fun MarkdownText(
         return
     }
 
+    val hasImageInlineContent = remember(content) { content.hasMarkdownImageInlineContent() }
     val imageState = rememberMarkdownImageState()
-
-    val placeholderState by remember(imageState) {
+    val placeholderState by remember(hasImageInlineContent, imageState) {
         derivedStateOf {
-            transformer.placeholderConfig(
-                imageState.containerSize,
-                imageState.intrinsicImageSize
-            )
+            if (hasImageInlineContent) {
+                transformer.placeholderConfig(
+                    imageState.containerSize,
+                    imageState.intrinsicImageSize
+                )
+            } else {
+                null
+            }
         }
     }
 
-    val inlineContent = mutableMapOf(
-        MARKDOWN_TAG_IMAGE_URL to createImageInlineTextContent(placeholderState, transformer)
-    )
+    val inlineContent = mutableMapOf<String, InlineTextContent>()
+    val currentPlaceholderState = placeholderState
+    if (currentPlaceholderState != null) {
+        inlineContent[MARKDOWN_TAG_IMAGE_URL] = createImageInlineTextContent(currentPlaceholderState, transformer)
+    }
     val extendedInlineContent: Map<String, InlineTextContent>? = annotatorSettings.annotator.inlineContent?.invoke()
     if (extendedInlineContent != null) {
         inlineContent.putAll(extendedInlineContent)
@@ -163,11 +169,13 @@ fun MarkdownText(
         overflow = overflow,
         modifier = modifier
             .onPlaced { it ->
-                imageState.updateContainerSize(Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                if (hasImageInlineContent) {
+                    imageState.updateContainerSize(Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                }
             }
             .also {
                 @Suppress("DEPRECATION")
-                if (placeholderState.animate) animations.animateTextSize(it) else it
+                if (placeholderState?.animate == true) animations.animateTextSize(it) else it
             },
         style = style,
         inlineContent = inlineContent,
@@ -176,6 +184,9 @@ fun MarkdownText(
         }
     )
 }
+
+private fun AnnotatedString.hasMarkdownImageInlineContent(): Boolean =
+    getStringAnnotations(start = 0, end = length).any { it.item == MARKDOWN_TAG_IMAGE_URL }
 
 private fun AnnotatedString.canRenderAsPlainText(): Boolean {
     if (paragraphStyles.isNotEmpty()) return false
