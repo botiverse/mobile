@@ -691,6 +691,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun sendAppShellLifecycleEvent(event: String) {
         if (pageSpec?.pageName != PAGE_APP_SHELL) return
+        AndroidAppScopeRealtimeOwner.publishCurrentNetworkStatus(
+                applicationContext,
+                source = "app_shell_lifecycle_$event"
+        )
         applicationContext.sendKuiklyEvent(
                 SlockRealtimeNotifyContract.EventName,
                 JSONObject()

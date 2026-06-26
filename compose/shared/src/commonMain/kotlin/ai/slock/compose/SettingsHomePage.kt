@@ -408,6 +408,8 @@ private val EmptyConversationDirectoryProjectionFlow =
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
+private const val AppShellNetworkStatusAction = "networkStatus"
+private const val AppShellNetworkStatusOffline = "offline"
 private const val HomeDestinationSearch = SharedHomeShellDestinationSearch
 private const val HomeDestinationActivity = SharedHomeShellDestinationActivity
 private const val HomeDestinationSaved = SharedHomeShellDestinationSaved
@@ -1484,6 +1486,7 @@ private fun SlockAppShellContent() {
     var homeListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
+    var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val childTabEntry = remember(childTabShellId) { AppShellChildTabEntry() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -2537,6 +2540,16 @@ private fun SlockAppShellContent() {
                     }
                     return@addListener
                 }
+                if (eventData.optString("action") == AppShellNetworkStatusAction) {
+                    val status = eventData.optString("status")
+                    hostNetworkStatus =
+                        if (status == AppShellNetworkStatusOffline || !eventData.optBoolean("online", true)) {
+                            SlockAppShellNetworkStatus.Offline
+                        } else {
+                            SlockAppShellNetworkStatus.Online
+                        }
+                    return@addListener
+                }
                 if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
                     latestRealtimeAuthRefreshHandler(eventData)
                     return@addListener
@@ -2619,6 +2632,7 @@ private fun SlockAppShellContent() {
                     pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                 }
             },
+            networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs
         ) {
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->

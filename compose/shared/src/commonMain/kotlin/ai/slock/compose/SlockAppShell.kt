@@ -4,9 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -63,17 +66,23 @@ internal fun SlockAppShellSurface(
     bottomTabs: List<SlockBottomTabItemPayload>,
     onBottomTabSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    networkStatus: SlockAppShellNetworkStatus = SlockAppShellNetworkStatus.Online,
     showBottomTabs: Boolean = true,
     content: @Composable () -> Unit
 ) {
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Box(
+        Column(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
         ) {
-            content()
+            if (networkStatus == SlockAppShellNetworkStatus.Offline) {
+                SlockAppShellNetworkBanner()
+            }
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                content()
+            }
         }
         if (showBottomTabs) {
             SlockAppBottomTabBarHost(
@@ -86,5 +95,30 @@ internal fun SlockAppShellSurface(
                 bottomSafeArea = shellScope.bottomSafeArea
             )
         }
+    }
+}
+
+internal enum class SlockAppShellNetworkStatus {
+    Online,
+    Offline
+}
+
+@Composable
+private fun SlockAppShellNetworkBanner() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .background(SlockColor.AccentRed)
+                .padding(horizontal = SlockSpacing.Md),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = "No internet connection",
+            style = SlockType.ButtonBold,
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
     }
 }
