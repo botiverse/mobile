@@ -1470,7 +1470,7 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 }
 
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    base.withResolvedSlockFontFamily()
+    base.withSlockFontWeight(FontWeight.SemiBold).withResolvedSlockFontFamily()
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
@@ -1623,7 +1623,8 @@ private fun SlockMarkdownMentionText(label: String) {
                 color = SlockColor.TextBlack,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
-                overflow = TextOverflow.Clip
+                softWrap = false,
+                overflow = TextOverflow.Visible
             )
         }
     }

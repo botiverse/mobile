@@ -2,6 +2,7 @@ package ai.slock.compose.markdown
 
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
+import ai.slock.compose.slockFontFamilyForWeight
 import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
@@ -276,7 +277,8 @@ class SlockMarkdownTest {
     fun inlineCodeKeepsSlockFontInsteadOfMono() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
 
-        assertEquals(SlockType.Body.fontFamily, inlineCodeStyle.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.SemiBold), inlineCodeStyle.fontFamily)
+        assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
         assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
