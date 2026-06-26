@@ -5704,17 +5704,20 @@ private fun MembersAgentActivityTab(
                 .fillMaxWidth()
                 .padding(
                     horizontal = MembersPageInset,
-                    vertical = SlockSpacing.Sm
+                    vertical = SlockSpacing.Xs
                 ),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionTitle("ACTIVITY DIAGNOSTICS", modifier = Modifier.weight(1f))
             SlockBrutalActionButton(
-                label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy Diagnostic Info",
+                label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy info",
                 leadingIcon = SlockLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
-                modifier = Modifier.width(168.dp),
+                minHeight = 32.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                modifier = Modifier.width(116.dp),
                 onClick = onCopyDiagnostics
             )
         }
