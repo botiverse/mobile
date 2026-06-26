@@ -8379,7 +8379,7 @@ private fun ThreadMessageCard(
                         }
                     )
                     .threadMessagePressOutline(pressed)
-                    .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
+                    .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
