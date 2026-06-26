@@ -16,7 +16,6 @@ import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageNew
-import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
@@ -29,9 +28,11 @@ import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
-import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeState
+import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.compose.model.ConversationKind
 import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventName
 import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventParams
@@ -49,24 +50,15 @@ import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
-    private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
-    private const val REALTIME_ROOMS_EVENT_NAME = "slockRealtimeRooms"
-    private const val ROOM_ACTION_JOIN_CHANNEL = "joinChannel"
-    private const val KEY_ACTION = "action"
-    private const val KEY_CHANNEL_ID = "channelId"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val joinedRooms = linkedSetOf<ChannelId>()
+    private val appScopeState = SlockRealtimeAppScopeState()
 
     private var realtimeRepository: RealtimeRepository? = null
     private var realtimeClient: SocketIoRealtimeClient? = null
     private var realtimeSubscription: RealtimeSubscription? = null
     private var realtimeRawSubscription: RealtimeSubscription? = null
     private var realtimeConnectJob: Job? = null
-    private var realtimeServerId: ServerId? = null
-    private var realtimeSessionKey: String? = null
-    private var realtimeAccessToken: String? = null
-    private var realtimeLastSeq: Long = 0L
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
@@ -111,7 +103,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 object : BroadcastReceiver() {
                     override fun onReceive(context: Context?, intent: Intent?) {
                         val eventIntent = intent ?: return
-                        if (eventIntent.getKuiklyEventName() != REALTIME_ROOMS_EVENT_NAME) return
+                        if (eventIntent.getKuiklyEventName() != SlockRealtimeNotifyContract.RoomsEventName) return
                         handleRealtimeRoomsNotify(eventIntent.getKuiklyEventParams())
                     }
                 }
@@ -135,7 +127,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Foreground
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source joined_rooms=${joinedRooms.size}"
+            "app_scope_lifecycle event=shown source=$source joined_rooms=${appScopeState.joinedChannelCount}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -148,7 +140,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Background
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source joined_rooms=${joinedRooms.size}"
+            "app_scope_lifecycle event=hidden source=$source joined_rooms=${appScopeState.joinedChannelCount}"
         )
     }
 
@@ -159,7 +151,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedRooms.size}"
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${appScopeState.joinedChannelCount}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -309,16 +301,16 @@ internal object AndroidAppScopeRealtimeOwner {
             return
         }
         val client = realtimeClient
-        val serverId = realtimeServerId
-        val accessToken = realtimeAccessToken
-        if (client == null || serverId == null || accessToken.isNullOrBlank()) {
+        val ownedSession = appScopeState.ownedSession()
+        if (client == null || ownedSession == null) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
-            connectFromStoredSession(context, realtimeLastSeq)
+            connectFromStoredSession(context, appScopeState.lastSeq)
             return
         }
+        val serverId = ownedSession.serverId
         if (client.checkHeartbeatSilence()) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
@@ -328,7 +320,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         when (val state = client.state) {
             RealtimeConnectionState.Disconnected,
-            is RealtimeConnectionState.Failed -> reconnectOwnedSession(context, serverId, accessToken, state)
+            is RealtimeConnectionState.Failed -> reconnectOwnedSession(context, serverId, ownedSession.accessToken, state)
             RealtimeConnectionState.Connected,
             RealtimeConnectionState.RoomsJoined -> {
                 SlockDiagnosticsLogger.d(
@@ -346,7 +338,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun disconnectForSessionEnd(reason: String) {
         val cleanReason = reason.takeIf { it.isNotBlank() } ?: "shared_disconnect"
-        if (!cleanReason.isSessionEndRealtimeDisconnectReason()) {
+        if (!SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason(cleanReason)) {
             SlockDiagnosticsLogger.w(
                 LOG_TAG,
                 "disconnect_ignored reason=$cleanReason"
@@ -356,12 +348,8 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeConnectJob?.cancel()
         realtimeConnectJob = null
         realtimeRepository?.disconnect()
-        realtimeServerId = null
-        realtimeSessionKey = null
-        realtimeAccessToken = null
-        realtimeLastSeq = 0L
+        appScopeState.resetForSessionEnd()
         backgroundKeepAliveEnabled = false
-        joinedRooms.clear()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "disconnect_requested reason=$cleanReason visibility=$appVisibility"
@@ -374,9 +362,10 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     private fun handleRealtimeRoomsNotify(eventData: JSONObject) {
-        when (eventData.optString(KEY_ACTION)) {
-            ROOM_ACTION_JOIN_CHANNEL -> {
-                val channelId = eventData.optString(KEY_CHANNEL_ID).takeIf { it.isNotBlank() }
+        when (eventData.optString(SlockRealtimeNotifyContract.KeyAction)) {
+            SlockRealtimeNotifyContract.ActionJoinChannel -> {
+                val channelId =
+                    eventData.optString(SlockRealtimeNotifyContract.KeyChannelId).takeIf { it.isNotBlank() }
                 if (channelId == null) {
                     SlockDiagnosticsLogger.w(LOG_TAG, "room_notify_skip reason=missing_channel_id")
                     return
@@ -413,19 +402,19 @@ internal object AndroidAppScopeRealtimeOwner {
             repository.observeEvents { event ->
                 scope.launch {
                     val serverId =
-                        realtimeServerId
+                        appScopeState.serverId
                             ?: run {
                                 SlockDiagnosticsLogger.d(
                                     LOG_TAG,
-                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()}"
+                                    "native_event_skip reason=missing_server event=${SlockRealtimeAppScopePolicy.nativeRealtimeEventName(event)}"
                                 )
                                 return@launch
                             }
                     SlockDiagnosticsLogger.d(
                         LOG_TAG,
-                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} joined_rooms=${joinedRooms.size}"
+                        "native_event_received event=${SlockRealtimeAppScopePolicy.nativeRealtimeEventName(event)} serverId=${serverId.value} joined_rooms=${appScopeState.joinedChannelCount}"
                     )
-                    realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    appScopeState.updateFromEvent(event)
                     if (event is DirectMessageCreated) {
                         joinRoom(event.channelId, reason = "direct_message_created")
                     }
@@ -437,7 +426,7 @@ internal object AndroidAppScopeRealtimeOwner {
         client.observeRawEvents { eventName, rawPayload ->
             scope.launch {
                 val serverId =
-                    realtimeServerId
+                    appScopeState.serverId
                         ?: run {
                             SlockDiagnosticsLogger.d(
                                 LOG_TAG,
@@ -461,17 +450,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val client =
             realtimeClient
                 ?: return DataResult.Error(ScreenError(code = "realtime_client_missing"))
-        val nextSessionKey = "$accessToken|${serverId.value}"
-        val previousSessionKey = realtimeSessionKey
-        val resumeSeq =
-            if (previousSessionKey != null && previousSessionKey != nextSessionKey) {
-                realtimeLastSeq = 0L
-                joinedRooms.clear()
-                0L
-            } else {
-                maxOf(requestedLastSeq, realtimeLastSeq)
-            }
-        if (!forceReconnect && realtimeServerId == serverId && realtimeSessionKey == nextSessionKey) {
+        if (!forceReconnect && appScopeState.isSameSession(serverId, accessToken)) {
             when (val state = client.state) {
                 RealtimeConnectionState.Connected,
                 RealtimeConnectionState.RoomsJoined,
@@ -484,25 +463,25 @@ internal object AndroidAppScopeRealtimeOwner {
                     )
             }
         }
-        realtimeSessionKey = nextSessionKey
-        realtimeServerId = serverId
-        realtimeAccessToken = accessToken
-        if (resumeSeq == 0L) {
-            realtimeLastSeq = 0L
-        }
+        val connectPlan =
+            appScopeState.prepareConnect(
+                serverId = serverId,
+                accessToken = accessToken,
+                requestedLastSeq = requestedLastSeq
+            )
         client.connect(
             RealtimeConnectRequest(
                 auth = RealtimeAuth(
                     token = accessToken,
                     serverId = serverId
                 ),
-                lastSeq = resumeSeq
+                lastSeq = connectPlan.resumeSeq
             )
         )
         val result = DataResult.Content(Unit)
         SlockDiagnosticsLogger.w(
             LOG_TAG,
-            "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
+            "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=${connectPlan.resumeSeq} session_changed=${connectPlan.sessionChanged}"
         )
         return result
     }
@@ -523,7 +502,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             repository = repository,
                             serverId = serverId,
                             accessToken = accessToken,
-                            requestedLastSeq = realtimeLastSeq,
+                            requestedLastSeq = appScopeState.lastSeq,
                             forceReconnect = true
                         )
                     SlockDiagnosticsLogger.d(
@@ -544,7 +523,7 @@ internal object AndroidAppScopeRealtimeOwner {
             )
             return
         }
-        if (!joinedRooms.add(channelId)) {
+        if (!appScopeState.markChannelJoined(channelId)) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
                 "room_join_skip reason=already_joined channelId=${channelId.value}"
@@ -566,7 +545,10 @@ internal object AndroidAppScopeRealtimeOwner {
             )
             return
         }
-        appContext.sendKuiklyEvent(REALTIME_EVENT_NAME, realtimeNotifyPayload(serverId, eventName, rawPayload))
+        appContext.sendKuiklyEvent(
+            SlockRealtimeNotifyContract.EventName,
+            realtimeNotifyPayload(serverId, eventName, rawPayload)
+        )
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "raw_event_notify eventName=$eventName serverId=${serverId.value}"
@@ -575,9 +557,9 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun realtimeNotifyPayload(serverId: ServerId, eventName: String, rawPayload: Any?): JSONObject =
         JSONObject()
-            .put("serverId", serverId.value)
-            .put("eventName", eventName)
-            .put("rawPayload", rawPayload.toRealtimeRawPayloadString())
+            .put(SlockRealtimeNotifyContract.KeyServerId, serverId.value)
+            .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
+            .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
 
     private fun Any?.toRealtimeRawPayloadString(): String =
         when (this) {
@@ -638,14 +620,14 @@ internal object AndroidAppScopeRealtimeOwner {
         preferenceEnabled: Boolean,
         isAppInForeground: Boolean
     ): Boolean =
-        !hasAttachedConsumers && preferenceEnabled && !isAppInForeground
+        SlockRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
+            hasAttachedConsumers = hasAttachedConsumers,
+            preferenceEnabled = preferenceEnabled,
+            isAppInForeground = isAppInForeground
+        )
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
-        when {
-            message.parentMessageId != null || message.threadChannelId != null -> ConversationKind.Thread
-            message.channelId != null -> ConversationKind.Channel
-            else -> null
-        }
+        SlockRealtimeAppScopePolicy.backgroundUnreadNotificationConversationKind(message)
 
     private fun Message.backgroundNotificationConversationKind(): ConversationKind? =
         backgroundUnreadNotificationConversationKind(this)
@@ -655,19 +637,11 @@ internal object AndroidAppScopeRealtimeOwner {
         preferenceEnabled: Boolean,
         isAppInForeground: Boolean
     ): String =
-        when {
-            hasAttachedConsumers -> "foreground_consumer"
-            isAppInForeground -> "app_foreground"
-            !preferenceEnabled -> "preference_disabled"
-            else -> "unknown"
-        }
-
-    private fun RealtimeEvent.nativeRealtimeEventName(): String =
-        when (this) {
-            is DirectMessageCreated -> "direct_message_created"
-            is MessageNew -> "message_new"
-            else -> this::class.simpleName ?: "unknown"
-        }
+        SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
+            hasAttachedConsumers = hasAttachedConsumers,
+            preferenceEnabled = preferenceEnabled,
+            isAppInForeground = isAppInForeground
+        )
 
     private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
         runCatching {
@@ -686,20 +660,6 @@ internal object AndroidAppScopeRealtimeOwner {
             )
             false
         }
-
-    private fun Long.updateFrom(event: RealtimeEvent): Long =
-        RealtimeCursorPolicy.updateAppliedSeq(this, event)
-
-    private fun String.isSessionEndRealtimeDisconnectReason(): Boolean =
-        this in setOf(
-            "auth_invalid",
-            "logout",
-            "process_teardown",
-            "server_deleted",
-            "server_membership_removed",
-            "server_removed",
-            "server_switch"
-        )
 
     private enum class AppVisibility {
         Foreground,
