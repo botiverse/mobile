@@ -110,6 +110,11 @@ python3 scripts/slock_android_adb.py --device emulator-5560 open-diagnostics \
   --auto-close-ms 15000
 ```
 
+The diagnostics intent is action-like: send exactly the action flags you want.
+`--enable-profiler`, `--reset-scene`, and `--export-report` are independent.
+For example, use `open-diagnostics --export-report` to export the current
+profiler report without also enabling or resetting the scene.
+
 This helper emits:
 
 ```bash
@@ -148,13 +153,16 @@ python3 scripts/slock_android_adb.py --device emulator-5560 pull-profiler \
 1. Start or install the candidate app, then launch it with `start-app`.
 2. Navigate with internal intents or `open-page` when available; use visual taps
    only for the specific interaction under audit or while a debug hook is missing.
-3. Open Diagnostics with `open-diagnostics --enable-profiler --reset-scene`
-   when available. Otherwise open Settings -> About -> Diagnostics manually.
+3. Open Diagnostics with the exact action flags needed for the scenario, for
+   example `open-diagnostics --enable-profiler --reset-scene` before capture or
+   `open-diagnostics --export-report` when exporting an already-running
+   profiler. Otherwise open Settings -> About -> Diagnostics manually.
 4. Use `get-app-state` before and after each scenario step that changes context.
 5. Use `click`, `press-key`, and `scroll` for the actual scenario inputs.
 6. Capture logcat for the same window.
 7. Export the profiler report through `open-diagnostics --export-report` when
-   available; otherwise export in Diagnostics UI, then run `pull-profiler`.
+   available; do not add enable/reset flags unless that is also part of the
+   intended action. Otherwise export in Diagnostics UI, then run `pull-profiler`.
 8. Analyze `profiler_report.json`, `profiler_frames.jsonl`, screenshots, UI XML,
    and logcat together. Do not attribute a jank frame to shared recomposition if
    profiler events are mostly `noScope` first composition or if host frame logs

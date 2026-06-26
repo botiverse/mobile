@@ -1842,17 +1842,12 @@ private fun SlockAppShellContent() {
         settingsViewModel.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
         if (request.enableProfiler) {
             settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
-            if (request.resetScene) {
-                settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
-            }
-            if (request.exportReport) {
-                settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
-            }
-        } else if (request.resetScene || request.exportReport) {
-            bridge.logWarn(
-                "diagnostics_deeplink_skip_profiler_actions id=${request.id} " +
-                    "reason=enable_profiler_false resetScene=${request.resetScene} exportReport=${request.exportReport}"
-            )
+        }
+        if (request.resetScene) {
+            settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
+        }
+        if (request.exportReport) {
+            settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
         }
         if (request.autoCloseMs > 0L) {
             delay(request.autoCloseMs)
