@@ -4069,7 +4069,6 @@ private fun KuiklyThreadScreenPayload.realtimeNewerGapServerSeq(
     event: RealtimeEvent,
     activeReplyParentMessageId: MessageId? = null
 ): Long? {
-    if (!canLoadMoreAfter) return null
     val currentMaxSeq = messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
     if (currentMaxSeq <= 0L) return null
     val existingIds = messages.mapTo(mutableSetOf()) { it.id }
