@@ -6317,7 +6317,7 @@ private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<St
         nextRank += 1
         ranks[authorId.threadParticipantIdKey()] = rank
         message.authorHandle.threadParticipantHandleKey()?.let { handleKey ->
-            ranks.putIfAbsent(handleKey, rank)
+            ranks.putIfAbsentCompat(handleKey, rank)
         }
     }
     return ranks
@@ -9496,10 +9496,11 @@ private data class ThreadMessageMenuAction(
     val label: String,
     val icon: SlockLucideIconName,
     val group: String,
+    val enabled: Boolean = true,
     val onClick: () -> Unit
 )
 
-private val ThreadMessageMenuWidth = 208.dp
+private val ThreadMessageMenuWidth = 240.dp
 private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
@@ -9519,17 +9520,46 @@ private fun threadMessageMenuActions(
     onDelete: () -> Unit
 ): List<ThreadMessageMenuAction> =
     buildList {
+        add(
+            ThreadMessageMenuAction(
+                label = "Copy Link",
+                icon = SlockLucideIconName.Link,
+                group = "copy",
+                enabled = false,
+                onClick = {}
+            )
+        )
+        add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
+        add(
+            ThreadMessageMenuAction(
+                label = "Share Messages...",
+                icon = SlockLucideIconName.Share2,
+                group = "copy",
+                enabled = false,
+                onClick = {}
+            )
+        )
         if (showReplyAction) {
-            add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
+            add(ThreadMessageMenuAction("Open Thread", SlockLucideIconName.MessageSquare, "message", onClick = onReply))
         }
-        add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
         if (showSaveAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = if (message.isSaved) "Remove from saved" else "Save message",
+                    label = if (message.isSaved) "Remove from Saved" else "Save Message",
                     icon = SlockLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
+                )
+            )
+        }
+        message.threadChannelId?.takeIf { it.isNotBlank() }?.let {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Follow Thread",
+                    icon = SlockLucideIconName.MessageSquare,
+                    group = "message",
+                    enabled = false,
+                    onClick = {}
                 )
             )
         }
@@ -9547,7 +9577,7 @@ private fun threadMessageMenuActions(
             val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
             add(
                 ThreadMessageMenuAction(
-                    label = if (isDone) "Reopen task" else "Mark done",
+                    label = if (isDone) "Reopen Task" else "Mark as Done",
                     icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
                     group = "task",
                     onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
@@ -9705,7 +9735,7 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(36.dp)
-            .padding(horizontal = SlockSpacing.Xs),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -10041,21 +10071,26 @@ private fun threadHasCustomReactionGlyph(emoji: String): Boolean =
 private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
     Button(
         onClick = action.onClick,
+        enabled = action.enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 42.dp)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 7.dp)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockLucideIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucideIcon(
+                action.icon,
+                modifier = Modifier.size(16.dp),
+                color = if (action.enabled) "#FF000000" else "#FF6B625F"
+            )
             Text(
                 text = action.label,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
