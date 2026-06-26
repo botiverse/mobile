@@ -29,10 +29,12 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -88,7 +90,9 @@ internal fun SharedTasksScreen(
     onIntent: (SharedTasksRouteIntent) -> Unit,
     modifier: Modifier = Modifier,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
     SharedTasksPanel(
         state = state,
@@ -97,7 +101,9 @@ internal fun SharedTasksScreen(
         showHeader = true,
         showChannelFilter = true,
         onOpenTask = onOpenTask,
-        bottomContentPadding = bottomContentPadding
+        bottomContentPadding = bottomContentPadding,
+        initialListPosition = initialListPosition,
+        onListPositionSnapshot = onListPositionSnapshot
     )
 }
 
@@ -112,7 +118,9 @@ internal fun SharedTasksPanel(
      *  Server-mode (no implicit channel) leaves this null and the button is hidden. */
     createTasksChannelId: ChannelId? = null,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -156,7 +164,9 @@ internal fun SharedTasksPanel(
                     createTasksChannelId = createTasksChannelId,
                     onOpenTask = onOpenTask,
                     onIntent = onIntent,
-                    bottomContentPadding = bottomContentPadding
+                    bottomContentPadding = bottomContentPadding,
+                    initialListPosition = initialListPosition,
+                    onListPositionSnapshot = onListPositionSnapshot
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
@@ -298,7 +308,9 @@ private fun SharedTasksLoadedBody(
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    initialListPosition: AppShellLazyListPosition,
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -310,7 +322,9 @@ private fun SharedTasksLoadedBody(
             onOpenTask = onOpenTask,
             onIntent = onIntent,
             defaultViewMode = defaultTasksViewMode(maxWidth),
-            bottomContentPadding = bottomContentPadding
+            bottomContentPadding = bottomContentPadding,
+            initialListPosition = initialListPosition,
+            onListPositionSnapshot = onListPositionSnapshot
         )
     }
 }
@@ -325,7 +339,9 @@ private fun SharedTasksLoadedBodyContent(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
     defaultViewMode: TasksViewMode,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    initialListPosition: AppShellLazyListPosition,
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -399,7 +415,15 @@ private fun SharedTasksLoadedBodyContent(
     // a state change in the trigger composable.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf(Offset.Zero) }
-    val listModeListState = rememberLazyListState()
+    val listModeListState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
+        )
+    val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
+    DisposableEffect(listModeListState) {
+        onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
+    }
     var listModeListRoot by remember { mutableStateOf(Offset.Zero) }
 
     // Filter popover anchors. Captured via onGloballyPositioned on the chip

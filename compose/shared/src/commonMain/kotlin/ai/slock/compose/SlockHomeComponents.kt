@@ -19,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
@@ -582,7 +583,9 @@ internal fun SlockStructuralHomeShell(
     onCloseDirectMessage: (String) -> Unit = {},
     onArchiveChannel: (String) -> Unit = {},
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    onPinMenuDismiss: () -> Unit = {}
+    onPinMenuDismiss: () -> Unit = {},
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
@@ -679,7 +682,15 @@ internal fun SlockStructuralHomeShell(
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded
         )
-    val listState = rememberLazyListState()
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
+        )
+    val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
+    DisposableEffect(listState) {
+        onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
+    }
     val listScope = rememberCoroutineScope()
     val homePullToRefreshEnabled = contentRefreshEnabled && HomePullToRefreshEnabled
     val pullToRefreshState = rememberPullToRefreshState(contentRefreshing && homePullToRefreshEnabled)

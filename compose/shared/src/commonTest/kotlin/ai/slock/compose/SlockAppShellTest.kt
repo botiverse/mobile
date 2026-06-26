@@ -139,6 +139,30 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellLazyListPositionClampsNegativeValues() {
+        assertEquals(
+            AppShellLazyListPosition(firstVisibleItemIndex = 0, firstVisibleItemScrollOffset = 0),
+            appShellLazyListPosition(firstVisibleItemIndex = -4, firstVisibleItemScrollOffset = -20)
+        )
+        assertEquals(
+            AppShellLazyListPosition(firstVisibleItemIndex = 3, firstVisibleItemScrollOffset = 18),
+            appShellLazyListPosition(firstVisibleItemIndex = 3, firstVisibleItemScrollOffset = 18)
+        )
+    }
+
+    @Test
+    fun appShellMembersListStateDefaultsToExpandedTop() {
+        assertEquals(
+            AppShellMembersListState(),
+            AppShellMembersListState(
+                listPosition = AppShellLazyListPosition(),
+                agentsExpanded = true,
+                humansExpanded = true
+            )
+        )
+    }
+
+    @Test
     fun bottomTabPerformanceMarkerUsesRetainedTabIdentity() {
         assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("home"))
         assertEquals("kuikly_tasks", appShellBottomTabPerformanceRoute("tasks"))

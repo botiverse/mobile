@@ -1301,6 +1301,9 @@ private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var retainedAppShellTabs by remember { mutableStateOf(setOf("home")) }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
+    var homeListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
+    var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
+    var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
@@ -1659,6 +1662,9 @@ private fun SlockAppShellContent() {
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
+        homeListPosition = AppShellLazyListPosition()
+        tasksListPosition = AppShellLazyListPosition()
+        membersListState = AppShellMembersListState()
         homeShellStore.reset()
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
@@ -2409,6 +2415,8 @@ private fun SlockAppShellContent() {
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
                             bottomContentPadding = appShellBottomContentInset,
+                            initialListPosition = tasksListPosition,
+                            onListPositionSnapshot = { tasksListPosition = it },
                             onOpenTask = { task ->
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
@@ -2452,7 +2460,9 @@ private fun SlockAppShellContent() {
                                 openHomeConversation(conversation, "home")
                             },
                             serverMembersStore = sharedStores.serverMembersStore,
-                            bottomContentPadding = appShellBottomContentInset
+                            bottomContentPadding = appShellBottomContentInset,
+                            initialListPosition = homeListPosition,
+                            onListPositionSnapshot = { homeListPosition = it }
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
@@ -2471,7 +2481,9 @@ private fun SlockAppShellContent() {
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
                             onContentLoaded = { membersListCachedContent = it },
                             timeContext = threadTimeContext,
-                            bottomContentPadding = appShellBottomContentInset
+                            bottomContentPadding = appShellBottomContentInset,
+                            initialListState = membersListState,
+                            onListStateSnapshot = { membersListState = it }
                         )
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
@@ -8646,7 +8658,9 @@ private fun SharedMembersScreen(
     initialContent: SharedMembersUiState.Content?,
     onContentLoaded: (SharedMembersUiState.Content) -> Unit,
     timeContext: AppShellTimeContext?,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListState: AppShellMembersListState = AppShellMembersListState(),
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
 ) {
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
@@ -8900,7 +8914,9 @@ private fun SharedMembersScreen(
                     inviteJoinLinkCopied = true
                 },
                 inviteHumanLoadJoinLink = { loadInviteJoinLink() },
-                bottomContentPadding = bottomContentPadding
+                bottomContentPadding = bottomContentPadding,
+                initialListState = initialListState,
+                onListStateSnapshot = onListStateSnapshot
             )
         }
     }
@@ -9151,7 +9167,9 @@ private fun SharedHomeScreen(
     onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
     LaunchedEffect(active, state.content, state.homeRealtimeDirty) {
         if (sharedHomeShouldStartOnActive(active, state)) {
@@ -9398,7 +9416,9 @@ private fun SharedHomeScreen(
                 onArchiveChannel = { conversationId ->
                     onIntent(SharedHomeIntent.ArchiveChannel(conversationId))
                 },
-                agentStatusResolver = agentStatusResolver
+                agentStatusResolver = agentStatusResolver,
+                initialListPosition = initialListPosition,
+                onListPositionSnapshot = onListPositionSnapshot
             )
         }
     }

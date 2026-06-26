@@ -99,6 +99,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -1765,7 +1766,9 @@ internal fun MembersRouteContent(
     inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListState: AppShellMembersListState = AppShellMembersListState(),
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
 ) {
     MembersListContent(
         payload = payload,
@@ -1789,7 +1792,9 @@ internal fun MembersRouteContent(
         inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
         inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
         inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
-        bottomContentPadding = bottomContentPadding
+        bottomContentPadding = bottomContentPadding,
+        initialListState = initialListState,
+        onListStateSnapshot = onListStateSnapshot
     )
 }
 
@@ -1817,7 +1822,9 @@ internal fun MembersListContent(
     inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListState: AppShellMembersListState = AppShellMembersListState(),
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -1829,8 +1836,8 @@ internal fun MembersListContent(
     }
     val agents = groupedMembers[payload.labels.agents].orEmpty()
     val humans = groupedMembers[payload.labels.humans].orEmpty()
-    var agentsExpanded by remember(payload.instanceId, agents.size) { mutableStateOf(true) }
-    var humansExpanded by remember(payload.instanceId, humans.size) { mutableStateOf(true) }
+    var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
+    var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
@@ -1845,6 +1852,26 @@ internal fun MembersListContent(
             humansExpanded = humansExpanded
         )
 
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialListState.listPosition.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialListState.listPosition.firstVisibleItemScrollOffset
+        )
+    val latestAgentsExpanded by rememberUpdatedState(agentsExpanded)
+    val latestHumansExpanded by rememberUpdatedState(humansExpanded)
+    val latestOnListStateSnapshot by rememberUpdatedState(onListStateSnapshot)
+    DisposableEffect(listState) {
+        onDispose {
+            latestOnListStateSnapshot(
+                AppShellMembersListState(
+                    listPosition = listState.toAppShellLazyListPosition(),
+                    agentsExpanded = latestAgentsExpanded,
+                    humansExpanded = latestHumansExpanded
+                )
+            )
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1852,6 +1879,7 @@ internal fun MembersListContent(
     ) {
         MembersPageHeader(title = payload.title, refreshing = refreshing)
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
