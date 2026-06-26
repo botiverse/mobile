@@ -3,6 +3,7 @@ package ai.slock.android.core.data.diagnostics
 import ai.slock.android.BuildConfig
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import com.tencent.bugly.library.Bugly
 import com.tencent.bugly.library.BuglyAppVersionMode
 import com.tencent.bugly.library.BuglyBuilder
@@ -100,7 +101,19 @@ object SlockAndroidBuglyDiagnostics {
     fun recordLog(level: String, tag: String, message: String) {
         val cleanTag = tag.buglyValueOrNull() ?: return
         val cleanMessage = DiagnosticsSanitizer.sanitize(message).takeIf { it.isNotBlank() } ?: return
+        writeLogcat(level, cleanTag, cleanMessage)
         SlockFileDiagnosticsLogger.record(level, cleanTag, cleanMessage)
+    }
+
+    private fun writeLogcat(level: String, tag: String, message: String) {
+        when (level.lowercase(Locale.US)) {
+            "verbose" -> Log.v(tag, message)
+            "debug" -> Log.d(tag, message)
+            "info" -> Log.i(tag, message)
+            "warn" -> Log.w(tag, message)
+            "error" -> Log.e(tag, message)
+            else -> Log.i(tag, message)
+        }
     }
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
