@@ -5,9 +5,7 @@ import ai.slock.compose.normalizedThreadChannelKind
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
-import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.Heartbeat
-import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
@@ -31,7 +29,6 @@ import ai.slock.compose.model.isGenericDisplayName
 import ai.slock.compose.model.isSameConversationAs
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.nameIsBlankOrIdentity
-import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
@@ -355,14 +352,9 @@ class ComposeLocalWriteThrough(
         activeConversationId: String?
     ): Boolean {
         if (messages.isEmpty()) return false
-        val avatarByMemberId = store.readHome(serverId)?.directMessageAvatarWireValuesByMemberId().orEmpty()
-        val enrichedMessages =
-            messages.map { message ->
-                message.withHomeDirectMessageAvatar(avatarByMemberId[message.author.id.value])
-            }
         var wroteHome = false
         var wroteThread = false
-        enrichedMessages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
+        messages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
             .forEach { (streamChannelId, streamMessages) ->
                 val threadId = ThreadId(streamChannelId.value)
                 val existing = store.readThread(threadId)
@@ -1154,42 +1146,6 @@ private fun MemberProfile.withStableRealtimeFieldsFrom(previous: MemberProfile):
         serverSlug = serverSlug ?: previous.serverSlug
     )
 }
-
-private fun Message.withHomeDirectMessageAvatar(avatarWireValue: String?): Message {
-    val wireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: return this
-    if (author.kind != MemberKind.Agent) return this
-    val mergedAvatar =
-        resolveMergedAvatarSlot(
-            kind = MemberKind.Agent,
-            id = author.id.value,
-            currentAvatarWireValue = author.avatar?.wireValue ?: author.avatarUrl,
-            currentGravatarHash = author.gravatarHash,
-            incomingAvatarWireValue = wireValue
-        )
-    if (mergedAvatar.effectiveAvatarWireValue == (author.avatar?.wireValue ?: author.avatarUrl) &&
-        mergedAvatar.gravatarHash == author.gravatarHash
-    ) {
-        return this
-    }
-    return copy(
-        author =
-            author.copy(
-                avatarUrl = mergedAvatar.effectiveAvatarWireValue,
-                avatar = AvatarReference.fromWireValue(mergedAvatar.effectiveAvatarWireValue),
-                gravatarHash = mergedAvatar.gravatarHash
-            )
-    )
-}
-
-private fun HomeSnapshot.directMessageAvatarWireValuesByMemberId(): Map<String, String> =
-    directMessages.mapNotNull { conversation ->
-        val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
-        val avatarWireValue =
-            conversation.avatar?.wireValue
-                ?: conversation.avatarUrl
-                ?: return@mapNotNull null
-        memberId to avatarWireValue
-    }.toMap()
 
 private fun List<Message>.latestSeq(): Long =
     maxOfOrNull { it.seq ?: 0L } ?: 0L
