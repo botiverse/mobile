@@ -1,11 +1,11 @@
 import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
+import Napi from 'libentry.so';
+import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 
-const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
-const REALTIME_ROOMS_EVENT_NAME = 'slockRealtimeRooms';
 const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
@@ -66,7 +66,7 @@ export class SlockOhosRealtimeBridge {
         }, params['forceReconnect'] === true);
         break;
       case 'disconnect':
-        this.disconnect((params['reason'] as string) ?? 'shared_disconnect');
+        this.disconnectForRealtimeCommand((params['reason'] as string) ?? 'shared_disconnect');
         break;
       case 'syncResume':
         this.syncResume(Number(params['lastSeq'] ?? 0));
@@ -82,11 +82,13 @@ export class SlockOhosRealtimeBridge {
   }
 
   onPageShow(): void {
+    Napi.slockRealtimeOnAppShown();
     this.socketIo.resume();
     this.sendAppLifecycleEvent('show');
   }
 
   onPageHide(keepAlive: boolean = false): void {
+    Napi.slockRealtimeOnAppHidden();
     if (keepAlive) {
       console.info('[SlockOhosRealtime] page_hide_keep_alive socket_retained');
       this.sendAppLifecycleEvent('hide_keep_alive');
@@ -96,6 +98,10 @@ export class SlockOhosRealtimeBridge {
   }
 
   disconnectForSessionEnd(reason: string): void {
+    if (!Napi.slockRealtimeDisconnectForSessionEnd(reason)) {
+      console.info(`[SlockOhosRealtime] disconnect_ignored reason=${reason}`);
+      return;
+    }
     this.disconnect(reason);
   }
 
@@ -104,17 +110,31 @@ export class SlockOhosRealtimeBridge {
       console.warn('[SlockOhosRealtime] connect skipped: missing server/token');
       return;
     }
-    const previous = this.connectParams;
-    if (previous !== undefined && previous.serverId !== params.serverId) {
+    const decision = Napi.slockRealtimeConnectDecision(
+      params.serverId,
+      params.accessToken,
+      params.lastSeq,
+      forceReconnect,
+      this.connectionStateName()
+    );
+    if (decision.logMessage !== null && decision.logMessage.length > 0) {
+      console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
+    }
+    if (decision.sessionChanged) {
       this.joinedChannels.clear();
     }
-    this.connectParams = params;
+    this.connectParams = {
+      serverId: params.serverId,
+      accessToken: params.accessToken,
+      socketUrl: params.socketUrl,
+      lastSeq: decision.resumeSeq,
+    };
+    if (!decision.shouldConnect) {
+      return;
+    }
     this.authRefreshInFlight = false;
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = undefined;
-    if (!forceReconnect && this.socketIo.isConnected() && previous?.serverId === params.serverId && previous?.accessToken === params.accessToken) {
-      return;
-    }
     this.disconnect('reconnect');
     this.socketIo.connect({
       socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this),
@@ -129,6 +149,15 @@ export class SlockOhosRealtimeBridge {
     });
   }
 
+  private disconnectForRealtimeCommand(reason: string): void {
+    if (Napi.slockRealtimeDisconnectForSessionEnd(reason)) {
+      this.disconnect(reason);
+      return;
+    }
+    console.info(`[SlockOhosRealtime] disconnect_local_only reason=${reason}`);
+    this.disconnect(reason);
+  }
+
   private disconnect(reason: string): void {
     if (reason !== 'reconnect') {
       this.joinedChannels.clear();
@@ -141,22 +170,29 @@ export class SlockOhosRealtimeBridge {
 
   private handleSocketIoEvent(eventName: string, payload: KRAny): void {
     this.markInbound(eventName);
-    if (eventName === 'rooms:joined') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.RoomsJoined) {
       this.onRoomsJoined();
       return;
     }
     if (eventName.length === 0) {
       return;
     }
-    if (eventName === 'heartbeat') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.Heartbeat) {
       const heartbeat = payload as KRRecord;
       console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
     }
-    const serverId = this.connectParams?.serverId ?? '';
+    const rawPayload = JSON.stringify(payload ?? {});
+    const decision = Napi.slockRealtimeRawDecision(eventName, rawPayload);
+    if (decision.logMessage.length > 0) {
+      console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
+    }
+    if (!decision.shouldFanOut || decision.serverId === null) {
+      return;
+    }
     this.sendRealtimeNotify({
-      serverId: serverId,
-      eventName: eventName,
-      rawPayload: JSON.stringify(payload ?? {}),
+      [GeneratedRealtimeContract.PayloadKey.ServerId]: decision.serverId,
+      [GeneratedRealtimeContract.PayloadKey.EventName]: decision.eventName,
+      [GeneratedRealtimeContract.PayloadKey.RawPayload]: decision.rawPayload,
     });
   }
 
@@ -172,12 +208,19 @@ export class SlockOhosRealtimeBridge {
     if (channelId.length === 0) {
       return;
     }
-    this.joinedChannels.add(channelId);
-    this.emitJoinChannel(channelId);
+    const decision = Napi.slockRealtimeJoinChannelDecision(channelId, 'notify');
+    if (decision.logMessage.length > 0) {
+      console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
+    }
+    if (!decision.shouldJoin || decision.channelId === null || decision.channelId.length === 0) {
+      return;
+    }
+    this.joinedChannels.add(decision.channelId);
+    this.emitJoinChannel(decision.channelId);
   }
 
   private emitJoinChannel(channelId: string): void {
-    if (!this.socketIo.emit('join:channel', channelId)) {
+    if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId)) {
       console.info('[SlockOhosRealtime] join_channel_deferred');
     }
   }
@@ -185,7 +228,7 @@ export class SlockOhosRealtimeBridge {
   private rejoinChannels(reason: string): void {
     this.joinedChannels.forEach((channelId) => {
       console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
-      this.socketIo.emit('join:channel', channelId);
+      this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
     });
   }
 
@@ -202,14 +245,14 @@ export class SlockOhosRealtimeBridge {
         console.warn(`[SlockOhosRealtime] room_notify_parse_failed message=${JSON.stringify(error)}`);
       }
     };
-    emitter.on(REALTIME_ROOMS_EVENT_NAME, this.roomNotifyCallback);
+    emitter.on(GeneratedRealtimeContract.Notify.RoomsEventName, this.roomNotifyCallback);
     console.info('[SlockOhosRealtime] room_notify_listener_installed');
   }
 
   private handleRealtimeRoomsNotify(params: KRRecord): void {
-    const action = (params['action'] as string) ?? '';
-    if (action === 'joinChannel') {
-      this.joinChannel((params['channelId'] as string) ?? '');
+    const action = (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '';
+    if (action === GeneratedRealtimeContract.RoomAction.JoinChannel) {
+      this.joinChannel((params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '');
     }
   }
 
@@ -218,15 +261,19 @@ export class SlockOhosRealtimeBridge {
       return;
     }
     console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
-    this.socketIo.emit('sync:resume', { lastSeq: lastSeq });
+    this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.SyncResume, { lastSeq: lastSeq });
   }
 
   private markInbound(eventName?: string): void {
     const now = Date.now();
     this.lastInboundEventAtMillis = now;
-    if (eventName === 'heartbeat') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.Heartbeat) {
       this.lastHeartbeatAtMillis = now;
     }
+  }
+
+  private connectionStateName(): string {
+    return this.socketIo.isConnected() ? 'Connected' : 'Disconnected';
   }
 
   private startHeartbeatWatchdog(): void {
@@ -295,7 +342,7 @@ export class SlockOhosRealtimeBridge {
     this.sendRealtimeNotify({
       action: 'authRefreshRequired',
       reason: reason,
-      serverId: params.serverId,
+      [GeneratedRealtimeContract.PayloadKey.ServerId]: params.serverId,
     });
     return true;
   }
@@ -309,9 +356,9 @@ export class SlockOhosRealtimeBridge {
   }
 
   private sendRealtimeNotify(data: KRRecord): void {
-    emitter.emit(REALTIME_EVENT_NAME, {
+    emitter.emit(GeneratedRealtimeContract.Notify.EventName, {
       data: {
-        eventName: REALTIME_EVENT_NAME,
+        eventName: GeneratedRealtimeContract.Notify.EventName,
         stringify: JSON.stringify(data),
       },
     });
