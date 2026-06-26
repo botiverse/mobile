@@ -525,6 +525,52 @@ internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
+internal fun KuiklyThreadScreenPayload.threadMessagePermalink(
+    message: KuiklyThreadMessageItem,
+    serverSlug: String?,
+    webBaseUrl: String? = null
+): String? {
+    val cleanServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val cleanMessageId = message.id.trim().takeIf { it.isNotBlank() } ?: return null
+    val replyParentMessageId =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: parentMessageId?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    val channelForLink =
+        if (replyParentMessageId != null) {
+            parentChannelId?.takeIf { it.isNotBlank() }
+        } else {
+            sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: streamChannelId?.takeIf { it.isNotBlank() }
+                ?: parentChannelId?.takeIf { it.isNotBlank() }
+        } ?: return null
+    val routeKind =
+        if (
+            (replyParentMessageId != null && parentChannelKind.isThreadPermalinkDmKind()) ||
+            (replyParentMessageId == null && (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()))
+        ) {
+            "dm"
+        } else {
+            "channel"
+        }
+    val params =
+        if (replyParentMessageId != null) {
+            "msg=$cleanMessageId&thread=$channelForLink%3A$replyParentMessageId"
+        } else {
+            "msg=$cleanMessageId"
+        }
+    return "${sharedSettingsResolvedWebBaseUrl(webBaseUrl)}/s/$cleanServerSlug/$routeKind/$channelForLink?$params"
+}
+
+private fun String?.isThreadPermalinkDmKind(): Boolean =
+    when (this?.trim()?.lowercase()) {
+        "dm", "direct_message", "direct-message", "directmessage" -> true
+        else -> false
+    }
+
 internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
     sentAttachmentIds: Set<String>
@@ -1885,8 +1931,10 @@ private fun ThreadMessageVisualScreen() {
                     showConvertToTaskAction = menuVariant != "task",
                     showDeleteAction = false,
                     onReply = {},
+                    onCopyLink = {},
                     onCopy = {},
                     onSave = {},
+                    onFollowThread = {},
                     onTaskStatusChange = {},
                     onConvertToTask = {},
                     onDelete = {}
@@ -2454,6 +2502,7 @@ internal fun SharedThreadRouteContent(
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -2505,6 +2554,7 @@ internal fun SharedThreadRouteContent(
         )
         pendingActionCardIds = emptySet()
         pendingTaskConvertMessageIds = emptySet()
+        pendingThreadFollowMessageIds = emptySet()
         createAgentDialogState = null
         attachmentOpenStates = emptyMap()
         attachmentCommentsDialogState = null
@@ -3523,6 +3573,24 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Copied")
                     }
                 }
+                action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
+                    val message =
+                        renderedThread.threadActionMessage(itemId)
+                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }
+                    val permalink =
+                        message?.let {
+                            renderedThread.threadMessagePermalink(
+                                message = it,
+                                serverSlug = currentServerSlug
+                            )
+                        }
+                    if (permalink != null) {
+                        bridge.copyToPasteboard(permalink)
+                        bridge.toast("Copied")
+                    } else {
+                        bridge.toast("Unable to copy link")
+                    }
+                }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     val parentMessage =
                         renderedThread.messages.firstOrNull { it.id == itemId }
@@ -3568,6 +3636,37 @@ internal fun SharedThreadRouteContent(
                                 )
                                 bridge.toast("Unable to open replies")
                             }
+                        }
+                    }
+                }
+                action == "followMessageThread" && !itemId.isNullOrBlank() -> {
+                    if (itemId in pendingThreadFollowMessageIds) {
+                        return@ThreadPageContent
+                    }
+                    pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + itemId
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.followThread(MessageId(itemId))) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyReplyThreadRead(
+                                            parentMessageId = result.data.parentMessageId?.value ?: itemId,
+                                            threadChannelId = result.data.threadChannelId.value
+                                        )
+                                    )
+                                    bridge.toast("Followed thread")
+                                }
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    bridge.toast("Unable to follow thread")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    bridge.toast("Unable to follow thread")
+                                }
+                            }
+                        } finally {
+                            pendingThreadFollowMessageIds = pendingThreadFollowMessageIds - itemId
                         }
                     }
                 }
@@ -7442,6 +7541,10 @@ private fun ThreadMessagesList(
                     showReactionActions = !message.hasLocalSendState(),
                     showDeleteAction = isFailedLocalSend,
                     onDismiss = { actionMessageId = null },
+                    onCopyLink = {
+                        actionMessageId = null
+                        onThreadEvent("copyMessageLink", message.id, null, null)
+                    },
                     onReply = {
                         actionMessageId = null
                         onThreadEvent("openMessageThread", message.id, null, null)
@@ -7453,6 +7556,10 @@ private fun ThreadMessagesList(
                     onSave = {
                         actionMessageId = null
                         onThreadEvent("toggleMessageSaved", message.id, null, null)
+                    },
+                    onFollowThread = {
+                        actionMessageId = null
+                        onThreadEvent("followMessageThread", message.id, null, null)
                     },
                     onReact = { emoji ->
                         actionMessageId = null
@@ -9496,10 +9603,11 @@ private data class ThreadMessageMenuAction(
     val label: String,
     val icon: SlockLucideIconName,
     val group: String,
+    val enabled: Boolean = true,
     val onClick: () -> Unit
 )
 
-private val ThreadMessageMenuWidth = 208.dp
+private val ThreadMessageMenuWidth = 240.dp
 private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
@@ -9512,24 +9620,53 @@ private fun threadMessageMenuActions(
     showConvertToTaskAction: Boolean,
     showDeleteAction: Boolean,
     onReply: () -> Unit,
+    onCopyLink: () -> Unit,
     onCopy: () -> Unit,
     onSave: () -> Unit,
+    onFollowThread: () -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
     onDelete: () -> Unit
 ): List<ThreadMessageMenuAction> =
     buildList {
+        add(
+            ThreadMessageMenuAction(
+                label = "Copy Link",
+                icon = SlockLucideIconName.Link,
+                group = "copy",
+                onClick = onCopyLink
+            )
+        )
+        add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
+        add(
+            ThreadMessageMenuAction(
+                label = "Share Messages...",
+                icon = SlockLucideIconName.Share2,
+                group = "copy",
+                enabled = false,
+                onClick = {}
+            )
+        )
         if (showReplyAction) {
-            add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
+            add(ThreadMessageMenuAction("Open Thread", SlockLucideIconName.MessageSquare, "message", onClick = onReply))
         }
-        add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
         if (showSaveAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = if (message.isSaved) "Remove from saved" else "Save message",
+                    label = if (message.isSaved) "Remove from Saved" else "Save Message",
                     icon = SlockLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
+                )
+            )
+        }
+        if (!message.threadChannelId.isNullOrBlank() || message.replyCount > 0) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Follow Thread",
+                    icon = SlockLucideIconName.MessageSquare,
+                    group = "message",
+                    onClick = onFollowThread
                 )
             )
         }
@@ -9547,7 +9684,7 @@ private fun threadMessageMenuActions(
             val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
             add(
                 ThreadMessageMenuAction(
-                    label = if (isDone) "Reopen task" else "Mark done",
+                    label = if (isDone) "Reopen Task" else "Mark as Done",
                     icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
                     group = "task",
                     onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
@@ -9578,8 +9715,10 @@ private fun ThreadMessageActionMenu(
     showDeleteAction: Boolean,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
+    onCopyLink: () -> Unit,
     onCopy: () -> Unit,
     onSave: () -> Unit,
+    onFollowThread: () -> Unit,
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
@@ -9595,8 +9734,10 @@ private fun ThreadMessageActionMenu(
             showConvertToTaskAction,
             showDeleteAction,
             onReply,
+            onCopyLink,
             onCopy,
             onSave,
+            onFollowThread,
             onTaskStatusChange,
             onConvertToTask,
             onDelete
@@ -9609,8 +9750,10 @@ private fun ThreadMessageActionMenu(
                 showConvertToTaskAction = showConvertToTaskAction,
                 showDeleteAction = showDeleteAction,
                 onReply = onReply,
+                onCopyLink = onCopyLink,
                 onCopy = onCopy,
                 onSave = onSave,
+                onFollowThread = onFollowThread,
                 onTaskStatusChange = onTaskStatusChange,
                 onConvertToTask = onConvertToTask,
                 onDelete = onDelete
@@ -9705,7 +9848,7 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(36.dp)
-            .padding(horizontal = SlockSpacing.Xs),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -10041,21 +10184,26 @@ private fun threadHasCustomReactionGlyph(emoji: String): Boolean =
 private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
     Button(
         onClick = action.onClick,
+        enabled = action.enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 42.dp)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 7.dp)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockLucideIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucideIcon(
+                action.icon,
+                modifier = Modifier.size(16.dp),
+                color = if (action.enabled) "#FF000000" else "#FF6B625F"
+            )
             Text(
                 text = action.label,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

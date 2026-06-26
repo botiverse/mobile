@@ -115,6 +115,50 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMessagePermalinkMatchesReactChannelRoute() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "channel-1",
+                channelKind = "channel"
+            )
+
+        val permalink =
+            payload.threadMessagePermalink(
+                message = threadMessage("message-1", "u-artin", "artin"),
+                serverSlug = "workspace"
+            )
+
+        assertEquals(
+            "https://app.raft.build/s/workspace/channel/channel-1?msg=message-1",
+            permalink
+        )
+    }
+
+    @Test
+    fun threadMessagePermalinkUsesParentThreadParamForReplyRows() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = "parent-1",
+                sourceThreadId = "thread-1",
+                streamChannelId = "thread-1",
+                parentChannelKind = "channel"
+            )
+
+        val permalink =
+            payload.threadMessagePermalink(
+                message = threadMessage("reply-1", "u-artin", "artin"),
+                serverSlug = "workspace"
+            )
+
+        assertEquals(
+            "https://app.raft.build/s/workspace/channel/channel-1?msg=reply-1&thread=channel-1%3Aparent-1",
+            permalink
+        )
+    }
+
+    @Test
     fun markdownChannelLaunchPayloadResolvesChannelNameToIdentityOnlyRoute() {
         val payload =
             buildMarkdownChannelLaunchPayload(

@@ -1316,6 +1316,19 @@ internal class SharedThreadDataSource(
         )
     }
 
+    suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true))
+        return try {
+            repository.followThread(parentMessageId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true))
+        }
+    }
+
     private suspend fun loadResolvedReplyThread(
         basePayload: KuiklyThreadScreenPayload,
         parentMessage: KuiklyThreadMessageItem,
