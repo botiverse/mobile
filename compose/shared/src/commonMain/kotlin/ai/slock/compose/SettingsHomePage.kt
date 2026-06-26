@@ -25,6 +25,7 @@ import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
+import ai.slock.compose.data.KuiklyHostNetworkEvents
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
@@ -408,8 +409,6 @@ private val EmptyConversationDirectoryProjectionFlow =
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
-private const val AppShellNetworkStatusAction = "networkStatus"
-private const val AppShellNetworkStatusOffline = "offline"
 private const val HomeDestinationSearch = SharedHomeShellDestinationSearch
 private const val HomeDestinationActivity = SharedHomeShellDestinationActivity
 private const val HomeDestinationSaved = SharedHomeShellDestinationSaved
@@ -1611,6 +1610,7 @@ private fun SlockAppShellContent() {
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
     val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
+    val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
@@ -2504,6 +2504,19 @@ private fun SlockAppShellContent() {
         onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
     }
 
+    DisposableEffect(hostNetworkEvents) {
+        val callbackRef =
+            hostNetworkEvents.addListener { signal ->
+                hostNetworkStatus =
+                    if (signal.online) {
+                        SlockAppShellNetworkStatus.Online
+                    } else {
+                        SlockAppShellNetworkStatus.Offline
+                    }
+            }
+        onDispose { hostNetworkEvents.removeListener(callbackRef) }
+    }
+
     DisposableEffect(
         realtimeEvents,
         homeViewModel,
@@ -2538,16 +2551,6 @@ private fun SlockAppShellContent() {
                             "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
                         }
                     }
-                    return@addListener
-                }
-                if (eventData.optString("action") == AppShellNetworkStatusAction) {
-                    val status = eventData.optString("status")
-                    hostNetworkStatus =
-                        if (status == AppShellNetworkStatusOffline || !eventData.optBoolean("online", true)) {
-                            SlockAppShellNetworkStatus.Offline
-                        } else {
-                            SlockAppShellNetworkStatus.Online
-                        }
                     return@addListener
                 }
                 if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {

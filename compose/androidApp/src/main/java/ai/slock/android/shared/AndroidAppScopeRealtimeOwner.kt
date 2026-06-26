@@ -11,10 +11,10 @@ import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
+import ai.slock.compose.data.SlockHostNetworkNotifyContract
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
-import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ConversationKind
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
@@ -28,7 +28,6 @@ import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
-    private const val APP_SHELL_NETWORK_STATUS_ACTION = "networkStatus"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -400,12 +399,18 @@ internal object AndroidAppScopeRealtimeOwner {
         )
         scope.launch {
             context.applicationContext.sendKuiklyEvent(
-                SlockRealtimeNotifyContract.EventName,
+                SlockHostNetworkNotifyContract.EventName,
                 JSONObject()
-                    .put("action", APP_SHELL_NETWORK_STATUS_ACTION)
-                    .put("status", if (online) "online" else "offline")
-                    .put("online", online)
-                    .put("source", source)
+                    .put(
+                        SlockHostNetworkNotifyContract.KeyStatus,
+                        if (online) {
+                            SlockHostNetworkNotifyContract.StatusOnline
+                        } else {
+                            SlockHostNetworkNotifyContract.StatusOffline
+                        }
+                    )
+                    .put(SlockHostNetworkNotifyContract.KeyOnline, online)
+                    .put(SlockHostNetworkNotifyContract.KeySource, source)
             )
         }
     }
