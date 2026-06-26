@@ -42,6 +42,7 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -663,7 +664,7 @@ class RealtimeRepositoryTest {
         assertTrue(event is MessageNew)
         val message = (event as MessageNew).message
         assertEquals("message-json", message.id.value)
-        assertEquals("thread-json", message.threadId.value)
+        assertEquals("channel-json", message.threadId.value)
         assertEquals("channel-json", message.channelId?.value)
         assertEquals(77L, message.seq)
         assertEquals("Socket payload", message.body)
@@ -671,7 +672,7 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun mapperKeepsLegacyMessageEnvelopeFallback() {
+    fun mapperRejectsLegacyMessageEnvelopeFallback() {
         val mapper = RealtimeEventMapper()
         val event = mapper.map(
             RealtimeSocketEvents.MessageNew,
@@ -692,11 +693,7 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is MessageNew)
-        val message = (event as MessageNew).message
-        assertEquals("message-envelope", message.id.value)
-        assertEquals("Envelope fallback", message.body)
-        assertEquals("Envelope User", message.author.displayName)
+        assertNull(event)
     }
 
     @Test

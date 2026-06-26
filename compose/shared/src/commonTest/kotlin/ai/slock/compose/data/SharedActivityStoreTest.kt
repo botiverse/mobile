@@ -214,6 +214,94 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun markAllReadKeepsRowsAndClearsCountsInAllFilter() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalCount = 8, totalUnreadCount = 3)
+                    )
+            )
+        val store =
+            activityStore(
+                scope,
+                inbox,
+                readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.MarkAllRead)
+
+        val item = store.state.value.items.single()
+        assertEquals(0, item.unreadCount)
+        assertEquals(null, item.firstUnreadMessageId)
+        assertEquals(false, item.hasMention)
+        assertEquals(8, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
+        scope.cancel()
+    }
+
+    @Test
+    fun markAllReadRemovesRowsInUnreadFilter() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalCount = 1, totalUnreadCount = 3)
+                    )
+            )
+        val store =
+            activityStore(
+                scope,
+                inbox,
+                readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
+            )
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        store.dispatch(SharedActivityIntent.MarkAllRead)
+
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
+        scope.cancel()
+    }
+
+    @Test
+    fun markAllReadRemovesRowsInMentionsFilter() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
+        val row = activityItem("channel-1", unreadCount = 2).copy(hasMention = true)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(row), totalCount = 1, totalUnreadCount = 2)
+                    )
+            )
+        val store =
+            activityStore(
+                scope,
+                inbox,
+                readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
+            )
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        store.dispatch(SharedActivityIntent.MarkAllRead)
+
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
+        scope.cancel()
+    }
+
+    @Test
     fun activitySilentRefreshDoesNotDrivePullRefreshState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -507,7 +595,9 @@ class SharedActivityStoreTest {
         }
     }
 
-    private class FakeReadReceiptRepository : ReadReceiptRepository {
+    private class FakeReadReceiptRepository(
+        private val pendingInboxReadAllResult: CompletableDeferred<DataResult<ReadReceiptResult>>? = null
+    ) : ReadReceiptRepository {
         val readAllChannelIds = mutableListOf<ChannelId>()
         val unreadChannelIds = mutableListOf<ChannelId>()
         val inboxReadAllServerIds = mutableListOf<ServerId>()
@@ -530,6 +620,7 @@ class SharedActivityStoreTest {
 
         override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {
             inboxReadAllServerIds += serverId
+            pendingInboxReadAllResult?.let { return it.await() }
             return DataResult.Content(ReadReceiptResult())
         }
     }

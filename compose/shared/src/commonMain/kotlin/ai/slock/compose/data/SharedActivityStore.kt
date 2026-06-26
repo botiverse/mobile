@@ -286,12 +286,12 @@ class SharedActivityStore(
         val updatedSnapshot =
             snapshot.copy(
                 items =
-                    if (previous.selectedFilter == InboxFilter.Unread) {
-                        emptyList()
-                    } else {
+                    if (previous.selectedFilter.keepsReadActivityRows()) {
                         snapshot.items.map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) }
+                    } else {
+                        emptyList()
                     },
-                totalCount = if (previous.selectedFilter == InboxFilter.Unread) 0 else snapshot.totalCount,
+                totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else 0,
                 totalUnreadCount = 0
             )
         rememberUnreadCleared(snapshot.items)
@@ -350,9 +350,7 @@ class SharedActivityStore(
         val key = item.key
         rememberUnreadCleared(item)
         val updatedItems =
-            if (previous.selectedFilter == InboxFilter.Unread) {
-                snapshot.items.filterNot { it.key == key }
-            } else {
+            if (previous.selectedFilter.keepsReadActivityRows()) {
                 snapshot.items.map { existing ->
                     if (existing.key == key) {
                         existing.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
@@ -360,13 +358,15 @@ class SharedActivityStore(
                         existing
                     }
                 }
+            } else {
+                snapshot.items.filterNot { it.key == key }
             }
         _state.value =
             previous.copy(
                 snapshot =
                     snapshot.copy(
                         items = updatedItems,
-                        totalCount = if (previous.selectedFilter == InboxFilter.Unread) maxOf(0, snapshot.totalCount - 1) else snapshot.totalCount,
+                        totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else maxOf(0, snapshot.totalCount - 1),
                         totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - item.unreadCount)
                     ),
                 errorCode = null
@@ -551,10 +551,10 @@ class SharedActivityStore(
             if (staleUnread) {
                 suppressedUnreadCount += item.unreadCount
                 val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
-                if (filter == InboxFilter.Unread) {
-                    removedUnreadRows += 1
-                } else {
+                if (filter.keepsReadActivityRows()) {
                     reconciled += clearedItem
+                } else {
+                    removedUnreadRows += 1
                 }
             } else {
                 nextOverrides.remove(item.key)
@@ -640,6 +640,9 @@ class SharedActivityStateCache {
 
 private fun activityStateCacheKey(serverId: String, userId: String, filter: InboxFilter): String =
     "${serverId.trim()}:${userId.trim()}:${filter.name}"
+
+private fun InboxFilter.keepsReadActivityRows(): Boolean =
+    this == InboxFilter.All
 
 sealed interface SharedActivityIntent {
     data object ClearSummary : SharedActivityIntent
