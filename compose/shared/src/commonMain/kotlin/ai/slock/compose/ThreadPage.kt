@@ -1489,13 +1489,14 @@ internal fun shouldShowThreadComposerForTab(
 internal fun shouldShowThreadComposerForReadyContent(
     joined: Boolean,
     showComposer: Boolean,
-    selectedTab: String?,
-    contentExtrasVisible: Boolean,
-    threadContentReady: Boolean
+    selectedTab: String?
 ): Boolean =
-    contentExtrasVisible &&
-        threadContentReady &&
-        shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
+    shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
+
+internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(): Boolean =
+    !shouldRenderThreadEarlyLoadingShell() &&
+        status != "no_permission" &&
+        status != "error"
 
 internal data class SharedThreadRealtimeEventSignal(
     val sequence: Long,
@@ -5745,16 +5746,11 @@ private fun ThreadPageContent(
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
-    var threadContentReadyForComposer by remember(threadInstanceKey, payload.status) {
-        mutableStateOf(payload.status != "content")
-    }
     val showComposerForSelectedTab =
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
-            selectedTab = selectedTab.wireValue,
-            contentExtrasVisible = contentExtrasVisible,
-            threadContentReady = threadContentReadyForComposer
+            selectedTab = selectedTab.wireValue
         )
     val taskPanelChannelId =
         remember(taskChannelId, threadInstanceKey) {
@@ -5836,9 +5832,7 @@ private fun ThreadPageContent(
                         onOpenMarkdownTag = openMarkdownTag,
                         onOpenMarkdownUrl = openMarkdownUrl,
                         diagnosticsLogger = diagnosticsLogger,
-                        onThreadContentReady = {
-                            threadContentReadyForComposer = true
-                        }
+                        onThreadContentReady = {}
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -5902,7 +5896,7 @@ private fun ThreadPageContent(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
-            } else if (payload.status != "loading" && showComposerForSelectedTab) {
+            } else if (payload.hasRenderableContentForComposer() && showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(
