@@ -187,7 +187,8 @@ private val DeveloperRouteGroups =
                     DeveloperRouteItem("Settings Page Visual", "compose_settings_page_visual", "Settings page fixture"),
                     DeveloperRouteItem("Members Smoke", MEMBERS_SMOKE_PAGE, "Members smoke fixture"),
                     DeveloperRouteItem("Members Agent Detail Visual", "compose_members_agent_detail_visual", "Agent detail fixture"),
-                    DeveloperRouteItem("Create Agent Dialog Visual", "compose_create_agent_dialog_visual", "Create-agent dialog fixture")
+                    DeveloperRouteItem("Create Agent Dialog Visual", "compose_create_agent_dialog_visual", "Create-agent dialog fixture"),
+                    DeveloperRouteItem("Child Page Host Smoke", SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, "Nested Kuikly child-page host proof")
                 )
         )
     )

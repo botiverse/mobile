@@ -1,7 +1,7 @@
 package components
 
 import com.tencent.kuikly.core.render.web.export.IKuiklyRenderViewExport
-import com.tencent.kuikly.core.render.web.ktx.KRCssConst
+import com.tencent.kuikly.core.render.web.const.KRCssConst
 import com.tencent.kuikly.core.render.web.runtime.miniapp.MiniGlobal
 import com.tencent.kuikly.core.render.web.runtime.miniapp.core.NativeApi
 import com.tencent.kuikly.core.render.web.utils.Log

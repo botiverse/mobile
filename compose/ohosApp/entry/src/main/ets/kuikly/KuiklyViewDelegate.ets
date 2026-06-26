@@ -7,6 +7,7 @@ import {
 } from '@kuikly-open/render';
 import { SlockLucideIconView } from './components/SlockLucideIconView';
 import { SlockOhosHdsTabBarView } from './components/SlockOhosHdsTabBarView';
+import { SlockKuiklyPageView } from './components/SlockKuiklyPageView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
 import { SlockOhosDiagnostics } from './SlockOhosDiagnostics';
 import { SlockNetworkModule } from './modules/SlockNetworkModule';
@@ -19,6 +20,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   getCustomRenderViewCreatorRegisterMap(): Map<string, KRRenderViewExportCreator> {
     const map: Map<string, KRRenderViewExportCreator> = new Map();
     map.set(SlockOhosHdsTabBarView.VIEW_NAME, () => new SlockOhosHdsTabBarView());
+    map.set(SlockKuiklyPageView.VIEW_NAME, () => new SlockKuiklyPageView());
     return map;
   }
 

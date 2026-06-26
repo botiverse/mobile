@@ -4,6 +4,7 @@ import com.tencent.kuikly.core.render.web.expand.KuiklyRenderViewDelegatorDelega
 import com.tencent.kuikly.core.render.web.runtime.miniapp.core.Transform
 import components.KRMyView
 import components.KRWebView
+import components.SlockKuiklyPageView
 import dom.MiniWebViewElement
 
 /**
@@ -46,6 +47,10 @@ class KuiklyWebRenderViewDelegator : KuiklyRenderViewDelegatorDelegate {
         // Register custom views
         kuiklyRenderExport.renderViewExport(KRMyView.VIEW_NAME, {
             KRMyView()
+        })
+
+        kuiklyRenderExport.renderViewExport(SlockKuiklyPageView.VIEW_NAME, {
+            SlockKuiklyPageView()
         })
     }
 }

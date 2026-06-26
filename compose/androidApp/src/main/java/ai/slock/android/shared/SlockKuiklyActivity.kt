@@ -571,6 +571,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             SlockPixelAvatarRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockPixelAvatarRenderView(context) }
         )
+        kuiklyRenderExport.renderViewExport(
+            SlockKuiklyPageRenderView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockKuiklyPageRenderView(context, this) }
+        )
     }
 
     private fun createPageSpec(): SlockKuiklyPageSpec {

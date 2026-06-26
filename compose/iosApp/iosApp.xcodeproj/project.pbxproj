@@ -18,6 +18,7 @@
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
 		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
 		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
+		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,8 @@
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
 		FF6B714E29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderComponentExpandHandler.h; sourceTree = "<group>"; };
 		FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderComponentExpandHandler.m; sourceTree = "<group>"; };
+		D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKuiklyPageView.h; sourceTree = "<group>"; };
+		D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKuiklyPageView.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,11 +139,21 @@
 			isa = PBXGroup;
 			children = (
 				FF6B714D29A2A6BA009349F1 /* Handler */,
+				D43B80132E0E500100C0DE01 /* Components */,
 				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
 				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
 				FF6B714029A2A173009349F1 /* Modules */,
 			);
 			path = KuiklyExpand;
+			sourceTree = "<group>";
+		};
+		D43B80132E0E500100C0DE01 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */,
+				D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		FF6B714029A2A173009349F1 /* Modules */ = {
@@ -285,6 +298,7 @@
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */,
+				D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
