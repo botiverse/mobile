@@ -71,9 +71,9 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 ### ❌ 仍未对齐 (06-26 仍 P0)
 1. **Status resolution 一致性** (#73 AD-4 in_progress, per spec v2 #68 P0 #1)
    - 真 bug: KMP color 用 `member.agentStatus` (snapshot), pulse 用 `membersResolvedAgentStatus` (summary). 同一 dot 双 source. 修法: 抽 `resolveMemberDisplayState(member, summary)` 跟 React `resolveAgentDisplayState` 同构.
-2. **Freshness reconcile** (#74 AD-4 in_progress, per spec v2 P0 #2)
-   - 缺 `agentActivityObservedAt` / `agentActivityVersions` / `agentActivitySeq` reconcile 字段
-   - socket reconnect 后 REST snapshot 覆盖新 socket push
+2. **Freshness / surface validation** (per `react-kmp-realtime-alignment-2026-06-26.md`)
+   - `agentActivityObservedAt` / `agentActivityVersions` / `agentActivitySeq` 已落地，旧 spec v2 的“字段缺失”结论已 stale
+   - 剩余风险是 Home / thread rows / member detail / profile 等 status surface 是否都消费 member/agent-detail presence path，避免 stale snapshot 覆盖新 socket push
 3. **Activity list 实时刷新** (#93 AD-4 in_review)
    - agent detail activity 列表不实时
 4. **External agent display-state** (P1 #3, per spec v2)
@@ -97,7 +97,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ### P0 (本轮必修)
 1. Status resolution 一致性 (#73 AD-4)
-2. Freshness reconcile (#74 AD-4)
+2. Freshness / status surface validation
 3. Activity list 实时刷新 (#93 AD-4)
 4. External agent display-state (per spec v2 P1 #3, owner 拍 是否 KMP MVP 需要)
 5. screens.members.human.profile visual case 落地 (#89 spec 落地后 fixture + Android capture)
@@ -116,7 +116,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## Owner 拍 (下一步)
 
-- (i) 等 AD-4 #73 + #74 落地, 我跑 v6.x verify diff 报 thread
+- (i) 等 AD-4 #73 落地, 并按 realtime alignment 做 status surface freshness verify，跑 v6.x verify diff 报 thread
 - (ii) 等 AD-3 #91 + #92 落地, 我跑对应 visual parity verify
 - (iii) 等 owner 拍 (External agent 是否 KMP MVP 需要, Idle/Disconnected 简化 vs 业务扩展)
 - (iv) 我跑 screens.members.human.profile React capture (等 AD-3 fixture 落地)

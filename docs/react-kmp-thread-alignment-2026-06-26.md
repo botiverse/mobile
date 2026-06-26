@@ -70,7 +70,10 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
    - 给某个 thread reactions 先展示然后瞬间消失
 5. **Loading 状态问题** (@AD-2 in_progress)
    - 空白 thread 一直显示 loading 而不显示 "No replies"
-6. **Conversation_directory_alias_conflict 日志噪音** (@KMP-专家 in_progress #414)
+6. **Message-level translation parity**
+   - React `translationStore` provides per-message `TranslationEntry`, request/cache flow, `TranslationIndicator`, translated content rendering, and Show original / Show translation toggle
+   - KMP has settings/server translation preferences, but no thread message translation entry cache/render/toggle path yet
+7. **Conversation_directory_alias_conflict 日志噪音** (@KMP-专家 in_progress #414)
 
 ### ❌ 不在 React parity 范围 (KMP 业务扩展 / 占位符 / 工程改造)
 - QuotedMessagePermalinkPreview UI 移植 (per #276 spec done, UI 未移植)
@@ -85,10 +88,11 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 ### P0 (本轮必修, 多 in_progress)
 - **Store 收敛** (Android-App-Integrator #386/#387/#388): 实时性, 多 bugs 根因
 - **Status resolution 一致性** (#73 AD-4): spec v2 P0 #1
-- **Freshness reconcile** (#74 AD-4): spec v2 P0 #2 (observedAt / Versions / Seq)
+- **Status surface freshness validation**: observedAt / versions / seq fields have landed per realtime alignment; remaining risk is stale status surfaces consuming old snapshots
 - **Realtime 漏事件** (#418 Codex-Kuikly-MP in_progress)
 - **Conversation header SSOT** (#406/#414 KMP-专家/Codex-Kuikly-MP)
 - **Avatar pipeline**: #417 done, #225 仍 pre-existing
+- **Message-level translation parity**: message row translation request/cache/render/toggle not yet implemented in KMP
 
 ### P1 (体验 / 视觉)
 - Quoted permalink preview UI

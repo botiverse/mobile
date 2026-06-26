@@ -76,6 +76,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 **Gap**:
 - P0: store 收敛 (Phase 1/2/3 tasks #386/#387/#388 Android-App-Integrator owner) — 实时性, conversation_directory_alias_conflict 噪音, profile_merge_resolved_gravatar 噪音
 - P0: thread 渲染外部数据 (@artin 22:57 bug) — 修后 channel 流渲染 thread 数据 (#417 done)
+- P0: message-level translation parity — React has `translationStore` + per-message `TranslationEntry` + `TranslationIndicator`; KMP only has settings-level `preferredTranslationDisplay` / server translation wiring, not message entry cache/render/toggle
 - P1: QuotedMessagePermalinkPreview / re: comment chip / selected text quote (per 06-23 doc P1)
 - P1: per-row avatar / channel name (@artin 23:07 bug)
 - Owner 在 #378/#396/#418 集中返修 (parallel loading, status/data flow analysis, scroll-to-top)
@@ -223,13 +224,14 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 **KMP 現状**:
 - RealtimeEventMapper.kt: wire `slockRealtimeEvent` → Activity
 - SharedHomeStore.kt / ChannelRepositoryDataSource.kt
-- 06-23: realtime → member.agentStatus field, 但没 observedAt / version / seq reconcile
-- 06-25: 
-  - P0 #2 freshness reconcile (task #74 AD-4 in_progress per spec v2)
+- 06-23: realtime → member.agentStatus field
+- 06-27 refresh (`react-kmp-realtime-alignment-2026-06-26.md`): observedAt / version / seq reconcile 已落地；旧 freshness 缺字段结论 stale
+- 06-25:
+  - P0 #2 freshness 后续应按 status surface validation 跟进，而不是重复“字段缺失”
   - 全局 store 收敛 (#386/#387/#388 Android-App-Integrator in_progress)
 
 **Gap**:
-- 06-23 P0: status resolution 一致性 (color + pulse 双链路), freshness reconcile, External agent 独立路径, Members per-call-site audit, Idle/Disconnected 业务扩展 vs 简化
+- 06-23 P0: status resolution 一致性 (color + pulse 双链路), status surface freshness validation, External agent 独立路径, Members per-call-site audit, Idle/Disconnected 业务扩展 vs 简化
 - 当前 @Cindy #370 native realtime app-scope owner + @Codex-Kuikly-KMP #371 refactor 在做
 
 ---
@@ -618,10 +620,11 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 
 ### P0 (本轮必修)
 1. **Store 收敛** (Android-App-Integrator #386/#387/#388) — 实时性 / data projection 一致性, 多 bugs 根因
-2. **Status resolution 一致性** (#73 AD-4) + **Freshness reconcile** (#74 AD-4) — per spec v2 #68
+2. **Status resolution 一致性** (#73 AD-4) + **status surface freshness validation** — per realtime alignment refresh
 3. **Realtime 漏事件 / thread 渲染错误** (#406/#407/#414) — KMP-专家 / Codex-Kuikly-KMP
 4. **Avatar 渲染** (#417 done, #225 在 pre-existing)
 5. **Notifications 链路** (#102/#103 in_progress) — API-Integration-Developer
+6. **Message-level translation parity** — React message rows can request/cache/render translations and toggle original/translated; KMP currently only exposes settings/server translation preferences
 
 ### P1 (体验 / 视觉)
 1. Home / Search / Saved visual parity (#285/#286 done + ongoing)
