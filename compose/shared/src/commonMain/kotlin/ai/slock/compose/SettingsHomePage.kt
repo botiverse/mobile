@@ -9924,10 +9924,14 @@ private fun SharedCreateChannelMemberRow(
 ) {
     val avatarWireValue = member.avatarWireValueForAvatarSlot()
     val statusColor =
-        when (member.presence) {
-            Presence.Active -> SlockColor.AccentLime
-            Presence.Away -> SlockColor.BrandYellow
-            Presence.Offline -> SlockColor.EmptyStateGray
+        if (member.kind == MemberKind.Agent) {
+            when (member.presence) {
+                Presence.Active -> SlockColor.AccentLime
+                Presence.Away -> SlockColor.BrandYellow
+                Presence.Offline -> SlockColor.EmptyStateGray
+            }
+        } else {
+            null
         }
     val subtitle =
         member.roleDescription
