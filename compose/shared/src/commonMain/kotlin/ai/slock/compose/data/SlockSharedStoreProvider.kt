@@ -22,12 +22,16 @@ import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
+import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlin.coroutines.EmptyCoroutineContext
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
     val authStore: KuiklyMMKVAuthSessionStore,
+    val authSessionEvents: KuiklyAuthSessionEvents,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -40,6 +44,7 @@ internal class SlockSharedStoreProvider private constructor(
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
     private var homeActivityStore: SharedActivityStore? = null
+    private var authSessionClearedCallbackRef: CallbackRef? = null
 
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -81,6 +86,33 @@ internal class SlockSharedStoreProvider private constructor(
         ).also { homeActivityStore = it }
     }
 
+    fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
+        authSessionClearedCallbackRef?.let(authSessionEvents::removeSessionClearedListener)
+        val scope = CoroutineScope(EmptyCoroutineContext)
+        authSessionClearedCallbackRef =
+            authSessionEvents.addSessionClearedListener { signal ->
+                if (authSessionEvents.isLocalSource(signal)) {
+                    return@addSessionClearedListener
+                }
+                logger("auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                scope.launch {
+                    runCatchingPreservingCancellation {
+                        authStore.clearSessionFromSessionClearedNotify(signal.reason)
+                    }.onSuccess {
+                        logger(
+                            "auth_session_clear_notify_result result=success " +
+                                "source=${signal.source} reason=${signal.reason}"
+                        )
+                    }.onFailure { throwable ->
+                        logger(
+                            "auth_session_clear_notify_result result=failure source=${signal.source} " +
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
+                        )
+                    }
+                }
+            }
+    }
+
     companion object {
         fun create(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
             val database = createSlockSqlDatabase(bridge)
@@ -92,12 +124,18 @@ internal class SlockSharedStoreProvider private constructor(
                     database = database,
                     logger = { message -> bridge.log("shared_conversation_directory $message") }
                 )
+            val authSessionEvents =
+                KuiklyAuthSessionEvents(
+                    pager = pager,
+                    source = "pager:${pager.pagerId}"
+                )
             val authStore =
                 KuiklyMMKVAuthSessionStore(
                     store = KuiklyMMKVKeyValueStore(
                         pager = pager,
                         namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                    )
+                    ),
+                    sessionClearEvents = authSessionEvents
                 )
             val sharedPreferenceStore =
                 KuiklyMMKVKeyValueStore(
@@ -107,6 +145,7 @@ internal class SlockSharedStoreProvider private constructor(
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authStore = authStore,
+                authSessionEvents = authSessionEvents,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
@@ -148,7 +187,11 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     ),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
-            )
+            ).also { provider ->
+                provider.installAuthSessionClearNotifyBridge { message ->
+                    bridge.log("shared_auth_session $message")
+                }
+            }
         }
     }
 }

@@ -218,7 +218,8 @@ class InMemorySlockAuthSessionStore(
 }
 
 class KuiklyMMKVAuthSessionStore(
-    private val store: SlockKeyValueStore
+    private val store: SlockKeyValueStore,
+    private val sessionClearEvents: SlockAuthSessionClearEventSink? = null
 ) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -253,10 +254,23 @@ class KuiklyMMKVAuthSessionStore(
     }
 
     override suspend fun clearSession() {
+        clearSession(notifyPeers = true, reason = "local")
+    }
+
+    suspend fun clearSessionFromSessionClearedNotify(reason: String) {
+        clearSession(notifyPeers = false, reason = reason)
+    }
+
+    private suspend fun clearSession(notifyPeers: Boolean, reason: String) {
         mutex.withLock {
             store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
         }
         invalidations.emit(Unit)
+        if (notifyPeers) {
+            runCatching {
+                sessionClearEvents?.postSessionCleared(reason)
+            }
+        }
     }
 
     override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =
