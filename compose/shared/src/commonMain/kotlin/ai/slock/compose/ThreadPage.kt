@@ -10070,91 +10070,62 @@ private fun ThreadMessageTextSelectionDialog(
     onDismiss: () -> Unit
 ) {
     val originalText = message.body
+    val topSafeArea = slockTopSafeAreaPadding()
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     var fieldValue by remember(message.id, originalText) {
         mutableStateOf(TextFieldValue(originalText, selection = TextRange(0, originalText.length)))
     }
     Modal(onWillDismiss = { onDismiss() }) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(SlockColor.ShadowBlack.copy(alpha = 0.48f))
-                .padding(SlockSpacing.Md)
+                .background(SlockColor.SurfaceWhite)
         ) {
-            Column(
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Md),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                    .fillMaxWidth()
+                    .height(topSafeArea + 56.dp)
+                    .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "Select text",
-                            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = listOf(message.authorName, message.timestampLabel)
-                                .filter { it.isNotBlank() }
-                                .joinToString(" · "),
-                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    SlockToolbarChip(
-                        label = "Copy all",
-                        iconName = SlockLucideIconName.Copy,
-                        onClick = onCopyAll,
-                        uppercase = false,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        inactiveBackgroundColor = SlockColor.SurfaceWhite,
-                        borderColor = SlockColor.BorderBlack
-                    )
-                    SlockToolbarChip(
-                        label = "Close",
-                        iconName = SlockLucideIconName.X,
-                        onClick = onDismiss,
-                        uppercase = false,
-                        activeBackgroundColor = SlockColor.SurfaceWhite,
-                        inactiveBackgroundColor = SlockColor.SurfaceWhite,
-                        borderColor = SlockColor.BorderBlack
-                    )
-                }
-                TextField(
-                    value = fieldValue,
-                    onValueChange = { fieldValue = it },
-                    autoFocus = true,
-                    maxLines = Int.MAX_VALUE,
-                    systemNewlineAction = true,
-                    contentAlignment = Alignment.TopStart,
-                    textStyle =
-                        SlockType.Body.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = SlockColor.TextBlack
-                        ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(SlockSpacing.Sm)
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.Copy,
+                    onClick = onCopyAll,
+                    backgroundColor = SlockColor.BrandYellow,
+                    size = 36.dp,
+                    shadowOffset = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.X,
+                    onClick = onDismiss,
+                    size = 36.dp,
+                    shadowOffset = 2.dp
                 )
             }
+            TextField(
+                value = fieldValue,
+                onValueChange = { fieldValue = it },
+                autoFocus = true,
+                maxLines = Int.MAX_VALUE,
+                systemNewlineAction = true,
+                contentAlignment = Alignment.TopStart,
+                textStyle =
+                    SlockType.Body.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        color = SlockColor.TextBlack
+                    ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp)
+            )
         }
     }
 }
