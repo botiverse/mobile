@@ -65,13 +65,8 @@ object SlockAndroidBuglyDiagnostics {
                         }
                     appChannel = "android"
                     this.deviceModel = deviceModel
-                    debugMode = BuildConfig.DEBUG
-                    logLevel =
-                        if (BuildConfig.DEBUG) {
-                            BuglyLogLevel.LEVEL_DEBUG
-                        } else {
-                            BuglyLogLevel.LEVEL_WARN
-                        }
+                    debugMode = false
+                    logLevel = BuglyLogLevel.LEVEL_WARN
                     enableAllThreadStackCrash = true
                     enableAllThreadStackAnr = true
                     enableCrashProtect = true

@@ -280,6 +280,8 @@ private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focu
 
 private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
 
+private const val HomePullToRefreshEnabled = false
+
 @Composable
 private fun SlockHomePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -679,7 +681,8 @@ internal fun SlockStructuralHomeShell(
         )
     val listState = rememberLazyListState()
     val listScope = rememberCoroutineScope()
-    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
+    val homePullToRefreshEnabled = contentRefreshEnabled && HomePullToRefreshEnabled
+    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing && homePullToRefreshEnabled)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -722,7 +725,7 @@ internal fun SlockStructuralHomeShell(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
-                            if (contentRefreshEnabled) {
+                            if (homePullToRefreshEnabled) {
                                 pullToRefreshItem(
                                     state = pullToRefreshState,
                                     scrollState = listState,
