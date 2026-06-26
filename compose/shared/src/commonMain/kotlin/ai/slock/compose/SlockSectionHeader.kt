@@ -5,11 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.animation.core.RepeatMode
-import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
-import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.background
@@ -47,12 +43,9 @@ private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val HeaderRefreshIndicatorSize = 28.dp
-private val HeaderRefreshIconSize = 14.dp
 private val RaftPullRefreshBadgeWidth = 70.dp
 private val RaftPullRefreshBadgeHeight = 28.dp
 private val RaftPullRefreshShadowOffset = 2.dp
-private val RaftPullRefreshJumpHeight = 7f
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -145,107 +138,77 @@ internal fun SlockTopPageHeader(
 internal fun SlockHeaderRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "slock-header-refresh-spinner")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 900),
-                repeatMode = RepeatMode.Restart
-            ),
-        label = "slock-header-refresh-spinner-rotation"
+    Text(
+        text = "Refreshing...",
+        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+        color = SlockColor.TextBlack,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.widthIn(min = 0.dp, max = 118.dp)
     )
+}
+
+@Composable
+private fun SlockRaftRefreshBadge(
+    modifier: Modifier = Modifier
+) {
     Box(
         modifier =
             modifier
-                .size(HeaderRefreshIndicatorSize),
-        contentAlignment = Alignment.Center
+                .width(RaftPullRefreshBadgeWidth)
+                .height(RaftPullRefreshBadgeHeight)
+                .padding(end = RaftPullRefreshShadowOffset, bottom = RaftPullRefreshShadowOffset)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.LoaderCircle,
+        Box(
             modifier =
                 Modifier
-                    .size(HeaderRefreshIconSize)
-                    .graphicsLayer(rotationZ = rotation),
-            color = "#FF000000"
+                    .fillMaxSize()
+                    .offset(x = RaftPullRefreshShadowOffset, y = RaftPullRefreshShadowOffset)
+                    .background(SlockColor.ShadowBlack)
         )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "RAFT",
+                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun SlockRaftPullRefreshIndicator(
     pullProgress: Float,
     isRefreshing: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val wave = rememberRaftPullRefreshWave(isRefreshing)
     Box(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .width(RaftPullRefreshBadgeWidth)
-                    .height(RaftPullRefreshBadgeHeight)
-                    .padding(end = RaftPullRefreshShadowOffset, bottom = RaftPullRefreshShadowOffset)
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .offset(x = RaftPullRefreshShadowOffset, y = RaftPullRefreshShadowOffset)
-                        .background(SlockColor.ShadowBlack)
+        if (isRefreshing) {
+            Text(
+                text = "Refreshing...",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(SlockColor.TextBlack)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                "RAFT".forEachIndexed { index, char ->
-                    val phase = (wave + (index * 0.18f)) % 1f
-                    val bounce = 1f - kotlin.math.abs((phase * 2f) - 1f)
-                    val jump =
-                        if (isRefreshing) {
-                            bounce * RaftPullRefreshJumpHeight
-                        } else {
-                            0f
-                        }
-                    Text(
-                        text = char.toString(),
-                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                        color = SlockColor.BrandYellow,
-                        maxLines = 1,
-                        modifier = Modifier.offset(y = (-jump).dp)
-                    )
-                }
-            }
+        } else {
+            SlockRaftRefreshBadge()
         }
     }
-}
-
-@Composable
-private fun rememberRaftPullRefreshWave(isRefreshing: Boolean): Float {
-    if (!isRefreshing) {
-        return 0f
-    }
-    val transition = rememberInfiniteTransition(label = "slock-raft-refresh-bounce")
-    val wave by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 780),
-                repeatMode = RepeatMode.Restart
-            ),
-        label = "slock-raft-refresh-bounce-wave"
-    )
-    return wave
 }
 
 @Composable

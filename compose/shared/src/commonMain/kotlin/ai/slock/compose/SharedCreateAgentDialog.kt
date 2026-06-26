@@ -23,11 +23,6 @@ import ai.slock.compose.model.supportsRuntimeFastMode
 import ai.slock.compose.model.supportsRuntimeCustomModelName
 import ai.slock.compose.model.supportsRuntimeReasoningEffort
 import ai.slock.compose.model.validateAgentName
-import com.tencent.kuikly.compose.animation.core.RepeatMode
-import com.tencent.kuikly.compose.animation.core.animateFloat
-import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
-import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
-import com.tencent.kuikly.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,7 +49,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -1206,21 +1200,9 @@ private fun CreateAgentSectionLabelWithAction(
 
 @Composable
 private fun SlockCreateAgentSpinnerIcon() {
-    val transition = rememberInfiniteTransition(label = "create-agent-runtime-model-spinner")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "create-agent-runtime-model-spinner-rotation"
-    )
     SlockLucideIcon(
         SlockLucideIconName.Loader,
-        modifier = Modifier
-            .size(13.dp)
-            .graphicsLayer { rotationZ = rotation },
+        modifier = Modifier.size(13.dp),
         color = SlockColor.TextMutedGrayArgb
     )
 }

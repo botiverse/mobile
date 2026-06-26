@@ -128,16 +128,10 @@ import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.animation.core.RepeatMode
-import com.tencent.kuikly.compose.animation.core.animateFloat
-import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
-import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
-import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -6711,7 +6705,7 @@ private fun MembersDetailSectionTitle(
 ) {
     Text(
         text = title.uppercase(),
-        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
+        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp)
             .withSlockFontWeight(FontWeight.Bold),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
@@ -7453,21 +7447,9 @@ private fun SlockSpinnerIcon(
     size: Dp = 14.dp,
     color: String = SlockColor.TextBlackArgb
 ) {
-    val transition = rememberInfiniteTransition(label = "slock-workspace-spinner")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "slock-workspace-spinner-rotation"
-    )
     SlockLucideIcon(
         SlockLucideIconName.Loader,
-        modifier = Modifier
-            .size(size)
-            .graphicsLayer { rotationZ = rotation },
+        modifier = Modifier.size(size),
         color = color
     )
 }
