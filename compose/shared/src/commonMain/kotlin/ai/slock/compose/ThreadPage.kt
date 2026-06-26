@@ -8108,6 +8108,7 @@ private fun ThreadSystemMessageRow(
     timestampLabel: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
+    var pressed by remember(message.id) { mutableStateOf(false) }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, timestampLabel, expanded) {
             if (expanded) {
@@ -8135,7 +8136,22 @@ private fun ThreadSystemMessageRow(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .clickable { expanded = !expanded }
+                .threadMessagePressOutline(pressed)
+                .pointerInput(message.id) {
+                    detectTapGestures(
+                        onPress = {
+                            pressed = true
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                pressed = false
+                            }
+                        },
+                        onTap = {
+                            expanded = !expanded
+                        }
+                    )
+                }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -8263,6 +8279,7 @@ private fun ThreadMessageCard(
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
         label = "thread-message-focus-highlight"
     )
+    var pressed by remember(message.id) { mutableStateOf(false) }
     Box(
         modifier =
             Modifier
@@ -8281,6 +8298,7 @@ private fun ThreadMessageCard(
                             SlockColor.SurfaceWhite
                         }
                     )
+                    .threadMessagePressOutline(pressed)
                     .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
@@ -8303,7 +8321,11 @@ private fun ThreadMessageCard(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .threadMessageLongPressActions(message.id, onShowActions),
+                                .threadMessageLongPressActions(
+                                    messageId = message.id,
+                                    onShowActions = onShowActions,
+                                    onPressChanged = { pressed = it }
+                                ),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
@@ -8877,16 +8899,31 @@ private fun ThreadReactionAddChipChrome() {
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
     widthIn(max = 680.dp).fillMaxWidth(maxWidthFraction)
 
+private fun Modifier.threadMessagePressOutline(pressed: Boolean): Modifier =
+    border(
+        SlockStroke.Default,
+        if (pressed) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0f)
+    )
+
 @Composable
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
-    onShowActions: (Offset) -> Unit
+    onShowActions: (Offset) -> Unit,
+    onPressChanged: (Boolean) -> Unit = {}
 ): Modifier {
     var rootPos by remember { mutableStateOf(Offset.Zero) }
     return this
         .onGloballyPositioned { rootPos = it.positionInRoot() }
         .pointerInput(messageId) {
             detectTapGestures(
+                onPress = {
+                    onPressChanged(true)
+                    try {
+                        tryAwaitRelease()
+                    } finally {
+                        onPressChanged(false)
+                    }
+                },
                 onLongPress = { localOffset ->
                     onShowActions(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
                 }
