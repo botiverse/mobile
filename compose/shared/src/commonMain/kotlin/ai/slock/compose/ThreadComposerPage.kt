@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -88,7 +89,6 @@ private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
 private val ComposerAgentActivityDotSize = 10.dp
 private val ComposerMemberSuggestionHandleWidth = 124.dp
-private val ComposerMemberSuggestionHandleReservedWidth = ComposerMemberSuggestionHandleWidth + 8.dp
 private val ComposerChannelSuggestionIconSize = 20.dp
 private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -1254,74 +1254,66 @@ private fun ComposerMemberSuggestionRow(
         mutedOverlay = true,
         onClick = onClick
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(end = ComposerMemberSuggestionHandleReservedWidth),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(ComposerMemberSuggestionAvatarSize)
-                            .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockAvatar(
-                        avatarWireValue = member.avatarWireValue,
-                        label = member.avatarLabel.ifBlank { member.displayName },
-                        avatarSize = ComposerMemberSuggestionAvatarSize,
-                        borderWidth = SlockStroke.Thin,
-                        gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
-                    )
-                }
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (muted) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.UserMinus,
-                            modifier = Modifier.size(12.dp),
-                            color = SlockColor.TextMutedGrayArgb
-                        )
-                    }
-                    Text(
-                        text = member.displayName,
-                        style = SlockType.Button.copy(color = contentColor),
-                        color = contentColor,
-                        modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (inChannel && member.kind == MemberKind.Agent) {
-                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
-                            ComposerAgentStatusDot(status)
-                        }
-                    }
-                    if (secondary != null) {
-                        Text(
-                            text = secondary,
-                            style = SlockType.Caption.copy(color = secondaryColor),
-                            color = secondaryColor,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
+        Box(
+            modifier =
+                Modifier
+                    .size(ComposerMemberSuggestionAvatarSize)
+                    .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockAvatar(
+                avatarWireValue = member.avatarWireValue,
+                label = member.avatarLabel.ifBlank { member.displayName },
+                avatarSize = ComposerMemberSuggestionAvatarSize,
+                borderWidth = SlockStroke.Thin,
+                gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
+            )
+        }
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (muted) {
+                SlockLucideIcon(
+                    SlockLucideIconName.UserMinus,
+                    modifier = Modifier.size(12.dp),
+                    color = SlockColor.TextMutedGrayArgb
+                )
             }
             Text(
-                text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
-                color = handleColor,
-                modifier = Modifier.width(ComposerMemberSuggestionHandleWidth).align(Alignment.CenterEnd),
-                textAlign = TextAlign.End,
+                text = member.displayName,
+                style = SlockType.Button.copy(color = contentColor),
+                color = contentColor,
+                modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (inChannel && member.kind == MemberKind.Agent) {
+                rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
+                    ComposerAgentStatusDot(status)
+                }
+            }
+            if (secondary != null) {
+                Text(
+                    text = secondary,
+                    style = SlockType.Caption.copy(color = secondaryColor),
+                    color = secondaryColor,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
+        Text(
+            text = "@${member.handle}",
+            style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+            color = handleColor,
+            modifier = Modifier.width(ComposerMemberSuggestionHandleWidth),
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1779,7 +1771,7 @@ private fun ComposerSuggestionInteractiveRow(
     minHeight: Dp,
     mutedOverlay: Boolean = false,
     onClick: () -> Unit,
-    content: @Composable () -> Unit
+    content: @Composable RowScope.() -> Unit
 ) {
     val background =
         when {
