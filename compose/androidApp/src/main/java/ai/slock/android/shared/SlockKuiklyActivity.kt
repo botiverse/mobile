@@ -66,6 +66,7 @@ import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
@@ -687,7 +688,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun sendAppShellLifecycleEvent(event: String) {
         if (pageSpec?.pageName != PAGE_APP_SHELL) return
         applicationContext.sendKuiklyEvent(
-                REALTIME_EVENT_NAME,
+                SlockRealtimeNotifyContract.EventName,
                 JSONObject()
                         .put("action", "appLifecycle")
                         .put("event", event)
@@ -725,7 +726,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2
-        private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
         private const val THREAD_SURFACE_CHANNEL = "channel"
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"

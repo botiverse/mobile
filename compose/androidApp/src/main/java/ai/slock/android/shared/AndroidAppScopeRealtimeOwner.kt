@@ -13,25 +13,23 @@ import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
 import ai.slock.android.core.model.ChannelId
-import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
-import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
-import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
-import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.compose.data.realtime.RealtimeSocketEvents
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeConnection
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeCoordinator
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
-import ai.slock.compose.data.realtime.SlockRealtimeAppScopeState
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeSink
 import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.compose.model.ConversationKind
 import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventName
@@ -52,10 +50,9 @@ internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val appScopeState = SlockRealtimeAppScopeState()
 
-    private var realtimeRepository: RealtimeRepository? = null
     private var realtimeClient: SocketIoRealtimeClient? = null
+    private var realtimeCoordinator: SlockRealtimeAppScopeCoordinator? = null
     private var realtimeSubscription: RealtimeSubscription? = null
     private var realtimeRawSubscription: RealtimeSubscription? = null
     private var realtimeConnectJob: Job? = null
@@ -125,9 +122,10 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         appVisibility = AppVisibility.Foreground
+        realtimeCoordinator?.onAppShown()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source joined_rooms=${appScopeState.joinedChannelCount}"
+            "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -138,9 +136,10 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun onAppHidden(source: String = "unknown") {
         appVisibility = AppVisibility.Background
+        realtimeCoordinator?.onAppHidden()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source joined_rooms=${appScopeState.joinedChannelCount}"
+            "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
         )
     }
 
@@ -151,7 +150,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${appScopeState.joinedChannelCount}"
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -182,7 +181,7 @@ internal object AndroidAppScopeRealtimeOwner {
         missingSelectedServerRetryCount: Int
     ) {
         val appContext = context.applicationContext
-        val repository = ensureRealtimeRepository(appContext)
+        val coordinator = ensureRealtimeCoordinator(appContext)
         val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
@@ -218,8 +217,7 @@ internal object AndroidAppScopeRealtimeOwner {
                                 return@launch
                             }
                     val result =
-                        connectRealtimeRepository(
-                            repository = repository,
+                        coordinator.connect(
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
@@ -250,14 +248,13 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
         )
-        val repository = ensureRealtimeRepository(context.applicationContext)
+        val coordinator = ensureRealtimeCoordinator(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
                     val result =
-                        connectRealtimeRepository(
-                            repository = repository,
+                        coordinator.connect(
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
@@ -301,13 +298,14 @@ internal object AndroidAppScopeRealtimeOwner {
             return
         }
         val client = realtimeClient
-        val ownedSession = appScopeState.ownedSession()
+        val coordinator = realtimeCoordinator
+        val ownedSession = coordinator?.ownedSession()
         if (client == null || ownedSession == null) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
-            connectFromStoredSession(context, appScopeState.lastSeq)
+            connectFromStoredSession(context, coordinator?.lastSeq ?: 0L)
             return
         }
         val serverId = ownedSession.serverId
@@ -347,18 +345,26 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         realtimeConnectJob?.cancel()
         realtimeConnectJob = null
-        realtimeRepository?.disconnect()
-        appScopeState.resetForSessionEnd()
+        val disconnected = realtimeCoordinator?.disconnectForSessionEnd(cleanReason) ?: run {
+            realtimeClient?.disconnect()
+            true
+        }
+        if (!disconnected) return
         backgroundKeepAliveEnabled = false
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "disconnect_requested reason=$cleanReason visibility=$appVisibility"
-        )
     }
 
     fun joinChannel(channelId: ChannelId) {
         if (channelId.value.isBlank()) return
-        joinRoom(channelId, reason = "direct")
+        val coordinator =
+            realtimeCoordinator
+                ?: run {
+                    SlockDiagnosticsLogger.d(
+                        LOG_TAG,
+                        "room_join_skip reason=missing_coordinator channelId=${channelId.value}"
+                    )
+                    return
+                }
+        coordinator.joinChannel(channelId, reason = "direct")
     }
 
     private fun handleRealtimeRoomsNotify(eventData: JSONObject) {
@@ -376,15 +382,16 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
-    private fun ensureRealtimeRepository(context: Context): RealtimeRepository {
-        realtimeRepository?.let { return it }
-        val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
-        val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(context.applicationContext)
+    private fun ensureRealtimeCoordinator(context: Context): SlockRealtimeAppScopeCoordinator {
+        realtimeCoordinator?.let { return it }
+        val appContext = context.applicationContext
+        val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+        val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
         val client =
             SocketIoRealtimeClient(
                 transport =
                     SocketIoSocketTransport(
-                        socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(context.applicationContext)
+                        socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
                     ),
                 logger = { message ->
                     SlockDiagnosticsLogger.d(LOG_TAG, message)
@@ -396,94 +403,91 @@ internal object AndroidAppScopeRealtimeOwner {
                 client = client,
                 tokenRefresher = AuthTokenRefresher(sessionStore, AndroidAuthApiFactory.createAuthApi(apiBaseUrl))
             )
-        realtimeClient = client
-        realtimeRepository = repository
-        realtimeSubscription =
-            repository.observeEvents { event ->
-                scope.launch {
-                    val serverId =
-                        appScopeState.serverId
-                            ?: run {
-                                SlockDiagnosticsLogger.d(
-                                    LOG_TAG,
-                                    "native_event_skip reason=missing_server event=${SlockRealtimeAppScopePolicy.nativeRealtimeEventName(event)}"
-                                )
-                                return@launch
-                            }
-                    SlockDiagnosticsLogger.d(
-                        LOG_TAG,
-                        "native_event_received event=${SlockRealtimeAppScopePolicy.nativeRealtimeEventName(event)} serverId=${serverId.value} joined_rooms=${appScopeState.joinedChannelCount}"
+        val connection =
+            object : SlockRealtimeAppScopeConnection {
+                override val state: RealtimeConnectionState
+                    get() = client.state
+
+                override suspend fun connect(
+                    serverId: ServerId,
+                    accessToken: String,
+                    lastSeq: Long
+                ): ai.slock.compose.data.DataResult<Unit> {
+                    client.connect(
+                        RealtimeConnectRequest(
+                            auth = RealtimeAuth(
+                                token = accessToken,
+                                serverId = serverId
+                            ),
+                            lastSeq = lastSeq
+                        )
                     )
-                    appScopeState.updateFromEvent(event)
-                    if (event is DirectMessageCreated) {
-                        joinRoom(event.channelId, reason = "direct_message_created")
+                    return ai.slock.compose.data.DataResult.Content(Unit)
+                }
+
+                override fun disconnect() {
+                    repository.disconnect()
+                }
+
+                override fun joinChannel(channelId: ChannelId) {
+                    repository.joinChannel(channelId)
+                }
+
+                override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
+                    repository.observeEvents(listener)
+
+                override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
+                    client.observeRawEvents { eventName, rawPayload ->
+                        listener(eventName, rawPayload.toRealtimeRawPayloadString())
                     }
-                    if (event is MessageNew) {
-                        maybePostBackgroundUnreadNotification(appContext = context.applicationContext, sessionStore, serverId, event)
-                    }
+            }
+        val sink =
+            object : SlockRealtimeAppScopeSink {
+                override fun log(message: String) {
+                    SlockDiagnosticsLogger.d(LOG_TAG, message)
+                }
+
+                override fun fanOutRawRealtimeEvent(
+                    serverId: ServerId,
+                    eventName: String,
+                    rawPayload: String
+                ) {
+                    appContext.sendKuiklyEvent(
+                        SlockRealtimeNotifyContract.EventName,
+                        realtimeNotifyPayload(serverId, eventName, rawPayload)
+                    )
+                }
+
+                override suspend fun maybePostBackgroundUnreadNotification(
+                    serverId: ServerId,
+                    event: MessageNew,
+                    isAppInForeground: Boolean
+                ) {
+                    maybePostBackgroundUnreadNotification(
+                        appContext = appContext,
+                        sessionStore = sessionStore,
+                        serverId = serverId,
+                        event = event,
+                        isAppInForeground = isAppInForeground
+                    )
                 }
             }
-        client.observeRawEvents { eventName, rawPayload ->
-            scope.launch {
-                val serverId =
-                    appScopeState.serverId
-                        ?: run {
-                            SlockDiagnosticsLogger.d(
-                                LOG_TAG,
-                                "native_raw_event_skip reason=missing_server eventName=$eventName payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
-                            )
-                            return@launch
-                        }
-                fanOutRawRealtimeEvent(context.applicationContext, serverId, eventName, rawPayload)
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
+        realtimeClient = client
+        realtimeCoordinator = coordinator
+        realtimeSubscription =
+            connection.observeEvents { event ->
+                scope.launch {
+                    coordinator.onMappedEvent(event)
+                }
             }
-        }.also { realtimeRawSubscription = it }
-        return repository
-    }
-
-    private suspend fun connectRealtimeRepository(
-        repository: RealtimeRepository,
-        serverId: ServerId,
-        accessToken: String,
-        requestedLastSeq: Long,
-        forceReconnect: Boolean
-    ): DataResult<Unit> {
-        val client =
-            realtimeClient
-                ?: return DataResult.Error(ScreenError(code = "realtime_client_missing"))
-        if (!forceReconnect && appScopeState.isSameSession(serverId, accessToken)) {
-            when (val state = client.state) {
-                RealtimeConnectionState.Connected,
-                RealtimeConnectionState.RoomsJoined,
-                RealtimeConnectionState.Connecting -> return DataResult.Content(Unit)
-                RealtimeConnectionState.Disconnected,
-                is RealtimeConnectionState.Failed ->
-                    SlockDiagnosticsLogger.d(
-                        LOG_TAG,
-                        "connect_same_session_reconnect state=${state::class.simpleName} serverId=${serverId.value}"
-                    )
+        realtimeRawSubscription =
+            connection.observeRawEvents { eventName, rawPayload ->
+                scope.launch {
+                    coordinator.onRawEvent(eventName, rawPayload)
+                }
             }
-        }
-        val connectPlan =
-            appScopeState.prepareConnect(
-                serverId = serverId,
-                accessToken = accessToken,
-                requestedLastSeq = requestedLastSeq
-            )
-        client.connect(
-            RealtimeConnectRequest(
-                auth = RealtimeAuth(
-                    token = accessToken,
-                    serverId = serverId
-                ),
-                lastSeq = connectPlan.resumeSeq
-            )
-        )
-        val result = DataResult.Content(Unit)
-        SlockDiagnosticsLogger.w(
-            LOG_TAG,
-            "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=${connectPlan.resumeSeq} session_changed=${connectPlan.sessionChanged}"
-        )
-        return result
+        return coordinator
     }
 
     private fun reconnectOwnedSession(
@@ -492,17 +496,16 @@ internal object AndroidAppScopeRealtimeOwner {
         accessToken: String,
         state: RealtimeConnectionState
     ) {
-        val repository = ensureRealtimeRepository(context.applicationContext)
+        val coordinator = ensureRealtimeCoordinator(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
                     val result =
-                        connectRealtimeRepository(
-                            repository = repository,
+                        coordinator.connect(
                             serverId = serverId,
                             accessToken = accessToken,
-                            requestedLastSeq = appScopeState.lastSeq,
+                            requestedLastSeq = coordinator.lastSeq,
                             forceReconnect = true
                         )
                     SlockDiagnosticsLogger.d(
@@ -513,46 +516,6 @@ internal object AndroidAppScopeRealtimeOwner {
                     realtimeConnectJob = null
                 }
             }
-    }
-
-    private fun joinRoom(channelId: ChannelId, reason: String) {
-        val repository = realtimeRepository ?: run {
-            SlockDiagnosticsLogger.d(
-                LOG_TAG,
-                "room_join_skip reason=missing_repository channelId=${channelId.value}"
-            )
-            return
-        }
-        if (!appScopeState.markChannelJoined(channelId)) {
-            SlockDiagnosticsLogger.d(
-                LOG_TAG,
-                "room_join_skip reason=already_joined channelId=${channelId.value}"
-            )
-            return
-        }
-        repository.joinChannel(channelId)
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "room_join_emit reason=$reason channelId=${channelId.value}"
-        )
-    }
-
-    private fun fanOutRawRealtimeEvent(appContext: Context, serverId: ServerId, eventName: String, rawPayload: Any?) {
-        if (eventName == RealtimeSocketEvents.Heartbeat) {
-            SlockDiagnosticsLogger.d(
-                LOG_TAG,
-                "raw_event_fanout_skip eventName=$eventName serverId=${serverId.value} reason=native_heartbeat"
-            )
-            return
-        }
-        appContext.sendKuiklyEvent(
-            SlockRealtimeNotifyContract.EventName,
-            realtimeNotifyPayload(serverId, eventName, rawPayload)
-        )
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "raw_event_notify eventName=$eventName serverId=${serverId.value}"
-        )
     }
 
     private fun realtimeNotifyPayload(serverId: ServerId, eventName: String, rawPayload: Any?): JSONObject =
@@ -573,15 +536,15 @@ internal object AndroidAppScopeRealtimeOwner {
         appContext: Context,
         sessionStore: SlockAuthSessionStore,
         serverId: ServerId,
-        event: MessageNew
+        event: MessageNew,
+        isAppInForeground: Boolean
     ) {
         val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
         val hasAttachedConsumers = false
         SlockDiagnosticsLogger.w(
             LOG_TAG,
-            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} preference_enabled=$preferenceEnabled visibility=$appVisibility"
+            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
         )
-        val isAppInForeground = appVisibility == AppVisibility.Foreground
         if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
             SlockDiagnosticsLogger.w(
                 LOG_TAG,

@@ -9,14 +9,14 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.ServerId
 
 object SlockRealtimeNotifyContract {
-    const val EventName = "slockRealtimeEvent"
-    const val RoomsEventName = "slockRealtimeRooms"
-    const val ActionJoinChannel = "joinChannel"
-    const val KeyAction = "action"
-    const val KeyChannelId = "channelId"
-    const val KeyServerId = "serverId"
-    const val KeyEventName = "eventName"
-    const val KeyRawPayload = "rawPayload"
+    const val EventName = GeneratedRealtimeContract.Notify.EventName
+    const val RoomsEventName = GeneratedRealtimeContract.Notify.RoomsEventName
+    const val ActionJoinChannel = GeneratedRealtimeContract.RoomAction.JoinChannel
+    const val KeyAction = GeneratedRealtimeContract.PayloadKey.Action
+    const val KeyChannelId = GeneratedRealtimeContract.PayloadKey.ChannelId
+    const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId
+    const val KeyEventName = GeneratedRealtimeContract.PayloadKey.EventName
+    const val KeyRawPayload = GeneratedRealtimeContract.PayloadKey.RawPayload
 }
 
 data class SlockRealtimeOwnedSession(
@@ -110,15 +110,7 @@ class SlockRealtimeAppScopeState {
 
 object SlockRealtimeAppScopePolicy {
     fun isSessionEndDisconnectReason(reason: String): Boolean =
-        reason in setOf(
-            "auth_invalid",
-            "logout",
-            "process_teardown",
-            "server_deleted",
-            "server_membership_removed",
-            "server_removed",
-            "server_switch"
-        )
+        reason in GeneratedRealtimeContract.DisconnectReason.SessionEnd
 
     fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,

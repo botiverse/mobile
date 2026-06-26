@@ -1,11 +1,10 @@
 import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
+import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 
-const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
-const REALTIME_ROOMS_EVENT_NAME = 'slockRealtimeRooms';
 const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
@@ -141,22 +140,22 @@ export class SlockOhosRealtimeBridge {
 
   private handleSocketIoEvent(eventName: string, payload: KRAny): void {
     this.markInbound(eventName);
-    if (eventName === 'rooms:joined') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.RoomsJoined) {
       this.onRoomsJoined();
       return;
     }
     if (eventName.length === 0) {
       return;
     }
-    if (eventName === 'heartbeat') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.Heartbeat) {
       const heartbeat = payload as KRRecord;
       console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
     }
     const serverId = this.connectParams?.serverId ?? '';
     this.sendRealtimeNotify({
-      serverId: serverId,
-      eventName: eventName,
-      rawPayload: JSON.stringify(payload ?? {}),
+      [GeneratedRealtimeContract.PayloadKey.ServerId]: serverId,
+      [GeneratedRealtimeContract.PayloadKey.EventName]: eventName,
+      [GeneratedRealtimeContract.PayloadKey.RawPayload]: JSON.stringify(payload ?? {}),
     });
   }
 
@@ -177,7 +176,7 @@ export class SlockOhosRealtimeBridge {
   }
 
   private emitJoinChannel(channelId: string): void {
-    if (!this.socketIo.emit('join:channel', channelId)) {
+    if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId)) {
       console.info('[SlockOhosRealtime] join_channel_deferred');
     }
   }
@@ -185,7 +184,7 @@ export class SlockOhosRealtimeBridge {
   private rejoinChannels(reason: string): void {
     this.joinedChannels.forEach((channelId) => {
       console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
-      this.socketIo.emit('join:channel', channelId);
+      this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
     });
   }
 
@@ -202,14 +201,14 @@ export class SlockOhosRealtimeBridge {
         console.warn(`[SlockOhosRealtime] room_notify_parse_failed message=${JSON.stringify(error)}`);
       }
     };
-    emitter.on(REALTIME_ROOMS_EVENT_NAME, this.roomNotifyCallback);
+    emitter.on(GeneratedRealtimeContract.Notify.RoomsEventName, this.roomNotifyCallback);
     console.info('[SlockOhosRealtime] room_notify_listener_installed');
   }
 
   private handleRealtimeRoomsNotify(params: KRRecord): void {
-    const action = (params['action'] as string) ?? '';
-    if (action === 'joinChannel') {
-      this.joinChannel((params['channelId'] as string) ?? '');
+    const action = (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '';
+    if (action === GeneratedRealtimeContract.RoomAction.JoinChannel) {
+      this.joinChannel((params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '');
     }
   }
 
@@ -218,13 +217,13 @@ export class SlockOhosRealtimeBridge {
       return;
     }
     console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
-    this.socketIo.emit('sync:resume', { lastSeq: lastSeq });
+    this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.SyncResume, { lastSeq: lastSeq });
   }
 
   private markInbound(eventName?: string): void {
     const now = Date.now();
     this.lastInboundEventAtMillis = now;
-    if (eventName === 'heartbeat') {
+    if (eventName === GeneratedRealtimeContract.SocketEvent.Heartbeat) {
       this.lastHeartbeatAtMillis = now;
     }
   }
@@ -295,7 +294,7 @@ export class SlockOhosRealtimeBridge {
     this.sendRealtimeNotify({
       action: 'authRefreshRequired',
       reason: reason,
-      serverId: params.serverId,
+      [GeneratedRealtimeContract.PayloadKey.ServerId]: params.serverId,
     });
     return true;
   }
@@ -309,9 +308,9 @@ export class SlockOhosRealtimeBridge {
   }
 
   private sendRealtimeNotify(data: KRRecord): void {
-    emitter.emit(REALTIME_EVENT_NAME, {
+    emitter.emit(GeneratedRealtimeContract.Notify.EventName, {
       data: {
-        eventName: REALTIME_EVENT_NAME,
+        eventName: GeneratedRealtimeContract.Notify.EventName,
         stringify: JSON.stringify(data),
       },
     });

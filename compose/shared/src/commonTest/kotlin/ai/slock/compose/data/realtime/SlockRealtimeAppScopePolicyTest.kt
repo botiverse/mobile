@@ -1,15 +1,20 @@
 package ai.slock.compose.data.realtime
 
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ThreadId
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,6 +100,34 @@ class SlockRealtimeAppScopePolicyTest {
         )
     }
 
+    @Test
+    fun coordinatorSkipsSameConnectedSessionAndReusesHighestSeqOnForcedReconnect() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
+
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 7, forceReconnect = false)
+        coordinator.onMappedEvent(MessageNew(message(seq = 42)))
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false)
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true)
+
+        assertEquals(listOf(7L, 42L), connection.connectedLastSeqs)
+    }
+
+    @Test
+    fun coordinatorAutoJoinsDirectMessagesAndFiltersHeartbeatFanout() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val sink = FakeAppScopeSink()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
+
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
+        coordinator.onMappedEvent(DirectMessageCreated(ChannelId("dm-1")))
+        coordinator.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
+        coordinator.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
+
+        assertEquals(listOf(ChannelId("dm-1")), connection.joinedChannels)
+        assertEquals(listOf(RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
+    }
+
     private fun message(
         seq: Long = 1L,
         channelId: String? = "channel-1",
@@ -118,4 +151,54 @@ class SlockRealtimeAppScopePolicyTest {
             body = "Message $seq",
             parentMessageId = parentMessageId?.let(::MessageId)
         )
+
+    private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
+        override var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
+        val connectedLastSeqs = mutableListOf<Long>()
+        val joinedChannels = mutableListOf<ChannelId>()
+
+        override suspend fun connect(
+            serverId: ServerId,
+            accessToken: String,
+            lastSeq: Long
+        ): DataResult<Unit> {
+            connectedLastSeqs += lastSeq
+            state = RealtimeConnectionState.Connected
+            return DataResult.Content(Unit)
+        }
+
+        override fun disconnect() {
+            state = RealtimeConnectionState.Disconnected
+        }
+
+        override fun joinChannel(channelId: ChannelId) {
+            joinedChannels += channelId
+        }
+
+        override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
+            RealtimeSubscription { }
+
+        override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
+            RealtimeSubscription { }
+    }
+
+    private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
+        val fanOutEventNames = mutableListOf<String>()
+
+        override fun log(message: String) = Unit
+
+        override fun fanOutRawRealtimeEvent(
+            serverId: ServerId,
+            eventName: String,
+            rawPayload: String
+        ) {
+            fanOutEventNames += eventName
+        }
+
+        override suspend fun maybePostBackgroundUnreadNotification(
+            serverId: ServerId,
+            event: MessageNew,
+            isAppInForeground: Boolean
+        ) = Unit
+    }
 }
