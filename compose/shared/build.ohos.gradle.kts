@@ -13,18 +13,22 @@ plugins {
 
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
-val generatedTmmCommonRootDir = layout.buildDirectory.dir("generated/tmm-res-common")
+val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
 val prepareTmmCommonResources by tasks.registering(Sync::class) {
     from(commonTmmResourceInputDir)
-    into(generatedTmmCommonRootDir.map { it.dir("commonMain/res") })
+    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
+}
+val stageTmmCommonSources by tasks.registering(Sync::class) {
+    dependsOn("generateMRcommonMain")
+    from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
+    into(generatedTmmCommonSourceDir.map { it.dir("src") })
 }
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
     multiplatformResourcesPrefix = "slock_"
     multiplatformResourcesClassName = "MR"
-    commonGeneratedDir = generatedTmmCommonRootDir.get().asFile.path
 }
 
 fun ohosSqliteProviderLibDir(): File {
@@ -93,6 +97,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
+            kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyOhosVersion()}")
@@ -102,7 +107,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0")
             }
         }
         val commonTest by getting {
@@ -179,16 +184,37 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
+fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
+    kotlin.setSrcDirs(
+        kotlin.srcDirs.filterNot { sourceDir ->
+            sourceDir.path.replace(File.separatorChar, '/')
+                .endsWith("/build/generated/tmm-res/commonMain/src")
+        }
+    )
+}
+
+afterEvaluate {
+    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension>("kotlin") {
+        sourceSets.named("commonMain").configure {
+            removeGeneratedTmmPluginCommonSourceDir()
+        }
+    }
+}
+
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn("generateMRcommonMain", "generateMRohosArm64Main")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn("generateMRcommonMain", "generateMRohosArm64Main", "generateCommonMainSlockDatabaseInterface")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main", "generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
+}
+
+tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
+    mustRunAfter(stageTmmCommonSources)
 }
 
 dependencies {

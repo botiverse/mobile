@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.jetbrains.compose) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.sqldelight) apply false
-    id("com.tencent.kuiklybase.resource.generator").version("0.1.0-raft.1").apply(false)
+    id("com.tencent.kuiklybase.resource.generator").version("0.1.0").apply(false)
 }
 
 configurations.configureEach {
@@ -20,26 +20,6 @@ buildscript {
     repositories {
         google()
         mavenCentral()
-        maven {
-            name = "GitHubPackagesKuiklyBase"
-            url = uri("https://maven.pkg.github.com/bytemain/KuiklyBase-components")
-            content {
-                includeModule("com.tencent.kuiklybase.resource.generator", "com.tencent.kuiklybase.resource.generator.gradle.plugin")
-                includeModule("com.tencent.kuiklybase", "resource-generator")
-            }
-            credentials {
-                username = providers.gradleProperty("githubPackagesUsername").orNull
-                    ?: providers.gradleProperty("gpr.user").orNull
-                    ?: System.getenv("GITHUB_PACKAGES_USERNAME")
-                    ?: System.getenv("GITHUB_ACTOR")
-                    ?: ""
-                password = providers.gradleProperty("githubPackagesToken").orNull
-                    ?: providers.gradleProperty("gpr.key").orNull
-                    ?: System.getenv("GITHUB_PACKAGES_TOKEN")
-                    ?: System.getenv("GITHUB_TOKEN")
-                    ?: ""
-            }
-        }
         mavenLocal()
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
