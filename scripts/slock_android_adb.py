@@ -22,6 +22,9 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PACKAGE = "ai.slock.android"
 DEFAULT_COMPONENT = "ai.slock.android/.MainActivity"
+DEFAULT_KUIKLY_COMPONENT = "ai.slock.android/.shared.SlockKuiklyActivity"
+DIAGNOSTICS_ACTION = "ai.slock.android.diagnostics.OPEN"
+DIAGNOSTICS_COMPONENT = "ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity"
 DEFAULT_OUT = REPO_ROOT / "artifacts" / "android-adb" / datetime.now().strftime("%Y%m%d-%H%M%S")
 KEY_ALIASES = {
     "BACK": "BACK",
@@ -77,6 +80,47 @@ def build_parser() -> argparse.ArgumentParser:
     start_app = sub.add_parser("start-app", aliases=["start_app"], help="Launch the Slock Android app")
     start_app.add_argument("--component", default=DEFAULT_COMPONENT)
     start_app.set_defaults(func=cmd_start_app)
+
+    start_intent = sub.add_parser(
+        "start-intent",
+        aliases=["start_intent"],
+        help="Run adb shell am start with action/component/extras",
+    )
+    start_intent.add_argument("--action", "-a", help="Intent action")
+    start_intent.add_argument("--component", "-n", help="Explicit component, for example ai.slock.android/.MainActivity")
+    start_intent.add_argument("--category", action="append", default=[], help="Intent category; may be repeated")
+    start_intent.add_argument("--string-extra", action="append", default=[], metavar="KEY=VALUE", help="Add --es extra")
+    start_intent.add_argument("--bool-extra", action="append", default=[], metavar="KEY=BOOL", help="Add --ez extra")
+    start_intent.add_argument("--long-extra", action="append", default=[], metavar="KEY=LONG", help="Add --el extra")
+    start_intent.add_argument("--int-extra", action="append", default=[], metavar="KEY=INT", help="Add --ei extra")
+    start_intent.add_argument("--wait", action=argparse.BooleanOptionalAction, default=True, help="Use am start -W")
+    start_intent.set_defaults(func=cmd_start_intent)
+
+    open_page = sub.add_parser(
+        "open-page",
+        aliases=["open_page"],
+        help="Open a Kuikly page by starting SlockKuiklyActivity with pageName/pageData extras",
+    )
+    open_page.add_argument("page_name", help="Kuikly page name, for example compose_thread or router")
+    open_page.add_argument("--page-data", default="{}", help="JSON pageData. pageName is added when absent.")
+    open_page.add_argument("--component", default=DEFAULT_KUIKLY_COMPONENT)
+    open_page.add_argument("--suppress-soft-keyboard", action=argparse.BooleanOptionalAction, default=True)
+    open_page.add_argument("--wait", action=argparse.BooleanOptionalAction, default=True, help="Use am start -W")
+    open_page.set_defaults(func=cmd_open_page)
+
+    diagnostics = sub.add_parser(
+        "open-diagnostics",
+        aliases=["open_diagnostics"],
+        help="Open Diagnostics through the adb-only diagnostics deep-link intent when available",
+    )
+    diagnostics.add_argument("--component", default=DIAGNOSTICS_COMPONENT)
+    diagnostics.add_argument("--action", default=DIAGNOSTICS_ACTION)
+    diagnostics.add_argument("--enable-profiler", action="store_true")
+    diagnostics.add_argument("--reset-scene", action="store_true")
+    diagnostics.add_argument("--export-report", action="store_true")
+    diagnostics.add_argument("--auto-close-ms", type=int, default=0)
+    diagnostics.add_argument("--wait", action=argparse.BooleanOptionalAction, default=True, help="Use am start -W")
+    diagnostics.set_defaults(func=cmd_open_diagnostics)
 
     state = sub.add_parser(
         "get-app-state",
@@ -147,6 +191,80 @@ def cmd_start_app(args: argparse.Namespace) -> dict[str, Any]:
     serial = ensure_device(args)
     result = run_adb(args, ["-s", serial, "shell", "am", "start", "-W", "-n", args.component])
     return {"device": serial, "component": args.component, "stdout": result.stdout.strip()}
+
+
+def cmd_start_intent(args: argparse.Namespace) -> dict[str, Any]:
+    serial = ensure_device(args)
+    am_args = build_am_start_args(args)
+    result = run_adb(args, ["-s", serial, "shell", "am", "start", *am_args], check=False)
+    if result.returncode != 0:
+        raise CliError(f"am start failed ({result.returncode}): {result.stdout}{result.stderr}")
+    return {
+        "device": serial,
+        "am_args": am_args,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
+
+
+def cmd_open_page(args: argparse.Namespace) -> dict[str, Any]:
+    serial = ensure_device(args)
+    page_data = parse_json_object(args.page_data, "--page-data")
+    page_data.setdefault("pageName", args.page_name)
+    am_args = ["-W"] if args.wait else []
+    am_args.extend(
+        [
+            "-n",
+            args.component,
+            "--es",
+            "pageName",
+            args.page_name,
+            "--es",
+            "pageData",
+            json.dumps(page_data, separators=(",", ":"), ensure_ascii=False),
+        ]
+    )
+    if args.suppress_soft_keyboard:
+        am_args.extend(["--ez", "slockSuppressSoftKeyboard", "true"])
+    result = run_adb(args, ["-s", serial, "shell", "am", "start", *am_args], check=False)
+    if result.returncode != 0:
+        raise CliError(f"open-page failed ({result.returncode}): {result.stdout}{result.stderr}")
+    return {
+        "device": serial,
+        "page_name": args.page_name,
+        "page_data": page_data,
+        "component": args.component,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
+
+
+def cmd_open_diagnostics(args: argparse.Namespace) -> dict[str, Any]:
+    serial = ensure_device(args)
+    am_args = ["-W"] if args.wait else []
+    am_args.extend(["-a", args.action, "-n", args.component])
+    if args.enable_profiler:
+        am_args.extend(["--ez", "enable_profiler", "true"])
+    if args.reset_scene:
+        am_args.extend(["--ez", "reset_scene", "true"])
+    if args.export_report:
+        am_args.extend(["--ez", "export_report", "true"])
+    if args.auto_close_ms > 0:
+        am_args.extend(["--el", "auto_close_ms", str(args.auto_close_ms)])
+    result = run_adb(args, ["-s", serial, "shell", "am", "start", *am_args], check=False)
+    if result.returncode != 0:
+        raise CliError(f"open-diagnostics failed ({result.returncode}): {result.stdout}{result.stderr}")
+    return {
+        "device": serial,
+        "action": args.action,
+        "component": args.component,
+        "enable_profiler": args.enable_profiler,
+        "reset_scene": args.reset_scene,
+        "export_report": args.export_report,
+        "auto_close_ms": args.auto_close_ms,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
 
 
 def cmd_get_app_state(args: argparse.Namespace) -> dict[str, Any]:
@@ -317,6 +435,70 @@ def screen_size(args: argparse.Namespace, serial: str) -> tuple[int, int]:
     if not match:
         raise CliError(f"Unable to parse screen size from: {result.strip()}")
     return int(match.group(1)), int(match.group(2))
+
+
+def build_am_start_args(args: argparse.Namespace) -> list[str]:
+    am_args: list[str] = ["-W"] if args.wait else []
+    if args.action:
+        am_args.extend(["-a", args.action])
+    if args.component:
+        am_args.extend(["-n", args.component])
+    if not args.action and not args.component:
+        raise CliError("start-intent requires --action and/or --component")
+    for category in args.category:
+        am_args.extend(["-c", category])
+    add_extra_args(am_args, "--es", args.string_extra, str)
+    add_extra_args(am_args, "--ez", args.bool_extra, normalize_bool)
+    add_extra_args(am_args, "--el", args.long_extra, normalize_int)
+    add_extra_args(am_args, "--ei", args.int_extra, normalize_int)
+    return am_args
+
+
+def add_extra_args(
+    am_args: list[str],
+    flag: str,
+    values: list[str],
+    normalizer: Any,
+) -> None:
+    for raw in values:
+        key, value = split_key_value(raw)
+        am_args.extend([flag, key, str(normalizer(value))])
+
+
+def split_key_value(raw: str) -> tuple[str, str]:
+    if "=" not in raw:
+        raise CliError(f"Expected KEY=VALUE, got: {raw}")
+    key, value = raw.split("=", 1)
+    key = key.strip()
+    if not key:
+        raise CliError(f"Extra key is blank in: {raw}")
+    return key, value
+
+
+def normalize_bool(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "t", "yes", "y", "on"):
+        return "true"
+    if normalized in ("0", "false", "f", "no", "n", "off"):
+        return "false"
+    raise CliError(f"Expected boolean value, got: {value}")
+
+
+def normalize_int(value: str) -> int:
+    try:
+        return int(value.strip(), 10)
+    except ValueError as exc:
+        raise CliError(f"Expected integer value, got: {value}") from exc
+
+
+def parse_json_object(value: str, label: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise CliError(f"{label} must be a JSON object: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise CliError(f"{label} must be a JSON object")
+    return parsed
 
 
 class CommandResult:
