@@ -1935,6 +1935,7 @@ private fun ThreadMessageVisualScreen() {
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},
+                    onSelectText = {},
                     onSave = {},
                     onFollowThread = {},
                     onTaskStatusChange = {},
