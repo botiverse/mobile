@@ -664,6 +664,34 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun initialBottomAnchor_keepsMessageListVisibleWhileAnchorIsPending() {
+        assertEquals(
+            1f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = false,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+        assertEquals(
+            1f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = true,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+        assertEquals(
+            1f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = false,
+                latestItemIndex = 0,
+                revealLatestLocalSendBeforeInitialAnchor = true
+            )
+        )
+    }
+
+    @Test
     fun latestLocalSendBottomAnchor_stopsWhenUserScrolls() {
         assertEquals(
             false,
