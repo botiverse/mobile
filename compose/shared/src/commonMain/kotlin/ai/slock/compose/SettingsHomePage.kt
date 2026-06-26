@@ -431,6 +431,13 @@ private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-f
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
+private const val AppShellInitialTabKey = "slockInitialTab"
+private const val AppShellInitialSettingsDestinationKey = "slockInitialSettingsDestination"
+private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
+private const val DiagnosticsDeepLinkEnableProfilerKey = "slockDiagnosticsDeepLinkEnableProfiler"
+private const val DiagnosticsDeepLinkResetSceneKey = "slockDiagnosticsDeepLinkResetScene"
+private const val DiagnosticsDeepLinkExportReportKey = "slockDiagnosticsDeepLinkExportReport"
+private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
@@ -1212,6 +1219,47 @@ private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settin
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
+internal data class AppShellLaunchSelection(
+    val selectedTab: String = "home",
+    val selectedSettingsDestination: String = SettingsDestinationHome
+)
+
+internal data class DiagnosticsDeepLinkRequest(
+    val id: String,
+    val enableProfiler: Boolean = false,
+    val resetScene: Boolean = false,
+    val exportReport: Boolean = false,
+    val autoCloseMs: Long = 0L
+)
+
+internal fun JSONObject.appShellLaunchSelection(): AppShellLaunchSelection {
+    val selectedTab = retainedAppShellSelectedTab(optString(AppShellInitialTabKey))
+    return AppShellLaunchSelection(
+        selectedTab = selectedTab,
+        selectedSettingsDestination =
+            retainedAppShellInitialSettingsDestination(
+                selectedTab = selectedTab,
+                destination = optString(AppShellInitialSettingsDestinationKey)
+            )
+    )
+}
+
+internal fun retainedAppShellInitialSettingsDestination(selectedTab: String, destination: String): String {
+    if (retainedAppShellSelectedTab(selectedTab) != "settings") return SettingsDestinationHome
+    return destination.takeIf { it.toSharedSettingsDestination() != null } ?: SettingsDestinationHome
+}
+
+internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest? {
+    val id = optString(DiagnosticsDeepLinkIdKey).takeIf { it.isNotBlank() } ?: return null
+    return DiagnosticsDeepLinkRequest(
+        id = id,
+        enableProfiler = optBoolean(DiagnosticsDeepLinkEnableProfilerKey, false),
+        resetScene = optBoolean(DiagnosticsDeepLinkResetSceneKey, false),
+        exportReport = optBoolean(DiagnosticsDeepLinkExportReportKey, false),
+        autoCloseMs = optLong(DiagnosticsDeepLinkAutoCloseMsKey, 0L).coerceAtLeast(0L)
+    )
+}
+
 internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     return retainedAppShellTabKeys.filter { it != activeTab } + activeTab
@@ -1391,13 +1439,23 @@ private fun SlockAppShellContent() {
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
     RememberKmmResourceLocaleSeedFromLocalActivity()
-    var selectedTab by remember { mutableStateOf("home") }
-    var retainedAppShellTabs by remember { mutableStateOf(setOf("home")) }
-    var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
+    val pager = LocalActivity.current.getPager() as Pager
+    val launchSelection = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.appShellLaunchSelection()
+    }
+    val diagnosticsDeepLinkRequest = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.diagnosticsDeepLinkRequest()
+    }
+    var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    var retainedAppShellTabs by remember {
+        mutableStateOf(setOf("home", launchSelection.selectedTab))
+    }
+    var selectedSettingsDestination by remember {
+        mutableStateOf(launchSelection.selectedSettingsDestination)
+    }
     var homeListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
-    val pager = LocalActivity.current.getPager() as Pager
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val childTabEntry = remember(childTabShellId) { AppShellChildTabEntry() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -1716,6 +1774,7 @@ private fun SlockAppShellContent() {
             SharedSettingsViewModel(settingsDataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = readySession?.currentServerId
     val latestReadySession by rememberUpdatedState(readySession)
@@ -1738,6 +1797,41 @@ private fun SlockAppShellContent() {
         remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
             hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
+    LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId) {
+        val request = diagnosticsDeepLinkRequest ?: return@LaunchedEffect
+        if (readyServerId == null || consumedDiagnosticsDeepLinkId == request.id) {
+            return@LaunchedEffect
+        }
+        consumedDiagnosticsDeepLinkId = request.id
+        selectedTab = "settings"
+        retainedAppShellTabs = retainedAppShellTabs + "settings"
+        selectedSettingsDestination = SettingsDestinationDiagnostics
+        bridge.log(
+            "diagnostics_deeplink_start id=${request.id} " +
+                "enableProfiler=${request.enableProfiler} resetScene=${request.resetScene} " +
+                "exportReport=${request.exportReport} autoCloseMs=${request.autoCloseMs}"
+        )
+        settingsViewModel.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        if (request.enableProfiler) {
+            settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
+            if (request.resetScene) {
+                settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
+            }
+            if (request.exportReport) {
+                settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
+            }
+        } else if (request.resetScene || request.exportReport) {
+            bridge.logWarn(
+                "diagnostics_deeplink_skip_profiler_actions id=${request.id} " +
+                    "reason=enable_profiler_false resetScene=${request.resetScene} exportReport=${request.exportReport}"
+            )
+        }
+        if (request.autoCloseMs > 0L) {
+            delay(request.autoCloseMs)
+            bridge.closePage()
+        }
+        bridge.log("diagnostics_deeplink_complete id=${request.id}")
+    }
     val shellScope = rememberSlockAppShellScope()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }

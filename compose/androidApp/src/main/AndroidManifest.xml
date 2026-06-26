@@ -26,6 +26,17 @@
             android:exported="false"
             android:theme="@style/Theme.Slock"
             android:windowSoftInputMode="adjustNothing" />
+        <activity-alias
+            android:name=".core.diagnostics.DiagnosticsDeepLinkActivity"
+            android:enabled="@bool/diagnostics_deeplink_enabled"
+            android:exported="@bool/diagnostics_deeplink_enabled"
+            android:targetActivity=".shared.SlockKuiklyActivity">
+            <intent-filter>
+                <action android:name="ai.slock.android.diagnostics.OPEN" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
         <activity
             android:name=".widget.SlockWidgetServerConfigureActivity"
             android:excludeFromRecents="true"

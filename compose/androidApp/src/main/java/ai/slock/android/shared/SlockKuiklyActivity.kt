@@ -132,7 +132,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             }
 
     private val pageName: String
-        get() = intent.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
+        get() = resolvedPageName(intent)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -579,7 +579,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun createPageSpec(): SlockKuiklyPageSpec {
         val pageData =
-                SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
+                resolvedPageData(intent)
                         .withAndroidRuntimeWindowInsets()
         return SlockKuiklyPageSpec(
                 pageName = pageName,
@@ -734,6 +734,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"
         private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
+        private const val ACTION_OPEN_DIAGNOSTICS = "ai.slock.android.diagnostics.OPEN"
+        private const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
+        private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
+        private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
+        private const val KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER = "slockDiagnosticsDeepLinkEnableProfiler"
+        private const val KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE = "slockDiagnosticsDeepLinkResetScene"
+        private const val KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT = "slockDiagnosticsDeepLinkExportReport"
+        private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
 
         fun start(
             context: Context,
@@ -769,6 +777,57 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 } else {
                     JSONObject()
                 }
+
+        private fun resolvedPageName(intent: Intent?): String =
+                if (intent.isDiagnosticsDeepLinkIntent()) {
+                    PAGE_APP_SHELL
+                } else {
+                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
+                }
+
+        private fun resolvedPageData(intent: Intent?): SlockKuiklyPageData =
+                if (intent.isDiagnosticsDeepLinkIntent()) {
+                    SlockKuiklyPageData.fromJson(diagnosticsDeepLinkPageData(intent))
+                } else {
+                    SlockKuiklyPageData.fromText(intent?.getStringExtra(KEY_PAGE_DATA))
+                }
+
+        private fun Intent?.isDiagnosticsDeepLinkIntent(): Boolean =
+                this?.action == ACTION_OPEN_DIAGNOSTICS
+
+        private fun diagnosticsDeepLinkPageData(intent: Intent?): JSONObject {
+            val pageData =
+                    JSONObject()
+                            .put(KEY_PAGE_NAME, PAGE_APP_SHELL)
+                            .put(KEY_APP_SHELL_INITIAL_TAB, "settings")
+                            .put(KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION, "diagnostics")
+                            .put(KEY_DIAGNOSTICS_DEEP_LINK_ID, "android-diagnostics-${System.currentTimeMillis()}")
+                            .put(
+                                    KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER,
+                                    intent?.getBooleanExtra("enable_profiler", false) == true
+                            )
+                            .put(
+                                    KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE,
+                                    intent?.getBooleanExtra("reset_scene", false) == true
+                            )
+                            .put(
+                                    KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT,
+                                    intent?.getBooleanExtra("export_report", false) == true
+                            )
+                            .put(
+                                    KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS,
+                                    intent?.getLongExtra("auto_close_ms", 0L)?.coerceAtLeast(0L) ?: 0L
+                            )
+            SlockDiagnosticsLogger.record(
+                    "SlockDiagnostics",
+                    "diagnostics_deeplink_received " +
+                            "enableProfiler=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER, false)} " +
+                            "resetScene=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE, false)} " +
+                            "exportReport=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT, false)} " +
+                            "autoCloseMs=${pageData.optLong(KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS, 0L)}"
+            )
+            return pageData
+        }
 
         internal fun shouldReplaceCurrentPage(pageData: JSONObject): Boolean {
             return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)

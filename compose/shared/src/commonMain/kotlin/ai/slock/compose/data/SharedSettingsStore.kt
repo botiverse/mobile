@@ -1031,6 +1031,10 @@ class SharedSettingsViewModel(
         }
     }
 
+    suspend fun accept(intent: SharedSettingsIntent) {
+        storeDelegate.value.accept(intent)
+    }
+
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {
             storeDelegate.value.clear()

@@ -12,6 +12,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -140,6 +141,57 @@ class SlockAppShellTest {
     @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("unknown"))
+    }
+
+    @Test
+    fun appShellLaunchSelectionCanStartOnDiagnostics() {
+        val params =
+            JSONObject()
+                .put("slockInitialTab", "settings")
+                .put("slockInitialSettingsDestination", "diagnostics")
+
+        assertEquals(
+            AppShellLaunchSelection(
+                selectedTab = "settings",
+                selectedSettingsDestination = "diagnostics"
+            ),
+            params.appShellLaunchSelection()
+        )
+    }
+
+    @Test
+    fun appShellLaunchSelectionIgnoresSettingsDestinationOutsideSettingsTab() {
+        val params =
+            JSONObject()
+                .put("slockInitialTab", "home")
+                .put("slockInitialSettingsDestination", "diagnostics")
+
+        assertEquals(
+            AppShellLaunchSelection(selectedTab = "home", selectedSettingsDestination = "home"),
+            params.appShellLaunchSelection()
+        )
+    }
+
+    @Test
+    fun diagnosticsDeepLinkRequestParsesControlFlagsOnly() {
+        val params =
+            JSONObject()
+                .put("slockDiagnosticsDeepLinkId", "deep-link-1")
+                .put("slockDiagnosticsDeepLinkEnableProfiler", true)
+                .put("slockDiagnosticsDeepLinkResetScene", true)
+                .put("slockDiagnosticsDeepLinkExportReport", true)
+                .put("slockDiagnosticsDeepLinkAutoCloseMs", 15000L)
+
+        assertEquals(
+            DiagnosticsDeepLinkRequest(
+                id = "deep-link-1",
+                enableProfiler = true,
+                resetScene = true,
+                exportReport = true,
+                autoCloseMs = 15000L
+            ),
+            params.diagnosticsDeepLinkRequest()
+        )
     }
 
     @Test
