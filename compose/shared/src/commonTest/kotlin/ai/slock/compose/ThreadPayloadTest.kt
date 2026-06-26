@@ -157,34 +157,36 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadComposerWaitsForContentReady() {
-        assertFalse(
-            shouldShowThreadComposerForReadyContent(
-                joined = true,
-                showComposer = true,
-                selectedTab = "chat",
-                contentExtrasVisible = true,
-                threadContentReady = false
-            )
-        )
-        assertFalse(
-            shouldShowThreadComposerForReadyContent(
-                joined = true,
-                showComposer = true,
-                selectedTab = "chat",
-                contentExtrasVisible = false,
-                threadContentReady = true
-            )
-        )
+    fun threadComposerDoesNotWaitForContentExtrasOrBottomAnchorReadiness() {
         assertTrue(
             shouldShowThreadComposerForReadyContent(
                 joined = true,
                 showComposer = true,
-                selectedTab = "chat",
-                contentExtrasVisible = true,
-                threadContentReady = true
+                selectedTab = "chat"
             )
         )
+    }
+
+    @Test
+    fun threadComposerCanRenderWhileLoadingWhenCachedContentIsVisible() {
+        assertFalse(KuiklyThreadScreenPayload(status = "loading").hasRenderableContentForComposer())
+        assertTrue(
+            KuiklyThreadScreenPayload(
+                status = "loading",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "cached"
+                        )
+                    )
+            ).hasRenderableContentForComposer()
+        )
+        assertTrue(KuiklyThreadScreenPayload(status = "content").hasRenderableContentForComposer())
+        assertFalse(KuiklyThreadScreenPayload(status = "error").hasRenderableContentForComposer())
+        assertFalse(KuiklyThreadScreenPayload(status = "no_permission").hasRenderableContentForComposer())
     }
 
     @Test
