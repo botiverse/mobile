@@ -3303,16 +3303,21 @@ private fun MembersAgentDetailStateNotice(
             null
         }
     val resolved = message ?: privateMessage ?: return
-    Text(
-        text = resolved,
-        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
+    Box(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 44.dp)
             .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(SlockSpacing.Sm)
-    )
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = resolved,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs)
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
