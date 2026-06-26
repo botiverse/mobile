@@ -6145,6 +6145,8 @@ private fun ThreadComposerRoute(
     ThreadComposerContentWithSuggestions(
         surface = surface,
         state = composerState.toThreadComposerUiState(),
+        threadMessages = renderedPayload.messages,
+        prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
         memberSuggestionsFlow = memberSuggestionsFlow,
         channelSuggestionsFlow = channelSuggestionsFlow,
         agentStatusResolver = agentStatusResolver,
@@ -6159,6 +6161,8 @@ private fun ThreadComposerRoute(
 private fun ThreadComposerContentWithSuggestions(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
+    threadMessages: List<KuiklyThreadMessageItem>,
+    prioritizeThreadParticipants: Boolean,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     agentStatusResolver: SlockAgentStatusResolver,
@@ -6170,21 +6174,26 @@ private fun ThreadComposerContentWithSuggestions(
     val memberSuggestions by memberSuggestionsFlow.collectAsState(emptyList())
     val channelSuggestions by channelSuggestionsFlow.collectAsState(emptyList())
     val loadedMemberSuggestions =
-        remember(memberSuggestions) {
-            memberSuggestions.map { suggestion ->
-                KuiklyComposerMemberItem(
-                    displayName = suggestion.displayName,
-                    handle = suggestion.handle,
-                    inMentionChannel = suggestion.inMentionChannel,
-                    sourceServerLabel = suggestion.sourceServerLabel,
-                    kind = suggestion.kind,
-                    description = suggestion.description,
-                    avatarWireValue = suggestion.avatarWireValue,
-                    gravatarHash = suggestion.gravatarHash,
-                    avatarLabel = suggestion.avatarLabel,
-                    memberId = suggestion.memberId
+        remember(memberSuggestions, threadMessages, prioritizeThreadParticipants) {
+            memberSuggestions
+                .sortForThreadMentionParticipants(
+                    threadMessages = threadMessages,
+                    prioritizeThreadParticipants = prioritizeThreadParticipants
                 )
-            }
+                .map { suggestion ->
+                    KuiklyComposerMemberItem(
+                        displayName = suggestion.displayName,
+                        handle = suggestion.handle,
+                        inMentionChannel = suggestion.inMentionChannel,
+                        sourceServerLabel = suggestion.sourceServerLabel,
+                        kind = suggestion.kind,
+                        description = suggestion.description,
+                        avatarWireValue = suggestion.avatarWireValue,
+                        gravatarHash = suggestion.gravatarHash,
+                        avatarLabel = suggestion.avatarLabel,
+                        memberId = suggestion.memberId
+                    )
+                }
         }
     val loadedChannelSuggestions =
         remember(channelSuggestions) {
@@ -6232,6 +6241,70 @@ private fun ThreadComposerContentWithSuggestions(
         agentStatusResolver = agentStatusResolver
     )
 }
+
+internal fun KuiklyThreadScreenPayload.shouldPrioritizeThreadMentionParticipants(): Boolean =
+    parentChannelId.nonBlank() != null && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+
+internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants(
+    threadMessages: List<KuiklyThreadMessageItem>,
+    prioritizeThreadParticipants: Boolean
+): List<SharedMembersMemberSuggestion> {
+    if (!prioritizeThreadParticipants || threadMessages.isEmpty()) return this
+    val ranks = threadMessages.recentThreadParticipantRanks()
+    if (ranks.isEmpty()) return this
+    fun List<SharedMembersMemberSuggestion>.sortGroup(): List<SharedMembersMemberSuggestion> =
+        withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<SharedMembersMemberSuggestion>>(
+                    { indexed -> indexed.value.threadParticipantRank(ranks) },
+                    { indexed -> indexed.index }
+                )
+            )
+            .map { indexed -> indexed.value }
+    val inChannel = filter { it.inMentionChannel }.sortGroup()
+    val notInChannel = filterNot { it.inMentionChannel }.sortGroup()
+    return inChannel + notInChannel
+}
+
+private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<String, Int> {
+    val ranks = LinkedHashMap<String, Int>()
+    val seenAuthorIds = mutableSetOf<String>()
+    var nextRank = 0
+    for (message in asReversed()) {
+        val authorId = message.authorId.trim().takeIf { it.isNotBlank() } ?: continue
+        if (!seenAuthorIds.add(authorId)) continue
+        val rank = nextRank
+        nextRank += 1
+        ranks[authorId.threadParticipantIdKey()] = rank
+        message.authorHandle.threadParticipantHandleKey()?.let { handleKey ->
+            ranks.putIfAbsent(handleKey, rank)
+        }
+    }
+    return ranks
+}
+
+private fun SharedMembersMemberSuggestion.threadParticipantRank(ranks: Map<String, Int>): Int =
+    threadParticipantKeys()
+        .asSequence()
+        .mapNotNull { key -> ranks[key] }
+        .minOrNull()
+        ?: Int.MAX_VALUE
+
+private fun SharedMembersMemberSuggestion.threadParticipantKeys(): List<String> =
+    buildList {
+        memberId?.trim()?.takeIf { it.isNotBlank() }?.let { add(it.threadParticipantIdKey()) }
+        handle.threadParticipantHandleKey()?.let { add(it) }
+    }
+
+private fun String.threadParticipantIdKey(): String = "id:${trim()}"
+
+private fun String?.threadParticipantHandleKey(): String? =
+    this
+        ?.trim()
+        ?.removePrefix("@")
+        ?.takeIf { it.isNotBlank() }
+        ?.lowercase()
+        ?.let { "handle:$it" }
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {

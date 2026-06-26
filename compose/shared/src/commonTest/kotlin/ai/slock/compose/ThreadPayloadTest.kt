@@ -32,6 +32,7 @@ import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.SharedConversationDirectoryProjection
+import ai.slock.compose.data.SharedMembersMemberSuggestion
 import ai.slock.compose.data.SharedServerMembersEntry
 import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.TasksUiState
@@ -63,6 +64,55 @@ import kotlinx.serialization.json.Json
 
 class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun threadMentionSuggestionsRankRecentParticipantsWithinChannelGroups() {
+        val suggestions =
+            listOf(
+                mentionSuggestion("Cindy", "cindy", "u-cindy", inMentionChannel = true),
+                mentionSuggestion("Build Agent", "build-agent", "agent-build", inMentionChannel = true, kind = MemberKind.Agent),
+                mentionSuggestion("Artin", "artin", "u-artin", inMentionChannel = true),
+                mentionSuggestion("Mina", "mina", "u-mina", inMentionChannel = false),
+                mentionSuggestion("Guest", "guest", "u-guest", inMentionChannel = false)
+            )
+        val messages =
+            listOf(
+                threadMessage("m1", "u-cindy", "cindy"),
+                threadMessage("m2", "u-mina", "mina"),
+                threadMessage("m3", "agent-build", "build-agent"),
+                threadMessage("m4", "u-artin", "artin"),
+                threadMessage("m5", "u-guest", "guest")
+            )
+
+        val sorted =
+            suggestions.sortForThreadMentionParticipants(
+                threadMessages = messages,
+                prioritizeThreadParticipants = true
+            )
+
+        assertEquals(
+            listOf("artin", "build-agent", "cindy", "guest", "mina"),
+            sorted.map { it.handle }
+        )
+    }
+
+    @Test
+    fun threadMentionSuggestionsKeepOriginalOrderWhenNotThreadRanked() {
+        val suggestions =
+            listOf(
+                mentionSuggestion("Cindy", "cindy", "u-cindy"),
+                mentionSuggestion("Artin", "artin", "u-artin")
+            )
+        val messages = listOf(threadMessage("m1", "u-artin", "artin"))
+
+        val sorted =
+            suggestions.sortForThreadMentionParticipants(
+                threadMessages = messages,
+                prioritizeThreadParticipants = false
+            )
+
+        assertEquals(listOf("cindy", "artin"), sorted.map { it.handle })
+    }
 
     @Test
     fun markdownChannelLaunchPayloadResolvesChannelNameToIdentityOnlyRoute() {
@@ -4487,5 +4537,32 @@ class ThreadPayloadTest {
             channels = channels.toList(),
             directMessages = emptyList(),
             unreadTotal = 0
+        )
+
+    private fun mentionSuggestion(
+        displayName: String,
+        handle: String,
+        memberId: String,
+        inMentionChannel: Boolean = true,
+        kind: MemberKind = MemberKind.Human
+    ): SharedMembersMemberSuggestion =
+        SharedMembersMemberSuggestion(
+            displayName = displayName,
+            handle = handle,
+            memberId = memberId,
+            inMentionChannel = inMentionChannel,
+            kind = kind
+        )
+
+    private fun threadMessage(
+        id: String,
+        authorId: String,
+        authorHandle: String
+    ): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = authorId,
+            authorName = authorHandle,
+            authorHandle = authorHandle
         )
 }

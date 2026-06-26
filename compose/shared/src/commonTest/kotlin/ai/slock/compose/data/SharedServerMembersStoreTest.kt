@@ -186,6 +186,7 @@ class SharedServerMembersStoreTest {
         val suggestions =
             store.state.value.memberSuggestionSlice(ServerId("server-1")).suggestions
         assertEquals(listOf("cindy", "build-agent"), suggestions.map { it.handle })
+        assertEquals("u1", suggestions.single { it.handle == "cindy" }.memberId)
         assertEquals("agent-1", suggestions.single { it.handle == "build-agent" }.memberId)
         assertEquals(1, repository.getMembersCalls)
     }

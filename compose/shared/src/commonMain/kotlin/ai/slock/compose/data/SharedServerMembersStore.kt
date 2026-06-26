@@ -629,7 +629,7 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
                     gravatarHash = avatar.gravatarHash,
                     avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
                         ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
-                    memberId = member.id.value.takeIf { member.kind == MemberKind.Agent }
+                    memberId = member.id.value
                 )
         }
     }
