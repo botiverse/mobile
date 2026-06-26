@@ -399,8 +399,8 @@ class SlockMarkdownTest {
         val envVarWidth = slockMarkdownInlineCodeWidthSp("MIMO_API_KEY").value
         val pathWidth = slockMarkdownInlineCodeWidthSp("~/.pi/agent/auth.json").value
 
-        assertTrue(shortTokenWidth in 42f..46f)
-        assertTrue(envVarWidth in 100f..108f)
+        assertTrue(shortTokenWidth in 44f..48f)
+        assertTrue(envVarWidth in 102f..110f)
         assertTrue(pathWidth < 145f)
     }
 

@@ -1381,7 +1381,7 @@ private fun String.removeSurroundingMarkdownBackticks(): String {
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
-private const val SlockMarkdownInlineCodeHorizontalChromeSp = 12f
+private const val SlockMarkdownInlineCodeHorizontalChromeSp = 14f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
 private const val SlockMarkdownInlineCodeMinHeightSp = 24f
 private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
@@ -1498,7 +1498,7 @@ private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
                 .fillMaxSize()
                 .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 3.dp, vertical = 0.dp),
+                .padding(horizontal = 4.dp, vertical = 0.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
