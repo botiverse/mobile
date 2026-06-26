@@ -168,6 +168,34 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageMenuDefault() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-menu.default",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-menu-default")
+                    .put("visualFixture", "default")
+                    .put("menuVariant", "default"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageMenuTask() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-menu.task",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-menu-task")
+                    .put("visualFixture", "default")
+                    .put("menuVariant", "task"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowRichContent() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.rich-content",

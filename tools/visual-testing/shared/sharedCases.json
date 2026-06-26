@@ -505,6 +505,82 @@
       }
     },
     {
+      "id": "components.thread.message-menu.default",
+      "title": "Thread Message Context Menu / Default Message",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.message-menu.default.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default-message",
+          "name": "Default Message",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "viewport-with-portal",
+        "interactions": [
+          {
+            "type": "contextmenu",
+            "target": "#message-msg-menu-default"
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageItem.tsx#context-menu",
+      "androidCaseHint": "compose_thread_message_row_visual menuVariant=default",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.thread.message-menu.task",
+      "title": "Thread Message Context Menu / Task Message",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.message-menu.task.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "task-message",
+          "name": "Task Message",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "viewport-with-portal",
+        "interactions": [
+          {
+            "type": "contextmenu",
+            "target": "#message-msg-menu-task"
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageItem.tsx#context-menu",
+      "androidCaseHint": "compose_thread_message_row_visual menuVariant=task",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "components.home.server-switcher.open",
       "title": "Home Server Switcher Open",
       "surface": "home",
@@ -2977,6 +3053,96 @@
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
           "reason": "Depends on shared thread fixture route and OHOS capture.",
           "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-menu.default",
+      "title": "Thread Message Context Menu / Default Message",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "notes": "Real React MessageItem right-click menu captured through the portal plus Android shared ThreadMessageMenuChrome with default message actions. Protects quick reactions and grouped row separators.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem",
+            "MenuItem",
+            "ContextMenuDivider"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#components.thread.message-menu.default plus contextmenu interaction"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageMenuChrome",
+            "ThreadMessageReactionRow",
+            "ThreadMessageMenuItem"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageMenuDefault"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageMenuChrome"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android menu cases are stable."
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-menu.task",
+      "title": "Thread Message Context Menu / Task Message",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "notes": "Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem",
+            "MenuItem",
+            "ContextMenuDivider"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#components.thread.message-menu.task plus contextmenu interaction"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageMenuChrome",
+            "ThreadMessageReactionRow",
+            "ThreadMessageMenuItem"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageMenuTask"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageMenuChrome"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android menu cases are stable."
         }
       ]
     },

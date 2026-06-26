@@ -1395,7 +1395,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
     .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; }
     .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; max-width: 1180px; margin: 0 auto; align-items: start; }
-    nav.tree { position: sticky; top: 16px; border: 2px solid #141111; background: #fff; padding: 12px; box-shadow: 4px 4px 0 #141111; }
+    nav.tree { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; border: 2px solid #141111; background: #fff; padding: 12px; box-shadow: 4px 4px 0 #141111; }
     nav.tree ul { list-style: none; margin: 0; padding-left: 12px; }
     nav.tree > ul { padding-left: 0; }
     nav.tree li { margin: 6px 0; }
@@ -1454,7 +1454,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .active { color: #2f6f1f; }
     .unsupported { color: #6b625f; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } nav.tree { position: static; } }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } nav.tree { position: static; max-height: none; } }
   </style>
 </head>
 <body>

@@ -1848,6 +1848,7 @@ private fun ThreadMessageVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
+    val menuVariant = params.optString("menuVariant")
     val instanceId = params.optString("instanceId")
     val payload =
         remember(visualFixture, instanceId) {
@@ -1857,8 +1858,43 @@ private fun ThreadMessageVisualScreen() {
         remember(visualFixture) {
             if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT) setOf("artin") else emptySet()
         }
-    val message = payload.messages.firstOrNull()
-    Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
+    val baseMessage = payload.messages.firstOrNull()
+    val message =
+        remember(baseMessage, menuVariant) {
+            if (baseMessage != null && menuVariant == "task" && baseMessage.taskId == null) {
+                baseMessage.copy(
+                    taskId = "task-menu-246",
+                    taskNumber = 246,
+                    taskStatus = "in_progress",
+                    taskAssigneeId = "agent-cindy",
+                    taskAssigneeName = "Cindy"
+                )
+            } else {
+                baseMessage
+            }
+        }
+    val menuActions =
+        remember(message, menuVariant) {
+            if (message == null || menuVariant.isBlank()) {
+                emptyList()
+            } else {
+                threadMessageMenuActions(
+                    message = message,
+                    showReplyAction = true,
+                    showSaveAction = true,
+                    showTaskStatusAction = menuVariant == "task",
+                    showConvertToTaskAction = menuVariant != "task",
+                    showDeleteAction = false,
+                    onReply = {},
+                    onCopy = {},
+                    onSave = {},
+                    onTaskStatusChange = {},
+                    onConvertToTask = {},
+                    onDelete = {}
+                )
+            }
+        }
+    Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
@@ -1888,6 +1924,15 @@ private fun ThreadMessageVisualScreen() {
                 onOpenMarkdownUrl = {},
                 outerPadding = 0.dp
             )
+            if (menuActions.isNotEmpty()) {
+                Spacer(Modifier.height(SlockSpacing.Sm))
+                ThreadMessageMenuChrome(
+                    actions = menuActions,
+                    showReactionActions = true,
+                    onReact = {},
+                    modifier = Modifier
+                )
+            }
         }
     }
 }
@@ -9420,6 +9465,68 @@ private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
 
+private fun threadMessageMenuActions(
+    message: KuiklyThreadMessageItem,
+    showReplyAction: Boolean,
+    showSaveAction: Boolean,
+    showTaskStatusAction: Boolean,
+    showConvertToTaskAction: Boolean,
+    showDeleteAction: Boolean,
+    onReply: () -> Unit,
+    onCopy: () -> Unit,
+    onSave: () -> Unit,
+    onTaskStatusChange: (String) -> Unit,
+    onConvertToTask: () -> Unit,
+    onDelete: () -> Unit
+): List<ThreadMessageMenuAction> =
+    buildList {
+        if (showReplyAction) {
+            add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
+        }
+        add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
+        if (showSaveAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = if (message.isSaved) "Remove from saved" else "Save message",
+                    icon = SlockLucideIconName.Bookmark,
+                    group = "message",
+                    onClick = onSave
+                )
+            )
+        }
+        if (showDeleteAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Delete",
+                    icon = SlockLucideIconName.Trash,
+                    group = "destructive",
+                    onClick = onDelete
+                )
+            )
+        }
+        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
+            val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
+            add(
+                ThreadMessageMenuAction(
+                    label = if (isDone) "Reopen task" else "Mark done",
+                    icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
+                    group = "task",
+                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                )
+            )
+        }
+        if (showConvertToTaskAction && message.canConvertToTask()) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Convert to Task",
+                    icon = SlockLucideIconName.ClipboardList,
+                    group = "task",
+                    onClick = onConvertToTask
+                )
+            )
+        }
+    }
+
 @Composable
 private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
@@ -9441,53 +9548,35 @@ private fun ThreadMessageActionMenu(
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val actions =
-        buildList {
-            if (showReplyAction) {
-                add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
-            }
-            add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
-            if (showSaveAction) {
-                add(
-                    ThreadMessageMenuAction(
-                        label = if (message.isSaved) "Remove from saved" else "Save message",
-                        icon = SlockLucideIconName.Bookmark,
-                        group = "message",
-                        onClick = onSave
-                    )
-                )
-            }
-            if (showDeleteAction) {
-                add(
-                    ThreadMessageMenuAction(
-                        label = "Delete",
-                        icon = SlockLucideIconName.Trash,
-                        group = "destructive",
-                        onClick = onDelete
-                    )
-                )
-            }
-            message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
-                val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
-                add(
-                    ThreadMessageMenuAction(
-                        label = if (isDone) "Reopen task" else "Mark done",
-                        icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
-                        group = "task",
-                        onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
-                    )
-                )
-            }
-            if (showConvertToTaskAction && message.canConvertToTask()) {
-                add(
-                    ThreadMessageMenuAction(
-                        label = "Convert to Task",
-                        icon = SlockLucideIconName.ClipboardList,
-                        group = "task",
-                        onClick = onConvertToTask
-                    )
-                )
-            }
-    }
+        remember(
+            message,
+            showReplyAction,
+            showSaveAction,
+            showTaskStatusAction,
+            showConvertToTaskAction,
+            showDeleteAction,
+            onReply,
+            onCopy,
+            onSave,
+            onTaskStatusChange,
+            onConvertToTask,
+            onDelete
+        ) {
+            threadMessageMenuActions(
+                message = message,
+                showReplyAction = showReplyAction,
+                showSaveAction = showSaveAction,
+                showTaskStatusAction = showTaskStatusAction,
+                showConvertToTaskAction = showConvertToTaskAction,
+                showDeleteAction = showDeleteAction,
+                onReply = onReply,
+                onCopy = onCopy,
+                onSave = onSave,
+                onTaskStatusChange = onTaskStatusChange,
+                onConvertToTask = onConvertToTask,
+                onDelete = onDelete
+            )
+        }
     var menuSize by remember { mutableStateOf(Size.Zero) }
     val density = LocalDensity.current
     val menuWidth = menuSize.width.takeIf { it > 0f } ?: with(density) { ThreadMessageMenuWidth.toPx() }
@@ -9518,38 +9607,54 @@ private fun ThreadMessageActionMenu(
                     "menuW=$menuWidth menuH=$menuHeight finalX=${position.offset.x} finalY=${position.offset.y}"
             )
         }
+        ThreadMessageMenuChrome(
+            actions = actions,
+            showReactionActions = showReactionActions,
+            onReact = onReact,
+            modifier =
+                popoverModifier
+                    .onGloballyPositioned { coordinates ->
+                        menuSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                    }
+        )
+    }
+}
+
+@Composable
+private fun ThreadMessageMenuChrome(
+    actions: List<ThreadMessageMenuAction>,
+    showReactionActions: Boolean,
+    onReact: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .padding(end = 4.dp, bottom = 4.dp)
+            .width(ThreadMessageMenuWidth)
+    ) {
         Box(
-            modifier = popoverModifier
-                .padding(end = 4.dp, bottom = 4.dp)
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = 4f, y = 4f)
+                .background(SlockColor.ShadowBlack)
+        )
+        Column(
+            modifier = Modifier
                 .width(ThreadMessageMenuWidth)
-                .onGloballyPositioned { coordinates ->
-                    menuSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                }
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockFloatingContentClickTarget()
         ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = 4f, y = 4f)
-                    .background(SlockColor.ShadowBlack)
-            )
-            Column(
-                modifier = Modifier
-                    .width(ThreadMessageMenuWidth)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .slockFloatingContentClickTarget()
-            ) {
-                if (showReactionActions) {
-                    ThreadMessageReactionRow(onReact = onReact)
+            if (showReactionActions) {
+                ThreadMessageReactionRow(onReact = onReact)
+                ThreadMessageMenuDivider()
+            }
+            actions.forEachIndexed { index, action ->
+                val previousGroup = actions.getOrNull(index - 1)?.group
+                if (index > 0 && previousGroup != action.group) {
                     ThreadMessageMenuDivider()
                 }
-                actions.forEachIndexed { index, action ->
-                    val previousGroup = actions.getOrNull(index - 1)?.group
-                    if (index > 0 && previousGroup != action.group) {
-                        ThreadMessageMenuDivider()
-                    }
-                    ThreadMessageMenuItem(action)
-                }
+                ThreadMessageMenuItem(action)
             }
         }
     }
