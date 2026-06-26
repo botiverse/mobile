@@ -301,12 +301,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.key
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -395,6 +397,7 @@ private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 private const val AUTH_CHOOSE_SERVER_VISUAL_PAGE = "compose_auth_choose_server_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
+private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 
@@ -442,6 +445,33 @@ private val SearchPopoverBorderColor = SlockColor.BorderBlack
 private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
+
+private val AppShellChildPageTabKeys = setOf("home", "tasks", "members")
+
+private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
+
+private class AppShellChildTabEntry {
+    var selectedTab by mutableStateOf("home")
+    var renderer: AppShellChildTabRenderer by mutableStateOf<AppShellChildTabRenderer>({ _, _ ->
+        SlockCenteredLoading()
+    })
+}
+
+private object AppShellChildTabRegistry {
+    private val entries = mutableStateMapOf<String, AppShellChildTabEntry>()
+
+    fun register(shellId: String, entry: AppShellChildTabEntry) {
+        entries[shellId] = entry
+    }
+
+    fun unregister(shellId: String, entry: AppShellChildTabEntry) {
+        if (entries[shellId] === entry) {
+            entries.remove(shellId)
+        }
+    }
+
+    fun entry(shellId: String): AppShellChildTabEntry? = entries[shellId]
+}
 
 internal fun sharedSettingsResolvedWebBaseUrl(webUrl: String?): String =
     webUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { SharedSettingsDefaultWebBaseUrl }
@@ -960,6 +990,33 @@ internal class ComposeSlockAppShellPage : ai.slock.compose.base.BasePager() {
     }
 }
 
+@Page(SLOCK_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
+internal class ComposeSlockAppShellChildTabPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockAppShellChildTabPageContent() }
+    }
+}
+
+@Composable
+private fun SlockAppShellChildTabPageContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val shellId = pager.pageData.params.optString("shellId")
+    val tab = retainedAppShellSelectedTab(pager.pageData.params.optString("tab"))
+    val entry = AppShellChildTabRegistry.entry(shellId)
+    if (entry == null) {
+        PageErrorContent(
+            title = "App Shell",
+            subtitle = "Child tab host",
+            iconName = SlockLucideIconName.House,
+            message = "Could not attach child tab",
+            code = "child_tab_registry_missing"
+        )
+        return
+    }
+    entry.renderer(tab, entry.selectedTab == tab)
+}
+
 @Serializable
 internal data class KuiklySettingsHomePayload(
     val instanceId: String = "",
@@ -1184,6 +1241,13 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
     }
 }
 
+internal fun childHostAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return retainedAppShellTabOrder(activeTab).filter { tab ->
+        tab == activeTab || (tab in AppShellChildPageTabKeys && tab in mountedTabs)
+    }
+}
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -1242,23 +1306,52 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 @Composable
 private fun RetainedAppShellTabs(
     selectedTab: String,
+    mountedTabs: Set<String>,
+    childHostShellId: String,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        // Retaining multiple heavy tab surfaces in one Kuikly page makes bottom
-        // tab switching block on HRContextQueue/GC work; mount only the active surface.
-        activeOnlyAppShellComposedTabs(activeTab).forEach { tab ->
+        childHostAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
             key("retained-$tab") {
                 RetainedAppShellTabPane(
                     active = tab == activeTab,
                     keepLayoutWhenInactive = retainedAppShellInactivePaneKeepsLayout(tab)
                 ) {
-                    content(tab, tab == activeTab)
+                    if (tab in AppShellChildPageTabKeys) {
+                        SlockAppShellChildTabHost(
+                            shellId = childHostShellId,
+                            tab = tab,
+                            active = tab == activeTab
+                        )
+                    } else {
+                        content(tab, tab == activeTab)
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SlockAppShellChildTabHost(
+    shellId: String,
+    tab: String,
+    active: Boolean
+) {
+    val pageData =
+        remember(shellId, tab) {
+            JSONObject().apply {
+                put("shellId", shellId)
+                put("tab", tab)
+            }
+        }
+    SlockKuiklyChildPage(
+        pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
+        pageData = pageData,
+        modifier = Modifier.fillMaxSize(),
+        active = active
+    )
 }
 
 @Composable
@@ -1305,6 +1398,8 @@ private fun SlockAppShellContent() {
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     val pager = LocalActivity.current.getPager() as Pager
+    val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
+    val childTabEntry = remember(childTabShellId) { AppShellChildTabEntry() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
@@ -2561,14 +2656,31 @@ private fun SlockAppShellContent() {
                             }
                         )
                     }
-                    RetainedAppShellTabs(
-                        selectedTab = selectedTab
-                    ) { tab, active ->
+                    val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
                             "members" -> membersTabContent(active)
-                            "settings" -> settingsTabContent(active)
                             else -> homeTabContent(active)
+                        }
+                    }
+                    SideEffect {
+                        childTabEntry.selectedTab = retainedAppShellSelectedTab(selectedTab)
+                        childTabEntry.renderer = childTabRenderer
+                    }
+                    DisposableEffect(childTabShellId, childTabEntry) {
+                        AppShellChildTabRegistry.register(childTabShellId, childTabEntry)
+                        onDispose {
+                            AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
+                        }
+                    }
+                    RetainedAppShellTabs(
+                        selectedTab = selectedTab,
+                        mountedTabs = retainedAppShellTabs,
+                        childHostShellId = childTabShellId
+                    ) { tab, active ->
+                        when (tab) {
+                            "settings" -> settingsTabContent(active)
+                            else -> childTabRenderer(tab, active)
                         }
                     }
             Box(modifier = Modifier.fillMaxSize()) {

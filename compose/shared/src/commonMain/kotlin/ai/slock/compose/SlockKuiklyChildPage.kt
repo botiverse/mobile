@@ -41,6 +41,9 @@ internal class SlockKuiklyChildPageView :
     IPagerEventObserver {
     private var appliedPageName: String? = null
     private var appliedPageData: String? = null
+    private var active = true
+    private var viewAppeared = false
+    private var childLifecycleVisible = false
 
     override fun createAttr(): SlockKuiklyChildPageAttr = SlockKuiklyChildPageAttr()
 
@@ -52,10 +55,12 @@ internal class SlockKuiklyChildPageView :
         super.willInit()
         event {
             didAppear {
-                this@SlockKuiklyChildPageView.sendPagerEvent("didAppear")
+                this@SlockKuiklyChildPageView.viewAppeared = true
+                this@SlockKuiklyChildPageView.syncChildLifecycleVisibility()
             }
             didDisappear {
-                this@SlockKuiklyChildPageView.sendPagerEvent("didDisappear")
+                this@SlockKuiklyChildPageView.viewAppeared = false
+                this@SlockKuiklyChildPageView.syncChildLifecycleVisibility()
             }
         }
     }
@@ -66,9 +71,14 @@ internal class SlockKuiklyChildPageView :
         if (getPager().isAppeared) {
             sendPagerEvent("viewDidAppear")
         }
+        syncChildLifecycleVisibility()
     }
 
     override fun didRemoveFromParentView() {
+        if (childLifecycleVisible) {
+            sendPagerEvent("didDisappear")
+            childLifecycleVisible = false
+        }
         super.didRemoveFromParentView()
         getPager().removePagerEventObserver(this)
     }
@@ -89,8 +99,23 @@ internal class SlockKuiklyChildPageView :
         }
     }
 
+    fun updateActive(next: Boolean) {
+        if (active == next) return
+        active = next
+        syncChildLifecycleVisibility()
+    }
+
     override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
         sendPagerEvent(pagerEvent, eventData)
+    }
+
+    private fun syncChildLifecycleVisibility() {
+        val shouldBeVisible = viewAppeared && active
+        if (childLifecycleVisible == shouldBeVisible) {
+            return
+        }
+        childLifecycleVisible = shouldBeVisible
+        sendPagerEvent(if (shouldBeVisible) "didAppear" else "didDisappear")
     }
 
     private fun sendPagerEvent(event: String, data: JSONObject? = null) {
@@ -143,6 +168,7 @@ internal fun SlockKuiklyChildPage(
     pageName: String,
     pageData: JSONObject,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
 ) {
@@ -152,6 +178,7 @@ internal fun SlockKuiklyChildPage(
         modifier = modifier,
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, force = true)
+            updateActive(active)
             event {
                 loadSuccess(onLoadSuccess)
                 loadFailure(onLoadFailure)
@@ -159,6 +186,7 @@ internal fun SlockKuiklyChildPage(
         },
         viewUpdate = { view ->
             view.applyChildPageAttrs(pageName = pageName, pageData = pageDataText)
+            view.updateActive(active)
             view.event {
                 loadSuccess(onLoadSuccess)
                 loadFailure(onLoadFailure)
