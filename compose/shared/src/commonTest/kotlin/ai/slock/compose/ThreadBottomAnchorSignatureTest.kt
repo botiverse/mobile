@@ -640,7 +640,7 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertEquals(
-            true,
+            false,
             shouldRevealInitialThreadBottomAnchor(
                 ThreadInitialBottomAnchorState(
                     canScrollToLatest = true,

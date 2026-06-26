@@ -7005,6 +7005,15 @@ private fun ThreadMessagesList(
         )
     }
     var measuredMessageHeightsPx by remember(threadInstanceKey) { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    val focusedMessageMeasuredHeightPx =
+        renderPayload.focusedMessageId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { messageId -> measuredMessageHeightsPx[messageId] }
+            ?: 0
+    val latestMessageMeasuredHeightPx =
+        renderPayload.messages.lastOrNull()
+            ?.let { message -> measuredMessageHeightsPx[message.id] }
+            ?: 0
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.messages.size,
@@ -7189,7 +7198,8 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         renderPayload.focusedMessageId,
         renderPayload.messages.size,
-        lazyItemCount
+        lazyItemCount,
+        focusedMessageMeasuredHeightPx
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (targetMessageId == consumedFocusedMessageId && activeFocusedMessageId == null) {
@@ -7203,17 +7213,65 @@ private fun ThreadMessagesList(
         if (!listState.canScrollToThreadItem(targetIndex)) {
             return@LaunchedEffect
         }
-        consumedFocusedMessageId = targetMessageId
+        val targetMessageIndex = targetIndex - renderPayload.firstMessageListItemIndex()
+        richContentMessageRange =
+            threadBufferedMessageRange(
+                firstMessageIndex = targetMessageIndex,
+                lastMessageIndex = targetMessageIndex,
+                messagesCount = renderPayload.messages.size
+            )
+        if (!listState.isThreadItemVisible(targetIndex)) {
+            listState.scrollToItem(targetIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            return@LaunchedEffect
+        }
+        if (!isThreadMeasuredRichHeightReady(focusedMessageMeasuredHeightPx)) {
+            diagnosticsLogger(
+                "thread_focused_message_anchor result=waiting_for_measured_rich_height " +
+                    "messageId=$targetMessageId targetIndex=$targetIndex"
+            )
+            return@LaunchedEffect
+        }
+        if (!listState.awaitThreadItemMeasuredHeight(
+                itemIndex = targetIndex,
+                minHeightsByListItemIndex = initialMessageMinHeightsPx
+            )
+        ) {
+            diagnosticsLogger(
+                "thread_focused_message_anchor result=missing_measured_height " +
+                    "messageId=$targetMessageId targetIndex=$targetIndex"
+            )
+            return@LaunchedEffect
+        }
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        listState.scrollThreadItemToFocusedViewport(targetIndex)
+        val didFocus =
+            listState.scrollThreadItemToFocusedViewport(
+                itemIndex = targetIndex,
+                minHeightsByListItemIndex = initialMessageMinHeightsPx
+            )
+        if (!didFocus) {
+            diagnosticsLogger(
+                "thread_focused_message_anchor result=scroll_skipped_unmeasured " +
+                    "messageId=$targetMessageId targetIndex=$targetIndex"
+            )
+            activeFocusedMessageId = null
+            return@LaunchedEffect
+        }
+        consumedFocusedMessageId = targetMessageId
         delay(ThreadFocusedMessageHighlightDurationMs)
         if (activeFocusedMessageId == targetMessageId) {
             activeFocusedMessageId = null
         }
     }
-    LaunchedEffect(threadInstanceKey, renderPayload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
+    LaunchedEffect(
+        threadInstanceKey,
+        renderPayload.focusedMessageId,
+        latestMessageLayoutKey,
+        latestItemIndex,
+        latestMessageMeasuredHeightPx
+    ) {
         if (latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
             renderPayload.focusedMessageId
@@ -7221,6 +7279,18 @@ private fun ThreadMessagesList(
                 ?.let { renderPayload.threadMessageListItemIndex(it) }
                 ?: -1
         if (focusedMessageTargetIndex >= 0) {
+            return@LaunchedEffect
+        }
+        if (!listState.isThreadItemVisible(latestItemIndex)) {
+            listState.scrollToItem(latestItemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            return@LaunchedEffect
+        }
+        if (!isThreadMeasuredRichHeightReady(latestMessageMeasuredHeightPx)) {
+            diagnosticsLogger(
+                "thread_initial_bottom_anchor result=waiting_for_measured_rich_height " +
+                    "latestItemIndex=$latestItemIndex"
+            )
             return@LaunchedEffect
         }
         if (!initialBottomAnchorReady) {
@@ -8004,7 +8074,7 @@ internal fun shouldRevealInitialThreadBottomAnchor(state: ThreadInitialBottomAnc
     state.canScrollToLatest &&
         state.isAtRenderedBottom &&
         state.attempt >= ThreadBottomAnchorMinimumAttempts &&
-        (state.isContentReady || state.attempt >= ThreadInitialBottomAnchorAttempts - 1)
+        state.isContentReady
 
 internal fun threadMessagesListAlpha(
     initialBottomAnchorReady: Boolean,
@@ -8232,6 +8302,9 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
     }
     scrollToItem(latestItemIndex)
     awaitThreadMessagesLayoutStability(latestItemIndex, minHeightsByListItemIndex)
+    if (!isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)) {
+        return false
+    }
     scrollLatestItemToRenderedBottom(latestItemIndex)
     delay(ThreadLayoutStabilityFrameDelayMs)
     return isLatestItemAtRenderedBottom(latestItemIndex)
@@ -8258,14 +8331,26 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
-private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: Int) {
+private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
+    itemIndex: Int,
+    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
+): Boolean {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
-        return
+        return false
     }
+    var didScroll = false
     repeat(ThreadFocusedMessageCenterAttempts) {
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
         if (item == null) {
             scrollToItem(itemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            return@repeat
+        }
+        if (!isThreadMeasuredItemReady(
+                itemSize = item.size,
+                minHeight = minHeightsByListItemIndex[itemIndex] ?: 0
+            )
+        ) {
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@repeat
         }
@@ -8276,8 +8361,10 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
                 viewportHeight = viewportHeight
             )
         scrollToItem(itemIndex, offset)
+        didScroll = true
         delay(ThreadLayoutStabilityFrameDelayMs)
     }
+    return didScroll
 }
 
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
@@ -8303,6 +8390,28 @@ private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
     return false
 }
 
+private suspend fun LazyListState.awaitThreadItemMeasuredHeight(
+    itemIndex: Int,
+    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
+): Boolean {
+    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) return false
+    repeat(ThreadLayoutStabilityMaxFrames) {
+        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+        if (item == null) {
+            scrollToItem(itemIndex)
+        } else if (
+            isThreadMeasuredItemReady(
+                itemSize = item.size,
+                minHeight = minHeightsByListItemIndex[itemIndex] ?: 0
+            )
+        ) {
+            return true
+        }
+        delay(ThreadLayoutStabilityFrameDelayMs)
+    }
+    return false
+}
+
 private fun LazyListState.isInitialThreadContentReady(
     latestItemIndex: Int,
     minHeightsByListItemIndex: Map<Int, Int>
@@ -8310,16 +8419,34 @@ private fun LazyListState.isInitialThreadContentReady(
     val layoutInfo = layoutInfo
     if (latestItemIndex < 0 || layoutInfo.totalItemsCount <= latestItemIndex) return false
     val visibleItems = layoutInfo.visibleItemsInfo
-    if (visibleItems.none { it.index == latestItemIndex }) return false
+    val latestItem = visibleItems.firstOrNull { it.index == latestItemIndex } ?: return false
+    if (!isThreadMeasuredItemReady(
+            itemSize = latestItem.size,
+            minHeight = minHeightsByListItemIndex[latestItemIndex] ?: 0
+        )
+    ) {
+        return false
+    }
     if (minHeightsByListItemIndex.isEmpty()) return true
     return visibleItems
         .asSequence()
         .filter { item -> minHeightsByListItemIndex.containsKey(item.index) }
         .all { item ->
-            val minHeight = minHeightsByListItemIndex[item.index] ?: 0
-            item.size + ThreadInitialContentHeightTolerancePx >= minHeight
+            isThreadMeasuredItemReady(
+                itemSize = item.size,
+                minHeight = minHeightsByListItemIndex[item.index] ?: 0
+            )
         }
 }
+
+internal fun isThreadMeasuredItemReady(itemSize: Int, minHeight: Int): Boolean {
+    if (itemSize <= 0) return false
+    if (minHeight <= 0) return true
+    return itemSize + ThreadInitialContentHeightTolerancePx >= minHeight
+}
+
+internal fun isThreadMeasuredRichHeightReady(measuredHeightPx: Int): Boolean =
+    measuredHeightPx > 0
 
 private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
     latestItemIndex: Int

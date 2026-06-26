@@ -731,6 +731,22 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMeasuredItemReadinessRejectsZeroHeightBeforeAnchoring() {
+        assertFalse(isThreadMeasuredItemReady(itemSize = 0, minHeight = 0))
+        assertFalse(isThreadMeasuredItemReady(itemSize = 0, minHeight = 58))
+        assertFalse(isThreadMeasuredItemReady(itemSize = 49, minHeight = 58))
+        assertTrue(isThreadMeasuredItemReady(itemSize = 50, minHeight = 58))
+        assertTrue(isThreadMeasuredItemReady(itemSize = 1, minHeight = 0))
+    }
+
+    @Test
+    fun threadMeasuredRichHeightRequiresNonZeroTargetMeasurement() {
+        assertFalse(isThreadMeasuredRichHeightReady(0))
+        assertFalse(isThreadMeasuredRichHeightReady(-1))
+        assertTrue(isThreadMeasuredRichHeightReady(1))
+    }
+
+    @Test
     fun floatingOverlayPositionHandlesCrampedAndBottomAnchors() {
         val cramped = SlockFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
         assertEquals(
