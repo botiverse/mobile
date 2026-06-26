@@ -87,7 +87,8 @@ private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
 private val ComposerAgentActivityDotSize = 10.dp
-private val ComposerMemberSuggestionHandleWidth = 112.dp
+private val ComposerMemberSuggestionHandleWidth = 124.dp
+private val ComposerMemberSuggestionHandleReservedWidth = ComposerMemberSuggestionHandleWidth + 8.dp
 private val ComposerChannelSuggestionIconSize = 20.dp
 private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -1253,76 +1254,73 @@ private fun ComposerMemberSuggestionRow(
         mutedOverlay = true,
         onClick = onClick
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(ComposerMemberSuggestionAvatarSize)
-                        .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockAvatar(
-                    avatarWireValue = member.avatarWireValue,
-                    label = member.avatarLabel.ifBlank { member.displayName },
-                    avatarSize = ComposerMemberSuggestionAvatarSize,
-                    borderWidth = SlockStroke.Thin,
-                    gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
-                )
-            }
+        Box(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth().padding(end = ComposerMemberSuggestionHandleReservedWidth),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (muted) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.UserMinus,
-                        modifier = Modifier.size(12.dp),
-                        color = SlockColor.TextMutedGrayArgb
+                Box(
+                    modifier =
+                        Modifier
+                            .size(ComposerMemberSuggestionAvatarSize)
+                            .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockAvatar(
+                        avatarWireValue = member.avatarWireValue,
+                        label = member.avatarLabel.ifBlank { member.displayName },
+                        avatarSize = ComposerMemberSuggestionAvatarSize,
+                        borderWidth = SlockStroke.Thin,
+                        gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
                     )
                 }
-                Text(
-                    text = member.displayName,
-                    style = SlockType.Button.copy(color = contentColor),
-                    color = contentColor,
-                    modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (inChannel && member.kind == MemberKind.Agent) {
-                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
-                        ComposerAgentStatusDot(status)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (muted) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.UserMinus,
+                            modifier = Modifier.size(12.dp),
+                            color = SlockColor.TextMutedGrayArgb
+                        )
                     }
-                }
-                if (secondary != null) {
                     Text(
-                        text = secondary,
-                        style = SlockType.Caption.copy(color = secondaryColor),
-                        color = secondaryColor,
-                        modifier = Modifier.weight(1f),
+                        text = member.displayName,
+                        style = SlockType.Button.copy(color = contentColor),
+                        color = contentColor,
+                        modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (inChannel && member.kind == MemberKind.Agent) {
+                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
+                            ComposerAgentStatusDot(status)
+                        }
+                    }
+                    if (secondary != null) {
+                        Text(
+                            text = secondary,
+                            style = SlockType.Caption.copy(color = secondaryColor),
+                            color = secondaryColor,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
-            Box(
-                modifier = Modifier.width(ComposerMemberSuggestionHandleWidth),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Text(
-                    text = "@${member.handle}",
-                    style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
-                    color = handleColor,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.End,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = "@${member.handle}",
+                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                color = handleColor,
+                modifier = Modifier.width(ComposerMemberSuggestionHandleWidth).align(Alignment.CenterEnd),
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
