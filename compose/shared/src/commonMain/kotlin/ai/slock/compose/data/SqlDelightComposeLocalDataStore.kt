@@ -20,9 +20,6 @@ import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SessionSnapshot
-import ai.slock.compose.model.TaskId
-import ai.slock.compose.model.TaskStatus
-import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.messageStreamChannelId
@@ -34,7 +31,6 @@ import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.MessageEntity
 import ai.slock.shared.data.local.MessageReactionEntity
 import ai.slock.shared.data.local.SlockDatabaseQueries
-import ai.slock.shared.data.local.TaskSummaryEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.decodeFromString
@@ -111,25 +107,11 @@ internal class SqlDelightComposeLocalDataStore(
             channel.parentMessageId
                 ?.let { queries.selectMessage(it).executeAsOneOrNull() }
                 ?.toMessage(serverId)
-        val messageTasks =
-            messages.mapNotNull { it.task } + messages.flatMap { message ->
-                queries.selectTaskReferencesForMessage(serverId.value, message.id.value, message.id.value, message.id.value)
-                    .executeAsList()
-                    .map { it.toTaskSummary() }
-            }
-        val channelTasks =
-            queries.selectTaskReferencesForChannel(serverId.value, channel.channelId)
-                .executeAsList()
-                .map { it.toTaskSummary() }
-        val tasks =
-            (messageTasks + channelTasks)
-                .distinctBy { it.id }
-                .sortedWith(compareBy(nullsLast<Int>()) { it.taskNumber })
         return ThreadSnapshot(
             conversation = channel.toConversationSummary(),
             messages = messages,
             parentMessage = parentMessage,
-            tasks = tasks,
+            tasks = fallbackSnapshot?.tasks.orEmpty(),
             lastSeq = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L
         ).withPagingMetadataFrom(fallbackSnapshot)
     }
@@ -222,12 +204,6 @@ internal class SqlDelightComposeLocalDataStore(
                 message.reactions.orEmpty().forEachIndexed { index, reaction ->
                     reaction.writeMessageReaction(message.id.value, sortOrder = index.toLong(), now)
                 }
-                message.task?.writeTaskSummary(serverId, now)
-            }
-            snapshot.tasks.forEach { task ->
-                task.assignee?.writeMemberProfile(serverId, now)
-                task.creator?.writeMemberProfile(serverId, now)
-                task.writeTaskSummary(serverId, now)
             }
         }
         fallback.writeThread(snapshot)
@@ -261,11 +237,6 @@ internal class SqlDelightComposeLocalDataStore(
             database.queries.selectReactionsForMessage(id)
                 .executeAsList()
                 .toMessageReactions()
-        val task =
-            database.queries.selectTaskReferencesForMessage(serverId.value, id, id, id)
-                .executeAsList()
-                .firstOrNull()
-                ?.toTaskSummary()
         return Message(
             id = MessageId(id),
             threadId = ThreadId(channelId),
@@ -279,7 +250,7 @@ internal class SqlDelightComposeLocalDataStore(
             metadata = decodeMetadata(metadataJson),
             attachments = attachments,
             deliveryState = messageDeliveryStateFromStored(deliveryState),
-            task = task,
+            task = null,
             replyCount = replyCount.toInt(),
             parentMessageId = parentMessageId?.let(::MessageId),
             updatedAtLabel = updatedAtLabel,
@@ -398,31 +369,6 @@ internal class SqlDelightComposeLocalDataStore(
             height = height?.toInt()
         )
 
-    private fun TaskSummaryEntity.toTaskSummary(): TaskSummary =
-        TaskSummary(
-            id = TaskId(id),
-            title = title,
-            status = TaskStatus.fromWireValue(status) ?: TaskStatus.Todo,
-            taskNumber = taskNumber?.toInt(),
-            messageId = messageId?.let(::MessageId),
-            parentMessageId = parentMessageId?.let(::MessageId),
-            channelId = channelId?.let(::ChannelId),
-            threadId = channelId?.let(::ThreadId),
-            isThreadTask = isThreadTask != 0L,
-            assignee =
-                assigneeId?.let { id ->
-                    MemberProfile(
-                        id = MemberId(id),
-                        displayName = assigneeDisplayName ?: assigneeHandle ?: id,
-                        handle = assigneeHandle ?: assigneeDisplayName ?: id,
-                        kind = memberKindFromStored(assigneeKind)
-                    )
-                },
-            channelName = channelName,
-            updatedAtLabel = updatedAtLabel,
-            canClaim = capabilities and 1L != 0L
-        )
-
     private fun MemberProfile.writeMemberProfile(serverId: ServerId, now: Long) {
         database.queries.upsertMemberSnapshot(
             id = id.value,
@@ -437,28 +383,6 @@ internal class SqlDelightComposeLocalDataStore(
             description = description,
             roleDescription = roleDescription,
             membershipStatus = membershipStatus,
-            lastSyncedAtMs = now
-        )
-    }
-
-    private fun TaskSummary.writeTaskSummary(serverId: ServerId, now: Long) {
-        database.queries.upsertTaskReference(
-            id = id.value,
-            serverId = serverId.value,
-            messageId = messageId?.value,
-            parentMessageId = parentMessageId?.value,
-            channelId = channelId?.value ?: threadId?.value,
-            title = title,
-            status = status.toWireValue(),
-            taskNumber = taskNumber?.toLong(),
-            isThreadTask = isThreadTask.toLongFlag(),
-            assigneeId = assignee?.id?.value,
-            assigneeDisplayName = assignee?.displayName,
-            assigneeHandle = assignee?.handle,
-            assigneeKind = assignee?.kind?.toStoredKind(),
-            channelName = channelName,
-            updatedAtLabel = updatedAtLabel,
-            capabilities = if (canClaim) 1L else 0L,
             lastSyncedAtMs = now
         )
     }
@@ -669,14 +593,6 @@ internal class SqlDelightComposeLocalDataStore(
             else -> MessageDeliveryState.Sent
         }
 
-    private fun TaskStatus.toWireValue(): String =
-        when (this) {
-            TaskStatus.Todo -> "todo"
-            TaskStatus.InProgress -> "in_progress"
-            TaskStatus.InReview -> "in_review"
-            TaskStatus.Done -> "done"
-            TaskStatus.Closed -> "closed"
-        }
 }
 
 private const val MessageReactionReactorKindUser = "user"

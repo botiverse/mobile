@@ -296,6 +296,20 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksDataStoreUpsertTaskCreatesMissingChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val task = task("task-1", TaskStatus.Done, channelId = ChannelId("channel-1"))
+
+        store.upsertTask("server-1", task)
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
+        assertEquals(TaskStatus.Done, slice.tasks.single().status)
+    }
+
+    @Test
     fun sharedTasksRepositoryKeepsChannelRefreshScopedToChannelCache() = runBlocking {
         val serverId = ServerId("server-1")
         val channelId = ChannelId("channel-thread")
@@ -539,6 +553,27 @@ class SharedTasksStoreTest {
         assertEquals(0, content.summaryCounts[TaskStatus.Todo])
         assertEquals(null, next.statusUpdatingTaskId)
         assertEquals(null, next.statusUpdateErrorCode)
+    }
+
+    @Test
+    fun updateTaskStatusMatchesTaskByMessageId() {
+        val task = task("task-1", TaskStatus.Todo)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(task)
+                        )
+                    )
+            )
+
+        val next = state.reduce(SharedTasksIntent.UpdateTaskStatus("message-task-1", TaskStatus.Done))
+
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
+        assertEquals(TaskStatus.Done, content.tasks.single().status)
+        assertEquals(1, content.summaryCounts[TaskStatus.Done])
     }
 
     @Test

@@ -180,14 +180,15 @@ class InMemorySharedTasksLocalDataSource(
     override suspend fun upsertTask(serverId: ServerId, task: TaskSummary) {
         val serverKey = SharedTasksCacheKey(serverId, SharedTasksScope.Server)
         val nextSnapshots = snapshots.value.toMutableMap()
-        if (serverKey in nextSnapshots) {
-            nextSnapshots[serverKey] = nextSnapshots[serverKey].upsert(task)
-        }
+        nextSnapshots[serverKey] = nextSnapshots[serverKey].upsert(task)
         task.channelId?.let { channelId ->
             val channelKey = SharedTasksCacheKey(serverId, SharedTasksScope.Channel(channelId))
-            if (channelKey in nextSnapshots) {
-                nextSnapshots[channelKey] = nextSnapshots[channelKey].upsert(task)
-            }
+            nextSnapshots[channelKey] = nextSnapshots[channelKey].upsert(task)
+        }
+        nextSnapshots.keys
+            .filter { key -> key.serverId == serverId && nextSnapshots[key]?.tasks?.any { it.id == task.id } == true }
+            .forEach { key ->
+                nextSnapshots[key] = nextSnapshots[key].upsert(task)
         }
         snapshots.value = nextSnapshots
     }

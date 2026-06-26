@@ -62,26 +62,47 @@ internal class SharedTasksDataStore {
         val taskChannelId = task.channelId?.value.normalizedTasksStoreId()
         val taskChannelName = task.channelName.normalizedTasksChannelName()
         val current = state.value
+        val serverSnapshot =
+            (current.serverSnapshots[normalizedServerId] ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
+                .upsert(task)
+        val taskChannelKey =
+            when {
+                taskChannelId != null ->
+                    SharedTasksChannelKey(serverId = normalizedServerId, channelId = taskChannelId)
+                taskChannelName != null ->
+                    SharedTasksChannelKey(serverId = normalizedServerId, channelName = taskChannelName)
+                else -> null
+            }
         state.value =
             current.copy(
                 serverSnapshots =
-                    current.serverSnapshots.mapValues { (snapshotServerId, snapshot) ->
-                        if (snapshotServerId == normalizedServerId) snapshot.upsert(task) else snapshot
-                    },
+                    current.serverSnapshots + (normalizedServerId to serverSnapshot),
                 channelSnapshots =
-                    current.channelSnapshots.mapValues { (key, snapshot) ->
-                        if (
-                            key.serverId == normalizedServerId &&
-                            (
-                                (taskChannelId != null && key.channelId == taskChannelId) ||
-                                    (taskChannelName != null && key.channelName == taskChannelName)
-                                )
-                        ) {
-                            snapshot.upsert(task)
-                        } else {
-                            snapshot
+                    current.channelSnapshots
+                        .mapValues { (key, snapshot) ->
+                            if (
+                                key.serverId == normalizedServerId &&
+                                (
+                                    (taskChannelId != null && key.channelId == taskChannelId) ||
+                                        (taskChannelName != null && key.channelName == taskChannelName) ||
+                                        snapshot.tasks.any { currentTask -> currentTask.id == task.id }
+                                    )
+                            ) {
+                                snapshot.upsert(task)
+                            } else {
+                                snapshot
+                            }
                         }
-                    }
+                        .let { snapshots ->
+                            if (taskChannelKey == null || snapshots.containsKey(taskChannelKey)) {
+                                snapshots
+                            } else {
+                                snapshots + (
+                                    taskChannelKey to
+                                        TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()).upsert(task)
+                                    )
+                            }
+                        }
             )
     }
 

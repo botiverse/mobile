@@ -1359,6 +1359,56 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: Kuikly
         get(ThreadTaskNumberLookupPrefix + taskNumber)
     }
 
+internal fun KuiklyThreadScreenPayload.withThreadLinkedTasksProjection(
+    linkedTasksByMessageLookup: Map<String, TaskSummary>
+): KuiklyThreadScreenPayload {
+    if (linkedTasksByMessageLookup.isEmpty()) return this
+    val projectedMessages =
+        messages.map { message ->
+            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+        }
+    val projectedOriginMessage =
+        originMessage?.let { message ->
+            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+        }
+    val projectedTasks =
+        tasks.map { task ->
+            linkedTasksByMessageLookup.threadLinkedTaskForTaskItem(task)?.toKuiklyThreadTaskItem() ?: task
+        }
+    val appendedTasks =
+        linkedTasksByMessageLookup.values
+            .distinctBy { task -> task.id }
+            .filterNot { task -> projectedTasks.any { current -> current.matchesTaskSummary(task) } }
+            .map { task -> task.toKuiklyThreadTaskItem() }
+    return copy(
+        messages = projectedMessages,
+        originMessage = projectedOriginMessage,
+        tasks = projectedTasks + appendedTasks
+    )
+}
+
+private fun Map<String, TaskSummary>.threadLinkedTaskForTaskItem(task: KuiklyThreadTaskItem): TaskSummary? =
+    get(task.id)
+        ?: task.messageId?.trim()?.takeIf { it.isNotBlank() }?.let(::get)
+        ?: task.taskNumber?.let { taskNumber -> get(ThreadTaskNumberLookupPrefix + taskNumber) }
+
+private fun KuiklyThreadTaskItem.matchesTaskSummary(task: TaskSummary): Boolean =
+    id == task.id.value ||
+        messageId?.let { it == task.messageId?.value } == true ||
+        (taskNumber != null && taskNumber == task.taskNumber)
+
+private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
+    KuiklyThreadTaskItem(
+        id = id.value,
+        title = title,
+        status = status.name,
+        taskNumber = taskNumber,
+        messageId = messageId?.value,
+        assigneeId = assignee?.id?.value,
+        assigneeName = assignee?.displayName,
+        updatedAtLabel = updatedAtLabel
+    )
+
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
@@ -2483,7 +2533,7 @@ internal fun SharedThreadRouteContent(
             )
         }
     }
-    val renderedPayload = remember(payload) {
+    val baseRenderedPayload = remember(payload) {
         payload
             .withSharedShellEventCapabilities()
     }
@@ -2647,6 +2697,50 @@ internal fun SharedThreadRouteContent(
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    val taskProjectionReferences =
+        remember(baseRenderedPayload.originMessage, baseRenderedPayload.messages) {
+            baseRenderedPayload.threadLinkedTaskReferences()
+        }
+    val fallbackTaskProjectionLookup =
+        remember(baseRenderedPayload.tasks, taskProjectionReferences) {
+            baseRenderedPayload.tasks
+                .map { task -> task.toTaskSummary() }
+                .threadLinkedTasksByMessageLookup(taskProjectionReferences)
+        }
+    val scopedTaskProjection by remember(tasksViewModel, taskProjectionReferences) {
+        tasksViewModel
+            ?.state
+            ?.map { state -> state.threadLinkedTasksProjection(taskProjectionReferences) }
+            ?.distinctUntilChanged()
+            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    val sharedTaskProjection by remember(
+        tasksDataStore,
+        currentServerId,
+        taskChannelId?.value,
+        baseRenderedPayload.title,
+        taskProjectionReferences
+    ) {
+        tasksDataStore
+            ?.channelProjectionFlow(
+                serverId = currentServerId,
+                channelId = taskChannelId?.value,
+                channelName = baseRenderedPayload.title
+            )
+            ?.map { slice -> slice.threadLinkedTasksProjection(taskProjectionReferences) }
+            ?.distinctUntilChanged()
+            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    val taskProjectionLookup =
+        threadLinkedTasksLookup(
+            scopedProjection = scopedTaskProjection,
+            sharedStoreProjection = sharedTaskProjection,
+            fallbackLookup = fallbackTaskProjectionLookup
+        )
+    val renderedPayload =
+        remember(baseRenderedPayload, taskProjectionLookup) {
+            baseRenderedPayload.withThreadLinkedTasksProjection(taskProjectionLookup)
+        }
     val memberSuggestionsFlow =
         remember(
             serverMembersStore,
@@ -4159,7 +4253,6 @@ internal fun SharedThreadRouteContent(
                     }
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, status.name))
                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, status))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
@@ -4172,7 +4265,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
@@ -4180,7 +4272,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
@@ -4192,7 +4283,6 @@ internal fun SharedThreadRouteContent(
                 action == "markTaskDone" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Done.name))
                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Done))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
@@ -4205,7 +4295,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
@@ -4213,7 +4302,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
@@ -4225,7 +4313,6 @@ internal fun SharedThreadRouteContent(
                 action == "reopenTask" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Todo.name))
                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Todo))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
@@ -4238,7 +4325,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
@@ -4246,7 +4332,6 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }

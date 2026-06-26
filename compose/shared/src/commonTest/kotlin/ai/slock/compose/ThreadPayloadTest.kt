@@ -4092,6 +4092,47 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadPayloadProjectsTaskStatusFromLinkedTasksStore() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "ship task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "Todo"
+            )
+        val staleTask =
+            KuiklyThreadTaskItem(
+                id = "task-240",
+                title = "ship task",
+                status = "Todo",
+                taskNumber = 240,
+                messageId = "message-240"
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "ship task",
+                status = TaskStatus.Done,
+                taskNumber = 240,
+                messageId = MessageId("message-240"),
+                updatedAtLabel = "now"
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                messages = listOf(message),
+                tasks = listOf(staleTask)
+            )
+
+        val projected = payload.withThreadLinkedTasksProjection(listOf(task).threadLinkedTasksByMessageLookup())
+
+        assertEquals("Done", projected.messages.single().taskStatus)
+        assertEquals("Done", projected.tasks.single().status)
+    }
+
+    @Test
     fun threadTasksJoinStartsOnlyAfterContentGate() {
         val taskChannelId = ChannelId("channel-1")
         val loadingPayload =

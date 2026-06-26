@@ -203,7 +203,13 @@ internal class SharedTasksViewModel(
                     }
             }
             is SharedTasksRouteIntent.ApplyTaskStatus -> {
-                store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))
+                if (store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))) {
+                    state.value.currentTaskSummary(action.taskId)?.let { task ->
+                        viewModelScope.launch {
+                            publishSharedTaskUpdate(task, "external_task_status")
+                        }
+                    }
+                }
             }
             is SharedTasksRouteIntent.ApplyTaskUpdate -> {
                 if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
@@ -909,7 +915,7 @@ internal fun TasksUiState.currentTaskSummary(taskId: String): TaskSummary? =
     (loadState as? ScreenLoadState.Content)
         ?.data
         ?.tasks
-        ?.firstOrNull { it.id.value == taskId }
+        ?.firstOrNull { it.matchesTaskKey(taskId) }
 
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
     if (loadState is ScreenLoadState.Content) {
@@ -1010,9 +1016,16 @@ private fun TasksContent.withTaskStatus(
 ): TasksContent {
     val nextTasks =
         tasks.map { task ->
-            if (task.id.value == taskId) task.copy(status = status) else task
+            if (task.matchesTaskKey(taskId)) task.copy(status = status) else task
         }
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
+
+private fun TaskSummary.matchesTaskKey(taskId: String): Boolean {
+    val key = taskId.trim().takeIf { it.isNotBlank() } ?: return false
+    return id.value == key ||
+        messageId?.value == key ||
+        taskNumber?.toString() == key
 }
 
 fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
