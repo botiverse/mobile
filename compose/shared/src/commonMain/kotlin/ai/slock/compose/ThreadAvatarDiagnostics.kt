@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.model.MemberKind
 
 private const val ThreadAvatarDiagnosticsTag = "SlockThreadAvatar"
+private const val ThreadAvatarDiagnosticsEnabled = false
 
 internal fun logThreadAvatarDiagnostic(
     reason: String,
@@ -14,6 +15,7 @@ internal fun logThreadAvatarDiagnostic(
     profileGravatarHash: String?,
     homeAvatarWireValue: String?
 ) {
+    if (!ThreadAvatarDiagnosticsEnabled) return
     slockLogWarn(
         tag = ThreadAvatarDiagnosticsTag,
         message = buildString {
