@@ -18,11 +18,6 @@ const kLoadFailure = 'loadFailure';
 const kSendEvent = 'sendEvent';
 const kSlockKuiklyAppId = 1;
 
-@Builder
-function createSlockKuiklyPageView(view: KuiklyRenderBaseView) {
-  SlockKuiklyPageViewComponent({ renderView: view as SlockKuiklyPageView });
-}
-
 @Observed
 export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockKuiklyPageView';
@@ -192,4 +187,9 @@ function normalizeText(value: KRAny | KuiklyRenderCallback): string {
     return '';
   }
   return String(value);
+}
+
+@Builder
+function createSlockKuiklyPageView(view: KuiklyRenderBaseView) {
+  SlockKuiklyPageViewComponent({ renderView: view as SlockKuiklyPageView });
 }
