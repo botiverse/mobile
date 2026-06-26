@@ -4,44 +4,23 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
-import ai.slock.android.core.data.auth.AndroidAuthApiFactory
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
-import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Message
-import ai.slock.android.core.model.MessageNew
-import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
-import ai.slock.compose.data.RealtimeSubscription
-import ai.slock.compose.data.SlockAuthSessionStore
-import ai.slock.compose.data.SlockLocalPreferenceStore
-import ai.slock.compose.data.buildSystemUnreadNotificationRequest
-import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
-import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.compose.data.realtime.SlockRealtimeAppScopeConnection
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
-import ai.slock.compose.data.realtime.SlockRealtimeAppScopeSink
-import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ConversationKind
-import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
-import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
@@ -324,105 +303,9 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
-        val appContext = context.applicationContext
-        val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
-        val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
-        val client =
-            SocketIoRealtimeClient(
-                transport =
-                    SocketIoSocketTransport(
-                        socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
-                    ),
-                logger = { message ->
-                    SlockDiagnosticsLogger.d(LOG_TAG, message)
-                }
-            )
-        val repository =
-            SessionRealtimeRepository(
-                store = sessionStore,
-                client = client,
-                tokenRefresher = AuthTokenRefresher(sessionStore, AndroidAuthApiFactory.createAuthApi(apiBaseUrl))
-            )
-        val connection =
-            object : SlockRealtimeAppScopeConnection {
-                override val state: RealtimeConnectionState
-                    get() = client.state
-
-                override suspend fun connect(
-                    serverId: ServerId,
-                    accessToken: String,
-                    lastSeq: Long
-                ): ai.slock.compose.data.DataResult<Unit> {
-                    client.connect(
-                        RealtimeConnectRequest(
-                            auth = RealtimeAuth(
-                                token = accessToken,
-                                serverId = serverId
-                            ),
-                            lastSeq = lastSeq
-                        )
-                    )
-                    return ai.slock.compose.data.DataResult.Content(Unit)
-                }
-
-                override fun disconnect() {
-                    repository.disconnect()
-                }
-
-                override fun emitJoinChannel(channelId: ChannelId) {
-                    repository.joinChannel(channelId)
-                }
-
-                override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
-                    repository.observeEvents(listener)
-
-                override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
-                    client.observeRawEvents { eventName, rawPayload ->
-                        listener(eventName, rawPayload.toRealtimeRawPayloadString())
-                    }
-            }
-        val sink =
-            object : SlockRealtimeAppScopeSink {
-                override fun log(message: String) {
-                    SlockDiagnosticsLogger.d(LOG_TAG, message)
-                }
-
-                override fun fanOutRawRealtimeEvent(
-                    serverId: ServerId,
-                    eventName: String,
-                    rawPayload: String
-                ) {
-                    appContext.sendKuiklyEvent(
-                        SlockRealtimeNotifyContract.EventName,
-                        realtimeNotifyPayload(serverId, eventName, rawPayload)
-                    )
-                }
-
-                override suspend fun maybePostBackgroundUnreadNotification(
-                    serverId: ServerId,
-                    event: MessageNew,
-                    isAppInForeground: Boolean
-                ) {
-                    maybePostBackgroundUnreadNotification(
-                        appContext = appContext,
-                        sessionStore = sessionStore,
-                        serverId = serverId,
-                        event = event,
-                        isAppInForeground = isAppInForeground
-                    )
-                }
-            }
-        val runtime =
-            bootstrapRealtime(
-                connection = connection,
-                sink = sink,
-                dispatch = { block ->
-                    scope.launch {
-                        block()
-                    }
-                }
-            )
-        realtimeClient = client
+        val hostContext = AndroidAppScopeRealtimeHostContext.create(context.applicationContext, scope)
+        val runtime = bootstrapRealtime(hostContext)
+        realtimeClient = hostContext.client
         realtimeRuntime = runtime
         return runtime
     }
@@ -455,111 +338,19 @@ internal object AndroidAppScopeRealtimeOwner {
             }
     }
 
-    private fun realtimeNotifyPayload(serverId: ServerId, eventName: String, rawPayload: Any?): JSONObject =
-        JSONObject()
-            .put(SlockRealtimeNotifyContract.KeyServerId, serverId.value)
-            .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
-            .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
-
-    private fun Any?.toRealtimeRawPayloadString(): String =
-        when (this) {
-            is String -> this
-            is JSONObject -> toString()
-            is JSONArray -> toString()
-            else -> this?.toString() ?: "{}"
-        }
-
-    private suspend fun maybePostBackgroundUnreadNotification(
-        appContext: Context,
-        sessionStore: SlockAuthSessionStore,
-        serverId: ServerId,
-        event: MessageNew,
-        isAppInForeground: Boolean
-    ) {
-        val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
-        val hasAttachedConsumers = false
-        SlockDiagnosticsLogger.w(
-            LOG_TAG,
-            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
-        )
-        if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
-            SlockDiagnosticsLogger.w(
-                LOG_TAG,
-                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.message.id.value}"
-            )
-            return
-        }
-        val session = sessionStore.readSession()
-        val request =
-            buildSystemUnreadNotificationRequest(
-                serverId = serverId.value,
-                message = event.message,
-                currentMemberId = session?.user?.id,
-                isVisibleThread = false,
-                conversationName = null,
-                conversationKind = event.message.backgroundNotificationConversationKind(),
-                currentMemberHandle = session?.user?.email,
-                isAppInForeground = isAppInForeground
-            )
-        if (request == null) {
-            SlockDiagnosticsLogger.w(
-                LOG_TAG,
-                "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.message.id.value}"
-            )
-            return
-        }
-        val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
-        SlockDiagnosticsLogger.w(
-            LOG_TAG,
-            "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.message.id.value}"
-        )
-    }
-
     internal fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,
         preferenceEnabled: Boolean,
         isAppInForeground: Boolean
     ): Boolean =
-        SlockRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
+        AndroidAppScopeRealtimeHostContext.shouldPostBackgroundUnreadNotification(
             hasAttachedConsumers = hasAttachedConsumers,
             preferenceEnabled = preferenceEnabled,
             isAppInForeground = isAppInForeground
         )
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
-        SlockRealtimeAppScopePolicy.backgroundUnreadNotificationConversationKind(message)
-
-    private fun Message.backgroundNotificationConversationKind(): ConversationKind? =
-        backgroundUnreadNotificationConversationKind(this)
-
-    private fun backgroundUnreadNotificationSkipReason(
-        hasAttachedConsumers: Boolean,
-        preferenceEnabled: Boolean,
-        isAppInForeground: Boolean
-    ): String =
-        SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
-            hasAttachedConsumers = hasAttachedConsumers,
-            preferenceEnabled = preferenceEnabled,
-            isAppInForeground = isAppInForeground
-        )
-
-    private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
-        runCatching {
-            SlockKuiklyMMKVModule.ensureInitialized(context.applicationContext)
-            val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
-            val value =
-                store.decodeString(
-                    AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
-                    null
-                ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
-            value == "true"
-        }.getOrElse { error ->
-            SlockDiagnosticsLogger.w(
-                LOG_TAG,
-                "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
-            )
-            false
-        }
+        AndroidAppScopeRealtimeHostContext.backgroundUnreadNotificationConversationKind(message)
 
     private enum class AppVisibility {
         Foreground,

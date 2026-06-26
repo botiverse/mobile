@@ -31,6 +31,16 @@ interface SlockRealtimeAppScopeSink {
     )
 }
 
+interface SlockRealtimeHostContext : SlockRealtimeAppScopeConnection, SlockRealtimeAppScopeSink {
+    val enhancedNotifyBus: SlockEnhancedNotifyEventBus?
+        get() = SlockEnhancedNotifyCenter
+
+    val realtimeEngine: SlockRealtimeAppScopeEngine
+        get() = SlockRealtimeAppScopeEngine()
+
+    fun dispatchRealtime(block: suspend () -> Unit)
+}
+
 data class SlockRealtimeAppScopeConnectDecision(
     val shouldConnect: Boolean,
     val resumeSeq: Long,
@@ -548,6 +558,15 @@ fun bootstrapRealtime(
         dispatch = dispatch
     )
 }
+
+fun bootstrapRealtime(hostContext: SlockRealtimeHostContext): SlockRealtimeAppScopeRuntime =
+    bootstrapRealtime(
+        connection = hostContext,
+        sink = hostContext,
+        enhancedNotifyBus = hostContext.enhancedNotifyBus,
+        engine = hostContext.realtimeEngine,
+        dispatch = hostContext::dispatchRealtime
+    )
 
 enum class SlockRealtimeAppVisibility {
     Foreground,
