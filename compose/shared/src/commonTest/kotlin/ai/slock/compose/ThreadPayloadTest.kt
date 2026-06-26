@@ -51,6 +51,7 @@ import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
@@ -744,6 +745,33 @@ class ThreadPayloadTest {
         assertFalse(isThreadMeasuredRichHeightReady(0))
         assertFalse(isThreadMeasuredRichHeightReady(-1))
         assertTrue(isThreadMeasuredRichHeightReady(1))
+    }
+
+    @Test
+    fun threadSystemMessagesUseCollapsedMinHeightAndSkipRichHeightGate() {
+        val system =
+            KuiklyThreadMessageItem(
+                id = "system-1",
+                authorId = "system",
+                authorName = "System",
+                messageType = "System",
+                body = "line one\nline two\nline three\nline four"
+            )
+        val regular =
+            KuiklyThreadMessageItem(
+                id = "regular-1",
+                authorId = "u-regular-1",
+                authorName = "Regular",
+                messageType = "chat",
+                body = "line one\nline two\nline three\nline four"
+            )
+
+        assertEquals(32.dp, system.threadInitialMessageMinHeightDp())
+        assertFalse(system.requiresThreadMeasuredRichHeight())
+        assertFalse(system.shouldCacheMeasuredThreadRowHeight())
+        assertTrue(regular.threadInitialMessageMinHeightDp() > system.threadInitialMessageMinHeightDp())
+        assertTrue(regular.requiresThreadMeasuredRichHeight())
+        assertTrue(regular.shouldCacheMeasuredThreadRowHeight())
     }
 
     @Test

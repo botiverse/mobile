@@ -7005,13 +7005,21 @@ private fun ThreadMessagesList(
         )
     }
     var measuredMessageHeightsPx by remember(threadInstanceKey) { mutableStateOf<Map<String, Int>>(emptyMap()) }
-    val focusedMessageMeasuredHeightPx =
+    val focusedAnchorMessage =
         renderPayload.focusedMessageId
             ?.takeIf { it.isNotBlank() }
-            ?.let { messageId -> measuredMessageHeightsPx[messageId] }
+            ?.let { messageId -> renderPayload.messages.firstOrNull { message -> message.id == messageId } }
+    val latestAnchorMessage = renderPayload.messages.lastOrNull()
+    val focusedMessageRequiresMeasuredRichHeight =
+        focusedAnchorMessage.requiresThreadMeasuredRichHeight()
+    val latestMessageRequiresMeasuredRichHeight =
+        latestAnchorMessage.requiresThreadMeasuredRichHeight()
+    val focusedMessageMeasuredHeightPx =
+        focusedAnchorMessage
+            ?.let { message -> measuredMessageHeightsPx[message.id] }
             ?: 0
     val latestMessageMeasuredHeightPx =
-        renderPayload.messages.lastOrNull()
+        latestAnchorMessage
             ?.let { message -> measuredMessageHeightsPx[message.id] }
             ?: 0
     LaunchedEffect(
@@ -7199,6 +7207,7 @@ private fun ThreadMessagesList(
         renderPayload.focusedMessageId,
         renderPayload.messages.size,
         lazyItemCount,
+        focusedMessageRequiresMeasuredRichHeight,
         focusedMessageMeasuredHeightPx
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -7225,7 +7234,10 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@LaunchedEffect
         }
-        if (!isThreadMeasuredRichHeightReady(focusedMessageMeasuredHeightPx)) {
+        if (
+            focusedMessageRequiresMeasuredRichHeight &&
+            !isThreadMeasuredRichHeightReady(focusedMessageMeasuredHeightPx)
+        ) {
             diagnosticsLogger(
                 "thread_focused_message_anchor result=waiting_for_measured_rich_height " +
                     "messageId=$targetMessageId targetIndex=$targetIndex"
@@ -7270,6 +7282,7 @@ private fun ThreadMessagesList(
         renderPayload.focusedMessageId,
         latestMessageLayoutKey,
         latestItemIndex,
+        latestMessageRequiresMeasuredRichHeight,
         latestMessageMeasuredHeightPx
     ) {
         if (latestItemIndex < 0) return@LaunchedEffect
@@ -7286,7 +7299,10 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@LaunchedEffect
         }
-        if (!isThreadMeasuredRichHeightReady(latestMessageMeasuredHeightPx)) {
+        if (
+            latestMessageRequiresMeasuredRichHeight &&
+            !isThreadMeasuredRichHeightReady(latestMessageMeasuredHeightPx)
+        ) {
             diagnosticsLogger(
                 "thread_initial_bottom_anchor result=waiting_for_measured_rich_height " +
                     "latestItemIndex=$latestItemIndex"
@@ -7442,10 +7458,17 @@ private fun ThreadMessagesList(
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val isRichContentEnabled = contentExtrasVisible && absoluteMessageIndex in richContentMessageRange
+                val shouldCacheMeasuredHeight = remember(message.messageType) {
+                    message.shouldCacheMeasuredThreadRowHeight()
+                }
                 val messageMinimumHeight =
                     with(density) {
                         val cachedHeightPx =
-                            measuredMessageHeightsPx[message.id]
+                            if (shouldCacheMeasuredHeight) {
+                                measuredMessageHeightsPx[message.id]
+                            } else {
+                                null
+                            }
                                 ?: message.threadInitialMessageMinHeightDp().toPx().roundToInt()
                         cachedHeightPx.toDp()
                     }
@@ -7514,7 +7537,7 @@ private fun ThreadMessagesList(
                             .heightIn(min = messageMinimumHeight)
                             .onGloballyPositioned { coordinates ->
                                 firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
-                                if (isRichContentEnabled) {
+                                if (isRichContentEnabled && shouldCacheMeasuredHeight) {
                                     val measuredHeight = coordinates.size.height
                                     if (measuredHeight > 0 && measuredMessageHeightsPx[message.id] != measuredHeight) {
                                         measuredMessageHeightsPx = measuredMessageHeightsPx + (message.id to measuredHeight)
@@ -8148,10 +8171,9 @@ private fun KuiklyThreadScreenPayload.threadInitialMessageMinHeightsPx(density: 
     }.toMap()
 }
 
-private fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
+internal fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
     if (isSystemMessage()) {
-        val bodyLines = body.threadInitialMarkdownLineEstimate().coerceAtMost(3)
-        return (32f + bodyLines * 16f).dp
+        return ThreadSystemMessageCollapsedMinHeight
     }
     val bodyLines = body.threadInitialMarkdownLineEstimate()
     val bodyHeight = if (bodyLines > 0) bodyLines * 16f else 0f
@@ -8448,6 +8470,12 @@ internal fun isThreadMeasuredItemReady(itemSize: Int, minHeight: Int): Boolean {
 internal fun isThreadMeasuredRichHeightReady(measuredHeightPx: Int): Boolean =
     measuredHeightPx > 0
 
+internal fun KuiklyThreadMessageItem?.requiresThreadMeasuredRichHeight(): Boolean =
+    this != null && !isSystemMessage()
+
+internal fun KuiklyThreadMessageItem.shouldCacheMeasuredThreadRowHeight(): Boolean =
+    !isSystemMessage()
+
 private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
     latestItemIndex: Int
 ): ThreadMessagesLayoutStabilitySnapshot {
@@ -8574,6 +8602,7 @@ private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
 private const val ThreadInitialContentHeightTolerancePx = 8
 private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
 private const val ThreadInitialMarkdownMaxEstimatedLines = 8
+private val ThreadSystemMessageCollapsedMinHeight = 32.dp
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
