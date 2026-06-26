@@ -606,68 +606,23 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadInitialProgressiveBottomRenderStartLimitsLargeThreadToLatestWindow() {
-        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 0))
-        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 1))
-        assertEquals(1, threadInitialProgressiveBottomRenderStart(messagesCount = 2))
-        assertEquals(49, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
+    fun threadInitialRichContentRangeKeepsFullListScrollableButOnlyWarmsNearbyRows() {
+        assertEquals(48..49, threadInitialRichContentMessageRange(messagesCount = 50))
+        assertEquals(11..13, threadInitialRichContentMessageRange(messagesCount = 50, focusedMessageIndex = 12))
+        assertEquals(0..1, threadInitialRichContentMessageRange(messagesCount = 50, focusedMessageIndex = 0))
+        assertEquals(1..0, threadInitialRichContentMessageRange(messagesCount = 0))
     }
 
     @Test
-    fun threadInitialProgressiveBottomRenderStartKeepsFocusedMessageAvailable() {
-        assertEquals(
-            12,
-            threadInitialProgressiveBottomRenderStart(
-                messagesCount = 50,
-                focusedMessageIndex = 12
-            )
-        )
-    }
-
-    @Test
-    fun threadInitialProgressiveMessageWindowCentersFocusedMessageOnly() {
-        val messages = (0 until 50).map { index -> testThreadMessage("m$index") }
-
-        assertEquals(
-            ThreadProgressiveMessageWindow(12, 13),
-            threadInitialProgressiveMessageWindow(
-                messages = messages,
-                focusedMessageIndex = 12
-            )
-        )
-    }
-
-    @Test
-    fun threadFocusedProgressiveMessageWindowGrowsAroundFocusedMessage() {
-        val messages = (0 until 50).map { index -> testThreadMessage("m$index") }
-        val initial =
-            threadInitialProgressiveMessageWindow(
-                messages = messages,
-                focusedMessageIndex = 12
-            )
-
-        assertEquals(
-            ThreadProgressiveMessageWindow(11, 13),
-            threadNextProgressiveMessageWindow(
-                messages = messages,
-                currentWindow = initial,
-                focusedMessageIndex = 12
-            )
-        )
-        assertEquals(
-            ThreadProgressiveMessageWindow(11, 14),
-            threadNextProgressiveMessageWindow(
-                messages = messages,
-                currentWindow = ThreadProgressiveMessageWindow(11, 13),
-                focusedMessageIndex = 12
-            )
-        )
+    fun threadBufferedMessageRangeClampsToPayloadEdges() {
+        assertEquals(4..8, threadBufferedMessageRange(firstMessageIndex = 5, lastMessageIndex = 7, messagesCount = 20))
+        assertEquals(0..2, threadBufferedMessageRange(firstMessageIndex = 0, lastMessageIndex = 1, messagesCount = 20))
+        assertEquals(17..19, threadBufferedMessageRange(firstMessageIndex = 18, lastMessageIndex = 19, messagesCount = 20))
+        assertEquals(1..0, threadBufferedMessageRange(firstMessageIndex = -1, lastMessageIndex = -1, messagesCount = 20))
     }
 
     @Test
     fun threadFixedOriginDoesNotCountAsScrollableMessageRow() {
-        val messages = (0 until 50).map { index -> testThreadMessage("reply-$index") }
-
         assertEquals(
             50,
             threadMessagesLazyItemCount(
@@ -675,13 +630,6 @@ class ThreadPayloadTest {
                 showHistoryBoundary = true,
                 messagesCount = 49,
                 canLoadMoreAfter = false
-            )
-        )
-        assertEquals(
-            ThreadProgressiveMessageWindow(49, 50),
-            threadInitialProgressiveMessageWindow(
-                messages = messages,
-                focusedMessageIndex = -1
             )
         )
         assertEquals(
@@ -694,28 +642,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadProgressiveOlderWindowDoesNotRenderAsHistoryBoundary() {
-        val progressivePayload =
-            KuiklyThreadScreenPayload(
-                messages = listOf(testThreadMessage("reply-latest")),
-                canLoadMoreBefore = false,
-                olderMessagesStatus = ThreadProgressiveWindowStatus
-            )
-
-        assertEquals(0, progressivePayload.latestMessageListItemIndex())
-        assertEquals(
-            1,
-            threadMessagesLazyItemCount(
-                originStatus = progressivePayload.originStatus,
-                showHistoryBoundary = false,
-                messagesCount = progressivePayload.messages.size,
-                canLoadMoreAfter = progressivePayload.canLoadMoreAfter
-            )
-        )
-    }
-
-    @Test
-    fun threadRealOlderBoundaryReturnsAfterProgressiveWindowReachesPayloadEdge() {
+    fun threadRealOlderBoundaryRendersWithFullMessageList() {
         val fullPayload =
             KuiklyThreadScreenPayload(
                 messages = listOf(testThreadMessage("reply-0"), testThreadMessage("reply-1")),
@@ -731,158 +658,6 @@ class ThreadPayloadTest {
                 showHistoryBoundary = true,
                 messagesCount = fullPayload.messages.size,
                 canLoadMoreAfter = fullPayload.canLoadMoreAfter
-            )
-        )
-    }
-
-    @Test
-    fun threadProgressiveMessageWindowDoesNotCountSystemMessagesAsBusinessRows() {
-        val messages =
-            listOf(
-                testThreadMessage("m0"),
-                testThreadMessage("sys-1", messageType = "System"),
-                testThreadMessage("m2"),
-                testThreadMessage("sys-3", messageType = "System"),
-                testThreadMessage("m4")
-            )
-
-        assertEquals(
-            ThreadProgressiveMessageWindow(4, 5),
-            threadInitialProgressiveMessageWindow(messages = messages)
-        )
-        assertEquals(
-            ThreadProgressiveMessageWindow(2, 4),
-            threadInitialProgressiveMessageWindow(
-                messages =
-                    listOf(
-                        testThreadMessage("m0"),
-                        testThreadMessage("m1"),
-                        testThreadMessage("m2"),
-                        testThreadMessage("sys-3", messageType = "System")
-                    )
-            )
-        )
-        assertEquals(
-            ThreadProgressiveMessageWindow(2, 5),
-            threadNextProgressiveMessageWindow(
-                messages = messages,
-                currentWindow = ThreadProgressiveMessageWindow(4, 5)
-            )
-        )
-        assertEquals(
-            ThreadProgressiveMessageWindow(0, 3),
-            threadNextProgressiveMessageWindow(
-                messages = messages,
-                currentWindow = ThreadProgressiveMessageWindow(2, 3),
-                focusedMessageIndex = 2
-            )
-        )
-    }
-
-    @Test
-    fun threadProgressiveBottomRenderPayloadKeyChangesWhenRemotePayloadRefreshes() {
-        val cachedEntryKey =
-            threadProgressiveBottomRenderPayloadKey(
-                messagesCount = 1,
-                latestMessageId = "cached-bottom"
-            )
-        val refreshedPayloadKey =
-            threadProgressiveBottomRenderPayloadKey(
-                messagesCount = 50,
-                latestMessageId = "remote-bottom"
-            )
-
-        assertFalse(cachedEntryKey == refreshedPayloadKey)
-        assertEquals(49, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
-    }
-
-    @Test
-    fun threadPreviousProgressiveBottomRenderStartPrependsInFibonacciWindows() {
-        assertEquals(48, threadPreviousProgressiveBottomRenderStart(currentStart = 49, totalMessages = 50))
-        assertEquals(47, threadPreviousProgressiveBottomRenderStart(currentStart = 48, totalMessages = 50))
-        assertEquals(45, threadPreviousProgressiveBottomRenderStart(currentStart = 47, totalMessages = 50))
-        assertEquals(42, threadPreviousProgressiveBottomRenderStart(currentStart = 45, totalMessages = 50))
-        assertEquals(37, threadPreviousProgressiveBottomRenderStart(currentStart = 42, totalMessages = 50))
-        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 1, totalMessages = 5))
-        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 0, totalMessages = 50))
-    }
-
-    @Test
-    fun threadNextProgressiveBottomRenderMessageCountUsesFibonacciTargets() {
-        assertEquals(1, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 0))
-        assertEquals(2, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 1))
-        assertEquals(3, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 2))
-        assertEquals(5, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 3))
-        assertEquals(8, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 5))
-    }
-
-    @Test
-    fun threadProgressiveWindowDoesNotExpandBeforeUserScroll() {
-        assertFalse(
-            threadShouldExpandProgressiveMessageWindow(
-                hasProgressiveOlderWindow = true,
-                hasProgressiveNewerWindow = false,
-                firstVisibleMessageIndex = 0,
-                lastVisibleMessageIndex = 0,
-                renderedMessagesCount = 1,
-                userScrollGeneration = 0,
-                isLatestItemAtRenderedBottom = false
-            )
-        )
-    }
-
-    @Test
-    fun threadProgressiveWindowExpandsOnlyWhenScrolledToRenderedEdge() {
-        assertFalse(
-            threadShouldExpandProgressiveMessageWindow(
-                hasProgressiveOlderWindow = true,
-                hasProgressiveNewerWindow = false,
-                firstVisibleMessageIndex = 1,
-                lastVisibleMessageIndex = 2,
-                renderedMessagesCount = 3,
-                userScrollGeneration = 1,
-                isLatestItemAtRenderedBottom = false
-            )
-        )
-        assertTrue(
-            threadShouldExpandProgressiveMessageWindow(
-                hasProgressiveOlderWindow = true,
-                hasProgressiveNewerWindow = false,
-                firstVisibleMessageIndex = 0,
-                lastVisibleMessageIndex = 1,
-                renderedMessagesCount = 3,
-                userScrollGeneration = 1,
-                isLatestItemAtRenderedBottom = false
-            )
-        )
-    }
-
-    @Test
-    fun threadProgressiveWindowDoesNotExpandOlderWhileLatestIsStillBottomAnchored() {
-        assertFalse(
-            threadShouldExpandProgressiveMessageWindow(
-                hasProgressiveOlderWindow = true,
-                hasProgressiveNewerWindow = false,
-                firstVisibleMessageIndex = 0,
-                lastVisibleMessageIndex = 0,
-                renderedMessagesCount = 1,
-                userScrollGeneration = 1,
-                isLatestItemAtRenderedBottom = true
-            )
-        )
-    }
-
-    @Test
-    fun threadProgressiveWindowCanExpandNewerFocusedEdgeAfterUserScroll() {
-        assertTrue(
-            threadShouldExpandProgressiveMessageWindow(
-                hasProgressiveOlderWindow = false,
-                hasProgressiveNewerWindow = true,
-                firstVisibleMessageIndex = 0,
-                lastVisibleMessageIndex = 1,
-                renderedMessagesCount = 2,
-                userScrollGeneration = 1,
-                isLatestItemAtRenderedBottom = false
             )
         )
     }
