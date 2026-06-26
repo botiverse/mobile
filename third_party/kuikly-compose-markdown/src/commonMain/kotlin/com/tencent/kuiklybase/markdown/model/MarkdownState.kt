@@ -29,21 +29,46 @@ import org.intellij.markdown.parser.MarkdownParser
  * @param immediate Whether to parse the content immediately or not. (WARNING: This is not advices, as it will block the composition!)
  */
 @Composable
-fun rememberMarkdownState(lookupLinks: Boolean = true, isShareMode: Boolean = false): MarkdownState {
-    val state = remember {
+fun rememberMarkdownState(
+    lookupLinks: Boolean = true,
+    isShareMode: Boolean = false,
+    initialContent: String? = null
+): MarkdownState {
+    val state = remember(lookupLinks, isShareMode, initialContent) {
         val flavour = GFMFlavourDescriptor()
         MarkdownState(
             Input(
-                content = "",
+                content = initialContent.orEmpty(),
                 shareModel = isShareMode,
                 lookupLinks = lookupLinks,
                 flavour = flavour,
                 parser = MarkdownParser(flavour),
                 referenceLinkHandler = ReferenceLinkHandlerImpl(),
             )
-        )
+        ).also { state ->
+            if (initialContent != null) {
+                state.applyCachedInitialContent(initialContent)
+            }
+        }
     }
     return state
+}
+
+suspend fun prepareMarkdownContent(content: String, lookupLinks: Boolean = true): Boolean {
+    val cacheKey = MarkdownParseResultCacheKey(content, lookupLinks)
+    MarkdownParseResultCache.get(cacheKey)?.let {
+        return true
+    }
+    val parsed =
+        withContext(Dispatchers.Default) {
+            val flavour = GFMFlavourDescriptor()
+            parseMarkdownContent(
+                content = content,
+                lookupLinks = lookupLinks,
+                parser = MarkdownParser(flavour)
+            )
+        }
+    return MarkdownParseResultCache.putIfAbsent(cacheKey, parsed).second
 }
 
 /**
@@ -68,6 +93,19 @@ class MarkdownState internal constructor(
     fun skipLinkDefinition() = input.lookupLinks
 
     fun shareMode() = input.shareModel
+
+    internal fun isContentApplied(content: String): Boolean =
+        input.content == content && nodeListState.isNotEmpty()
+
+    internal fun applyCachedInitialContent(content: String): Boolean {
+        input.content = content
+        val cached =
+            MarkdownParseResultCache.get(
+                MarkdownParseResultCacheKey(content, input.lookupLinks)
+            ) ?: return false
+        applyParseResult(cached)
+        return true
+    }
 
     suspend fun parse(content: String, immediate: Boolean): Boolean {
         if (content.length < input.content.length) {
@@ -149,24 +187,12 @@ class MarkdownState internal constructor(
             null
         }
 
-    private fun parseContent(content: String): MarkdownCachedParseResult {
-        val parsedResult: ASTNode = input.parser.buildMarkdownTreeFromString(content)
-        val links =
-            if (input.lookupLinks) {
-                mutableMapOf<String, String?>().also { values ->
-                    lookupLinkDefinition(values, parsedResult, content, recursive = true)
-                }
-            } else {
-                emptyMap()
-            }
-        return MarkdownCachedParseResult(
-            links = links,
-            nodes =
-                parsedResult.children.map {
-                    ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
-                }
+    private fun parseContent(content: String): MarkdownCachedParseResult =
+        parseMarkdownContent(
+            content = content,
+            lookupLinks = input.lookupLinks,
+            parser = input.parser
         )
-    }
 
     private fun applyParseResult(cached: MarkdownCachedParseResult) {
         if (input.lookupLinks) {
@@ -187,6 +213,29 @@ class MarkdownState internal constructor(
             nodeListState.removeRange(cached.nodes.size, nodeListState.size)
         }
     }
+}
+
+private fun parseMarkdownContent(
+    content: String,
+    lookupLinks: Boolean,
+    parser: MarkdownParser
+): MarkdownCachedParseResult {
+    val parsedResult: ASTNode = parser.buildMarkdownTreeFromString(content)
+    val links =
+        if (lookupLinks) {
+            mutableMapOf<String, String?>().also { values ->
+                lookupLinkDefinition(values, parsedResult, content, recursive = true)
+            }
+        } else {
+            emptyMap()
+        }
+    return MarkdownCachedParseResult(
+        links = links,
+        nodes =
+            parsedResult.children.map {
+                ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
+            }
+    )
 }
 
 private data class MarkdownParseResultCacheKey(

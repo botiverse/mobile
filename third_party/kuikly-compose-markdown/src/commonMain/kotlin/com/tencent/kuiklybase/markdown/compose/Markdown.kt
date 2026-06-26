@@ -86,8 +86,11 @@ fun Markdown(
     },
     error: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
 ) {
-    val state = rememberMarkdownState()
+    val state = rememberMarkdownState(initialContent = content)
     LaunchedEffect(content) {
+        if (state.isContentApplied(content)) {
+            return@LaunchedEffect
+        }
         val parseStartMark = TimeSource.Monotonic.markNow()
         val cacheHit = state.parse(content, false)
         val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L

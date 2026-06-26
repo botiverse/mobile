@@ -66,6 +66,19 @@ class ThreadFirstContentStagingTest {
                 .shouldStageThreadFirstContentExtras()
         )
         assertFalse(
+            KuiklyThreadScreenPayload(
+                status = "content",
+                messages = listOf(
+                    KuiklyThreadMessageItem(
+                        id = "message-1",
+                        authorId = "user-1",
+                        authorName = "User One",
+                        body = "Open https://raft.build/task36-preparse"
+                    )
+                )
+            ).shouldStageThreadFirstContentExtras()
+        )
+        assertFalse(
             KuiklyThreadScreenPayload(status = "loading")
                 .shouldStageThreadFirstContentExtras()
         )

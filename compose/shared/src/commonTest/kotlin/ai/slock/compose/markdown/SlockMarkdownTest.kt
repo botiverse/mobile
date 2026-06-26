@@ -22,6 +22,7 @@ import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
+import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
@@ -33,6 +34,31 @@ import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
+
+    @Test
+    fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
+        val fullRendererBody = "Open https://raft.build/task36-preparse"
+
+        assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
+        assertEquals(null, "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull())
+        assertEquals(
+            fullRendererBody,
+            fullRendererBody.preparedSlockMarkdownFullRendererContentOrNull()
+        )
+
+        val first =
+            prepareSlockMarkdownFullRendererBodies(
+                listOf("Plain text only", "Ping @artin", fullRendererBody, fullRendererBody)
+            )
+        assertEquals(1, first.requestedCount)
+        assertEquals(1, first.parsedCount)
+        assertEquals(0, first.cacheHitCount)
+
+        val second = prepareSlockMarkdownFullRendererBodies(listOf(fullRendererBody))
+        assertEquals(1, second.requestedCount)
+        assertEquals(0, second.parsedCount)
+        assertEquals(1, second.cacheHitCount)
+    }
 
     @Test
     fun markdownImageStateIgnoresSameSizeUpdates() {

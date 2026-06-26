@@ -84,6 +84,8 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.markdown.prepareSlockMarkdownFullRendererBodies
+import ai.slock.compose.markdown.preparedSlockMarkdownFullRendererContentOrNull
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.Heartbeat
@@ -221,6 +223,7 @@ private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
+private const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
@@ -236,7 +239,12 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Bo
         )
 
 internal fun KuiklyThreadScreenPayload.shouldStageThreadFirstContentExtras(): Boolean =
-    status == "content"
+    status == "content" && !hasInitialFullRendererMarkdown()
+
+private fun KuiklyThreadScreenPayload.hasInitialFullRendererMarkdown(): Boolean =
+    messages
+        .takeLast(ThreadInitialMarkdownPreparseMessageCount)
+        .any { message -> message.body.preparedSlockMarkdownFullRendererContentOrNull() != null }
 
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
@@ -6825,6 +6833,34 @@ private fun ThreadChatTab(
     }
 }
 
+private data class ThreadMarkdownPreparsePlan(
+    val key: String,
+    val bodies: List<String>
+)
+
+private fun KuiklyThreadScreenPayload.threadInitialMarkdownPreparsePlan(
+    contentExtrasVisible: Boolean
+): ThreadMarkdownPreparsePlan {
+    if (!contentExtrasVisible || messages.isEmpty()) {
+        return ThreadMarkdownPreparsePlan(key = "", bodies = emptyList())
+    }
+    val latestBodies =
+        messages
+            .takeLast(ThreadInitialMarkdownPreparseMessageCount)
+            .map { it.body }
+    val fullRendererContents =
+        latestBodies
+            .mapNotNull { body -> body.preparedSlockMarkdownFullRendererContentOrNull() }
+            .distinct()
+    if (fullRendererContents.isEmpty()) {
+        return ThreadMarkdownPreparsePlan(key = "", bodies = emptyList())
+    }
+    return ThreadMarkdownPreparsePlan(
+        key = fullRendererContents.joinToString(separator = "\u001f"),
+        bodies = latestBodies
+    )
+}
+
 @Composable
 private fun ThreadMessagesList(
     threadInstanceKey: String,
@@ -6941,6 +6977,46 @@ private fun ThreadMessagesList(
             latestItemIndex = latestItemIndex,
             messageCount = renderPayload.messages.size
         )
+    val initialMarkdownPreparsePlan =
+        remember(renderPayload.messages, contentExtrasVisible) {
+            renderPayload.threadInitialMarkdownPreparsePlan(contentExtrasVisible)
+        }
+    var readyMarkdownPreparseKeys by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
+    val initialMarkdownPreparseReady =
+        initialMarkdownPreparsePlan.key.isEmpty() ||
+            initialMarkdownPreparsePlan.key in readyMarkdownPreparseKeys
+    LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key) {
+        if (initialMarkdownPreparsePlan.key.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val startedAt = TimeSource.Monotonic.markNow()
+        try {
+            val result =
+                prepareSlockMarkdownFullRendererBodies(
+                    bodies = initialMarkdownPreparsePlan.bodies,
+                    maxBodies = ThreadInitialMarkdownPreparseMessageCount
+                )
+            readyMarkdownPreparseKeys = readyMarkdownPreparseKeys + initialMarkdownPreparsePlan.key
+            val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+            diagnosticsLogger(
+                "thread_markdown_preparse window=initial_latest requested=${result.requestedCount} " +
+                    "parsed=${result.parsedCount} cacheHit=${result.cacheHitCount} " +
+                    "messages=${renderPayload.messages.size} durationMs=$durationMs"
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            readyMarkdownPreparseKeys = readyMarkdownPreparseKeys + initialMarkdownPreparsePlan.key
+            diagnosticsLogger(
+                "thread_markdown_preparse window=initial_latest result=failed " +
+                    "messages=${renderPayload.messages.size} error=${error::class.simpleName}"
+            )
+        }
+    }
+    if (!initialBottomAnchorReady && !revealLatestLocalSendBeforeInitialAnchor && !initialMarkdownPreparseReady) {
+        ThreadStateMessage("Loading...", null)
+        return
+    }
     val initialBottomAnchorPending =
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
     LaunchedEffect(

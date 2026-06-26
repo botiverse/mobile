@@ -68,6 +68,7 @@ import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
+import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
@@ -897,6 +898,52 @@ internal object SlockMarkdownInlineTextRenderCache {
         entries.clear()
     }
 }
+
+internal data class SlockMarkdownPreparseResult(
+    val requestedCount: Int,
+    val parsedCount: Int,
+    val cacheHitCount: Int
+)
+
+internal suspend fun prepareSlockMarkdownFullRendererBodies(
+    bodies: List<String>,
+    maxBodies: Int = SlockMarkdownDefaultPreparseLimit
+): SlockMarkdownPreparseResult {
+    if (bodies.isEmpty() || maxBodies <= 0) {
+        return SlockMarkdownPreparseResult(requestedCount = 0, parsedCount = 0, cacheHitCount = 0)
+    }
+    val contents =
+        bodies
+            .asSequence()
+            .mapNotNull { body -> body.preparedSlockMarkdownFullRendererContentOrNull() }
+            .distinct()
+            .take(maxBodies)
+            .toList()
+    var cacheHitCount = 0
+    contents.forEach { content ->
+        if (prepareMarkdownContent(content)) {
+            cacheHitCount += 1
+        }
+    }
+    return SlockMarkdownPreparseResult(
+        requestedCount = contents.size,
+        parsedCount = contents.size - cacheHitCount,
+        cacheHitCount = cacheHitCount
+    )
+}
+
+internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): String? {
+    val (content, _) =
+        SlockMarkdownPreparedBodyCache.getOrPut(this) {
+            normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+        }
+    if (content.isBlank()) return null
+    if (content.shouldUseSlockMarkdownPlainTextFastPath()) return null
+    if (content.shouldUseSlockMarkdownInlineTextFastPath()) return null
+    return content
+}
+
+private const val SlockMarkdownDefaultPreparseLimit = 20
 
 internal fun buildSlockMarkdownInlineTextAnnotatedString(
     content: String,
