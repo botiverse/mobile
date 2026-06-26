@@ -9,6 +9,7 @@ import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -47,6 +48,7 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(3, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-2", message.firstUnreadReplyMessageId?.value)
+        assertFalse(message.isThreadFollowed)
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
@@ -92,6 +94,7 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(4, message.replyCount)
         assertEquals(1, message.unreadReplyCount)
         assertEquals("reply-4", message.firstUnreadReplyMessageId?.value)
+        assertTrue(message.isThreadFollowed)
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
@@ -316,7 +319,8 @@ class ConversationRepositoryDataSourceTest {
                     mapOf(
                         "POST messages" to messageJson("sent-1", "channel-1", content = "ship it"),
                         "POST channels/channel-1/threads" to """{"threadChannelId":"thread-1","replyCount":0,"ok":true}""",
-                        "POST channels/threads/follow" to """{"threadChannelId":"thread-1","replyCount":4,"ok":true}"""
+                        "POST channels/threads/follow" to """{"threadChannelId":"thread-1","replyCount":4,"ok":true}""",
+                        "POST channels/threads/unfollow" to """{"threadChannelId":"thread-1","replyCount":4,"ok":true}"""
                     )
             )
         val repository = RealConversationRepository(sampleStore(), network)
@@ -330,15 +334,18 @@ class ConversationRepositoryDataSourceTest {
             )
         val created = repository.createOrOpenThread(ChannelId("channel-1"), MessageId("parent-1"))
         val followed = repository.followThread(MessageId("parent-1"))
+        val unfollowed = repository.unfollowThread(ChannelId("thread-1"))
 
         assertEquals("sent-1", assertIs<DataResult.Content<SendMessageResult>>(sent).data.message.id.value)
         assertEquals("thread-1", assertIs<DataResult.Content<ThreadActionResult>>(created).data.threadChannelId.value)
         assertEquals(4, assertIs<DataResult.Content<ThreadActionResult>>(followed).data.replyCount)
+        assertEquals("thread-1", assertIs<DataResult.Content<ThreadActionResult>>(unfollowed).data.threadChannelId.value)
         assertEquals(
             listOf(
                 """{"channelId":"channel-1","content":"ship it","attachmentIds":["attachment-1"],"asTask":true}""",
                 """{"parentMessageId":"parent-1"}""",
-                """{"parentMessageId":"parent-1"}"""
+                """{"parentMessageId":"parent-1"}""",
+                """{"threadChannelId":"thread-1"}"""
             ),
             network.bodies
         )

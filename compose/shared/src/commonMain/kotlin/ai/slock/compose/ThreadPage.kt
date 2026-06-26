@@ -920,6 +920,7 @@ internal data class KuiklyThreadMessageItem(
     val replyCount: Int = 0,
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: String? = null,
+    val isThreadFollowed: Boolean = false,
     val isSaved: Boolean = false,
     val taskId: String? = null,
     val taskNumber: Int? = null,
@@ -1938,6 +1939,7 @@ private fun ThreadMessageVisualScreen() {
                     onSelectText = {},
                     onSave = {},
                     onFollowThread = {},
+                    onUnfollowThread = {},
                     onTaskStatusChange = {},
                     onConvertToTask = {},
                     onDelete = {}
@@ -3666,6 +3668,14 @@ internal fun SharedThreadRouteContent(
                                             threadChannelId = result.data.threadChannelId.value
                                         )
                                     )
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyMessageThreadFollowed(
+                                            parentMessageId = result.data.parentMessageId?.value ?: itemId,
+                                            threadChannelId = result.data.threadChannelId.value,
+                                            followed = true,
+                                            replyCount = result.data.replyCount
+                                        )
+                                    )
                                     bridge.toast("Followed thread")
                                 }
                                 is DataResult.Empty,
@@ -3679,6 +3689,39 @@ internal fun SharedThreadRouteContent(
                             }
                         } finally {
                             pendingThreadFollowMessageIds = pendingThreadFollowMessageIds - itemId
+                        }
+                    }
+                }
+                action == "unfollowMessageThread" && !itemId.isNullOrBlank() && !attachmentId.isNullOrBlank() -> {
+                    val threadChannelId = attachmentId
+                    if (threadChannelId in pendingThreadFollowMessageIds) {
+                        return@ThreadPageContent
+                    }
+                    pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + threadChannelId
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.unfollowThread(ChannelId(threadChannelId))) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyMessageThreadFollowed(
+                                            parentMessageId = itemId,
+                                            threadChannelId = threadChannelId,
+                                            followed = false
+                                        )
+                                    )
+                                    bridge.toast("Unfollowed thread")
+                                }
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    bridge.toast("Unable to unfollow thread")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    bridge.toast("Unable to unfollow thread")
+                                }
+                            }
+                        } finally {
+                            pendingThreadFollowMessageIds = pendingThreadFollowMessageIds - threadChannelId
                         }
                     }
                 }
@@ -7587,6 +7630,10 @@ private fun ThreadMessagesList(
                         actionMessageId = null
                         onThreadEvent("followMessageThread", message.id, null, null)
                     },
+                    onUnfollowThread = { threadChannelId ->
+                        actionMessageId = null
+                        onThreadEvent("unfollowMessageThread", message.id, threadChannelId, null)
+                    },
                     onReact = { emoji ->
                         actionMessageId = null
                         onThreadEvent("toggleReaction", message.id, null, emoji)
@@ -9657,6 +9704,7 @@ private fun threadMessageMenuActions(
     onSelectText: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
+    onUnfollowThread: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
     onDelete: () -> Unit
@@ -9694,13 +9742,20 @@ private fun threadMessageMenuActions(
                 )
             )
         }
-        if (!message.threadChannelId.isNullOrBlank() || message.replyCount > 0) {
+        val followThreadChannelId = message.threadChannelId?.takeIf { it.isNotBlank() }
+        if (followThreadChannelId != null || message.replyCount > 0 || message.isThreadFollowed) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Follow Thread",
+                    label = if (message.isThreadFollowed) "Unfollow Thread" else "Follow Thread",
                     icon = SlockLucideIconName.MessageSquare,
                     group = "message",
-                    onClick = onFollowThread
+                    onClick = {
+                        if (message.isThreadFollowed && followThreadChannelId != null) {
+                            onUnfollowThread(followThreadChannelId)
+                        } else {
+                            onFollowThread()
+                        }
+                    }
                 )
             )
         }
@@ -9754,6 +9809,7 @@ private fun ThreadMessageActionMenu(
     onSelectText: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
+    onUnfollowThread: (String) -> Unit,
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
@@ -9774,6 +9830,7 @@ private fun ThreadMessageActionMenu(
             onSelectText,
             onSave,
             onFollowThread,
+            onUnfollowThread,
             onTaskStatusChange,
             onConvertToTask,
             onDelete
@@ -9791,6 +9848,7 @@ private fun ThreadMessageActionMenu(
                 onSelectText = onSelectText,
                 onSave = onSave,
                 onFollowThread = onFollowThread,
+                onUnfollowThread = onUnfollowThread,
                 onTaskStatusChange = onTaskStatusChange,
                 onConvertToTask = onConvertToTask,
                 onDelete = onDelete

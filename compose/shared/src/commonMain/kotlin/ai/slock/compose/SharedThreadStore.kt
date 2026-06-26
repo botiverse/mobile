@@ -1329,6 +1329,19 @@ internal class SharedThreadDataSource(
         }
     }
 
+    suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true))
+        return try {
+            repository.unfollowThread(threadChannelId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true))
+        }
+    }
+
     private suspend fun loadResolvedReplyThread(
         basePayload: KuiklyThreadScreenPayload,
         parentMessage: KuiklyThreadMessageItem,
@@ -2018,6 +2031,12 @@ internal sealed interface SharedThreadIntent {
         val parentMessageId: String,
         val threadChannelId: String? = null
     ) : SharedThreadIntent
+    data class ApplyMessageThreadFollowed(
+        val parentMessageId: String,
+        val threadChannelId: String? = null,
+        val followed: Boolean,
+        val replyCount: Int = 0
+    ) : SharedThreadIntent
     data class ApplyMessageMutation(val summary: MessageMutationSummary) : SharedThreadIntent
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
@@ -2093,6 +2112,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyReplyThreadRead,
+            is SharedThreadIntent.ApplyMessageThreadFollowed,
             is SharedThreadIntent.ApplyMessageMutation,
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
@@ -2151,6 +2171,8 @@ internal class SharedThreadStore(
                 applyMessageReactions(intent.messageId, intent.reactions)
             is SharedThreadIntent.ApplyReplyThreadRead ->
                 applyReplyThreadRead(intent.parentMessageId, intent.threadChannelId)
+            is SharedThreadIntent.ApplyMessageThreadFollowed ->
+                applyMessageThreadFollowed(intent.parentMessageId, intent.threadChannelId, intent.followed, intent.replyCount)
             is SharedThreadIntent.ApplyMessageMutation -> applyMessageMutation(intent.summary)
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
@@ -2727,6 +2749,7 @@ internal class SharedThreadStore(
             replyCount == direct.replyCount &&
             unreadReplyCount == direct.unreadReplyCount &&
             firstUnreadReplyMessageId == direct.firstUnreadReplyMessageId &&
+            isThreadFollowed == direct.isThreadFollowed &&
             isSaved == direct.isSaved &&
             taskId == direct.taskId &&
             taskNumber == direct.taskNumber &&
@@ -3161,6 +3184,20 @@ internal class SharedThreadStore(
     private fun applyReplyThreadRead(parentMessageId: String, threadChannelId: String?) {
         reducePayloadPatch(cachePayload = true) { payload ->
             payload.withReplyThreadRead(parentMessageId, threadChannelId)
+        }
+    }
+
+    private suspend fun applyMessageThreadFollowed(
+        parentMessageId: String,
+        threadChannelId: String?,
+        followed: Boolean,
+        replyCount: Int
+    ) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload ->
+            payload.withMessageThreadFollowed(parentMessageId, threadChannelId, followed, replyCount)
         }
     }
 
@@ -4608,6 +4645,29 @@ private fun KuiklyThreadScreenPayload.withReplyThreadRead(
     )
 }
 
+private fun KuiklyThreadScreenPayload.withMessageThreadFollowed(
+    parentMessageId: String,
+    threadChannelId: String?,
+    followed: Boolean,
+    replyCount: Int
+): KuiklyThreadScreenPayload {
+    val cleanParentMessageId = parentMessageId.trim()
+    if (cleanParentMessageId.isBlank()) return this
+    val cleanThreadChannelId = threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+    fun KuiklyThreadMessageItem.updateIfParent(): KuiklyThreadMessageItem {
+        if (id != cleanParentMessageId) return this
+        return copy(
+            threadChannelId = cleanThreadChannelId ?: this.threadChannelId,
+            replyCount = maxOf(this.replyCount, replyCount),
+            isThreadFollowed = followed
+        )
+    }
+    return copy(
+        messages = messages.map { it.updateIfParent() },
+        originMessage = originMessage?.updateIfParent()
+    )
+}
+
 private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selected: Boolean): KuiklyThreadMessageItem {
     var matched = false
     val updated =
@@ -4702,6 +4762,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),
         firstUnreadReplyMessageId = update.firstUnreadReplyMessageId ?: firstUnreadReplyMessageId,
+        isThreadFollowed = isThreadFollowed || update.isThreadFollowed,
         isSaved = isSaved || update.isSaved,
         taskId = update.taskId ?: taskId,
         taskNumber = update.taskNumber ?: taskNumber,
@@ -5378,6 +5439,7 @@ internal fun KuiklyThreadMessageItem.toMessage(
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
+        isThreadFollowed = isThreadFollowed,
         isSaved = isSaved,
         reactions = reactions.toMessageReactions(currentUserId, currentUserName),
         commentRef = commentRef?.toMessageCommentRef()
@@ -5515,6 +5577,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.value,
+        isThreadFollowed = isThreadFollowed,
         isSaved = isSaved,
         taskId = task?.id?.value,
         taskNumber = task?.taskNumber,

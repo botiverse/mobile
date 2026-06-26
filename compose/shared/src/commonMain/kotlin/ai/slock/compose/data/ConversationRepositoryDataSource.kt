@@ -665,6 +665,7 @@ class RealConversationRepository(
                 } else {
                     emptyList()
                 }
+            val followedThreadKeys = followedForChannel.map { it.key }.toSet()
             val mergedThreads = (channelThreads + followedForChannel).distinctBy { it.key }
             warningLogger(
                 "thread_load_result source=$source threadId=${threadId.value} " +
@@ -692,7 +693,7 @@ class RealConversationRepository(
                                 (t.parentMessageId?.value?.take(8) ?: "null")
                         }}"
                 )
-                DataResult.Content(messagesResult.data.withReplySummaries(mergedThreads, warningLogger))
+                DataResult.Content(messagesResult.data.withReplySummaries(mergedThreads, followedThreadKeys, warningLogger))
             }
         }
     }
@@ -858,6 +859,7 @@ private fun buildDefaultConversation(threadId: ThreadId, name: String): Conversa
 
 private fun ThreadSnapshot.withReplySummaries(
     threads: List<InboxItem>,
+    followedThreadKeys: Set<String> = emptySet(),
     logger: (String) -> Unit
 ): ThreadSnapshot {
     if (threads.isEmpty()) return this
@@ -909,7 +911,8 @@ private fun ThreadSnapshot.withReplySummaries(
                 threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
                 replyCount = maxOf(message.replyCount, summary.replyCount),
                 unreadReplyCount = maxOf(message.unreadReplyCount, summary.unreadCount),
-                firstUnreadReplyMessageId = message.firstUnreadReplyMessageId ?: summary.firstUnreadMessageId
+                firstUnreadReplyMessageId = message.firstUnreadReplyMessageId ?: summary.firstUnreadMessageId,
+                isThreadFollowed = message.isThreadFollowed || summary.key in followedThreadKeys
             )
         }
     if (joinMissCount > 0) {

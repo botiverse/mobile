@@ -261,6 +261,7 @@ data class Message(
     val replyCount: Int = 0,
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: MessageId? = null,
+    val isThreadFollowed: Boolean = false,
     val isSaved: Boolean = false,
     val parentMessageId: MessageId? = null,
     val updatedAtLabel: String? = null,

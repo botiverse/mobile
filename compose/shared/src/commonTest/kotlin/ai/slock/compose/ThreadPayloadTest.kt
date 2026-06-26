@@ -7,6 +7,7 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
@@ -156,6 +157,31 @@ class ThreadPayloadTest {
             "https://app.raft.build/s/workspace/channel/channel-1?msg=reply-1&thread=channel-1%3Aparent-1",
             permalink
         )
+    }
+
+    @Test
+    fun threadMessageRowPreservesFollowedThreadState() {
+        val row =
+            Message(
+                id = MessageId("parent-1"),
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                threadChannelId = ChannelId("thread-1"),
+                author = MemberProfile(
+                    id = MemberId("u-artin"),
+                    displayName = "Artin",
+                    handle = "artin",
+                    kind = MemberKind.Human
+                ),
+                timestampLabel = "Now",
+                body = "Parent",
+                replyCount = 4,
+                isThreadFollowed = true
+            ).toKuiklyThreadMessageItem(currentUserId = null)
+
+        assertEquals("thread-1", row.threadChannelId)
+        assertEquals(4, row.replyCount)
+        assertTrue(row.isThreadFollowed)
     }
 
     @Test
