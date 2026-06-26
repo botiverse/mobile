@@ -1242,12 +1242,13 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 @Composable
 private fun RetainedAppShellTabs(
     selectedTab: String,
-    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        warmPrimaryAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
+        // Retaining multiple heavy tab surfaces in one Kuikly page makes bottom
+        // tab switching block on HRContextQueue/GC work; mount only the active surface.
+        activeOnlyAppShellComposedTabs(activeTab).forEach { tab ->
             key("retained-$tab") {
                 RetainedAppShellTabPane(
                     active = tab == activeTab,
@@ -2549,8 +2550,7 @@ private fun SlockAppShellContent() {
                         )
                     }
                     RetainedAppShellTabs(
-                        selectedTab = selectedTab,
-                        mountedTabs = retainedAppShellTabs
+                        selectedTab = selectedTab
                     ) { tab, active ->
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
