@@ -21,6 +21,7 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -69,9 +71,12 @@ private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerIconButtonSize = 26.dp
 private val ThreadComposerIconSize = 14.dp
+private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
+private const val ThreadComposerAttachmentImageTileSizeDp = 64
+private const val ThreadComposerAttachmentFileTileWidthDp = 128
+private const val ThreadComposerAttachmentRowGapDp = 8
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
-private const val ThreadComposerAttachmentGridColumns = 4
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
 private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
@@ -222,6 +227,7 @@ internal data class KuiklyPendingAttachmentItem(
     val mimeType: String? = null,
     val previewUri: String? = null,
     val status: String = "ready",
+    val uploadProgress: Int = 0,
     val errorCode: String? = null
 )
 
@@ -557,7 +563,8 @@ private fun threadComposerVisualFixture(
                             fileName = "android-smoke-log.zip",
                             sizeLabel = "1.8 MB",
                             mimeType = "application/zip",
-                            status = "uploading"
+                            status = "uploading",
+                            uploadProgress = 64
                         ),
                         KuiklyPendingAttachmentItem(
                             id = "picked-trace",
@@ -565,6 +572,7 @@ private fun threadComposerVisualFixture(
                             sizeLabel = "8.4 MB",
                             mimeType = "application/json",
                             status = "failed",
+                            uploadProgress = 0,
                             errorCode = "too_large"
                         )
                     )
@@ -1400,15 +1408,15 @@ private fun ComposerAttachmentTray(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(ThreadComposerAttachmentRowGapDp.dp)
     ) {
-        attachments.chunked(ThreadComposerAttachmentGridColumns).forEach { rowAttachments ->
+        composerAttachmentRows(attachments).forEach { rowAttachments ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(ThreadComposerAttachmentRowGapDp.dp)
             ) {
                 rowAttachments.forEach { attachment ->
-                    ComposerAttachmentTile(
+                    ComposerAttachmentPreviewChip(
                         attachment = attachment,
                         enabled = enabled,
                         onPreview = { onEvent("previewAttachment", attachment.id) },
@@ -1416,16 +1424,13 @@ private fun ComposerAttachmentTray(
                         onRetry = { onEvent("retryAttachments", attachment.id) }
                     )
                 }
-                repeat(ThreadComposerAttachmentGridColumns - rowAttachments.size) {
-                    Box(modifier = Modifier.size(ThreadComposerAttachmentTileSize))
-                }
             }
         }
     }
 }
 
 @Composable
-private fun ComposerAttachmentTile(
+private fun ComposerAttachmentPreviewChip(
     attachment: KuiklyPendingAttachmentItem,
     enabled: Boolean,
     onPreview: () -> Unit,
@@ -1434,105 +1439,232 @@ private fun ComposerAttachmentTile(
 ) {
     val isFailed = attachment.status == "failed"
     val isUploading = attachment.status != "ready" && !isFailed
-    val isImage = attachment.mimeType?.startsWith("image/") == true
+    val isImage = attachment.isComposerImageAttachment()
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
-    Box(modifier = Modifier.size(ThreadComposerAttachmentTileSize)) {
+    Box(modifier = Modifier.width(attachment.composerAttachmentPreviewWidthDp().dp).height(ThreadComposerAttachmentTileSize)) {
+        if (isImage) {
+            ComposerImageAttachmentPreview(
+                attachment = attachment,
+                imagePreviewUri = imagePreviewUri,
+                previewEnabled = enabled && imagePreviewUri != null && attachment.status == "ready",
+                onPreview = onPreview
+            )
+        } else {
+            ComposerFileAttachmentPreview(attachment = attachment)
+        }
+        if (isUploading) {
+            ComposerAttachmentUploadingOverlay(attachment = attachment)
+        }
+        if (isFailed && enabled) {
+            ComposerAttachmentFailedOverlay(onRetry = onRetry)
+        }
+        if (enabled) {
+            ComposerAttachmentRemoveButton(onRemove = onRemove)
+        }
+    }
+}
+
+@Composable
+private fun ComposerImageAttachmentPreview(
+    attachment: KuiklyPendingAttachmentItem,
+    imagePreviewUri: String?,
+    previewEnabled: Boolean,
+    onPreview: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .clickable(enabled = previewEnabled, onClick = onPreview)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        if (imagePreviewUri != null) {
+            SlockAspectFitImagePreviewSurface(
+                source = imagePreviewUri,
+                contentDescription = attachment.fileName,
+                modifier = Modifier.fillMaxSize(),
+                borderWidth = 0.dp
+            )
+        } else {
+            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+        }
+    }
+}
+
+@Composable
+private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentItem) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.FileText,
+            modifier = Modifier.size(16.dp),
+            color = "#B3000000"
+        )
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .clickable(enabled = enabled, onClick = onPreview)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            if (isImage) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (imagePreviewUri != null) {
-                        SlockAspectFitImagePreviewSurface(
-                            source = imagePreviewUri,
-                            contentDescription = attachment.fileName,
-                            modifier = Modifier.fillMaxSize(),
-                            borderWidth = 0.dp
-                        )
-                    } else {
-                        SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
-                    }
-                    if (isUploading || isFailed) {
-                        SlockLucideIcon(
-                            if (isFailed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Loader,
-                            modifier = Modifier.align(Alignment.TopStart).size(14.dp),
-                            color = if (isFailed) "#FFF97264" else "#FF000000"
-                        )
-                    }
-                }
-            } else {
-                val icon =
-                    when {
-                        isFailed -> SlockLucideIconName.TriangleAlert
-                        isUploading -> SlockLucideIconName.Loader
-                        else -> SlockLucideIconName.File
-                    }
-                SlockLucideIcon(
-                    icon,
-                    modifier = Modifier.size(18.dp),
-                    color = if (isFailed) "#FFF97264" else "#FF000000"
-                )
-                Text(
-                    text = attachment.fileName,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
             Text(
-                text = if (isImage && attachment.status == "ready") attachment.sizeLabel.ifBlank { "Image" } else attachment.statusLabel(),
-                style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
-                color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                text = attachment.fileName,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = attachment.mimeType?.takeIf { it.isNotBlank() } ?: "file",
+                style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (enabled) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(ThreadComposerAttachmentCloseSize)
-                        .align(Alignment.TopEnd)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .clickable(onClick = onRemove),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(SlockLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FF000000")
-            }
+    }
+}
+
+@Composable
+private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachmentItem) {
+    val progress = attachment.uploadProgress.coerceIn(0, 100)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite.copy(alpha = 0.86f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            SlockLucideIcon(SlockLucideIconName.Loader, modifier = Modifier.size(16.dp), color = "#FF000000")
+            Text(
+                text = if (progress > 0) "$progress%" else "Uploading",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
         }
-        if (isFailed && enabled) {
+        if (progress > 0) {
             Box(
                 modifier =
                     Modifier
-                        .align(Alignment.BottomCenter)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .clickable(onClick = onRetry)
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                contentAlignment = Alignment.Center
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(SlockColor.ShadowBlack.copy(alpha = 0.15f))
             ) {
-                Text(
-                    text = "Retry",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 8.sp, lineHeight = 10.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(progress.coerceAtLeast(4) / 100f)
+                            .height(4.dp)
+                            .background(SlockColor.AccentPink)
                 )
             }
         }
     }
+}
+
+@Composable
+private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .clickable(onClick = onRetry)
+                .background(SlockColor.AccentOrange.copy(alpha = 0.92f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Upload failed",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "Tap to retry",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.ComposerAttachmentRemoveButton(onRemove: () -> Unit) {
+    Box(
+        modifier =
+            Modifier
+                .size(ThreadComposerAttachmentCloseSize)
+                .align(Alignment.TopEnd)
+                .offset(x = 5f, y = -5f)
+                .background(SlockColor.ShadowBlack, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
+                .clickable(onClick = onRemove),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(SlockLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FFFFFFFF")
+    }
+}
+
+internal fun composerAttachmentRows(
+    attachments: List<KuiklyPendingAttachmentItem>,
+    maxWidthDp: Int = ThreadComposerAttachmentTrayMaxWidthDp
+): List<List<KuiklyPendingAttachmentItem>> {
+    if (attachments.isEmpty()) return emptyList()
+    val rows = mutableListOf<MutableList<KuiklyPendingAttachmentItem>>()
+    var row = mutableListOf<KuiklyPendingAttachmentItem>()
+    var rowWidthDp = 0
+    attachments.forEach { attachment ->
+        val widthDp = attachment.composerAttachmentPreviewWidthDp()
+        val nextWidthDp =
+            if (row.isEmpty()) {
+                widthDp
+            } else {
+                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
+            }
+        if (row.isNotEmpty() && nextWidthDp > maxWidthDp) {
+            rows += row
+            row = mutableListOf()
+            rowWidthDp = 0
+        }
+        row += attachment
+        rowWidthDp =
+            if (rowWidthDp == 0) {
+                widthDp
+            } else {
+                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
+            }
+    }
+    if (row.isNotEmpty()) rows += row
+    return rows
+}
+
+internal fun KuiklyPendingAttachmentItem.composerAttachmentPreviewWidthDp(): Int =
+    if (isComposerImageAttachment()) {
+        ThreadComposerAttachmentImageTileSizeDp
+    } else {
+        ThreadComposerAttachmentFileTileWidthDp
+    }
+
+internal fun KuiklyPendingAttachmentItem.isComposerImageAttachment(): Boolean {
+    val normalizedMime = mimeType?.substringBefore(";")?.trim()?.lowercase().orEmpty()
+    return normalizedMime.startsWith("image/") && normalizedMime != "image/svg+xml"
 }
 
 @Composable
@@ -1766,17 +1898,6 @@ private fun ComposerTextChip(text: String, enabled: Boolean = true, onClick: () 
         shadowOffset = 2.dp,
         textStyle = SlockType.Caption.copy(color = SlockColor.TextBlack)
     )
-}
-
-private fun KuiklyPendingAttachmentItem.statusLabel(): String {
-    val detail = sizeLabel.takeIf { it.isNotBlank() }
-    val failureReason = threadFailureReasonLabel(errorCode)
-    val state = when (status) {
-        "uploading" -> "Uploading"
-        "failed" -> listOf("Upload failed", failureReason).filterNotNull().joinToString(": ")
-        else -> "Ready"
-    }
-    return listOf(state, detail).filter { it != null && it.isNotBlank() }.joinToString(" • ")
 }
 
 internal data class KuiklyComposerSuggestionEdit(
