@@ -453,6 +453,11 @@ class SlockMarkdownTest {
 
     @Test
     fun inlineTagWidthsDoNotReserveLargeTrailingPadding() {
+        val shortMentionWidth =
+            slockMarkdownInlineTagWidthSp(
+                "@mention",
+                ThreadMarkdownTagKind.UserMention
+            ).value
         val mentionWidth =
             slockMarkdownInlineTagWidthSp(
                 "@Android-Developer-2",
@@ -476,9 +481,10 @@ class SlockMarkdownTest {
             ).value
         val taskWidth = slockMarkdownInlineChipWidthSp("#405").value
 
-        assertTrue(mentionWidth in 170f..180f)
-        assertTrue(longAgentMentionWidth in 180f..190f)
-        assertTrue(qaMentionWidth in 125f..135f)
+        assertTrue(shortMentionWidth in 70f..80f)
+        assertTrue(mentionWidth in 160f..170f)
+        assertTrue(longAgentMentionWidth in 172f..182f)
+        assertTrue(qaMentionWidth in 110f..120f)
         assertTrue(selfMentionWidth < 70f)
         assertTrue(taskWidth < 54f)
     }

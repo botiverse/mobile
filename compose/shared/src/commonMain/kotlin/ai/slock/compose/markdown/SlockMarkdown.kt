@@ -1439,7 +1439,7 @@ internal fun slockMarkdownInlineTagWidthSp(
     }
 
 private fun slockMarkdownPlainMentionWidthSp(label: String) =
-    (label.sumOf { it.slockPlainMentionWidthSp().toDouble() }.toFloat() + SlockMarkdownMentionWidthSafetySp)
+    (label.sumOf { it.slockPlainMentionWidthSp().toDouble() }.toFloat() + label.slockPlainMentionWidthSafetySp())
         .coerceAtLeast(28f)
         .sp
 
@@ -1497,13 +1497,19 @@ private const val SlockMarkdownInlineCodeMinHeightSp = 24f
 private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 private const val SlockMarkdownMeasuredWidthSafetySp = 6f
-private const val SlockMarkdownMentionWidthSafetySp = 32f
 private val SlockMarkdownInlineChipTextHeight = 22.dp
 private val SlockMarkdownMentionUnderlineInset = 3.dp
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
         total + if (char.code > 0x7F) 2 else 1
+    }
+
+private fun String.slockPlainMentionWidthSafetySp(): Float =
+    when {
+        slockInlineTextWidthUnits() <= 10 -> 12f
+        length <= 14 -> 18f
+        else -> 24f
     }
 
 private fun Char.slockPlainMentionWidthSp(): Float =
