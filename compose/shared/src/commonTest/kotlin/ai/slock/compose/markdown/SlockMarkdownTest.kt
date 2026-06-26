@@ -291,10 +291,10 @@ class SlockMarkdownTest {
         val resolvedStyle = slockMarkdownTextStyleWithInlineLineHeight(style)
         val typography = slockMarkdownTypography(style)
 
-        assertEquals(24.sp, resolvedStyle.lineHeight)
-        assertEquals(24.sp, typography.text.lineHeight)
-        assertEquals(24.sp, typography.paragraph.lineHeight)
-        assertEquals(24.sp, typography.inlineCode.lineHeight)
+        assertEquals(22.sp, resolvedStyle.lineHeight)
+        assertEquals(22.sp, typography.text.lineHeight)
+        assertEquals(22.sp, typography.paragraph.lineHeight)
+        assertEquals(22.sp, typography.inlineCode.lineHeight)
         assertEquals(SlockType.Body.fontFamily, resolvedStyle.fontFamily)
     }
 

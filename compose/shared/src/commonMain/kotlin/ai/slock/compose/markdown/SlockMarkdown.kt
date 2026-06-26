@@ -1096,7 +1096,7 @@ private fun FontWeight?.slockMarkdownTextConstWeight(): String =
     }
 
 private val SlockMarkdownBodyFontSize = 14.sp
-private val SlockMarkdownBodyLineHeight = 24.sp
+private val SlockMarkdownBodyLineHeight = 22.sp
 
 @Composable
 fun SlockMarkdownBody(
@@ -1352,7 +1352,7 @@ fun SlockMarkdownBody(
 // Text measure even when nothing actually changed.
 private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
-private val SlockMarkdownMinimumInlineLineHeight = 24.sp
+private val SlockMarkdownMinimumInlineLineHeight = 22.sp
 
 internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
