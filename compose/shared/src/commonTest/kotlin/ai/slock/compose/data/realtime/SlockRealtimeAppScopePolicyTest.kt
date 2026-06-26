@@ -129,6 +129,40 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
+    fun coordinatorConsumesRoomCommandsBeforeEmittingJoin() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val roomCommandBus = FakeRoomCommandBus()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), roomCommandBus)
+
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
+
+        roomCommandBus.emit(
+            SlockRealtimeRoomCommand(
+                action = SlockRealtimeNotifyContract.ActionJoinChannel,
+                channelIdValue = "channel-1",
+                reason = "notify"
+            )
+        )
+        roomCommandBus.emit(
+            SlockRealtimeRoomCommand(
+                action = SlockRealtimeNotifyContract.ActionJoinChannel,
+                channelIdValue = "channel-1",
+                reason = "notify"
+            )
+        )
+        roomCommandBus.emit(SlockRealtimeRoomCommand(action = "unsupported", channelIdValue = "channel-2"))
+        roomCommandBus.emit(
+            SlockRealtimeRoomCommand(
+                action = SlockRealtimeNotifyContract.ActionJoinChannel,
+                channelIdValue = "",
+                reason = "notify"
+            )
+        )
+
+        assertEquals(listOf(ChannelId("channel-1")), connection.joinedChannels)
+    }
+
+    @Test
     fun hostEngineConnectDecisionMatchesAppScopeCoordinatorRules() {
         val engine = SlockRealtimeAppScopeEngine()
 
@@ -180,12 +214,22 @@ class SlockRealtimeAppScopePolicyTest {
         )
         val join = engine.joinChannelDecisionForHost("channel-1", "notify")
         val duplicateJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val blankJoin =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionJoinChannel,
+                "",
+                "notify"
+            )
+        val unsupportedJoin =
+            engine.roomCommandDecisionForHost("unsupported", "channel-2", "notify")
         val heartbeat = engine.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
         val message = engine.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
 
         assertTrue(join.shouldJoin)
         assertEquals(ChannelId("channel-1"), join.channelId)
         assertFalse(duplicateJoin.shouldJoin)
+        assertFalse(blankJoin.shouldJoin)
+        assertFalse(unsupportedJoin.shouldJoin)
         assertFalse(heartbeat.shouldFanOut)
         assertTrue(message.shouldFanOut)
         assertEquals(ServerId("server-1"), message.serverId)
@@ -215,6 +259,25 @@ class SlockRealtimeAppScopePolicyTest {
             parentMessageId = parentMessageId?.let(::MessageId)
         )
 
+    private class FakeRoomCommandBus : SlockRealtimeAppScopeRoomCommandBus {
+        private val listeners = mutableListOf<(SlockRealtimeRoomCommand) -> Unit>()
+
+        override fun observeRoomCommands(
+            listener: (SlockRealtimeRoomCommand) -> Unit
+        ): RealtimeSubscription {
+            listeners += listener
+            return RealtimeSubscription {
+                listeners -= listener
+            }
+        }
+
+        fun emit(command: SlockRealtimeRoomCommand) {
+            listeners.toList().forEach { listener ->
+                listener(command)
+            }
+        }
+    }
+
     private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
         override var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         val connectedLastSeqs = mutableListOf<Long>()
@@ -234,7 +297,7 @@ class SlockRealtimeAppScopePolicyTest {
             state = RealtimeConnectionState.Disconnected
         }
 
-        override fun joinChannel(channelId: ChannelId) {
+        override fun emitJoinChannel(channelId: ChannelId) {
             joinedChannels += channelId
         }
 

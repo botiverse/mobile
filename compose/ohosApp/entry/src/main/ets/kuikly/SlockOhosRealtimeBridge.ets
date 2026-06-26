@@ -204,11 +204,8 @@ export class SlockOhosRealtimeBridge {
     }
   }
 
-  private joinChannel(channelId: string): void {
-    if (channelId.length === 0) {
-      return;
-    }
-    const decision = Napi.slockRealtimeJoinChannelDecision(channelId, 'notify');
+  private handleRoomCommand(action: string, channelId: string): void {
+    const decision = Napi.slockRealtimeRoomCommandDecision(action, channelId, 'notify');
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
@@ -251,9 +248,8 @@ export class SlockOhosRealtimeBridge {
 
   private handleRealtimeRoomsNotify(params: KRRecord): void {
     const action = (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '';
-    if (action === GeneratedRealtimeContract.RoomAction.JoinChannel) {
-      this.joinChannel((params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '');
-    }
+    const channelId = (params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '';
+    this.handleRoomCommand(action, channelId);
   }
 
   private syncResume(lastSeq: number): void {

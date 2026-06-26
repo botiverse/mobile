@@ -273,6 +273,34 @@ static napi_value SlockRealtimeJoinChannelDecision(napi_env env, napi_callback_i
     return result;
 }
 
+static napi_value SlockRealtimeRoomCommandDecision(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value argv[3];
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    const std::string action = GetStringArgOrDefault(env, argc, argv, 0);
+    const std::string channelId = GetStringArgOrDefault(env, argc, argv, 1);
+    const std::string reason = GetStringArgOrDefault(env, argc, argv, 2, "notify");
+
+    napi_value result;
+    napi_create_object(env, &result);
+    std::lock_guard<std::mutex> lock(g_slockRealtimeEngineMutex);
+    auto api = SharedSymbols();
+    auto engine = EnsureRealtimeEngineLocked();
+    auto decision =
+        api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+            .roomCommandDecisionForHost(engine, action.c_str(), channelId.c_str(), reason.c_str());
+    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeJoinDecision;
+    auto modelApi = api->kotlin.root.ai.slock.compose.model;
+    auto decidedChannel = decisionApi.get_channelId(decision);
+    const char *decidedChannelValue =
+        decidedChannel.pinned != nullptr ? modelApi.ChannelId.get_value(decidedChannel) : nullptr;
+
+    SetBoolProperty(env, result, "shouldJoin", decisionApi.get_shouldJoin(decision));
+    SetOptionalStringProperty(env, result, "channelId", decidedChannelValue);
+    SetStringProperty(env, result, "logMessage", decisionApi.get_logMessage(decision));
+    return result;
+}
+
 static napi_value SlockRealtimeRawDecision(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value argv[2];
@@ -343,6 +371,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"slockRealtimeConnectDecision", nullptr, SlockRealtimeConnectDecision, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"slockRealtimeDisconnectForSessionEnd", nullptr, SlockRealtimeDisconnectForSessionEnd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"slockRealtimeJoinChannelDecision", nullptr, SlockRealtimeJoinChannelDecision, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"slockRealtimeRoomCommandDecision", nullptr, SlockRealtimeRoomCommandDecision, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"slockRealtimeRawDecision", nullptr, SlockRealtimeRawDecision, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"slockRealtimeOnAppShown", nullptr, SlockRealtimeOnAppShown, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"slockRealtimeOnAppHidden", nullptr, SlockRealtimeOnAppHidden, nullptr, nullptr, nullptr, napi_default, nullptr}
