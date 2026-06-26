@@ -1,7 +1,7 @@
 # React vs KMP Alignment: Realtime Slice
 
 Verified: 2026-06-27
-Main HEAD used for KMP/Android verification: `b6593c85`
+Main HEAD used for KMP/Android verification: `fd6089cc`
 React source used for comparison: `third_party/slock-source`
 
 This document replaces the earlier 2026-06-26 draft. The old draft mixed several
@@ -121,8 +121,38 @@ KMP now has the same shape:
   entries.
 
 Status: implemented for agent-detail/member presence flow. Validation should
-focus on whether every UI surface that displays live agent status reads from the
-member/agent-detail store path rather than a stale local snapshot.
+focus on full user-flow smoke, not on missing seq fields.
+
+### Agent Status Consumers
+
+The follow-up consumer audit did not find a current KMP surface that renders the
+agent status indicator directly from a stale route/pageData snapshot once the
+shared resolver has data.
+
+Current references:
+- `SlockAgentStatusIndicator.kt:27-39` builds `slockAgentStatusResolver(...)`
+  from `SharedServerMembersStore.memberStatusFlow(...)`.
+- `SlockHomeComponents.kt:316-323` creates the Home resolver from the shared
+  server-members store and current server id.
+- `SlockHomeComponents.kt:2164-2168` renders agent DM status dots from the
+  resolver, falling back to offline only when no resolver value exists.
+- `ThreadPage.kt:2914-2920` creates thread message/member modal status
+  resolvers from `SharedServerMembersStore`.
+- `ThreadPage.kt:8852-8855` resolves message author status through the resolver
+  instead of `authorAgentStatus` payload data.
+- `MembersPage.kt:812-818` and `MembersPage.kt:1303-1316` create Members list
+  and member-detail resolvers and background-load the same server members store.
+- `MembersPage.kt:2122-2126`, `MembersPage.kt:5330-5331`, and
+  `MembersPage.kt:6803-6807` prefer resolver-backed status for members,
+  created-agent rows, and profile/detail surfaces, with static profile/detail
+  status used only as first-paint fallback.
+- `SettingsHomePage.kt:796-802` and `SettingsHomePage.kt:11428-11443` use the
+  same resolver path for Home/Search entity leading avatars.
+
+Status: agent-status consumption is aligned enough to remove it from the open
+validation list. Remaining risk is end-to-end smoke around room joins,
+foreground/background reconnect, and whether app-shell realtime reaches these
+stores under every entry point.
 
 ### LastSeq, Heartbeat, and Gap Recovery
 
@@ -206,11 +236,12 @@ thread/task/member state as direct channel entry points.
    - If not, consolidate the channel path onto the same `RealtimeCursorPolicy`
      / visible-stream recovery rule.
 
-2. **Agent status surfaces**
-   - Verify Home, thread rows, member detail, and profile surfaces all consume
-     the member/agent-detail presence path.
-   - A stale local snapshot bug here is possible even though the seq machinery
-     exists.
+2. **Agent status end-to-end smoke**
+   - The store and resolver consumers are wired. Validate the live user flow:
+     agent activity push reaches Home DM dots, thread author dots, Members list,
+     member detail, and search/profile surfaces after reconnect and room joins.
+   - Track any failure here as a room-join/domain-sink delivery bug unless a
+     specific consumer bypass is found.
 
 3. **Notification title/body quality**
    - App-scope notification hooks exist, but the content quality issue should
@@ -259,6 +290,23 @@ What this pins:
 - `SharedHomeStore` keeps the newest sequenced presence in memory without
   writing transient presence back to durable Home cache.
 
+2026-06-27 agent-status consumer focused verification also passed on
+`fd6089cc`:
+
+```bash
+./gradlew :shared:testDebugUnitTest \
+  --tests ai.slock.compose.data.SharedServerMembersStoreTest.memberStatusFlowEmitsOnlyForTargetMemberStatusChanges \
+  --tests ai.slock.compose.ThreadPayloadTest.serverMembersPresenceFactResolvesAgentStatusWithoutLoadedRoster \
+  --tests ai.slock.compose.ThreadPayloadTest.threadAgentStatusLookupUsesServerMembersStateInsteadOfPayloadSnapshot
+```
+
+What this pins:
+- `memberStatusFlow` emits only for the targeted member and updates from
+  `applyPresence`.
+- thread status lookup prefers server-members / presence state over static
+  payload `authorAgentStatus`.
+- presence facts can resolve an agent status even before the roster has loaded.
+
 ## Recommended Next Work
 
 1. Keep the focused tests above in the regression gate for realtime/status
@@ -269,7 +317,8 @@ What this pins:
 2. Add or update tests only for gaps that are not already pinned:
    - channel visible-gap recovery parity with reply-thread recovery;
    - app-shell `realtimeLastSeq` reset on server switch / token change;
-   - status snapshot cannot overwrite a newer sequenced activity update.
+   - end-to-end agent status push after reconnect/room joins reaches Home,
+     Thread, Members, detail/profile, and Search surfaces.
 
 3. Keep future route/thread fixes inside the launch contract:
    route/pageData carries only identity and intent; product state is loaded from
