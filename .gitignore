@@ -26,3 +26,4 @@ temp_compose/
 /third_party/.workdirs/
 
 .agents/.tmp/
+trace_processor
