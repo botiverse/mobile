@@ -50,6 +50,7 @@ import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -84,8 +85,8 @@ private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
-private val ComposerMemberSuggestionAvatarSize = 24.dp
-private val ComposerAgentActivityDotSize = 8.dp
+private val ComposerMemberSuggestionAvatarSize = 20.dp
+private val ComposerAgentActivityDotSize = 10.dp
 private val ComposerChannelSuggestionIconSize = 22.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
@@ -1236,12 +1237,13 @@ private fun ComposerMemberSuggestionRow(
         muted = muted,
         selectedColor = SlockColor.BrandYellow,
         minHeight = ComposerMemberSuggestionRowMinHeight,
+        mutedOverlay = true,
         onClick = onClick
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
                 modifier =
@@ -1295,6 +1297,7 @@ private fun ComposerMemberSuggestionRow(
                 style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
                 color = handleColor,
                 modifier = Modifier.width(74.dp),
+                textAlign = TextAlign.End,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1753,6 +1756,7 @@ private fun ComposerSuggestionInteractiveRow(
     muted: Boolean,
     selectedColor: Color,
     minHeight: Dp,
+    mutedOverlay: Boolean = false,
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -1763,16 +1767,28 @@ private fun ComposerSuggestionInteractiveRow(
             else -> SlockColor.SurfaceWhite
         }
     Column(modifier = Modifier.fillMaxWidth().background(background)) {
-        Row(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            content()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                content()
+            }
+            if (muted && mutedOverlay) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(SlockColor.SurfaceWhite.copy(alpha = 0.52f))
+                )
+            }
         }
     }
 }
