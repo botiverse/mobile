@@ -101,6 +101,24 @@ data class SharedServerMembersState(
             presence = member.presence
         )
     }
+
+    fun memberProfile(
+        serverId: ServerId?,
+        memberId: String?
+    ): MemberProfile? {
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val entries =
+            if (cleanServerId != null) {
+                listOfNotNull(entriesByServerId[cleanServerId])
+            } else {
+                entriesByServerId.values.toList()
+            }
+        return entries
+            .asSequence()
+            .flatMap { it.members.asSequence() }
+            .firstOrNull { it.id.value.trim() == cleanMemberId }
+    }
 }
 
 data class SharedServerMemberStatus(
@@ -147,6 +165,14 @@ class SharedServerMembersStore(
     ): Flow<SharedServerMemberStatus?> =
         state
             .map { current -> current.memberStatus(serverId, memberId) }
+            .distinctUntilChanged()
+
+    fun memberProfileFlow(
+        serverId: ServerId?,
+        memberId: String?
+    ): Flow<MemberProfile?> =
+        state
+            .map { current -> current.memberProfile(serverId, memberId) }
             .distinctUntilChanged()
 
     fun seed(snapshot: MemberSnapshot) {

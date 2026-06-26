@@ -95,7 +95,6 @@ import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
-import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.resolveMergedAvatarSlot
@@ -1835,13 +1834,8 @@ internal class SharedThreadDataSource(
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): KuiklyThreadScreenPayload {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
-        val homeAvatarByMemberId =
-            localWriteThrough
-                ?.readHomeSnapshot(serverId)
-                ?.directMessageAvatarWireValuesByMemberId()
-                .orEmpty()
         senderProfilesCache[serverId.value]?.let { profilesById ->
-            return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
+            return withSenderProfiles(profilesById)
         }
         val memberProfilesById =
             serverMembersStore
@@ -1851,7 +1845,7 @@ internal class SharedThreadDataSource(
                 .orEmpty()
         val profilesById = memberProfilesById + loadThreadSenderAgentProfiles(serverId)
         senderProfilesCache[serverId.value] = profilesById
-        return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
+        return withSenderProfiles(profilesById)
     }
 
     private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
@@ -1876,13 +1870,8 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return this
-        val homeAvatarByMemberId =
-            localWriteThrough
-                ?.readHomeSnapshot(ServerId(serverId))
-                ?.directMessageAvatarWireValuesByMemberId()
-                .orEmpty()
         val cachedProfiles = senderProfilesCache[serverId].orEmpty()
-        return withSenderProfiles(cachedProfiles).withHomeDirectMessageAvatars(homeAvatarByMemberId)
+        return withSenderProfiles(cachedProfiles)
     }
 
     private suspend fun loadThreadSenderAgentProfiles(serverId: ServerId): Map<String, MemberProfile> {
@@ -4792,38 +4781,6 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
-    val isAgent = profile.kind == MemberKind.Agent || authorKind.equals("agent", ignoreCase = true)
-    val avatarMerge =
-        resolveMergedAvatarSlot(
-            kind = if (isAgent) MemberKind.Agent else profile.kind,
-            id = authorId.ifBlank { profile.id.value },
-            currentAvatarWireValue = avatarWireValue,
-            currentGravatarHash = gravatarHash,
-            incomingAvatarWireValue = profile.avatar?.wireValue,
-            incomingAvatarUrl = profile.avatarUrl,
-            incomingGravatarHash = profile.gravatarHash
-        )
-    val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
-    val resolvedAvatarWireValue = avatarMerge.effectiveAvatarWireValue
-    if (resolvedAvatarWireValue?.isGravatarAvatarWireValue() == true ||
-        (isAgent && currentAvatarWireValue?.isGravatarAvatarWireValue() == true)
-    ) {
-        logThreadAvatarDiagnostic(
-            reason =
-                if (isAgent && currentAvatarWireValue?.isGravatarAvatarWireValue() == true) {
-                    "profile_merge_agent_gravatar_candidate"
-                } else {
-                    "profile_merge_resolved_gravatar"
-                },
-            message = this,
-            resolvedAvatarWireValue = resolvedAvatarWireValue,
-            profileKind = profile.kind,
-            profileAvatarWireValue = profile.avatar?.wireValue,
-            profileAvatarUrl = profile.avatarUrl,
-            profileGravatarHash = profile.gravatarHash,
-            homeAvatarWireValue = null
-        )
-    }
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
         authorHandle = authorHandle.ifBlank { profile.handle },
@@ -4834,8 +4791,6 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
                 else -> authorKind
         },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
-        avatarWireValue = resolvedAvatarWireValue,
-        gravatarHash = avatarMerge.gravatarHash,
         senderMembershipStatus = senderMembershipStatus ?: profile.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = authorDeletedAt ?: profile.agentDeletedAt?.takeIf { it.isNotBlank() }
     )
@@ -4873,52 +4828,6 @@ private fun KuiklyThreadScreenPayload.withSenderProfiles(
         messages = messages.map { it.withSenderProfile(profilesById[it.authorId]) },
         originMessage = originMessage?.withSenderProfile(profilesById[originMessage.authorId])
     )
-
-private fun KuiklyThreadScreenPayload.withHomeDirectMessageAvatars(
-    avatarByMemberId: Map<String, String>
-): KuiklyThreadScreenPayload {
-    if (avatarByMemberId.isEmpty()) return this
-    return copy(
-        messages = messages.map { it.withHomeDirectMessageAvatar(avatarByMemberId[it.authorId]) },
-        originMessage = originMessage?.withHomeDirectMessageAvatar(avatarByMemberId[originMessage.authorId])
-    )
-}
-
-private fun KuiklyThreadMessageItem.withHomeDirectMessageAvatar(avatarWireValue: String?): KuiklyThreadMessageItem {
-    val wireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: return this
-    val isAgent = authorKind.equals("agent", ignoreCase = true)
-    if (!isAgent) return this
-    val currentWireValue = this.avatarWireValue?.takeIf { it.isNotBlank() }
-    val nextWireValue =
-        resolveMergedAvatarSlot(
-            kind = MemberKind.Agent,
-            id = authorId,
-            currentAvatarWireValue = currentWireValue,
-            currentGravatarHash = gravatarHash,
-            incomingAvatarWireValue = wireValue
-        ).effectiveAvatarWireValue
-    if (currentWireValue?.isGravatarAvatarWireValue() == true || nextWireValue?.isGravatarAvatarWireValue() == true) {
-        logThreadAvatarDiagnostic(
-            reason =
-                if (nextWireValue?.isGravatarAvatarWireValue() == true) {
-                    "home_dm_avatar_resolved_gravatar"
-                } else {
-                    "home_dm_avatar_overrode_gravatar_candidate"
-                },
-            message = this,
-            resolvedAvatarWireValue = nextWireValue,
-            profileKind = null,
-            profileAvatarWireValue = null,
-            profileAvatarUrl = null,
-            profileGravatarHash = null,
-            homeAvatarWireValue = wireValue
-        )
-    }
-    return copy(
-        avatarWireValue = nextWireValue,
-        gravatarHash = null
-    )
-}
 
 private fun HomeSnapshot.directMessageAvatarWireValuesByMemberId(): Map<String, String> =
     directMessages.mapNotNull { conversation ->
