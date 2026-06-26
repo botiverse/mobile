@@ -7,81 +7,48 @@ package ai.slock.compose.data.realtime
  * sites (e.g. `routes/messages.ts`, `routes/tasks.ts`, `services/taskRealtimeEvents.ts`).
  */
 object RealtimeSocketEvents {
-    const val Connect = "connect"
-    const val ConnectError = "connect_error"
-    const val Disconnect = "disconnect"
-    const val Reconnect = "reconnect"
-    const val ReconnectAttempt = "reconnect_attempt"
-    const val ReconnectError = "reconnect_error"
-    const val ReconnectFailed = "reconnect_failed"
-    const val RoomsJoined = "rooms:joined"
-    const val SyncResume = "sync:resume"
-    const val SyncResumeResponse = "sync:resume:response"
-    const val JoinChannel = "join:channel"
-    const val Heartbeat = "heartbeat"
-    const val MessageNew = "message:new"
-    const val MessageUpdated = "message:updated"
-    const val DirectMessageNew = "dm:new"
-    const val ThreadUpdated = "thread:updated"
-    const val ChannelUpdated = "channel:updated"
-    const val ChannelMembersUpdated = "channel:members-updated"
-    const val TaskCreated = "task:created"
-    const val TaskUpdated = "task:updated"
-    const val TaskDeleted = "task:deleted"
-    const val AgentActivity = "agent:activity"
-    const val AgentSession = "agent:session"
-    const val AgentCreated = "agent:created"
-    const val AgentDeleted = "agent:deleted"
-    const val MachineStatus = "machine:status"
-    const val MachineCapabilities = "machine:capabilities"
-    const val MachineUpdated = "machine:updated"
-    const val ComputerUpgradeProgress = "computer:upgrade:progress"
-    const val ComputerUpgradeDone = "computer:upgrade:done"
-    const val DaemonStatus = "daemon:status"
-    const val ServerMemberAdded = "server:member-added"
-    const val ServerMemberUpdated = "server:member-updated"
-    const val ServerMemberLeft = "server:member:left"
-    const val ServerMemberRemoved = "server:member-removed"
-    const val ServerMembershipRemoved = "server:membership-removed"
-    const val ServerDeleted = "server:deleted"
-    const val ServerPlanUpdated = "server:plan-updated"
-    const val AnnouncementNew = "announcement:new"
-    const val ReminderFired = "reminder:fired"
-    const val ReminderScheduled = "reminder:scheduled"
-    const val ReminderCanceled = "reminder:canceled"
+    const val Connect = GeneratedRealtimeContract.SocketEvent.Connect
+    const val ConnectError = GeneratedRealtimeContract.SocketEvent.ConnectError
+    const val Disconnect = GeneratedRealtimeContract.SocketEvent.Disconnect
+    const val Reconnect = GeneratedRealtimeContract.SocketEvent.Reconnect
+    const val ReconnectAttempt = GeneratedRealtimeContract.SocketEvent.ReconnectAttempt
+    const val ReconnectError = GeneratedRealtimeContract.SocketEvent.ReconnectError
+    const val ReconnectFailed = GeneratedRealtimeContract.SocketEvent.ReconnectFailed
+    const val RoomsJoined = GeneratedRealtimeContract.SocketEvent.RoomsJoined
+    const val SyncResume = GeneratedRealtimeContract.SocketEvent.SyncResume
+    const val SyncResumeResponse = GeneratedRealtimeContract.SocketEvent.SyncResumeResponse
+    const val JoinChannel = GeneratedRealtimeContract.SocketEvent.JoinChannel
+    const val Heartbeat = GeneratedRealtimeContract.SocketEvent.Heartbeat
+    const val MessageNew = GeneratedRealtimeContract.SocketEvent.MessageNew
+    const val MessageUpdated = GeneratedRealtimeContract.SocketEvent.MessageUpdated
+    const val DirectMessageNew = GeneratedRealtimeContract.SocketEvent.DirectMessageNew
+    const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
+    const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
+    const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
+    const val TaskCreated = GeneratedRealtimeContract.SocketEvent.TaskCreated
+    const val TaskUpdated = GeneratedRealtimeContract.SocketEvent.TaskUpdated
+    const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted
+    const val AgentActivity = GeneratedRealtimeContract.SocketEvent.AgentActivity
+    const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
+    const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
+    const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted
+    const val MachineStatus = GeneratedRealtimeContract.SocketEvent.MachineStatus
+    const val MachineCapabilities = GeneratedRealtimeContract.SocketEvent.MachineCapabilities
+    const val MachineUpdated = GeneratedRealtimeContract.SocketEvent.MachineUpdated
+    const val ComputerUpgradeProgress = GeneratedRealtimeContract.SocketEvent.ComputerUpgradeProgress
+    const val ComputerUpgradeDone = GeneratedRealtimeContract.SocketEvent.ComputerUpgradeDone
+    const val DaemonStatus = GeneratedRealtimeContract.SocketEvent.DaemonStatus
+    const val ServerMemberAdded = GeneratedRealtimeContract.SocketEvent.ServerMemberAdded
+    const val ServerMemberUpdated = GeneratedRealtimeContract.SocketEvent.ServerMemberUpdated
+    const val ServerMemberLeft = GeneratedRealtimeContract.SocketEvent.ServerMemberLeft
+    const val ServerMemberRemoved = GeneratedRealtimeContract.SocketEvent.ServerMemberRemoved
+    const val ServerMembershipRemoved = GeneratedRealtimeContract.SocketEvent.ServerMembershipRemoved
+    const val ServerDeleted = GeneratedRealtimeContract.SocketEvent.ServerDeleted
+    const val ServerPlanUpdated = GeneratedRealtimeContract.SocketEvent.ServerPlanUpdated
+    const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
+    const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired
+    const val ReminderScheduled = GeneratedRealtimeContract.SocketEvent.ReminderScheduled
+    const val ReminderCanceled = GeneratedRealtimeContract.SocketEvent.ReminderCanceled
 
-    val ServerWireEvents: List<String> = listOf(
-        MessageNew,
-        DirectMessageNew,
-        MessageUpdated,
-        ThreadUpdated,
-        ChannelUpdated,
-        ChannelMembersUpdated,
-        TaskCreated,
-        TaskUpdated,
-        TaskDeleted,
-        AgentActivity,
-        AgentSession,
-        AgentCreated,
-        AgentDeleted,
-        MachineStatus,
-        MachineCapabilities,
-        MachineUpdated,
-        ComputerUpgradeProgress,
-        ComputerUpgradeDone,
-        DaemonStatus,
-        ServerMemberAdded,
-        ServerMemberUpdated,
-        ServerMemberLeft,
-        ServerMemberRemoved,
-        ServerMembershipRemoved,
-        ServerDeleted,
-        ServerPlanUpdated,
-        AnnouncementNew,
-        ReminderFired,
-        ReminderScheduled,
-        ReminderCanceled,
-        SyncResumeResponse,
-        Heartbeat
-    )
+    val ServerWireEvents: List<String> = GeneratedRealtimeContract.SocketEvent.ServerWireEvents
 }
