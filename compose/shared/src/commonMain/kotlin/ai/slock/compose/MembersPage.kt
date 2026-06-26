@@ -179,6 +179,9 @@ private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 32.dp
 private val MembersHeaderMessageButtonWidth = 116.dp
+private val MembersAgentActivityTimeColumnWidth = 42.dp
+private val MembersAgentActivityIndicatorLaneWidth = 13.dp
+private val MembersAgentActivityContentGap = 6.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
@@ -5960,7 +5963,7 @@ private fun MembersAgentActivityTab(
                     horizontal = MembersPageInset,
                     vertical = SlockSpacing.Xs
                 ),
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionTitle("ACTIVITY DIAGNOSTICS", modifier = Modifier.weight(1f))
@@ -6057,20 +6060,20 @@ private fun MembersAgentActivityRow(
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
             .padding(SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier.width(94.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        Text(
+            text = activity.timestamp.membersActivityDisplayTime(timeContext),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(MembersAgentActivityTimeColumnWidth)
+        )
+        Box(
+            modifier = Modifier.width(MembersAgentActivityIndicatorLaneWidth),
+            contentAlignment = Alignment.TopCenter
         ) {
-            Text(
-                text = activity.timestamp.membersActivityDisplayTime(timeContext),
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                modifier = Modifier.weight(1f, fill = false)
-            )
             SlockStatusIndicator(
                 color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
                 size = 9.dp,
@@ -6079,7 +6082,9 @@ private fun MembersAgentActivityRow(
             )
         }
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .padding(start = MembersAgentActivityContentGap)
+                .weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Text(
