@@ -97,10 +97,13 @@ internal class SlockSharedStoreProvider private constructor(
                 logger("auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
                 scope.launch {
                     runCatchingPreservingCancellation {
-                        authStore.clearSessionFromSessionClearedNotify(signal.reason)
-                    }.onSuccess {
+                        authStore.clearSessionFromSessionClearedNotify(
+                            reason = signal.reason,
+                            previousSessionFingerprint = signal.previousSessionFingerprint
+                        )
+                    }.onSuccess { cleared ->
                         logger(
-                            "auth_session_clear_notify_result result=success " +
+                            "auth_session_clear_notify_result result=success cleared=$cleared " +
                                 "source=${signal.source} reason=${signal.reason}"
                         )
                     }.onFailure { throwable ->

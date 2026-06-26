@@ -257,18 +257,37 @@ class KuiklyMMKVAuthSessionStore(
         clearSession(notifyPeers = true, reason = "local")
     }
 
-    suspend fun clearSessionFromSessionClearedNotify(reason: String) {
-        clearSession(notifyPeers = false, reason = reason)
+    suspend fun clearSessionFromSessionClearedNotify(
+        reason: String,
+        previousSessionFingerprint: String
+    ): Boolean {
+        val shouldClear =
+            mutex.withLock {
+                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+                if (current?.authSessionClearFingerprint() != previousSessionFingerprint) {
+                    return@withLock false
+                }
+                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                true
+            }
+        if (shouldClear) {
+            invalidations.emit(Unit)
+        }
+        return shouldClear
     }
 
     private suspend fun clearSession(notifyPeers: Boolean, reason: String) {
-        mutex.withLock {
-            store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
-        }
+        val previousSession =
+            mutex.withLock {
+                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                current
+            }
         invalidations.emit(Unit)
-        if (notifyPeers) {
+        if (notifyPeers && previousSession != null) {
+            val previousSessionFingerprint = previousSession.authSessionClearFingerprint()
             runCatching {
-                sessionClearEvents?.postSessionCleared(reason)
+                sessionClearEvents?.postSessionCleared(reason, previousSessionFingerprint)
             }
         }
     }
@@ -311,6 +330,25 @@ private val authSessionStoreJson = Json {
 
 private fun StoredAuthUser.rememberedServerSelectionStoreKey(): String? =
     accountServerSelectionKey()?.let { "rememberedServerSelection:$it" }
+
+internal fun StoredAuthSession.authSessionClearFingerprint(): String =
+    listOf(
+        user.id,
+        user.email,
+        accessToken,
+        refreshToken,
+        selectedServerId.orEmpty(),
+        selectedServerSlug.orEmpty()
+    ).joinToString("|").stableAuthSessionFingerprint()
+
+private fun String.stableAuthSessionFingerprint(): String {
+    var hash = 2166136261L
+    for (character in this) {
+        hash = hash xor character.code.toLong()
+        hash = (hash * 16777619L) and 0xffffffffL
+    }
+    return hash.toString(16)
+}
 
 private fun StoredAuthUser.accountServerSelectionKey(): String? {
     val raw =

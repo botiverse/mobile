@@ -8,14 +8,16 @@ import com.tencent.kuikly.core.pager.Pager
 private const val AUTH_SESSION_CLEARED_EVENT = "raft.authSessionCleared"
 private const val KEY_SOURCE = "source"
 private const val KEY_REASON = "reason"
+private const val KEY_PREVIOUS_SESSION_FINGERPRINT = "previousSessionFingerprint"
 
 interface SlockAuthSessionClearEventSink {
-    fun postSessionCleared(reason: String)
+    fun postSessionCleared(reason: String, previousSessionFingerprint: String)
 }
 
 internal data class AuthSessionClearedSignal(
     val source: String,
-    val reason: String
+    val reason: String,
+    val previousSessionFingerprint: String
 )
 
 internal class KuiklyAuthSessionEvents(
@@ -37,20 +39,24 @@ internal class KuiklyAuthSessionEvents(
     fun isLocalSource(signal: AuthSessionClearedSignal): Boolean =
         signal.source == source
 
-    override fun postSessionCleared(reason: String) {
+    override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
         module.postNotify(
             AUTH_SESSION_CLEARED_EVENT,
             JSONObject()
                 .put(KEY_SOURCE, source)
                 .put(KEY_REASON, reason)
+                .put(KEY_PREVIOUS_SESSION_FINGERPRINT, previousSessionFingerprint)
         )
     }
 }
 
 private fun JSONObject.toAuthSessionClearedSignal(): AuthSessionClearedSignal? {
     val source = optString(KEY_SOURCE).takeIf { it.isNotBlank() } ?: return null
+    val previousSessionFingerprint =
+        optString(KEY_PREVIOUS_SESSION_FINGERPRINT).takeIf { it.isNotBlank() } ?: return null
     return AuthSessionClearedSignal(
         source = source,
-        reason = optString(KEY_REASON).ifBlank { "unknown" }
+        reason = optString(KEY_REASON).ifBlank { "unknown" },
+        previousSessionFingerprint = previousSessionFingerprint
     )
 }
