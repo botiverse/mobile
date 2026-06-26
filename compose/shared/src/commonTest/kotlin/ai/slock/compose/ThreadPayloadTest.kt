@@ -536,6 +536,33 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadInitialProgressiveBottomRenderStartLimitsLargeThreadToLatestWindow() {
+        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 0))
+        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 8))
+        assertEquals(1, threadInitialProgressiveBottomRenderStart(messagesCount = 9))
+        assertEquals(42, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
+    }
+
+    @Test
+    fun threadInitialProgressiveBottomRenderStartKeepsFocusedMessageAvailable() {
+        assertEquals(
+            0,
+            threadInitialProgressiveBottomRenderStart(
+                messagesCount = 50,
+                focusedMessageIndex = 12
+            )
+        )
+    }
+
+    @Test
+    fun threadPreviousProgressiveBottomRenderStartPrependsInStableChunks() {
+        assertEquals(34, threadPreviousProgressiveBottomRenderStart(currentStart = 42))
+        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 4))
+        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 0))
+        assertEquals(41, threadPreviousProgressiveBottomRenderStart(currentStart = 42, step = 1))
+    }
+
+    @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             0,

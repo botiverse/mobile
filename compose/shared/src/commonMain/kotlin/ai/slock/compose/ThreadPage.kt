@@ -338,6 +338,9 @@ private object ThreadLocalSendNextId {
 internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 internal const val ThreadReplyEmptyTitle = "No replies yet"
+internal const val ThreadInitialBottomRenderWindowMessageCount = 8
+internal const val ThreadProgressiveBottomRenderWindowStep = 8
+private const val ThreadProgressiveBottomRenderWindowDelayMs = 32L
 internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -6652,16 +6655,83 @@ private fun ThreadMessagesList(
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
         return
     }
+    val focusedMessageIndex =
+        remember(payload.focusedMessageId, payload.messages) {
+            payload.focusedMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { focusedMessageId -> payload.messages.indexOfFirst { it.id == focusedMessageId } }
+                ?: -1
+        }
+    val initialProgressiveMessageStart =
+        remember(payload.messages.size, payload.messages.lastOrNull()?.id, focusedMessageIndex) {
+            threadInitialProgressiveBottomRenderStart(
+                messagesCount = payload.messages.size,
+                focusedMessageIndex = focusedMessageIndex
+            )
+        }
+    var progressiveWindowStarted by remember(threadInstanceKey) { mutableStateOf(false) }
+    var progressiveMessageStart by remember(threadInstanceKey) { mutableStateOf(0) }
+    val messageWindowStart =
+        if (!progressiveWindowStarted && initialProgressiveMessageStart > 0) {
+            initialProgressiveMessageStart
+        } else {
+            progressiveMessageStart
+        }.coerceIn(0, payload.messages.size)
+    val renderMessages =
+        remember(payload.messages, messageWindowStart) {
+            if (messageWindowStart <= 0) {
+                payload.messages
+            } else {
+                payload.messages.drop(messageWindowStart)
+            }
+        }
+    val hasProgressiveOlderWindow = messageWindowStart > 0
+    val renderPayload =
+        remember(payload, renderMessages, hasProgressiveOlderWindow) {
+            if (!hasProgressiveOlderWindow) {
+                payload
+            } else {
+                payload.copy(
+                    messages = renderMessages,
+                    canLoadMoreBefore = true,
+                    olderMessagesStatus = "loading"
+                )
+            }
+        }
+    LaunchedEffect(
+        threadInstanceKey,
+        payload.messages.size,
+        payload.messages.lastOrNull()?.id,
+        focusedMessageIndex,
+        initialProgressiveMessageStart
+    ) {
+        if (focusedMessageIndex >= 0) {
+            progressiveWindowStarted = true
+            progressiveMessageStart = 0
+            return@LaunchedEffect
+        }
+        if (!progressiveWindowStarted && initialProgressiveMessageStart > 0) {
+            progressiveWindowStarted = true
+            progressiveMessageStart = initialProgressiveMessageStart
+            diagnosticsLogger(
+                "thread_progressive_bottom_render_window event=start instance=$threadInstanceKey " +
+                    "messagesTotal=${payload.messages.size} renderStart=$initialProgressiveMessageStart " +
+                    "renderCount=${payload.messages.size - initialProgressiveMessageStart}"
+            )
+            return@LaunchedEffect
+        }
+        progressiveMessageStart = progressiveMessageStart.coerceIn(0, payload.messages.size)
+    }
     // Bottom-anchor signature: only the fields the anchor logic actually
     // reads. The previous remember keys listed `payload.messages` (the
     // list reference) which invalidated the cache on any list
     // replacement, even when the content was equivalent. Now the cache
     // is keyed on the content fields the underlying functions read.
     val latestItemIndex = remember(
-        payload.originStatus,
-        payload.messages.size
+        renderPayload.originStatus,
+        renderPayload.messages.size
     ) {
-        payload.latestMessageListItemIndex()
+        renderPayload.latestMessageListItemIndex()
     }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex =
@@ -6689,6 +6759,25 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        hasProgressiveOlderWindow,
+        messageWindowStart,
+        payload.messages.size
+    ) {
+        if (!initialBottomAnchorReady || !hasProgressiveOlderWindow) return@LaunchedEffect
+        delay(ThreadProgressiveBottomRenderWindowDelayMs)
+        val nextStart = threadPreviousProgressiveBottomRenderStart(messageWindowStart)
+        if (nextStart != progressiveMessageStart) {
+            progressiveMessageStart = nextStart
+            diagnosticsLogger(
+                "thread_progressive_bottom_render_window event=prepend instance=$threadInstanceKey " +
+                    "messagesTotal=${payload.messages.size} renderStart=$nextStart " +
+                    "renderCount=${payload.messages.size - nextStart}"
+            )
+        }
+    }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var userScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -6697,36 +6786,36 @@ private fun ThreadMessagesList(
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var consumedFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     val latestMessageLayoutKey = remember(
-        payload.originStatus,
-        payload.canLoadMoreBefore,
-        payload.canLoadMoreAfter,
-        payload.messages.size,
-        payload.messages.lastOrNull()?.id,
-        payload.messages.lastOrNull()?.body?.length,
-        payload.messages.lastOrNull()?.attachments?.size,
-        payload.messages.lastOrNull()?.taskId,
-        payload.messages.lastOrNull()?.replyCount,
-        payload.messages.lastOrNull()?.unreadReplyCount,
-        payload.messages.lastOrNull()?.threadReactionLayoutSignature()
+        renderPayload.originStatus,
+        renderPayload.canLoadMoreBefore,
+        renderPayload.canLoadMoreAfter,
+        renderPayload.messages.size,
+        renderPayload.messages.lastOrNull()?.id,
+        renderPayload.messages.lastOrNull()?.body?.length,
+        renderPayload.messages.lastOrNull()?.attachments?.size,
+        renderPayload.messages.lastOrNull()?.taskId,
+        renderPayload.messages.lastOrNull()?.replyCount,
+        renderPayload.messages.lastOrNull()?.unreadReplyCount,
+        renderPayload.messages.lastOrNull()?.threadReactionLayoutSignature()
     ) {
-        payload.latestMessageLayoutKey()
+        renderPayload.latestMessageLayoutKey()
     }
     val latestLocalSendBottomAnchorKey = remember(
-        payload.messages.size,
-        payload.messages.lastOrNull()?.id,
-        payload.messages.lastOrNull()?.deliveryState,
-        payload.messages.lastOrNull()?.body?.length,
-        payload.messages.lastOrNull()?.attachments?.size,
-        payload.messages.lastOrNull()?.pendingSendContext?.attachmentIds?.size
+        renderPayload.messages.size,
+        renderPayload.messages.lastOrNull()?.id,
+        renderPayload.messages.lastOrNull()?.deliveryState,
+        renderPayload.messages.lastOrNull()?.body?.length,
+        renderPayload.messages.lastOrNull()?.attachments?.size,
+        renderPayload.messages.lastOrNull()?.pendingSendContext?.attachmentIds?.size
     ) {
-        payload.latestLocalSendBottomAnchorKey()
+        renderPayload.latestLocalSendBottomAnchorKey()
     }
     val revealLatestLocalSendBeforeInitialAnchor =
         shouldRevealLatestLocalSendBeforeInitialBottomAnchor(
             initialBottomAnchorReady = initialBottomAnchorReady,
             latestLocalSendBottomAnchorKey = latestLocalSendBottomAnchorKey,
             latestItemIndex = latestItemIndex,
-            messageCount = payload.messages.size
+            messageCount = renderPayload.messages.size
         )
     val initialBottomAnchorPending =
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
@@ -6757,49 +6846,49 @@ private fun ThreadMessagesList(
             onThreadContentReady()
         }
     }
-    val currentPayloadState = rememberUpdatedState(payload)
+    val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
     val density = LocalDensity.current
     val initialContentLayoutKey = remember(
-        payload.originStatus,
-        payload.canLoadMoreBefore,
-        payload.canLoadMoreAfter,
-        payload.messages
+        renderPayload.originStatus,
+        renderPayload.canLoadMoreBefore,
+        renderPayload.canLoadMoreAfter,
+        renderPayload.messages
     ) {
-        payload.threadInitialContentLayoutKey()
+        renderPayload.threadInitialContentLayoutKey()
     }
     val initialMessageMinHeightsPx = remember(initialContentLayoutKey, density) {
-        payload.threadInitialMessageMinHeightsPx(density)
+        renderPayload.threadInitialMessageMinHeightsPx(density)
     }
-    val showReplyEmptyState = payload.messages.isEmpty() && payload.originStatus != "none"
+    val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
     val lazyItemCount =
         remember(
-            payload.originStatus,
-            payload.canLoadMoreBefore,
-            payload.messages.size,
-            payload.canLoadMoreAfter,
+            renderPayload.originStatus,
+            renderPayload.canLoadMoreBefore,
+            renderPayload.messages.size,
+            renderPayload.canLoadMoreAfter,
             showReplyEmptyState
         ) {
             threadMessagesLazyItemCount(
-                originStatus = payload.originStatus,
-                showHistoryBoundary = payload.hasThreadHistoryBoundaryItem(),
-                messagesCount = payload.messages.size,
-                canLoadMoreAfter = payload.canLoadMoreAfter
+                originStatus = renderPayload.originStatus,
+                showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
+                messagesCount = renderPayload.messages.size,
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter
             ) + if (showReplyEmptyState) 1 else 0
         }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(payload.olderMessagesStatus) }
-    LaunchedEffect(threadInstanceKey, payload.messages.size, lazyItemCount) {
+    LaunchedEffect(threadInstanceKey, renderPayload.messages.size, lazyItemCount) {
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
-            val stats = listState.threadLazyWindowStats(payload, lazyItemCount)
+            val stats = listState.threadLazyWindowStats(renderPayload, lazyItemCount)
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
                 if (firstViewportProbe.markLogged()) {
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
                             result = "laid_out",
-                            payload = payload,
+                            payload = renderPayload,
                             lazyItemCount = lazyItemCount,
                             stats = stats
                         )
@@ -6813,7 +6902,7 @@ private fun ThreadMessagesList(
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
                             result = "missing_layout",
-                            payload = payload,
+                            payload = renderPayload,
                             lazyItemCount = lazyItemCount,
                             stats = stats
                         )
@@ -6858,18 +6947,18 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(
         threadInstanceKey,
-        payload.canLoadMoreBefore,
-        payload.olderMessagesStatus,
+        renderPayload.canLoadMoreBefore,
+        renderPayload.olderMessagesStatus,
         initialBottomAnchorReady,
-        payload.messages.size
+        renderPayload.messages.size
     ) {
         if (!initialBottomAnchorReady ||
-            !payload.canLoadMoreBefore ||
-            payload.olderMessagesStatus != "idle"
+            !renderPayload.canLoadMoreBefore ||
+            renderPayload.olderMessagesStatus != "idle"
         ) {
             return@LaunchedEffect
         }
-        val boundaryIndex = payload.threadHistoryBoundaryListItemIndex()
+        val boundaryIndex = renderPayload.threadHistoryBoundaryListItemIndex()
         snapshotFlow { listState.isThreadOlderAutoLoadThreshold(boundaryIndex) }
             .distinctUntilChanged()
             .collect { shouldLoad ->
@@ -6939,15 +7028,15 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(
         threadInstanceKey,
-        payload.focusedMessageId,
-        payload.messages.size,
+        renderPayload.focusedMessageId,
+        renderPayload.messages.size,
         lazyItemCount
     ) {
-        val targetMessageId = payload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (targetMessageId == consumedFocusedMessageId && activeFocusedMessageId == null) {
             return@LaunchedEffect
         }
-        val targetIndex = payload.threadMessageListItemIndex(targetMessageId)
+        val targetIndex = renderPayload.threadMessageListItemIndex(targetMessageId)
         if (targetIndex < 0) {
             return@LaunchedEffect
         }
@@ -6965,12 +7054,12 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
         }
     }
-    LaunchedEffect(threadInstanceKey, payload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, renderPayload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
         if (latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
-            payload.focusedMessageId
+            renderPayload.focusedMessageId
                 ?.takeIf { it.isNotBlank() }
-                ?.let { payload.threadMessageListItemIndex(it) }
+                ?.let { renderPayload.threadMessageListItemIndex(it) }
                 ?: -1
         if (focusedMessageTargetIndex >= 0) {
             return@LaunchedEffect
@@ -7063,7 +7152,7 @@ private fun ThreadMessagesList(
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
-            if (payload.hasThreadOriginItem()) {
+            if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
                         payload = payload,
@@ -7097,18 +7186,18 @@ private fun ThreadMessagesList(
                     )
                 }
             }
-            if (payload.hasThreadHistoryBoundaryItem()) {
+            if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
-                        payload.canLoadMoreBefore && payload.olderMessagesStatus == "error" ->
+                        renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
                                 label = "Retry older messages",
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
-                        payload.canLoadMoreBefore ->
-                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload))
+                        renderPayload.canLoadMoreBefore ->
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
                         else ->
-                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload))
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
                     }
                 }
             }
@@ -7117,12 +7206,13 @@ private fun ThreadMessagesList(
                     ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
                 }
             }
-            items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
-                val message = payload.messages[index]
+            items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
+                val message = renderPayload.messages[index]
+                val absoluteMessageIndex = messageWindowStart + index
                 SideEffect {
-                    firstViewportProbe.recordComposedMessage(message.id, index)
+                    firstViewportProbe.recordComposedMessage(message.id, absoluteMessageIndex)
                 }
-                val messagePerformanceKey = threadMessagePerformanceKey(message.id, index)
+                val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val actionCardSignature =
                     if (contentExtrasVisible) {
@@ -7156,12 +7246,13 @@ private fun ThreadMessagesList(
                     androidx.compose.runtime.LaunchedEffect(message.id, threadRowProbeSessionMarker) {
                         diagnosticsLogger(
                             "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
-                                "index=$index id=${message.id} messageType=${message.messageType} " +
+                                "index=$absoluteMessageIndex id=${message.id} messageType=${message.messageType} " +
                                 "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
                                 "hasActionCard=${actionCard != null} " +
                                 "attachmentCount=${message.attachments.size} " +
                                 "threadId=${payload.sourceThreadId.orEmpty()} " +
-                                "messagesTotal=${payload.messages.size}"
+                                "messagesTotal=${payload.messages.size} renderStart=$messageWindowStart " +
+                                "renderMessages=${renderPayload.messages.size}"
                         )
                     }
                 }
@@ -7183,7 +7274,7 @@ private fun ThreadMessagesList(
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                 Box(
                     modifier = Modifier.onGloballyPositioned {
-                        firstViewportProbe.recordPlacedMessage(message.id, index)
+                        firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
                     }
                 ) {
                     if (isSystemMessage && actionCard == null) {
@@ -7196,7 +7287,7 @@ private fun ThreadMessagesList(
                             message = displayMessage,
                             hasReplyDraft = activeDraftRecords.hasReplyComposerDraft(message.id),
                             actionCard = actionCard,
-                            messageIndex = index,
+                            messageIndex = absoluteMessageIndex,
                             diagnosticsLogger = diagnosticsLogger,
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
@@ -7244,9 +7335,9 @@ private fun ThreadMessagesList(
                     }
                 }
             }
-            if (payload.canLoadMoreAfter) {
+            if (renderPayload.canLoadMoreAfter) {
                 item(key = ThreadNewerMessagesListItemKey) {
-                    val actionSpec = threadNewerMessagesActionSpec(payload.newerMessagesStatus)
+                    val actionSpec = threadNewerMessagesActionSpec(renderPayload.newerMessagesStatus)
                     ThreadInlineActionRow(
                         label = actionSpec.label,
                         leadingIcon = actionSpec.leadingIcon,
@@ -7414,6 +7505,22 @@ internal fun threadMessagesLazyItemCount(
 internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0)
         .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
+
+internal fun threadInitialProgressiveBottomRenderStart(
+    messagesCount: Int,
+    focusedMessageIndex: Int = -1
+): Int =
+    when {
+        focusedMessageIndex >= 0 -> 0
+        messagesCount <= ThreadInitialBottomRenderWindowMessageCount -> 0
+        else -> messagesCount - ThreadInitialBottomRenderWindowMessageCount
+    }
+
+internal fun threadPreviousProgressiveBottomRenderStart(
+    currentStart: Int,
+    step: Int = ThreadProgressiveBottomRenderWindowStep
+): Int =
+    (currentStart - step.coerceAtLeast(1)).coerceAtLeast(0)
 
 private data class ThreadLazyWindowStats(
     val totalItems: Int,
