@@ -336,6 +336,7 @@ internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 internal const val ThreadReplyEmptyTitle = "No replies yet"
 internal const val ThreadInitialBottomRenderWindowMessageCount = 1
+internal const val ThreadProgressiveWindowStatus = "progressive_window"
 private const val ThreadProgressiveWindowEdgeVisibleMessageThreshold = 0
 internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
@@ -6914,10 +6915,20 @@ private fun ThreadMessagesList(
             } else {
                 payload.copy(
                     messages = renderMessages,
-                    canLoadMoreBefore = hasProgressiveOlderWindow || payload.canLoadMoreBefore,
-                    canLoadMoreAfter = hasProgressiveNewerWindow || payload.canLoadMoreAfter,
-                    olderMessagesStatus = if (hasProgressiveOlderWindow) "loading" else payload.olderMessagesStatus,
-                    newerMessagesStatus = if (hasProgressiveNewerWindow) "loading" else payload.newerMessagesStatus
+                    canLoadMoreBefore = payload.canLoadMoreBefore,
+                    canLoadMoreAfter = payload.canLoadMoreAfter,
+                    olderMessagesStatus =
+                        if (hasProgressiveOlderWindow) {
+                            ThreadProgressiveWindowStatus
+                        } else {
+                            payload.olderMessagesStatus
+                        },
+                    newerMessagesStatus =
+                        if (hasProgressiveNewerWindow) {
+                            ThreadProgressiveWindowStatus
+                        } else {
+                            payload.newerMessagesStatus
+                        }
                 )
             }
         }
@@ -8136,7 +8147,7 @@ internal fun appendThreadQuoteToComposer(existing: String, quote: String): Strin
 }
 
 private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
-    messages.isNotEmpty()
+    messages.isNotEmpty() && olderMessagesStatus != ThreadProgressiveWindowStatus
 
 private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
     originStatus != "none"
