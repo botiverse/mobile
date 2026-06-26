@@ -5905,6 +5905,36 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun channelRealtimeMessageNewGapSyncsFromVisibleTailWhenPagingGateIsClosed() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m11", seq = 11)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "latest across gap"))
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun replyThreadUpdatedReplyCountGapSyncsFromVisiblePayloadTail() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
