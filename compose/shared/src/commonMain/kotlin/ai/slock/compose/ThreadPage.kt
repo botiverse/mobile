@@ -6317,7 +6317,7 @@ private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<St
         nextRank += 1
         ranks[authorId.threadParticipantIdKey()] = rank
         message.authorHandle.threadParticipantHandleKey()?.let { handleKey ->
-            ranks.putIfAbsent(handleKey, rank)
+            ranks.putIfAbsentCompat(handleKey, rank)
         }
     }
     return ranks
