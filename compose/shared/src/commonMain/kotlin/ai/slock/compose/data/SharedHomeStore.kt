@@ -406,11 +406,17 @@ class SharedHomeStore(
             RealtimeRefreshScope.Announcements -> {
                 loadNotifications()
             }
+            RealtimeRefreshScope.Agents -> {
+                diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")
+                launchAgentDirectMessageStatusRefreshForCurrentSnapshot()
+            }
+            RealtimeRefreshScope.Machines -> {
+                diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")
+                loadNotifications()
+            }
             RealtimeRefreshScope.Home,
             RealtimeRefreshScope.ChannelMembers,
             RealtimeRefreshScope.ServerMembers,
-            RealtimeRefreshScope.Agents,
-            RealtimeRefreshScope.Machines,
             RealtimeRefreshScope.Settings,
             RealtimeRefreshScope.Reminders -> {
                 diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
@@ -423,6 +429,14 @@ class SharedHomeStore(
                 )
             }
         }
+    }
+
+    private fun launchAgentDirectMessageStatusRefreshForCurrentSnapshot() {
+        val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
+        launchAgentDirectMessageStatusRefresh(
+            request = _state.value.serverSwitchState,
+            snapshot = currentContent.baseSnapshot
+        )
     }
 
     private suspend fun load(
