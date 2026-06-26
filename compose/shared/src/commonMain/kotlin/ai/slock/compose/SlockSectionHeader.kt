@@ -43,9 +43,6 @@ private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val RaftPullRefreshBadgeWidth = 70.dp
-private val RaftPullRefreshBadgeHeight = 28.dp
-private val RaftPullRefreshShadowOffset = 2.dp
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -148,44 +145,6 @@ internal fun SlockHeaderRefreshIndicator(
     )
 }
 
-@Composable
-private fun SlockRaftRefreshBadge(
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier =
-            modifier
-                .width(RaftPullRefreshBadgeWidth)
-                .height(RaftPullRefreshBadgeHeight)
-                .padding(end = RaftPullRefreshShadowOffset, bottom = RaftPullRefreshShadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .offset(x = RaftPullRefreshShadowOffset, y = RaftPullRefreshShadowOffset)
-                    .background(SlockColor.ShadowBlack)
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.TextBlack)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "RAFT",
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.BrandYellow,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun SlockRaftPullRefreshIndicator(
@@ -193,21 +152,18 @@ internal fun SlockRaftPullRefreshIndicator(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier
 ) {
+    if (!isRefreshing) return
     Box(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
     ) {
-        if (isRefreshing) {
-            Text(
-                text = "Refreshing...",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        } else {
-            SlockRaftRefreshBadge()
-        }
+        Text(
+            text = "Refreshing...",
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
