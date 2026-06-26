@@ -9,16 +9,15 @@ import ai.slock.compose.components.SlockAnchorPlacement
 import ai.slock.compose.components.slockAnchoredTriggerGeometryAnchor
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.NetworkSlockThreadApi
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.SlockWorkspaceFilePreview
-import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -115,15 +114,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val notifyModule = remember(pager.pagerId) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
-    val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
-    val networkClient =
-        remember {
-            KuiklySlockNetworkClient(
-                sessionStore = sharedStores.authStore,
-                networkModule = networkModule,
-                warningLogger = { message -> bridge.log("file_preview_network $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
     val threadApi =
         remember(networkClient) {
             SlockThreadApiClient(
@@ -193,7 +184,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val nextPayload =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
-                    payload.loadThreadAttachmentPreview(threadApi, networkModule)
+                    payload.loadThreadAttachmentPreview(threadApi, networkClient)
                 SlockFilePreviewSourceAgentWorkspace ->
                     payload.loadAgentWorkspacePreview(memberRepository)
                 else -> null
@@ -426,7 +417,7 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Sl
 
 private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkModule: SlockNetworkModule
+    networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -442,9 +433,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 mimeType = externalMimeType
             )
     return when {
-        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkModule)
+        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
-        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkModule)
+        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
             copy(
                 kind = "unsupported",
@@ -473,7 +464,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
 
 private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkModule: SlockNetworkModule
+    networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload {
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
@@ -487,13 +478,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
         )
     val response =
         try {
-            networkModule.request(
-                JSONObject().apply {
-                    put("url", target)
-                    put("method", "GET")
-                    put("headers", JSONObject())
-                    put("timeoutMillis", 30_000)
-                }
+            networkClient.requestRawAbsoluteUrl(
+                priority = DataRequestPriority.Visible,
+                url = target
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -533,7 +520,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
 
 private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkModule: SlockNetworkModule
+    networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload {
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
@@ -547,13 +534,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         )
     val response =
         try {
-            networkModule.request(
-                JSONObject().apply {
-                    put("url", target)
-                    put("method", "GET")
-                    put("headers", JSONObject())
-                    put("timeoutMillis", 30_000)
-                }
+            networkClient.requestRawAbsoluteUrl(
+                priority = DataRequestPriority.Visible,
+                url = target
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -574,7 +557,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         )
     }
     val body =
-        response.bodyText.takeIf { it.isNotBlank() }
+        response.bodyText?.takeIf { it.isNotBlank() }
             ?: return copy(
                 kind = "error",
                 title = "Preview unavailable",

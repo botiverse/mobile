@@ -149,8 +149,6 @@ import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.AgentLifecycleActionResult
-import ai.slock.compose.data.KuiklySlockAuthTransport
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
@@ -170,6 +168,7 @@ import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
 import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockComputersNetworkApi
+import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivityStateCache
@@ -255,7 +254,6 @@ import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
 import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.markdown.SlockMarkdownBody
-import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationKind
@@ -613,7 +611,7 @@ private data class HomeSecondaryRouteEnvironment(
     val pager: Pager,
     val bridge: ai.slock.compose.base.BridgeModule,
     val authStore: SlockAuthSessionStore,
-    val networkClient: KuiklySlockNetworkClient,
+    val networkClient: SlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
@@ -632,14 +630,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
     val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
     val authStore = sharedStores.authStore
-    val networkClient =
-        remember(authStore, pager) {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                warningLogger = { message -> bridge.log("home_secondary_network $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
     val localWriteThrough =
         remember(sharedStores.localDataStore, bridge) {
             ComposeLocalWriteThrough(
@@ -1320,25 +1311,8 @@ private fun SlockAppShellContent() {
                 logger = { message -> bridge.logDebug("shared_home_cache $message") }
             )
         }
-    val authDataSource =
-        remember {
-            SharedAuthDataSource(
-                transport =
-                    KuiklySlockAuthTransport(
-                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
-                    ),
-                sessionStore = authStore,
-                diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
-            )
-        }
-    val appShellNetworkClient =
-        remember {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                warningLogger = { message -> bridge.log("kuikly_network $message") }
-            )
-        }
+    val authDataSource = sharedStores.authDataSource
+    val appShellNetworkClient = sharedStores.networkClient
     val memberRepository =
         remember {
             RealMemberRepository(
@@ -8196,17 +8170,7 @@ private fun AuthChooseServerPageContent() {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
-    val authDataSource =
-        remember {
-            SharedAuthDataSource(
-                transport =
-                    KuiklySlockAuthTransport(
-                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
-                    ),
-                sessionStore = sharedStores.authStore,
-                diagnosticsLogger = { message -> bridge.log("shared_auth_choose_server $message") }
-            )
-        }
+    val authDataSource = sharedStores.authDataSource
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var restoreAttempt by remember { mutableStateOf(0) }

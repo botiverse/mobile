@@ -8,7 +8,6 @@ import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.InboxFilter
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealInboxRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -31,7 +30,6 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.topLevelThreadId
-import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -117,14 +115,7 @@ internal fun SharedHomeActivityScreen(
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
-    val networkClient =
-        remember(authStore, pager) {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                warningLogger = { message -> bridge.log("kuikly_network $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
     val repository =
         remember(authStore, networkClient) {
             RealInboxRepository(

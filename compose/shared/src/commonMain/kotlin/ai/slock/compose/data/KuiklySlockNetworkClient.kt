@@ -65,6 +65,41 @@ class KuiklySlockNetworkClient(
             response
         }
 
+    override suspend fun requestRawAbsoluteUrl(
+        priority: DataRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?
+    ): HomeNetworkResponse =
+        requestScheduler.run(
+            priority = priority.toNetworkPriority(),
+            key = url.substringBefore('?'),
+            reason = "raw:${method.uppercase()}"
+        ) {
+            val startedAt = TimeSource.Monotonic.markNow()
+            val response =
+                networkModule.requestRaw(
+                    url = url,
+                    method = method.uppercase(),
+                    headers =
+                        JSONObject().apply {
+                            headers.forEach { (name, value) -> put(name, value) }
+                        },
+                    bodyText = bodyText,
+                    bodyBytes = null
+                )
+            warningLogger(
+                "endpoint category=raw_absolute_url path=${url.substringBefore('?')} method=${method.uppercase()} " +
+                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "result=${response.networkDiagnosticsResult()}"
+            )
+            response
+        }
+
     override suspend fun uploadAttachments(
         priority: DataRequestPriority,
         channelId: ChannelId,

@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.delete
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -259,6 +260,21 @@ class SlockApiClient(
     ): KmpHttpResponse =
         request(priority, HttpMethod(method), path, query, body, serverIdOverride)
 
+    suspend fun rawAbsoluteRequest(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String = "GET",
+        headers: Map<String, String> = emptyMap(),
+        body: String? = null
+    ): KmpHttpResponse =
+        requestScheduler.run(
+            priority = priority,
+            key = url.substringBefore('?'),
+            reason = "raw:${method.uppercase()}"
+        ) {
+            executeRawKtor(priority.httpClient(), HttpMethod(method), url, headers, body)
+        }.toKmpHttpResponse()
+
     private suspend fun post(priority: SlockRequestPriority, path: String, body: String? = null): KmpHttpResponse =
         request(priority, HttpMethod.Post, path, body = body)
 
@@ -333,7 +349,30 @@ class SlockApiClient(
         } catch (error: Exception) {
             warningLogger("slock_api_failed path=$path method=${method.value} reason=${error::class.simpleName}")
             throw error
-    }
+        }
+
+    private suspend fun executeRawKtor(
+        client: HttpClient,
+        method: HttpMethod,
+        url: String,
+        headers: Map<String, String>,
+        body: String?
+    ): HttpResponse =
+        try {
+            when (method) {
+                HttpMethod.Get -> client.get { buildRawRequest(url, headers, body) }
+                HttpMethod.Post -> client.post { buildRawRequest(url, headers, body) }
+                HttpMethod.Patch -> client.patch { buildRawRequest(url, headers, body) }
+                HttpMethod.Put -> client.put { buildRawRequest(url, headers, body) }
+                HttpMethod.Delete -> client.delete { buildRawRequest(url, headers, body) }
+                else -> error("Unsupported HTTP method ${method.value}")
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            warningLogger("slock_api_failed path=${url.substringBefore('?')} method=${method.value} reason=${error::class.simpleName}")
+            throw error
+        }
 
     private suspend fun executeMultipart(
         client: HttpClient,
@@ -379,6 +418,18 @@ class SlockApiClient(
         applyAuthTokens(tokens)
         if (body != null) {
             contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.buildRawRequest(
+        url: String,
+        headers: Map<String, String>,
+        body: String?
+    ) {
+        url(url)
+        headers.forEach { (name, value) -> header(name, value) }
+        if (body != null) {
             setBody(body)
         }
     }

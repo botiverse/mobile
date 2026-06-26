@@ -22,6 +22,7 @@ import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
+import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
     val authStore: KuiklyMMKVAuthSessionStore,
     val authSessionEvents: KuiklyAuthSessionEvents,
+    val authDataSource: SharedAuthDataSource,
+    val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -145,10 +148,25 @@ internal class SlockSharedStoreProvider private constructor(
                     pager = pager,
                     namespace = SlockLocalPreferenceStore.KuiklyNamespace
                 )
+            val networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+            val authDataSource =
+                SharedAuthDataSource(
+                    transport = KuiklySlockAuthTransport(networkModule = networkModule),
+                    sessionStore = authStore,
+                    diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
+                )
+            val networkClient =
+                KuiklySlockNetworkClient(
+                    sessionStore = authStore,
+                    networkModule = networkModule,
+                    warningLogger = { message -> bridge.log("shared_network $message") }
+                )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,
+                authDataSource = authDataSource,
+                networkClient = networkClient,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
@@ -160,14 +178,7 @@ internal class SlockSharedStoreProvider private constructor(
                         memberRepository =
                             RealMemberRepository(
                                 sessionStore = authStore,
-                                networkClient =
-                                    KuiklySlockNetworkClient(
-                                        sessionStore = authStore,
-                                        networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
-                                            ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
-                                        ),
-                                        warningLogger = { message -> bridge.log("shared_server_members_network $message") }
-                                    ),
+                                networkClient = networkClient,
                                 logger = { message -> bridge.log("shared_server_members_repository $message") }
                             ),
                         logger = { message -> bridge.log(message) }

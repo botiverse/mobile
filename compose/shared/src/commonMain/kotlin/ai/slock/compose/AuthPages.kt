@@ -13,7 +13,6 @@ import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
-import ai.slock.compose.data.KuiklySlockAuthTransport
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
@@ -24,7 +23,6 @@ import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.runCatchingPreservingCancellation
-import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -92,14 +90,7 @@ private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvid
 
 private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
     val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
-    return SharedAuthDataSource(
-        transport =
-            KuiklySlockAuthTransport(
-                networkModule = acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
-            ),
-        sessionStore = sharedStores.authStore,
-        diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
-    )
+    return sharedStores.authDataSource
 }
 
 @Page(LOGIN_PAGE, supportInLocal = true)
