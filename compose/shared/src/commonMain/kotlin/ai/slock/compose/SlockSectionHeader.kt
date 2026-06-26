@@ -195,6 +195,7 @@ internal fun SlockCollapsibleSectionHeader(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    showCollapsedUnreadDot: Boolean = false,
     sortContentDescription: String? = null,
     onSortClick: ((Offset) -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
@@ -230,6 +231,13 @@ internal fun SlockCollapsibleSectionHeader(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(start = SlockSpacing.Xs)
         )
+        if (!expanded && showCollapsedUnreadDot) {
+            SlockStatusIndicator(
+                color = SlockColor.AccentPink,
+                size = SlockStatusIndicatorTokens.ServerUnreadSize,
+                modifier = Modifier.padding(start = SlockSpacing.Xs)
+            )
+        }
         Spacer(Modifier.weight(1f))
         if (sortContentDescription != null && onSortClick != null) {
             SlockSectionHeaderIconAction(

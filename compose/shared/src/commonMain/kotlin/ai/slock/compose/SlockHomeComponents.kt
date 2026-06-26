@@ -649,6 +649,10 @@ internal fun SlockStructuralHomeShell(
             mode = pinnedSortModeState
         )
     }
+    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.unreadCount > 0 } }
+    val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.unreadCount > 0 } }
+    val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.unreadCount > 0 } }
+    val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.unreadCount > 0 } }
     val sidebarSelection =
         homeSidebarSelection(
             selectedChannelId = selectedChannelId,
@@ -770,6 +774,7 @@ internal fun SlockStructuralHomeShell(
                                     count = displayedPinned.size,
                                     expanded = pinnedExpanded,
                                     onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                    showCollapsedUnreadDot = pinnedSectionHasUnread,
                                     sortContentDescription = "Sort ${labels.pinned}",
                                     onSortClick = { anchor ->
                                         if (sidebarInteractionsEnabled) {
@@ -850,6 +855,7 @@ internal fun SlockStructuralHomeShell(
                                 count = displayedChannels.size,
                                 expanded = channelsExpanded,
                                 onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                showCollapsedUnreadDot = channelSectionHasUnread,
                                 sortContentDescription = "Sort ${labels.channels}",
                                 onSortClick = { anchor ->
                                     if (sidebarInteractionsEnabled) {
@@ -899,6 +905,7 @@ internal fun SlockStructuralHomeShell(
                                     count = displayedJointChannels.size,
                                     expanded = jointChannelsExpanded,
                                     onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
+                                    showCollapsedUnreadDot = jointChannelSectionHasUnread,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                 )
                             }
@@ -938,6 +945,7 @@ internal fun SlockStructuralHomeShell(
                                 count = displayedDirectMessages.size,
                                 expanded = directMessagesExpanded,
                                 onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
+                                showCollapsedUnreadDot = directMessageSectionHasUnread,
                                 sortContentDescription = "Sort ${labels.directMessages}",
                                 onSortClick = { anchor ->
                                     if (sidebarInteractionsEnabled) {
