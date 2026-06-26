@@ -1,8 +1,33 @@
 # Realtime Single Owner / Domain Projection Spec
 
 Date: 2026-06-23
-Status: draft
+Status: historical migration spec, partially implemented. Use
+`docs/react-kmp-realtime-alignment-2026-06-26.md` plus current code for live
+parity claims.
 Scope: Android + OHOS Kuikly realtime ingress, AppShell, Thread, Home, Settings
+
+## Current Status Snapshot - 2026-06-27
+
+This spec still records the intended architecture: realtime is transport input,
+not a generic product-state store. Domain stores remain the owners of product
+state.
+
+Implemented pieces now exist in common/shared code:
+
+- `SlockSharedStoreProvider` owns a `SharedRealtimeDomainEventOwner`.
+- `RealtimeDomainEventOwner` accepts typed `RealtimeEvent` values once per
+  server/source and dedupes accepted keys.
+- `RealtimeDomainEventSinks` fan accepted events into Home shell, Settings,
+  agent activity/member detail refresh, dynamic channel join, route markers,
+  and Thread cache invalidation.
+- `SharedTasksDataStore` is updated by the domain owner for task events.
+- Thread cache invalidation is emitted as `ThreadRealtimeCacheInvalidationSignal`
+  instead of making every visible Thread page independently own durable socket
+  writes.
+
+Do not treat the phase list below as unstarted work. Treat it as migration
+history and a checklist for any remaining platform/page path that still handles
+raw realtime payloads directly.
 
 ## Problem
 

@@ -59,9 +59,13 @@ Every KMP migration task that replaces native behavior must answer these items i
 ## Current Gate References
 
 - Current React/KMP product map:
-  `docs/react-kmp-feature-map-2026-06-20.md`
+  `docs/react-kmp-feature-map-2026-06-26.md`
 - App-wide shared state contract:
   `docs/slock-app-state-first-principles.md`
+- Current shared store map and MVI runtime usage:
+  `docs/shared-mvi-foundation.md`
+- Current realtime alignment snapshot:
+  `docs/react-kmp-realtime-alignment-2026-06-26.md`
 - Android UI/shared migration cleanup:
   `docs/android-ui-shared-migration-audit.md`
 

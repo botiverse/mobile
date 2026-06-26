@@ -5,7 +5,16 @@ Last refreshed: 2026-06-02
 
 Status: historical snapshot. Do not use this file as the current Thread parity
 source of truth without refreshing it against code, the task board, and
-`docs/react-kmp-feature-map-2026-06-20.md`.
+`docs/react-kmp-feature-map-2026-06-26.md`.
+
+Superseded note, 2026-06-27: several concrete store/composer/realtime claims
+below are no longer current. In particular, composer draft persistence now has
+`SharedThreadComposerDraftStore` and `SharedThreadComposerDraftPersistSlice`,
+Thread realtime is routed through the shared domain owner / cache-invalidation
+path, and attachment upload/send behavior has moved forward since this audit.
+Use `docs/shared-mvi-foundation.md`,
+`docs/react-kmp-realtime-alignment-2026-06-26.md`, and current code for live
+store ownership. Keep this file only as a historical migration snapshot.
 
 Scope: Thread/conversation flow migration from legacy Android native UI/state to the shared KMP shell. This audit covers data source, cache/warm loading, realtime, send, attachments, read receipts, menu/actions, pagination, and back stack/reply-thread behavior.
 

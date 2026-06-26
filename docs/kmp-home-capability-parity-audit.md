@@ -5,7 +5,7 @@ Last refreshed: 2026-06-02
 
 Status: historical snapshot. Do not use this file as the current Home parity
 source of truth without refreshing it against code, the task board, and
-`docs/react-kmp-feature-map-2026-06-20.md`.
+`docs/react-kmp-feature-map-2026-06-26.md`.
 
 Scope: Home shared shell parity after Android native Home migration. This audit covers channel/DM cache, warm state, refresh/loading behavior, and selected server restore. It is intentionally read-only: no product behavior was changed in this pass.
 

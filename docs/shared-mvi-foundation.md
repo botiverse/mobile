@@ -147,34 +147,72 @@ adopting a heavy framework in this migration slice.
 - UI-layer debounce as a replacement for repository/write-through no-op gates.
 - Raw API response, token, bearer header, or `X-Server-Id` access in UI code.
 
-## Current Consumer
+## Current Store Map
 
-`SharedTasksViewModel` / `SharedTasksStore` is the first small consumer.
+As of 2026-06-27, this document is the current shared-store boundary reference,
+not a task-status snapshot. Older dated audits may still be useful historical
+context, but check this section and the code before treating an audit claim as
+current.
 
-- `SharedTasksViewModel` implements `SharedStateHolder<TasksUiState,
-  SharedTasksRouteIntent, SharedTasksEvent>`.
-- UI dispatches `SharedTasksRouteIntent` as the UI action.
-- The ViewModel calls `SharedTasksUseCase`.
-- The use case reads selected session/server from `SlockAuthSessionStore` and
-  calls `SharedTasksRepository`.
-- `SharedTasksRepository` lives in `SharedTasksRepository.kt`.
-- `SharedTasksDataRepository` is the first local-first proof implementation.
-  UI-facing reads go through `observeTasks(...)`, which observes
-  `SharedTasksLocalDataSource`.
-- `SharedTasksRemoteDataSource` is implemented by `SharedTasksDataSource` in
-  `TasksDataSource.kt`; it owns typed API calls only.
-- `InMemorySharedTasksLocalDataSource` is the temporary commonMain local source
-  used to prove the flow: refresh fetches remote tasks, writes local, and local
-  Flow drives UI state. It should be replaced by a real DAO-backed local source
-  when Tasks needs offline/persistent behavior.
-- `TasksLoadRequest`, `TasksStatusUpdateRequest`, and `TasksCreateRequest` live
-  in `TasksRequests.kt` so the use-case input contract is not hidden inside the
-  store file.
-- Store state emission still goes through `MviStoreRuntime`, keeping the reducer
+`SlockSharedStoreProvider` is the app/session provider for process-level shared
+stores and shared infrastructure:
+
+- auth/session: `KuiklyMMKVAuthSessionStore`, `SharedAuthDataSource`,
+  `SharedAuthGateStore`;
+- local persistence: `SqlDelightRelationalStore`,
+  `RelationalComposeLocalDataStore`, `ComposeLocalWriteThrough`, local
+  preference stores;
+- app/domain projections: `SharedConversationDirectoryStore`,
+  `SharedServerMembersStore`, `SharedAgentDetailStore`,
+  `SharedTasksDataStore`, `SharedActivityStore` cache, Home/Saved state cache;
+- composer persistence: `SharedThreadComposerDraftPersistSlice`;
+- realtime ingress/projection: `SharedRealtimeDomainEventOwner`;
+- configuration: `SharedApiEnvironmentStore`.
+
+Feature stores are deliberately mixed during migration:
+
+- Runtime-backed stores using `MviStoreRuntime` directly:
+  `SharedTasksStore` and `SharedThreadComposerDraftStore`.
+- Local reducer/state-flow stores that still follow the same intent/reducer
+  contract without the runtime helper: `SharedHomeStore`,
+  `SharedHomeShellStore`, `SharedActivityStore`,
+  `SharedHomeSearchSavedStore`, `SharedThreadStore`,
+  `SharedThreadFilesStore`, `SharedMembersStore`,
+  `SharedServerMembersStore`, `SharedAgentDetailStore`,
+  `SharedConversationDirectoryStore`, `SharedSettingsStore`,
+  `SharedComputersStore`, and `SettingsStandaloneStore`.
+- Data/repository boundaries such as `ConversationRepositoryDataSource`,
+  `HomeDataSource`, `InboxSavedSearchRepositoryDataSource`,
+  `MemberRepositoryDataSource`, `SettingsRepositoryDataSource`,
+  `SharedTasksRepository`, and `ReadReceiptRepositoryDataSource` own typed
+  remote/local/host-capability calls below the stores.
+
+Do not infer that a feature is non-MVI just because it does not instantiate
+`MviStoreRuntime`. The current requirement is the contract: UI emits intents,
+stores/repositories own business state and cache/realtime/write-through, and
+unchanged updates are skipped before broad StateFlow emission where practical.
+Migrating another store onto `MviStoreRuntime` is a focused cleanup, not a
+prerequisite for using that store as the product state owner.
+
+## Current Runtime Consumers
+
+`SharedTasksStore` remains the canonical small runtime-backed feature store:
+
+- UI dispatches typed task intents.
+- Repository/data-source code owns remote/local task reads and mutations.
+- Store state emission goes through `MviStoreRuntime`, keeping the reducer
   queue, no-op gate, and transition log.
 - Mutation/load failures are mapped through typed `DataResult.failureCodeOrNull`
-  and also exposed as one-off `SharedTasksEvent.OperationFailed` events.
+  and exposed through task UI state/events.
 
-Thread and Home already have proof slices for structural sharing/no-op behavior.
-They should be migrated to the foundation in later focused tasks instead of
-being rewritten broadly.
+`SharedThreadComposerDraftStore` is also runtime-backed:
+
+- Draft text, task-mode state, and persisted active-draft records flow through
+  typed intents.
+- `SharedThreadComposerDraftPersistSlice` persists accepted transitions and is
+  provided from `SlockSharedStoreProvider` so Home and Thread consume the same
+  draft source.
+
+Thread, Home, Activity, Members, Settings, and Search/Saved already have shared
+stores and should be extended in place. Do not restart old "move this surface
+to a shared store" work from stale audit documents.

@@ -8,6 +8,11 @@ follow the same rules.
 Implementation helpers and the current KMP state-library survey live in
 `docs/shared-mvi-foundation.md`.
 
+Status note, 2026-06-27: this file is a normative first-principles contract,
+not a live task-status report. For the current shared-store inventory and which
+stores use `MviStoreRuntime` directly, read `docs/shared-mvi-foundation.md`.
+Older dated audits can be historical context only.
+
 ## Goal
 
 The app should feel stable even while network, realtime, local cache, markdown,

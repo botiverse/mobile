@@ -5,7 +5,7 @@ Last refreshed: 2026-06-11
 
 Status: historical snapshot. Do not use this file as the current Settings
 parity source of truth without refreshing it against code, the task board, and
-`docs/react-kmp-feature-map-2026-06-20.md`.
+`docs/react-kmp-feature-map-2026-06-26.md`.
 
 Scope: align the shared KMP Settings product route with the React Settings
 source while keeping Settings state, business logic, actions, and effects in
