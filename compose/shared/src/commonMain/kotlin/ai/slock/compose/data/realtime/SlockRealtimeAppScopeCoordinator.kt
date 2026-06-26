@@ -465,6 +465,90 @@ class SlockRealtimeAppScopeCoordinator(
     }
 }
 
+class SlockRealtimeAppScopeRuntime(
+    private val coordinator: SlockRealtimeAppScopeCoordinator,
+    connection: SlockRealtimeAppScopeConnection,
+    dispatch: (suspend () -> Unit) -> Unit
+) {
+    private val eventSubscription: RealtimeSubscription =
+        connection.observeEvents { event ->
+            dispatch {
+                coordinator.onMappedEvent(event)
+            }
+        }
+    private val rawEventSubscription: RealtimeSubscription =
+        connection.observeRawEvents { eventName, rawPayload ->
+            dispatch {
+                coordinator.onRawEvent(eventName, rawPayload)
+            }
+        }
+
+    val joinedChannelCount: Int
+        get() = coordinator.joinedChannelCount
+
+    val lastSeq: Long
+        get() = coordinator.lastSeq
+
+    val serverId: ServerId?
+        get() = coordinator.serverId
+
+    val isAppInForeground: Boolean
+        get() = coordinator.isAppInForeground
+
+    fun ownedSession(): SlockRealtimeOwnedSession? =
+        coordinator.ownedSession()
+
+    fun onAppShown() {
+        coordinator.onAppShown()
+    }
+
+    fun onAppHidden() {
+        coordinator.onAppHidden()
+    }
+
+    suspend fun connect(
+        serverId: ServerId,
+        accessToken: String,
+        requestedLastSeq: Long,
+        forceReconnect: Boolean
+    ): DataResult<Unit> =
+        coordinator.connect(
+            serverId = serverId,
+            accessToken = accessToken,
+            requestedLastSeq = requestedLastSeq,
+            forceReconnect = forceReconnect
+        )
+
+    fun disconnectForSessionEnd(reason: String): Boolean =
+        coordinator.disconnectForSessionEnd(reason)
+
+    fun dispose() {
+        eventSubscription.close()
+        rawEventSubscription.close()
+    }
+}
+
+fun bootstrapRealtime(
+    connection: SlockRealtimeAppScopeConnection,
+    sink: SlockRealtimeAppScopeSink,
+    enhancedNotifyBus: SlockEnhancedNotifyEventBus? = SlockEnhancedNotifyCenter,
+    engine: SlockRealtimeAppScopeEngine = SlockRealtimeAppScopeEngine(),
+    dispatch: (suspend () -> Unit) -> Unit
+): SlockRealtimeAppScopeRuntime {
+    val coordinator =
+        SlockRealtimeAppScopeCoordinator(
+            connection = connection,
+            sink = sink,
+            enhancedNotifyBus = enhancedNotifyBus,
+            engine = engine
+        )
+    return SlockRealtimeAppScopeRuntime(
+        coordinator = coordinator,
+        connection = connection,
+        dispatch = dispatch
+    )
+}
+
 enum class SlockRealtimeAppVisibility {
     Foreground,
     Background

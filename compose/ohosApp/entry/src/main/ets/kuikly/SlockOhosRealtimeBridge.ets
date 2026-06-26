@@ -10,6 +10,10 @@ const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
 const WATCHDOG_INTERVAL_MILLIS = 30_000;
+const ENHANCED_NOTIFY_EVENT_NAME = 'slockEnhancedNotify';
+const ENHANCED_NOTIFY_KEY_EVENT_NAME = 'eventName';
+const ENHANCED_NOTIFY_KEY_DATA = 'data';
+const ENHANCED_NOTIFY_KEY_SOURCE = 'source';
 
 interface RealtimeConnectParams {
   serverId: string;
@@ -27,11 +31,11 @@ export class SlockOhosRealtimeBridge {
   private lastHeartbeatAtMillis?: number;
   private lastInboundEventAtMillis?: number;
   private authRefreshInFlight: boolean = false;
-  private roomNotifyCallback?: Callback<emitter.EventData>;
+  private enhancedNotifyCallback?: Callback<emitter.EventData>;
 
   setController(controller?: KRNativeRenderController): void {
     this.controller = controller;
-    this.installRealtimeRoomsNotifyListener();
+    this.bootstrapRealtime(controller);
     this.socketIo.setListener({
       onConnected: () => {
         this.markInbound();
@@ -52,6 +56,11 @@ export class SlockOhosRealtimeBridge {
         this.handleSocketIoEvent(eventName, payload);
       }
     });
+  }
+
+  private bootstrapRealtime(controller?: KRNativeRenderController): void {
+    this.controller = controller;
+    this.installEnhancedNotifyBridge();
   }
 
   handleCommand(params: KRRecord): void {
@@ -204,8 +213,8 @@ export class SlockOhosRealtimeBridge {
     }
   }
 
-  private handleRoomCommand(action: string, channelId: string): void {
-    const decision = Napi.slockRealtimeRoomCommandDecision(action, channelId, 'notify');
+  private handleRoomCommand(action: string, channelId: string, source: string): void {
+    const decision = Napi.slockRealtimeRoomCommandDecision(action, channelId, source);
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
@@ -229,27 +238,34 @@ export class SlockOhosRealtimeBridge {
     });
   }
 
-  private installRealtimeRoomsNotifyListener(): void {
-    if (this.roomNotifyCallback !== undefined) {
+  private installEnhancedNotifyBridge(): void {
+    if (this.enhancedNotifyCallback !== undefined) {
       return;
     }
-    this.roomNotifyCallback = (event: emitter.EventData) => {
+    this.enhancedNotifyCallback = (event: emitter.EventData) => {
       const data = event.data as Record<string, string>;
       const stringify = data.stringify ?? '{}';
       try {
-        this.handleRealtimeRoomsNotify(JSON.parse(stringify) as KRRecord);
+        this.handleEnhancedNotify(JSON.parse(stringify) as KRRecord);
       } catch (error) {
-        console.warn(`[SlockOhosRealtime] room_notify_parse_failed message=${JSON.stringify(error)}`);
+        console.warn(`[SlockOhosRealtime] enhanced_notify_parse_failed message=${JSON.stringify(error)}`);
       }
     };
-    emitter.on(GeneratedRealtimeContract.Notify.RoomsEventName, this.roomNotifyCallback);
-    console.info('[SlockOhosRealtime] room_notify_listener_installed');
+    emitter.on(ENHANCED_NOTIFY_EVENT_NAME, this.enhancedNotifyCallback);
+    console.info('[SlockOhosRealtime] enhanced_notify_bridge_installed');
   }
 
-  private handleRealtimeRoomsNotify(params: KRRecord): void {
-    const action = (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '';
-    const channelId = (params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '';
-    this.handleRoomCommand(action, channelId);
+  private handleEnhancedNotify(envelope: KRRecord): void {
+    const eventName = (envelope[ENHANCED_NOTIFY_KEY_EVENT_NAME] as string) ?? '';
+    const source = (envelope[ENHANCED_NOTIFY_KEY_SOURCE] as string) ?? 'notify';
+    const params = (envelope[ENHANCED_NOTIFY_KEY_DATA] as KRRecord) ?? {};
+    if (eventName === GeneratedRealtimeContract.Notify.RoomsEventName) {
+      this.handleRoomCommand(
+        (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '',
+        (params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '',
+        source
+      );
+    }
   }
 
   private syncResume(lastSeq: number): void {

@@ -12,6 +12,14 @@ data class SlockEnhancedNotifyEvent(
     val source: String = "shared"
 )
 
+object SlockEnhancedNotifyContract {
+    const val EventName = "slockEnhancedNotify"
+    const val KeyEventName = "eventName"
+    const val KeyData = "data"
+    const val KeyCrossProcess = "crossProcess"
+    const val KeySource = "source"
+}
+
 interface SlockEnhancedNotifyEventBus {
     fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription
 }
@@ -65,5 +73,16 @@ internal class SlockEnhancedNotifyModule(
             )
         )
         module.postNotify(eventName, eventData, crossProcess = crossProcess)
+        if (eventName != SlockEnhancedNotifyContract.EventName) {
+            module.postNotify(
+                SlockEnhancedNotifyContract.EventName,
+                JSONObject()
+                    .put(SlockEnhancedNotifyContract.KeyEventName, eventName)
+                    .put(SlockEnhancedNotifyContract.KeyData, eventData)
+                    .put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
+                    .put(SlockEnhancedNotifyContract.KeySource, source),
+                crossProcess = crossProcess
+            )
+        }
     }
 }
