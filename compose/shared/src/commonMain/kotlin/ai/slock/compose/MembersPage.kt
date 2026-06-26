@@ -5802,19 +5802,25 @@ private fun MembersAgentActivityRow(
             .padding(SlockSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Text(
-            text = activity.timestamp.membersActivityDisplayTime(timeContext),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            modifier = Modifier.width(74.dp)
-        )
-        SlockStatusIndicator(
-            color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
-            size = 9.dp,
-            pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
-            modifier = Modifier.padding(top = 5.dp)
-        )
+        Row(
+            modifier = Modifier.width(94.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = activity.timestamp.membersActivityDisplayTime(timeContext),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            SlockStatusIndicator(
+                color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
+                size = 9.dp,
+                pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
+                modifier = Modifier.padding(top = 3.dp)
+            )
+        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
