@@ -6755,14 +6755,8 @@ private fun ThreadMessagesList(
     val currentPayloadState = rememberUpdatedState(payload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
     val density = LocalDensity.current
-    val initialContentLayoutKey = remember(
-        payload.originStatus,
-        payload.canLoadMoreBefore,
-        payload.canLoadMoreAfter,
-        payload.messages
-    ) {
+    val initialContentLayoutKey =
         payload.threadInitialContentLayoutKey()
-    }
     val initialMessageMinHeightsPx = remember(initialContentLayoutKey, density) {
         payload.threadInitialMessageMinHeightsPx(density)
     }
