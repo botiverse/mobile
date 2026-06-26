@@ -36,6 +36,12 @@ export const slockRealtimeJoinChannelDecision: (
   reason: string
 ) => SlockRealtimeJoinDecision;
 
+export const slockRealtimeRoomCommandDecision: (
+  action: string,
+  channelId: string,
+  reason: string
+) => SlockRealtimeJoinDecision;
+
 export const slockRealtimeRawDecision: (
   eventName: string,
   rawPayload: string
@@ -50,6 +56,7 @@ declare const _default: {
   slockRealtimeConnectDecision: typeof slockRealtimeConnectDecision;
   slockRealtimeDisconnectForSessionEnd: typeof slockRealtimeDisconnectForSessionEnd;
   slockRealtimeJoinChannelDecision: typeof slockRealtimeJoinChannelDecision;
+  slockRealtimeRoomCommandDecision: typeof slockRealtimeRoomCommandDecision;
   slockRealtimeRawDecision: typeof slockRealtimeRawDecision;
   slockRealtimeOnAppShown: typeof slockRealtimeOnAppShown;
   slockRealtimeOnAppHidden: typeof slockRealtimeOnAppHidden;

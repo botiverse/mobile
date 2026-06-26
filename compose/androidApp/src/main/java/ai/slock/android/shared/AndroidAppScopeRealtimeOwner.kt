@@ -1,6 +1,5 @@
 package ai.slock.android.shared
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -32,9 +31,6 @@ import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeSink
 import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
 import ai.slock.compose.model.ConversationKind
-import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventName
-import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventParams
-import com.tencent.kuikly.core.render.android.expand.module.registerKuiklyBroadcastReceiver
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
@@ -59,11 +55,9 @@ internal object AndroidAppScopeRealtimeOwner {
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
-    private var realtimeRoomsNotifyReceiver: BroadcastReceiver? = null
 
     fun install(context: Context) {
         val appContext = context.applicationContext
-        installRealtimeRoomsNotifyReceiver(appContext)
         if (networkCallbackInstalled) return
         val connectivityManager =
             appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -88,30 +82,6 @@ internal object AndroidAppScopeRealtimeOwner {
                 SlockDiagnosticsLogger.w(
                     LOG_TAG,
                     "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
-                )
-            }
-        }
-    }
-
-    private fun installRealtimeRoomsNotifyReceiver(appContext: Context) {
-        synchronized(this) {
-            if (realtimeRoomsNotifyReceiver != null) return
-            val receiver =
-                object : BroadcastReceiver() {
-                    override fun onReceive(context: Context?, intent: Intent?) {
-                        val eventIntent = intent ?: return
-                        if (eventIntent.getKuiklyEventName() != SlockRealtimeNotifyContract.RoomsEventName) return
-                        handleRealtimeRoomsNotify(eventIntent.getKuiklyEventParams())
-                    }
-                }
-            runCatching {
-                appContext.registerKuiklyBroadcastReceiver(receiver)
-                realtimeRoomsNotifyReceiver = receiver
-                SlockDiagnosticsLogger.d(LOG_TAG, "room_notify_receiver_installed")
-            }.onFailure { error ->
-                SlockDiagnosticsLogger.w(
-                    LOG_TAG,
-                    "room_notify_receiver_install_failed message=${error.message.orEmpty()}"
                 )
             }
         }
@@ -353,35 +323,6 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = false
     }
 
-    fun joinChannel(channelId: ChannelId) {
-        if (channelId.value.isBlank()) return
-        val coordinator =
-            realtimeCoordinator
-                ?: run {
-                    SlockDiagnosticsLogger.d(
-                        LOG_TAG,
-                        "room_join_skip reason=missing_coordinator channelId=${channelId.value}"
-                    )
-                    return
-                }
-        coordinator.joinChannel(channelId, reason = "direct")
-    }
-
-    private fun handleRealtimeRoomsNotify(eventData: JSONObject) {
-        when (eventData.optString(SlockRealtimeNotifyContract.KeyAction)) {
-            SlockRealtimeNotifyContract.ActionJoinChannel -> {
-                val channelId =
-                    eventData.optString(SlockRealtimeNotifyContract.KeyChannelId).takeIf { it.isNotBlank() }
-                if (channelId == null) {
-                    SlockDiagnosticsLogger.w(LOG_TAG, "room_notify_skip reason=missing_channel_id")
-                    return
-                }
-                SlockDiagnosticsLogger.d(LOG_TAG, "room_notify_join channelId=$channelId")
-                joinChannel(ChannelId(channelId))
-            }
-        }
-    }
-
     private fun ensureRealtimeCoordinator(context: Context): SlockRealtimeAppScopeCoordinator {
         realtimeCoordinator?.let { return it }
         val appContext = context.applicationContext
@@ -429,7 +370,7 @@ internal object AndroidAppScopeRealtimeOwner {
                     repository.disconnect()
                 }
 
-                override fun joinChannel(channelId: ChannelId) {
+                override fun emitJoinChannel(channelId: ChannelId) {
                     repository.joinChannel(channelId)
                 }
 
