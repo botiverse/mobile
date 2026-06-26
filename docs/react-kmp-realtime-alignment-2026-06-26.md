@@ -1,113 +1,252 @@
-# React vs KMP Alignment: Realtime Slice (2026-06-26)
+# React vs KMP Alignment: Realtime Slice
 
-Per @artin 02:03 "单独 worktree, 每一点建一个文档, 分析下我们对齐没有"
-Owner: @Product-UX-Designer (spec lane)
-Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
-主仓 main HEAD: `87d41a70`
+Verified: 2026-06-27
+Main HEAD used for KMP/Android verification: `b6593c85`
+React source used for comparison: `third_party/slock-source`
 
-## Slice Scope: Realtime
+This document replaces the earlier 2026-06-26 draft. The old draft mixed several
+then-active task states with architectural claims; several of those P0 items have
+since landed or were reclassified by code review. Treat this file as the current
+working snapshot, not as a historical task board.
 
-包含: socket connect / reconnect / realtime event delivery / state precedence / stale reconcile / native realtime / foreground notifications
+## Scope
 
-## React source of truth
+Included:
+- socket connect / reconnect / room join behavior
+- realtime event mapping and domain fanout
+- `lastSeq` / heartbeat / visible-gap recovery
+- agent activity freshness and stale snapshot reconciliation
+- thread/channel message ownership and cache invalidation
+- foreground/background notification hooks
 
-`packages/web/src/store/agentStore.ts`:
-- `agentActivityObservedAt` / `agentActivityVersions` / `agentActivitySeq` 三个 reconcile 字段
-- `updateActivity(agentId, activity, activityDetail, serverSeq, timestamp)` 带 serverSeq reconcile
-- `resetActivitySeq()` on socket.connect
-- `resolveAgentDisplayState(agent, activityState, isExternal)` 单一 resolution 函数
+Not included:
+- visual presentation of notifications
+- unrelated Bugly / diagnostics work
+- product UI changes that do not affect realtime state flow
 
-## KMP source
+## React Baseline
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeEventMapper.kt:540` — wire `slockRealtimeEvent` → Activity
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedHomeStore.kt:1413` — realtime push 接收
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ChannelRepositoryDataSource.kt:554-590` — `MemberProfile.agentStatus` 增量更新
-- `compose/androidApp/src/main/java/ai/slock/android/shared/AndroidAppScopeRealtimeOwner.kt` — native realtime bridge
-- `compose/androidApp/src/main/java/ai/slock/android/shared/AndroidUnreadNotificationPoster.kt` — per-message notification
+React keeps realtime state in a few focused stores and uses socket events as
+candidate updates that may trigger store writes or scoped refreshes.
 
-## Feature points inventory (06-23 → 06-26)
+Important reference points:
+- `agentStore.ts:190-207` defines `agentActivityObservedAt`,
+  `agentActivityVersions`, and `agentActivitySeq`.
+- `agentStore.ts:216-221` exposes `resetActivitySeq()`.
+- `agentStore.ts:597-648` applies `agent:activity` with optional per-agent
+  `serverSeq` dedup.
+- `MainLayout.tsx:1198-1204` wires `agent:activity` to `updateActivity(...)`.
+- `MainLayout.tsx:1413-1427` resets agent activity seq and reloads agents on
+  socket connect.
+- `MainLayout.tsx:1433-1464` emits and consumes `sync:resume` after rooms join.
+- `MainLayout.tsx:1479-1484` uses heartbeat seq to call visible-scope sync when
+  the server is ahead.
+- `MainLayout.tsx:1592-1628` resets activity seq and runs pull reconciliation on
+  focus/online/periodic status recovery.
 
-(22 features, 完整列表参考 `react-kmp-feature-map-2026-06-26.md` Slice 10)
+The React pattern is therefore:
+1. socket push is accepted only when it is fresh enough for the target store;
+2. reconnect clears stale per-agent seq guards before a fresh pull;
+3. `lastSeq` and heartbeat detect missed message gaps;
+4. full/scope refresh remains the fallback when incremental state is incomplete.
 
-主要类别:
-1. **Native realtime bridge** (8 commits): keepalive, retry after auth restore, retain rooms while paused
-2. **Realtime projection** (6 commits): project through shared domain owner, update boundary reply count, gap recovery
-3. **Stale handling** (4 commits): recover visible gaps from heartbeat seq, newer gaps sync
-4. **Keepalive 开关** (2 commits): namespaced preference, gate behind setting (per #105 done)
-5. **Notification 链路** (2 commits): post from background realtime, foreground realtime
+## Current KMP / Android State
 
-## 现状 vs React parity
+### App-Scope Realtime Owner
 
-### ✅ 已对齐 (06-23 → 06-26)
-- Realtime 推送走 `slockRealtimeEvent` → wire activity → `AgentStatus` push 到 member store
-- Member status flow 走 member store (per `fix(status): scope agent status flows by member`)
-- Agent status resolve from member store (per `fix(thread): project agent status from members store`)
-- Foreground realtime notifications (per #103 done)
-- Native realtime keepalive (per #105 done)
-- Auth restore retry
-- Rooms retained while paused
+The old draft said native app-scope realtime was still mostly future work. That
+is no longer accurate.
 
-### ⚠️ 接近对齐 (P1)
-- Realtime parent updates out of replies (`fix(thread): keep realtime parent updates out of replies`)
-- Realtime visible when cache is stale
-- Map realtime messages to owning channel
-- Update boundary reply count from live replies
-- Subscribe standalone realtime
+Current code has a shared app-scope realtime engine and Android owner:
+- `SlockRealtimeAppScopeCoordinator.kt:14-42` defines the host connection/sink
+  contracts.
+- `SlockRealtimeAppScopeCoordinator.kt:74-120` owns the platform-independent
+  app-scope engine.
+- `SlockRealtimeAppScopeCoordinator.kt:357-385` connects with the selected
+  `lastSeq` and logs the resulting resume seq.
+- `SlockRealtimeAppScopeCoordinator.kt:433-449` handles mapped events, dynamic
+  room joins, and background unread notification decisions.
+- `SlockRealtimeAppScopeCoordinator.kt:451-460` fans raw realtime events back
+  through the host.
+- `AndroidAppScopeRealtimeOwner.kt:25-35` owns the Android singleton runtime.
+- `AndroidAppScopeRealtimeOwner.kt:68-91` tracks foreground/background
+  visibility.
+- `AndroidAppScopeRealtimeOwner.kt:119-173` reconnects from stored session.
+- `AndroidAppScopeRealtimeOwner.kt:180-210` accepts connect requests from the
+  shared app shell.
 
-### ❌ 仍未对齐 (06-26 仍 P0) — 核心架构问题
-1. **缺 `agentActivityObservedAt` / `agentActivityVersions` / `agentActivitySeq` 三字段 reconcile** (per spec v2 #68 P0 #2)
-   - 当前: REST snapshot 和 socket push 可能 race (REST 后到会覆盖 socket 新 state)
-   - socket reconnect 后 seq 残留 → 新 socket push 应用不上
-   - 修复: 加三字段 + `resetActivitySeq()` on socket.connect
-   - 任务: #74 AD-4 in_progress
-2. **Activity 数据驱动 vs standalone state** (Android-App-Integrator #386/#387/#388 in_progress)
-   - 当前 KMP 还有 Activity 页面 standalone route 本地临时 state → 易漏 realtime
-   - 修复: "global store receives realtime event → canonical cache/store update → Activity projection observes same identity update"
-3. **Realtime 漏事件** (@AD-2 在分析 #418 in_progress)
-   - 线程中收不到 realtime 数据
-   - Channel 流渲染外部数据 (#417 done 一次但根因 #418 audit)
-   - 给某个 thread reactions 先展示后瞬间消失
-4. **Native realtime bridge cleanup** (Codex-KMP-Developer #321 todo)
-   - 统一通过 NotifyModule 分发
-   - 当前 bridge 自定义分发, 有 notification title/body 退化成数字 (per #102 #103 in_progress)
-5. **Background realtime 通知链路** (per #103 in_progress, API-Integration-Developer owner)
-   - notification title + body 退化成 "x unread" 数字
-   - 修复: postUnreadNotification call 的 request title/body 不是数字
+Status: implemented. Remaining risk is behavioral validation, not missing
+architecture.
 
-### ❌ 不在 React parity 范围 (KMP 业务扩展 / 工程改造)
-- Native realtime app-scope owner 重构 (#370/#371 Cindy + Codex-Kuikly-MP in_progress)
-- Foreground keep-alive notification switch (#105 done 但 #113 todo 分离)
-- Bugly 集成 (per #111 done)
+### App Shell Decode and Domain Fanout
 
-## P0/P1/P2 缺口分类
+KMP now decodes app-shell realtime once and sends it through a shared domain
+owner.
 
-### P0 (本轮必修, 多个 in_progress)
-1. Freshness reconcile (#74 AD-4, per spec v2 P0 #2)
-2. Activity store 收敛 (#386/#387/#388 Android-App-Integrator)
-3. Realtime 漏事件 (#418 Codex-Kuikly-MP audit + 修)
-4. Native realtime bridge cleanup (#321 Codex-KMP-Developer)
-5. Background realtime notification title/body (#102/#103 API-Integration-Developer)
+References:
+- `SettingsHomePage.kt:1742-1751` holds app-shell `RealtimeEventMapper`,
+  `realtimeLastSeq`, and session key state.
+- `SettingsHomePage.kt:1937-1951` resets resume seq on session change, resets
+  agent activity seq, and calls `bridge.realtimeConnect(...)`.
+- `SettingsHomePage.kt:2281-2322` refreshes realtime auth and reconnects with
+  the current last seq.
+- `SettingsHomePage.kt:2346-2358` registers domain sinks for Home, Settings,
+  agent activity, and members presence.
+- `SettingsHomePage.kt:2427-2457` decodes realtime event data, resolves server
+  identity, updates `realtimeLastSeq`, and accepts the event into the domain
+  owner.
+- `SlockSharedStoreProvider.kt:220-234` defines `RealtimeDomainEventOwner` and
+  its sinks.
+- `SlockSharedStoreProvider.kt:255-283` dedupes accepted events, patches shared
+  task projection, applies Home/Settings, applies agent activity, joins new DM
+  rooms, and emits thread cache invalidations.
 
-### P1 (体验)
-- Realtime parent updates out of replies (already done)
-- Realtime visible when cache is stale
-- Map realtime messages to owning channel
-- Boundary reply count from live replies
+Status: implemented. This is the KMP equivalent of React's "socket event ->
+store update / scoped refresh" boundary.
 
-### P2 (业务扩展 / 工程)
-- Native realtime app-scope owner refactor (#370/#371)
-- Foreground keep-alive notification switch (#113)
-- Bugly 集成 (#111 done)
+### Agent Activity Freshness
 
-## Owner 拍 (下一步)
+The previous doc listed missing `agentActivityObservedAt`,
+`agentActivityVersions`, and `agentActivitySeq` as P0. That is stale.
 
-- (i) 等 #74 freshness reconcile + #418 audit + #386/#387/#388 store 收敛 + #321 bridge cleanup + #102/#103 notification 一波, 然后我跑 verify diff
-- (ii) 分批 verify: #74 先, #386-#388 后
-- (iii) 等 owner 拍
+KMP now has the same shape:
+- `SharedAgentDetailStore.kt:41-43` stores observed-at, local versions, and
+  per-agent activity seq.
+- `SharedAgentDetailStore.kt:220-224` applies activity updates and exposes
+  `ResetAgentActivitySeq`.
+- `SharedAgentDetailStore.kt:398-415` applies agent presence only when it beats
+  the previous seq, updates observed-at/version, and records `serverSeq`.
+- `RealtimeEventMapper.kt:392-399` maps `agent:activity` payload `serverSeq`.
+- `RealtimeEventMapper.kt:635-647` carries `serverSeq` into realtime activity
+  entries.
 
-我倾向 (i): 一波完整 verify. 不下 fix decision.
+Status: implemented for agent-detail/member presence flow. Validation should
+focus on whether every UI surface that displays live agent status reads from the
+member/agent-detail store path rather than a stale local snapshot.
 
-PUX 不动 source (worktree base = `87d41a70`).
+### LastSeq, Heartbeat, and Gap Recovery
 
-owner: @Product-UX-Designer
-date: 2026-06-26
+KMP has both app-shell cursor update and thread visible-gap recovery.
+
+References:
+- `RealtimeCursorPolicy.kt:23-63` updates applied seq from `MessageNew`,
+  `MessageUpdated`, and `SyncResumeResponse`; heartbeat only updates server max.
+- `RealtimeCursorPolicy.kt:71-88` creates visible-stream gap requests when a
+  visible stream has a lower max seq than the server.
+- `SettingsHomePage.kt:2456` updates `realtimeLastSeq` from each decoded event.
+- `SharedThreadStore.kt:2585-2634` persists realtime events, detects a newer
+  visible gap, and calls recovery.
+- `SharedThreadStore.kt:2979-3028` starts realtime-gap fetch from visible max
+  seq and applies newer payloads until the gap closes.
+
+Status: implemented for thread visible streams. The important remaining
+alignment question is whether top-level channel and reply-thread streams use the
+same cursor/recovery semantics in all entry points. Task #435 was the right
+framing for that validation.
+
+### Thread / Channel Ownership
+
+The earlier analysis treated thread leaks as still broad/open. Recent fixes have
+made the core ownership rule explicit:
+
+- Server/React timeline ownership is `channelId`.
+- `messages.threadId` can be a reply-thread parent anchor and must not be used
+  as the rendered reply timeline owner when `channelId` is present.
+
+References:
+- `RealtimeEventMapperTest.kt:78-99` pins `message:updated` to prefer
+  `channelId` for timeline identity when `threadId` is the reply stream.
+- `SharedThreadStoreTest.kt:4560-4622` pins that a realtime update for the
+  parent/origin does not append the parent into the reply timeline.
+- `SharedThreadStore.kt:2617-2620` persists realtime events with the active
+  route timeline identity.
+
+Status: core regression is covered. Remaining risk is new edge cases, not the
+old "thread/channel ownership unknown" state.
+
+### Home and Activity Projection
+
+The old draft said Activity still had standalone local realtime state. Current
+code has Home shell dispatching the same realtime event into Home and Activity:
+
+- `SharedHomeShellStore.kt:30-40` has one `ApplyRealtimeEvent(serverId, event)`
+  shell intent.
+- `SharedHomeShellStore.kt:109` routes that intent through
+  `applyRealtimeEvent(...)`.
+- `SharedHomeShellStore.kt:165-168` dispatches to Home and, when applicable, to
+  Activity.
+- `SharedActivityStore.kt:73-82` accepts `ApplyRealtimeEvent`.
+- `SharedActivityStore.kt:655-667` refreshes Activity for message/thread/task
+  events and sync-resume.
+- `HomeDataSource.kt:189-207` writes realtime events through local
+  write-through and can read the updated cached Home snapshot.
+- `HomeDataSource.kt:316-331` defines which realtime events update Home.
+
+Status: implemented enough to remove the old "Activity standalone P0" claim.
+Open validation remains: Activity entry points must still hydrate the same
+thread/task/member state as direct channel entry points.
+
+## Current Classification
+
+### Aligned / Landed
+
+- App-scope native realtime coordinator and Android owner.
+- Shared app-shell realtime decoding and domain fanout.
+- Agent activity observed/version/seq fields and reconnect reset.
+- Home/Activity shared realtime dispatch.
+- Thread parent update guard and `channelId`-first message mapping.
+- Thread visible-gap recovery from `lastSeq` / heartbeat style signals.
+- Dynamic DM room join through realtime domain owner.
+
+### Needs Validation
+
+1. **Top-level channel vs reply-thread gap recovery**
+   - Verify both surfaces recover missed newer messages with equivalent cursor
+     semantics.
+   - If not, consolidate the channel path onto the same `RealtimeCursorPolicy`
+     / visible-stream recovery rule.
+
+2. **Agent status surfaces**
+   - Verify Home, thread rows, member detail, and profile surfaces all consume
+     the member/agent-detail presence path.
+   - A stale local snapshot bug here is possible even though the seq machinery
+     exists.
+
+3. **Notification title/body quality**
+   - App-scope notification hooks exist, but the content quality issue should
+     be tracked as notification presentation/data mapping, not as core React
+     realtime parity.
+
+4. **Cross-entry thread hydration**
+   - Activity/Search/Saved/Task entry points should select canonical
+     thread/channel/task/member state from stores and repositories. Route/pageData
+     must remain identity/intent only.
+
+### No Longer Correct as P0
+
+These claims from the older draft should not be repeated:
+- "KMP lacks `agentActivityObservedAt` / `agentActivityVersions` /
+  `agentActivitySeq`." It has them.
+- "Native app-scope realtime owner is still future cleanup." It exists.
+- "Activity realtime is standalone local state." The shell dispatches realtime
+  into Activity.
+- "Thread realtime ownership root cause is still unknown." The `channelId` vs
+  reply-stream `threadId` contract is now tested.
+
+## Recommended Next Work
+
+1. Run focused tests around current claims:
+   - `RealtimeEventMapperTest.messageUpdatedPrefersChannelIdForTimelineIdentityWhenThreadIdIsReplyStream`
+   - `SharedThreadStoreTest.realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline`
+   - Home shell realtime dispatch tests covering Home + Activity fanout
+   - agent activity seq/reset tests if available
+
+2. Add or update tests only for gaps that are not already pinned:
+   - channel visible-gap recovery parity with reply-thread recovery;
+   - app-shell `realtimeLastSeq` reset on server switch / token change;
+   - status snapshot cannot overwrite a newer sequenced activity update.
+
+3. Keep future route/thread fixes inside the launch contract:
+   route/pageData carries only identity and intent; product state is loaded from
+   MVI stores/repositories and candidate snapshots must match server + canonical
+   thread/channel identity before use.
