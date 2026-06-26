@@ -17,10 +17,7 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SyncResumeResponse
-import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskId
-import ai.slock.compose.model.TaskSummary
-import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
@@ -185,7 +182,6 @@ class ComposeLocalWriteThrough(
         val newMessages = mutableListOf<Message>()
         val updatedMessages = mutableListOf<Message>()
         val threadUpdates = mutableListOf<ThreadUpdated>()
-        val taskPatches = mutableListOf<ai.slock.compose.model.TaskSummary>()
         var wrote = false
         events.forEach { event ->
             when (event) {
@@ -194,8 +190,6 @@ class ComposeLocalWriteThrough(
                 is MessageUpdated -> updatedMessages += event.message
                 is SyncResumeResponse -> newMessages += event.messages
                 is ThreadUpdated -> threadUpdates += event
-                is TaskCreated -> taskPatches += event.tasks
-                is TaskUpdated -> taskPatches += event.task
                 is RealtimeRefreshRequired -> {
                     logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
                     wrote = true
@@ -214,10 +208,6 @@ class ComposeLocalWriteThrough(
         }
         if (updatedMessages.isNotEmpty()) {
             wrote = writeRealtimeMessages(serverId, updatedMessages, incrementUnread = false, activeConversationId) || wrote
-        }
-        val latestTasks = latestTasks(taskPatches)
-        if (latestTasks.isNotEmpty()) {
-            wrote = writeRealtimeTasks(latestTasks, activeConversationId) || wrote
         }
         return wrote
     }
@@ -472,55 +462,10 @@ class ComposeLocalWriteThrough(
         return wroteHome || wroteThread
     }
 
-    private suspend fun writeRealtimeTasks(
-        tasks: List<ai.slock.compose.model.TaskSummary>,
-        activeConversationId: String?
-    ): Boolean {
-        if (tasks.isEmpty()) return false
-        var wroteThread = false
-        tasks.groupBy { task -> resolveRealtimeTaskThreadId(task, activeConversationId) }
-            .forEach { (threadId, threadTasks) ->
-                if (threadId == null) return@forEach
-                val existing = store.readThread(threadId) ?: return@forEach
-                val updated = existing.withRealtimeTasks(threadTasks)
-                wroteThread =
-                    writeThreadPatch(
-                        snapshot = updated,
-                        source = "realtime_task",
-                        streamChannelId = updated.conversation.messageStreamChannelId(),
-                        rawMessageCount = updated.messages.size,
-                        hasParent = updated.parentMessage != null
-                    ) || wroteThread
-            }
-        return wroteThread
-    }
-
-    private suspend fun resolveRealtimeTaskThreadId(
-        task: ai.slock.compose.model.TaskSummary,
-        activeConversationId: String?
-    ): ThreadId? {
-        task.threadId?.let { return it }
-        task.channelId?.let { return ThreadId(it.value) }
-        val activeThreadId = activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId) ?: return null
-        val activeSnapshot = store.readThread(activeThreadId) ?: return null
-        return if (activeSnapshot.containsRealtimeTaskIdentity(task)) activeThreadId else null
-    }
-
     private fun latestThreadUpdates(events: List<ThreadUpdated>): List<ThreadUpdated> =
         events
             .fold(mutableMapOf<Pair<MessageId, ChannelId>, ThreadUpdated>()) { latest, event ->
                 latest[event.parentMessageId to event.threadChannelId] = event
-                latest
-            }
-            .values
-            .toList()
-
-    private fun latestTasks(
-        tasks: List<ai.slock.compose.model.TaskSummary>
-    ): List<ai.slock.compose.model.TaskSummary> =
-        tasks
-            .fold(mutableMapOf<TaskId, ai.slock.compose.model.TaskSummary>()) { latest, task ->
-                latest[task.id] = task
                 latest
             }
             .values
@@ -1009,73 +954,6 @@ private fun ThreadSnapshot.withThreadMetadata(event: ThreadUpdated): ThreadSnaps
         messages = messages.map { message -> message.withMetadata() }
     )
 }
-
-private fun List<TaskSummary>.mergeThreadTasks(
-    incoming: List<TaskSummary>
-): List<TaskSummary> {
-    if (incoming.isEmpty()) return this
-    val incomingById = incoming.associateBy { it.id }
-    val incomingTaskNumbers = incoming.mapNotNull { it.taskNumber }.toSet()
-    val incomingMessageIds = incoming.flatMap { task -> task.linkedMessageIds() }.toSet()
-    val replacedIds = mutableSetOf<TaskId>()
-    val merged =
-        mapNotNull { task ->
-            incomingById[task.id]?.also { replacedIds += it.id }
-                ?: task.takeUnless { existing ->
-                    existing.matchesAnyIncomingReference(
-                        incomingTaskNumbers = incomingTaskNumbers,
-                        incomingMessageIds = incomingMessageIds
-                    )
-                }
-        } + incoming.filterNot { it.id in replacedIds }
-    return merged.distinctBy { it.id }
-}
-
-private fun ThreadSnapshot.withRealtimeTasks(
-    incoming: List<TaskSummary>
-): ThreadSnapshot {
-    fun Message.withTaskPatch(): Message {
-        val updatedTask = incoming.firstOrNull { task -> task.matchesMessageIdentity(this) } ?: return this
-        return copy(task = updatedTask)
-    }
-    return copy(
-        tasks = tasks.mergeThreadTasks(incoming),
-        parentMessage = parentMessage?.withTaskPatch(),
-        messages = messages.map { message -> message.withTaskPatch() }
-    )
-}
-
-private fun ThreadSnapshot.containsRealtimeTaskIdentity(
-    task: TaskSummary
-): Boolean {
-    return tasks.any { existing -> existing.matchesTaskReference(task) } ||
-        parentMessage?.matchesTaskIdentity(task) == true ||
-        messages.any { message -> message.matchesTaskIdentity(task) }
-}
-
-private fun Message.matchesTaskIdentity(task: TaskSummary): Boolean =
-    task.matchesMessageIdentity(this)
-
-private fun TaskSummary.matchesMessageIdentity(message: Message): Boolean =
-    message.task?.id == id ||
-        message.id.value == id.value ||
-        linkedMessageIds().any { messageId -> message.id == messageId } ||
-        (taskNumber != null && message.task?.taskNumber == taskNumber)
-
-private fun TaskSummary.matchesTaskReference(incoming: TaskSummary): Boolean =
-    id == incoming.id ||
-        linkedMessageIds().any { messageId -> messageId in incoming.linkedMessageIds() } ||
-        (taskNumber != null && taskNumber == incoming.taskNumber)
-
-private fun TaskSummary.matchesAnyIncomingReference(
-    incomingTaskNumbers: Set<Int>,
-    incomingMessageIds: Set<MessageId>
-): Boolean =
-    linkedMessageIds().any { messageId -> messageId in incomingMessageIds } ||
-        (taskNumber != null && taskNumber in incomingTaskNumbers)
-
-private fun TaskSummary.linkedMessageIds(): List<MessageId> =
-    listOfNotNull(messageId, parentMessageId, MessageId(id.value)).distinct()
 
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(

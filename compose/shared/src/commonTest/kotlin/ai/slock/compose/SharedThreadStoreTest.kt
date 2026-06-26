@@ -4741,7 +4741,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeThreadUpdatedAndTaskUpdatedMergeIntoPayload() = runBlocking {
+    fun realtimeThreadUpdatedMergesButTaskUpdatedDoesNotMutatePayloadTaskFacts() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
         val initial =
@@ -4800,13 +4800,14 @@ class SharedThreadStoreTest {
         assertEquals(3, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-2", message.firstUnreadReplyMessageId)
-        assertEquals("InReview", message.taskStatus)
-        assertEquals("Updated task", store.state.value.payload.tasks.single().title)
+        assertEquals("Todo", message.taskStatus)
+        assertEquals("Old task", store.state.value.payload.tasks.single().title)
+        assertEquals("Todo", store.state.value.payload.tasks.single().status)
         scope.cancel()
     }
 
     @Test
-    fun realtimeTaskUpdatedReplacesStaleVisibleTaskReferenceByTaskNumber() = runBlocking {
+    fun realtimeTaskUpdatedLeavesThreadPayloadTaskFallbackUntouched() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
         val initial =
@@ -4850,9 +4851,9 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         val message = payload.messages.single()
-        assertEquals("server-task", message.taskId)
-        assertEquals("Done", message.taskStatus)
-        assertEquals(listOf("server-task"), payload.tasks.map { it.id })
+        assertEquals("local-stale-task", message.taskId)
+        assertEquals("Todo", message.taskStatus)
+        assertEquals(listOf("local-stale-task"), payload.tasks.map { it.id })
         scope.cancel()
     }
 
@@ -5446,101 +5447,6 @@ class SharedThreadStoreTest {
         assertEquals(TaskStatus.Done, result.data?.status)
         assertEquals(listOf("task-1" to TaskStatus.Done), api.updatedTaskStatuses)
         assertEquals(null, localStore.readThread(ThreadId("channel-1")))
-    }
-
-    @Test
-    fun applyTaskStatusWritesPersistentSnapshotAfterReducer() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        dataSource.cachePayload(taskPayload())
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyTaskStatus("task-1", TaskStatus.Done.name))
-
-        assertEquals("Done", store.state.value.payload.messages.single().taskStatus)
-        assertEquals("Done", store.state.value.payload.tasks.single().status)
-        assertEquals("Done", localStore.readThread(ThreadId("channel-1"))?.tasks?.single()?.status?.name)
-        scope.cancel()
-    }
-
-    @Test
-    fun applyTaskStatusMatchesMessageThroughTaskReference() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        dataSource.cachePayload(taskPayloadWithMessageReferenceOnly())
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyTaskStatus("task-1", TaskStatus.Done.name))
-
-        val message = store.state.value.payload.messages.single()
-        assertEquals("task-1", message.taskId)
-        assertEquals("Done", message.taskStatus)
-        assertEquals("Done", store.state.value.payload.tasks.single().status)
-        val cached = localStore.readThread(ThreadId("channel-1"))
-        assertEquals("task-1", cached?.messages?.single()?.task?.id?.value)
-        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
-        scope.cancel()
-    }
-
-    @Test
-    fun applyTaskStatusPromotesServerTaskIdOverStaleMessageTaskId() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        val stalePayload =
-            contentPayload("task body").copy(
-                messages =
-                    listOf(
-                        contentPayload("task body").messages.single().copy(
-                            taskId = "local-stale-task",
-                            taskNumber = 77,
-                            taskStatus = "Todo"
-                        )
-                    ),
-                tasks =
-                    listOf(
-                        KuiklyThreadTaskItem(
-                            id = "local-stale-task",
-                            title = "Cached task",
-                            status = "Todo",
-                            taskNumber = 77,
-                            messageId = "m1"
-                        )
-                    )
-            )
-        dataSource.cachePayload(stalePayload)
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyTaskStatus("m1", TaskStatus.Done.name))
-
-        val message = store.state.value.payload.messages.single()
-        assertEquals("m1", message.taskId)
-        assertEquals("Done", message.taskStatus)
-        assertEquals("Done", store.state.value.payload.tasks.single().status)
-        val cached = localStore.readThread(ThreadId("channel-1"))
-        assertEquals("m1", cached?.messages?.single()?.task?.id?.value)
-        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
-        scope.cancel()
     }
 
     @Test

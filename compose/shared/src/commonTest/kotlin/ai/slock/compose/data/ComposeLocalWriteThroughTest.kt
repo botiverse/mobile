@@ -15,7 +15,6 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
-import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
@@ -486,50 +485,11 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun realtimeTaskPatchKeepsExistingTaskReferences() = runBlocking {
+    fun realtimeTaskEventDoesNotPatchThreadSnapshotTaskFacts() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store, logger = logs::add)
-        val taskOne =
-            task(
-                id = "task-1",
-                title = "Old one",
-                status = TaskStatus.Todo
-            )
-        val taskTwo =
-            task(
-                id = "task-2",
-                title = "Same two",
-                status = TaskStatus.Todo
-            )
-        store.writeThread(
-            ThreadSnapshot(
-                conversation = channel(),
-                messages = listOf(message("m1", "channel-1", "channel-1", seq = 1)),
-                tasks = listOf(taskOne, taskTwo),
-                lastSeq = 1
-            )
-        )
-
-        writer.writeRealtimeEvent(
-            serverId,
-            ai.slock.compose.model.TaskUpdated(taskOne.copy(title = "Updated one", status = TaskStatus.Done))
-        )
-
-        val cachedTasks = store.readThread(ThreadId("channel-1"))?.tasks.orEmpty()
-        assertEquals("Updated one", cachedTasks[0].title)
-        assertEquals(TaskStatus.Done, cachedTasks[0].status)
-        assertTrue(cachedTasks[0] !== taskOne)
-        assertTrue(cachedTasks[1] === taskTwo)
-        assertTrue(logs.any { it.contains("thread_patch source=realtime_task") && it.contains("changedTaskIds=[task-1]") })
-    }
-
-    @Test
-    fun realtimeTaskPatchWithoutIdentityDoesNotPolluteActiveThread() = runBlocking {
-        val logs = mutableListOf<String>()
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
-        val existingTask = task("task-1", "Current task", TaskStatus.Todo)
+        val existingTask = task("task-1", "Old one", TaskStatus.Todo)
         store.writeThread(
             ThreadSnapshot(
                 conversation = channel(),
@@ -542,147 +502,20 @@ class ComposeLocalWriteThroughTest {
         val wrote =
             writer.writeRealtimeEvent(
                 serverId,
-                TaskUpdated(
-                    TaskSummary(
-                        id = TaskId("task-other"),
-                        title = "Other channel task",
-                        status = TaskStatus.Done,
-                        updatedAtLabel = "12:01"
-                    )
-                ),
+                TaskUpdated(existingTask.copy(title = "Updated one", status = TaskStatus.Done)),
                 activeConversationId = "channel-1"
             )
 
         val cachedTasks = store.readThread(ThreadId("channel-1"))?.tasks.orEmpty()
         assertEquals(false, wrote)
         assertEquals(listOf("task-1"), cachedTasks.map { it.id.value })
-        assertEquals("Current task", cachedTasks.single().title)
+        assertEquals("Old one", cachedTasks.single().title)
+        assertEquals(TaskStatus.Todo, cachedTasks.single().status)
         assertTrue(logs.none { it.contains("thread_patch source=realtime_task") })
     }
 
     @Test
-    fun realtimeTaskPatchUsesChannelIdBeforeActiveFallback() = runBlocking {
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store)
-        val activeTask = task("task-1", "Active task", TaskStatus.Todo)
-        store.writeThread(
-            ThreadSnapshot(
-                conversation = channel("channel-1"),
-                messages = listOf(message("m1", "channel-1", "channel-1", seq = 1)),
-                tasks = listOf(activeTask),
-                lastSeq = 1
-            )
-        )
-        store.writeThread(
-            ThreadSnapshot(
-                conversation = channel("channel-2"),
-                messages = listOf(message("m2", "channel-2", "channel-2", seq = 1)),
-                tasks = emptyList(),
-                lastSeq = 1
-            )
-        )
-
-        writer.writeRealtimeEvent(
-            serverId,
-            TaskUpdated(
-                TaskSummary(
-                    id = TaskId("task-2"),
-                    title = "Channel two task",
-                    status = TaskStatus.InReview,
-                    channelId = ChannelId("channel-2"),
-                    updatedAtLabel = "12:02"
-                )
-            ),
-            activeConversationId = "channel-1"
-        )
-
-        assertEquals(listOf("task-1"), store.readThread(ThreadId("channel-1"))?.tasks?.map { it.id.value })
-        val channelTwoTask = store.readThread(ThreadId("channel-2"))?.tasks?.single()
-        assertEquals("task-2", channelTwoTask?.id?.value)
-        assertEquals("Channel two task", channelTwoTask?.title)
-        assertEquals(TaskStatus.InReview, channelTwoTask?.status)
-    }
-
-    @Test
-    fun realtimeTaskPatchMatchesMessageWhenTaskIdIsMessageId() = runBlocking {
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store)
-        store.writeThread(
-            ThreadSnapshot(
-                conversation = channel(),
-                messages = listOf(message("message-1", "channel-1", "channel-1", seq = 1)),
-                tasks = emptyList(),
-                lastSeq = 1
-            )
-        )
-
-        writer.writeRealtimeEvent(
-            serverId,
-            TaskCreated(
-                listOf(
-                    TaskSummary(
-                        id = TaskId("message-1"),
-                        title = "Created from message",
-                        status = TaskStatus.Todo,
-                        taskNumber = 42,
-                        channelId = ChannelId("channel-1"),
-                        updatedAtLabel = "12:03"
-                    )
-                )
-            )
-        )
-
-        val cached = store.readThread(ThreadId("channel-1"))
-        assertEquals("message-1", cached?.messages?.single()?.task?.id?.value)
-        assertEquals(TaskStatus.Todo, cached?.messages?.single()?.task?.status)
-        assertEquals(listOf("message-1"), cached?.tasks?.map { it.id.value })
-    }
-
-    @Test
-    fun realtimeTaskPatchReplacesStaleTaskReferenceByTaskNumber() = runBlocking {
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store)
-        val staleTask =
-            TaskSummary(
-                id = TaskId("local-stale-task"),
-                title = "Cached task",
-                status = TaskStatus.Todo,
-                taskNumber = 77,
-                messageId = MessageId("message-1"),
-                channelId = ChannelId("channel-1"),
-                updatedAtLabel = "12:00"
-            )
-        store.writeThread(
-            ThreadSnapshot(
-                conversation = channel(),
-                messages = listOf(message("message-1", "channel-1", "channel-1", seq = 1).copy(task = staleTask)),
-                tasks = listOf(staleTask),
-                lastSeq = 1
-            )
-        )
-
-        writer.writeRealtimeEvent(
-            serverId,
-            TaskUpdated(
-                TaskSummary(
-                    id = TaskId("server-task"),
-                    title = "Server task",
-                    status = TaskStatus.Done,
-                    taskNumber = 77,
-                    channelId = ChannelId("channel-1"),
-                    updatedAtLabel = "12:05"
-                )
-            )
-        )
-
-        val cached = store.readThread(ThreadId("channel-1"))
-        assertEquals("server-task", cached?.messages?.single()?.task?.id?.value)
-        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
-        assertEquals(listOf("server-task"), cached?.tasks?.map { it.id.value })
-    }
-
-    @Test
-    fun realtimeBatchMergesSameThreadMessagesMetadataAndTasks() = runBlocking {
+    fun realtimeBatchMergesSameThreadMessagesAndMetadataButNotTasks() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store, logger = logs::add)
@@ -728,11 +561,11 @@ class ComposeLocalWriteThroughTest {
         assertEquals(3, cached?.lastSeq)
         assertEquals(3, cached?.messages?.first()?.replyCount)
         assertEquals(2, cached?.messages?.first()?.unreadReplyCount)
-        assertEquals("Updated task", cached?.tasks?.single()?.title)
-        assertEquals(TaskStatus.InReview, cached?.tasks?.single()?.status)
+        assertEquals("Old task", cached?.tasks?.single()?.title)
+        assertEquals(TaskStatus.Todo, cached?.tasks?.single()?.status)
         assertEquals(1, logs.count { it.contains("thread_patch source=realtime_message") })
         assertEquals(1, logs.count { it.contains("thread_patch source=thread_metadata") })
-        assertEquals(1, logs.count { it.contains("thread_patch source=realtime_task") })
+        assertEquals(0, logs.count { it.contains("thread_patch source=realtime_task") })
     }
 
     @Test
