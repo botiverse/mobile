@@ -8613,16 +8613,20 @@ private fun ThreadMessageCard(
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
-                Box(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .threadMessageLongPressActions(
+                                messageId = message.id,
+                                onShowActions = onShowActions,
+                                onPressChanged = { pressed = it }
+                            )
+                ) {
                     Column(
                         modifier =
                             Modifier
-                                .fillMaxWidth()
-                                .threadMessageLongPressActions(
-                                    messageId = message.id,
-                                    onShowActions = onShowActions,
-                                    onPressChanged = { pressed = it }
-                                ),
+                                .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
@@ -9194,21 +9198,23 @@ private fun Modifier.threadMessageLongPressActions(
     onShowActions: (Offset) -> Unit,
     onPressChanged: (Boolean) -> Unit = {}
 ): Modifier {
+    val currentOnShowActions by rememberUpdatedState(onShowActions)
+    val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     var rootPos by remember { mutableStateOf(Offset.Zero) }
     return this
         .onGloballyPositioned { rootPos = it.positionInRoot() }
         .pointerInput(messageId) {
             detectTapGestures(
                 onPress = {
-                    onPressChanged(true)
+                    currentOnPressChanged(true)
                     try {
                         tryAwaitRelease()
                     } finally {
-                        onPressChanged(false)
+                        currentOnPressChanged(false)
                     }
                 },
                 onLongPress = { localOffset ->
-                    onShowActions(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
+                    currentOnShowActions(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
                 }
             )
         }
