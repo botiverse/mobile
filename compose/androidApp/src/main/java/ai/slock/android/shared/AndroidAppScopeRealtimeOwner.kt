@@ -26,10 +26,11 @@ import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeConnection
-import ai.slock.compose.data.realtime.SlockRealtimeAppScopeCoordinator
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeSink
 import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
+import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ConversationKind
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.mmkv.MMKV
@@ -48,9 +49,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var realtimeClient: SocketIoRealtimeClient? = null
-    private var realtimeCoordinator: SlockRealtimeAppScopeCoordinator? = null
-    private var realtimeSubscription: RealtimeSubscription? = null
-    private var realtimeRawSubscription: RealtimeSubscription? = null
+    private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
     private var realtimeConnectJob: Job? = null
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var backgroundKeepAliveEnabled = false
@@ -92,10 +91,10 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         appVisibility = AppVisibility.Foreground
-        realtimeCoordinator?.onAppShown()
+        realtimeRuntime?.onAppShown()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
+            "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -106,10 +105,10 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun onAppHidden(source: String = "unknown") {
         appVisibility = AppVisibility.Background
-        realtimeCoordinator?.onAppHidden()
+        realtimeRuntime?.onAppHidden()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
+            "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
     }
 
@@ -120,7 +119,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeCoordinator?.joinedChannelCount ?: 0}"
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -151,7 +150,7 @@ internal object AndroidAppScopeRealtimeOwner {
         missingSelectedServerRetryCount: Int
     ) {
         val appContext = context.applicationContext
-        val coordinator = ensureRealtimeCoordinator(appContext)
+        val runtime = bootstrapRealtime(appContext)
         val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
@@ -187,7 +186,7 @@ internal object AndroidAppScopeRealtimeOwner {
                                 return@launch
                             }
                     val result =
-                        coordinator.connect(
+                        runtime.connect(
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
@@ -218,13 +217,13 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
         )
-        val coordinator = ensureRealtimeCoordinator(context.applicationContext)
+        val runtime = bootstrapRealtime(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
                     val result =
-                        coordinator.connect(
+                        runtime.connect(
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
@@ -268,14 +267,14 @@ internal object AndroidAppScopeRealtimeOwner {
             return
         }
         val client = realtimeClient
-        val coordinator = realtimeCoordinator
-        val ownedSession = coordinator?.ownedSession()
+        val runtime = realtimeRuntime
+        val ownedSession = runtime?.ownedSession()
         if (client == null || ownedSession == null) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
-            connectFromStoredSession(context, coordinator?.lastSeq ?: 0L)
+            connectFromStoredSession(context, runtime?.lastSeq ?: 0L)
             return
         }
         val serverId = ownedSession.serverId
@@ -315,7 +314,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         realtimeConnectJob?.cancel()
         realtimeConnectJob = null
-        val disconnected = realtimeCoordinator?.disconnectForSessionEnd(cleanReason) ?: run {
+        val disconnected = realtimeRuntime?.disconnectForSessionEnd(cleanReason) ?: run {
             realtimeClient?.disconnect()
             true
         }
@@ -323,8 +322,8 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = false
     }
 
-    private fun ensureRealtimeCoordinator(context: Context): SlockRealtimeAppScopeCoordinator {
-        realtimeCoordinator?.let { return it }
+    private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
+        realtimeRuntime?.let { return it }
         val appContext = context.applicationContext
         val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
         val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
@@ -413,22 +412,19 @@ internal object AndroidAppScopeRealtimeOwner {
                     )
                 }
             }
-        val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
+        val runtime =
+            bootstrapRealtime(
+                connection = connection,
+                sink = sink,
+                dispatch = { block ->
+                    scope.launch {
+                        block()
+                    }
+                }
+            )
         realtimeClient = client
-        realtimeCoordinator = coordinator
-        realtimeSubscription =
-            connection.observeEvents { event ->
-                scope.launch {
-                    coordinator.onMappedEvent(event)
-                }
-            }
-        realtimeRawSubscription =
-            connection.observeRawEvents { eventName, rawPayload ->
-                scope.launch {
-                    coordinator.onRawEvent(eventName, rawPayload)
-                }
-            }
-        return coordinator
+        realtimeRuntime = runtime
+        return runtime
     }
 
     private fun reconnectOwnedSession(
@@ -437,16 +433,16 @@ internal object AndroidAppScopeRealtimeOwner {
         accessToken: String,
         state: RealtimeConnectionState
     ) {
-        val coordinator = ensureRealtimeCoordinator(context.applicationContext)
+        val runtime = bootstrapRealtime(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
                     val result =
-                        coordinator.connect(
+                        runtime.connect(
                             serverId = serverId,
                             accessToken = accessToken,
-                            requestedLastSeq = coordinator.lastSeq,
+                            requestedLastSeq = runtime.lastSeq,
                             forceReconnect = true
                         )
                     SlockDiagnosticsLogger.d(
