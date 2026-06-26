@@ -48,7 +48,6 @@ import ai.slock.compose.data.SharedAgentDetailLoadStatus
 import ai.slock.compose.data.SharedAgentDetailState
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SlockAuthSessionStore
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.ScreenError
@@ -748,19 +747,11 @@ internal fun MembersPageContent() {
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
 
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
-    // Mirrors ThreadPage's pattern: sharedStores gives us the auth store;
-    // pager.acquireModule<SlockNetworkModule>(...) gives us a network client.
+    // Use the shared provider network client so request scheduling and transport swaps
+    // stay centralized instead of being recreated per page.
     val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
-    val networkClient = remember {
-        KuiklySlockNetworkClient(
-            sessionStore = authStore,
-            networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
-                ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
-            ),
-            warningLogger = { message -> bridge.log("members_network $message") }
-        )
-    }
+    val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
         ai.slock.compose.data.SlockAgentsApiClient(
             transport = ai.slock.compose.data.SlockAgentsNetworkApi(networkClient),
@@ -1239,16 +1230,7 @@ private fun rememberMemberDetailRouteProvider(
 ): MemberDetailRouteProvider {
     val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
-    val networkClient =
-        remember {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
-                    ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
-                ),
-                warningLogger = { message -> bridge.log("member_detail_network $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
     val memberRepository: MemberRepository =
         remember(networkClient, authStore) {
             RealMemberRepository(

@@ -6,8 +6,6 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
-import ai.slock.compose.data.KuiklySlockAuthTransport
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
 import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
@@ -23,7 +21,6 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.runCatchingPreservingCancellation
-import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -44,23 +41,8 @@ internal fun rememberStandaloneSettingsEnvironment(
 ): StandaloneSettingsEnvironment {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
-    val networkModule = remember(pager) { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
-    val networkClient =
-        remember(authStore, networkModule) {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = networkModule,
-                warningLogger = { message -> bridge.log("settings_standalone_network $message") }
-            )
-        }
-    val authDataSource =
-        remember(networkModule) {
-            SharedAuthDataSource(
-                transport = KuiklySlockAuthTransport(networkModule = networkModule),
-                sessionStore = authStore,
-                diagnosticsLogger = { message -> bridge.log("settings_standalone_auth $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
+    val authDataSource = sharedStores.authDataSource
     val computersApiClient =
         remember(networkClient) {
             SlockComputersApiClient(SlockComputersNetworkApi(networkClient))

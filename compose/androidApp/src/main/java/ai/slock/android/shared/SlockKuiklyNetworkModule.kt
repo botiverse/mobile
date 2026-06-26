@@ -4,22 +4,31 @@ import android.net.Uri
 import android.util.Base64
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import ai.slock.compose.network.HttpClientConfig
+import ai.slock.compose.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+import ai.slock.compose.network.TimeoutConfig
+import ai.slock.compose.network.createPriorityHttpClient
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.TimeUnit
-import okhttp3.Call
-import okhttp3.MediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import okio.BufferedSink
+import io.ktor.client.HttpClient
+import io.ktor.client.request.header
+import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.client.request.forms.ChannelProvider
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
+import io.ktor.utils.io.jvm.javaio.toByteReadChannel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
@@ -51,24 +60,22 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                     runCatching {
                                 val headers = command.optJSONObject("headers") ?: JSONObject()
                                 val method = command.optString("method", "GET").uppercase()
-                                val requestBody = command.requestBody(method, headers, activity, active)
-                                val request =
-                                        Request.Builder()
-                                                .url(rewriteEnvironmentUrl(command.optString("url")))
-                                                .applyHeaders(headers, skipContentType = requestBody is MultipartBody)
-                                                .method(method, requestBody)
-                                                .build()
                                 if (active.cancelled.get()) {
                                     throw RequestCancelledException()
                                 }
-                                val call = CLIENT.newCall(request)
-                                active.call = call
-                                call.execute().use { response ->
-                                    val body = response.body?.string().orEmpty()
+                                runBlocking {
+                                    active.job = coroutineContext[Job]
+                                    val response =
+                                            CLIENT.request(rewriteEnvironmentUrl(command.optString("url"))) {
+                                                this.method = HttpMethod(method)
+                                                applyHeaders(headers, skipContentType = command.has("multipartFiles"))
+                                                applyBody(command, method, activity, active)
+                                            }
+                                    val body = response.bodyAsText()
                                     mapOf(
-                                            "code" to response.code,
-                                            "bodyText" to if (response.isSuccessful) body else "",
-                                            "errorBodyText" to if (response.isSuccessful) "" else body
+                                            "code" to response.status.value,
+                                            "bodyText" to if (response.status.value in 200..299) body else "",
+                                            "errorBodyText" to if (response.status.value in 200..299) "" else body
                                     )
                                 }
                             }
@@ -105,14 +112,14 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         val requestId = JSONObject(params ?: "{}").optString("requestId").takeIf { it.isNotBlank() } ?: return
         val active = activeRequests.remove(requestId) ?: return
         active.cancelled.set(true)
-        active.call?.cancel()
+        active.job?.cancel()
         SlockDiagnosticsLogger.record(
                 "SlockKuiklyNetwork",
                 "request_cancel requestId=$requestId thread=${Thread.currentThread().name}"
         )
     }
 
-    private fun Request.Builder.applyHeaders(headers: JSONObject, skipContentType: Boolean): Request.Builder {
+    private fun io.ktor.client.request.HttpRequestBuilder.applyHeaders(headers: JSONObject, skipContentType: Boolean) {
         val keys = headers.keys()
         while (keys.hasNext()) {
             val key = keys.next()
@@ -124,177 +131,154 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                 header(key, value)
             }
         }
-        return this
     }
 
-    private fun JSONObject.requestBody(
+    private fun io.ktor.client.request.HttpRequestBuilder.applyBody(
+            command: JSONObject,
             method: String,
-            headers: JSONObject,
             activity: android.app.Activity?,
             active: ActiveNetworkRequest
-    ): RequestBody? {
-        val mediaType = headers.optString("Content-Type").takeIf { it.isNotBlank() }?.toMediaTypeOrNull()
-        if (has("bodyBase64")) {
-            return Base64.decode(optString("bodyBase64"), Base64.DEFAULT).toRequestBody(mediaType)
+    ) {
+        if (command.has("multipartFiles")) {
+            setBody(MultiPartFormDataContent(command.multipartFormData(activity, active)))
+            return
         }
-        optJSONArray("multipartFiles")?.let { files ->
-            return multipartRequestBody(files, optJSONObject("multipartFields"), activity, active)
+        if (command.has("bodyBase64")) {
+            setBody(Base64.decode(command.optString("bodyBase64"), Base64.DEFAULT))
+            return
         }
-        if (has("bodyFileRef")) {
-            return fileRefRequestBody(
-                    activity = activity,
-                    fileRef = optString("bodyFileRef"),
-                    mediaType = mediaType,
-                    sizeBytes = null,
-                    active = active
-            )
+        if (command.has("bodyFileRef")) {
+            val sizeBytes = command.optLong("bodySizeBytes", -1L).takeIf { it > 0L }
+            sizeBytes?.let { header(HttpHeaders.ContentLength, it.toString()) }
+            setBody(openFileRefStream(activity, command.optString("bodyFileRef"), active))
+            return
         }
-        if (has("bodyText")) {
-            return optString("bodyText").toRequestBody(mediaType)
+        if (command.has("bodyText")) {
+            setBody(command.optString("bodyText"))
+            return
         }
-        return if (method in METHODS_REQUIRING_BODY) {
-            ByteArray(0).toRequestBody(mediaType)
-        } else {
-            null
+        if (method in METHODS_REQUIRING_BODY) {
+            setBody(ByteArray(0))
         }
     }
 
-    private fun multipartRequestBody(
-            files: org.json.JSONArray,
-            fields: JSONObject?,
+    private fun JSONObject.multipartFormData(
             activity: android.app.Activity?,
             active: ActiveNetworkRequest
-    ): RequestBody {
-        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+    ): List<io.ktor.http.content.PartData> {
+        val files = optJSONArray("multipartFiles") ?: org.json.JSONArray()
+        val fields = optJSONObject("multipartFields")
         var addedFiles = 0
-        fields?.keys()?.let { keys ->
-            while (keys.hasNext()) {
-                val key = keys.next()
-                builder.addFormDataPart(key, fields.optString(key))
-            }
-        }
-        for (index in 0 until files.length()) {
-            val file = files.optJSONObject(index) ?: continue
-            val fieldName = file.optString("name", "files")
-            val fileName = file.optString("fileName", "attachment")
-            val mimeType = file.optString("mimeType", "application/octet-stream").toMediaTypeOrNull()
-            val body = (
-                    if (file.has("bodyBase64")) {
-                        val bytes = Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
-                        if (bytes.isEmpty()) {
-                            null
-                        } else {
-                            bytes.toRequestBody(mimeType)
+        val parts =
+                formData {
+                    fields?.keys()?.let { keys ->
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            append(key, fields.optString(key))
                         }
-                    } else if (file.has("fileRef")) {
-                        fileRefRequestBody(
-                                activity = activity,
-                                fileRef = file.optString("fileRef"),
-                                mediaType = mimeType,
-                                sizeBytes = file.optLong("sizeBytes", -1L).takeIf { it > 0L },
-                                active = active
-                        )
-                    } else {
-                        null
                     }
-                    ) ?: continue
-            if (body.contentLengthOrUnknown() == 0L) {
-                continue
-            }
-            builder.addFormDataPart(fieldName, fileName, body)
-            addedFiles += 1
-        }
+                    for (index in 0 until files.length()) {
+                        val file = files.optJSONObject(index) ?: continue
+                        val fieldName = file.optString("name", "files")
+                        val fileName = file.optString("fileName", "attachment")
+                        val mimeType = file.optString("mimeType", "application/octet-stream")
+                        val partHeaders = multipartFileHeaders(fileName, mimeType)
+                        if (file.has("bodyBase64")) {
+                            val bytes = Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
+                            if (bytes.isEmpty()) {
+                                continue
+                            }
+                            append(fieldName, bytes, partHeaders)
+                        } else if (file.has("fileRef")) {
+                            val sizeBytes = file.optLong("sizeBytes", -1L).takeIf { it > 0L }
+                            append(
+                                    fieldName,
+                                    ChannelProvider(sizeBytes) {
+                                        openFileRefStream(activity, file.optString("fileRef"), active).toByteReadChannel()
+                                    },
+                                    partHeaders
+                            )
+                        } else {
+                            continue
+                        }
+                        addedFiles += 1
+                    }
+                }
         if (files.length() > 0 && addedFiles == 0) {
             throw IOException("No readable multipart files")
         }
-        return builder.build()
+        return parts
     }
 
-    private fun fileRefRequestBody(
-            activity: android.app.Activity?,
-            fileRef: String,
-            mediaType: MediaType?,
-            sizeBytes: Long?,
-            active: ActiveNetworkRequest
-    ): RequestBody? {
-        if (activity == null || fileRef.isBlank()) return null
-        return FileRefRequestBody(activity, fileRef, mediaType, sizeBytes, active)
-    }
-
-    private fun RequestBody.contentLengthOrUnknown(): Long =
-            try {
-                contentLength()
-            } catch (_: IOException) {
-                -1L
+    private fun multipartFileHeaders(fileName: String, mimeType: String): Headers =
+            Headers.build {
+                append(HttpHeaders.ContentDisposition, "filename=\"${fileName.sanitizeMultipartFileName()}\"")
+                append(HttpHeaders.ContentType, mimeType)
             }
 
-    private class FileRefRequestBody(
-            private val activity: android.app.Activity,
-            private val fileRef: String,
-            private val mediaType: MediaType?,
-            private val sizeBytes: Long?,
+    private fun openFileRefStream(
+            activity: android.app.Activity?,
+            fileRef: String,
+            active: ActiveNetworkRequest
+    ): InputStream {
+        if (activity == null || fileRef.isBlank()) throw IOException("No readable file")
+        val uri = Uri.parse(fileRef)
+        val input =
+                if (uri.scheme.equals("file", ignoreCase = true)) {
+                    val path = uri.path ?: throw IOException("No file path")
+                    File(path).takeIf { it.isFile }?.inputStream()
+                } else {
+                    activity.contentResolver.openInputStream(uri)
+                } ?: throw IOException("Unable to read file")
+        return CancellableInputStream(input, active)
+    }
+
+    private class CancellableInputStream(
+            private val delegate: InputStream,
             private val active: ActiveNetworkRequest
-    ) : RequestBody() {
-        override fun contentType(): MediaType? = mediaType
+    ) : InputStream() {
+        override fun read(): Int {
+            throwIfCancelled()
+            return delegate.read()
+        }
 
-        override fun contentLength(): Long = sizeBytes ?: fileLengthOrUnknown()
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            throwIfCancelled()
+            return delegate.read(b, off, len)
+        }
 
-        override fun writeTo(sink: BufferedSink) {
+        override fun close() {
+            delegate.close()
+        }
+
+        private fun throwIfCancelled() {
             if (active.cancelled.get()) {
                 throw RequestCancelledException()
             }
-            val uri = Uri.parse(fileRef)
-            val input =
-                    if (uri.scheme.equals("file", ignoreCase = true)) {
-                        val path = uri.path ?: throw IOException("No file path")
-                        File(path).takeIf { it.isFile }?.inputStream()
-                    } else {
-                        activity.contentResolver.openInputStream(uri)
-                    } ?: throw IOException("Unable to read file")
-            input.use { stream ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    if (active.cancelled.get()) {
-                        throw RequestCancelledException()
-                    }
-                    val read = stream.read(buffer)
-                    if (read == -1) break
-                    sink.write(buffer, 0, read)
-                }
-            }
-        }
-
-        private fun fileLengthOrUnknown(): Long {
-            val uri = Uri.parse(fileRef)
-            if (uri.scheme.equals("file", ignoreCase = true)) {
-                val path = uri.path ?: return -1L
-                return File(path).takeIf { it.isFile }?.length() ?: -1L
-            }
-            return activity.contentResolver.openAssetFileDescriptor(uri, "r")
-                    ?.use { descriptor -> descriptor.length }
-                    ?.takeIf { it >= 0L }
-                    ?: -1L
         }
     }
+
+    private fun String.sanitizeMultipartFileName(): String =
+            replace("\"", "'").replace("\r", "").replace("\n", "")
 
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
         private const val METHOD_CANCEL = "cancel"
         private val METHODS_REQUIRING_BODY = setOf("POST", "PUT", "PATCH")
-        private val CLIENT =
-                OkHttpClient.Builder()
-                        .connectTimeout(30, TimeUnit.SECONDS)
-                        .readTimeout(30, TimeUnit.SECONDS)
-                        .writeTimeout(30, TimeUnit.SECONDS)
-                        .build()
+        private val CLIENT: HttpClient =
+                createPriorityHttpClient(
+                        config = HttpClientConfig(timeout = TimeoutConfig()),
+                        maxRequests = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
+                        maxRequestsPerHost = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+                )
     }
 
     private class ActiveNetworkRequest {
         val cancelled = AtomicBoolean(false)
 
         @Volatile
-        var call: Call? = null
+        var job: Job? = null
     }
 
     private class RequestCancelledException : IOException("Request cancelled")

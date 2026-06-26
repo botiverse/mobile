@@ -46,6 +46,15 @@ interface SlockNetworkClient {
         bodyText: String? = null
     ): HomeNetworkResponse
 
+    suspend fun requestRawAbsoluteUrl(
+        priority: DataRequestPriority,
+        url: String,
+        method: String = "GET",
+        headers: Map<String, String> = emptyMap(),
+        bodyText: String? = null
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
     suspend fun uploadAttachments(
         priority: DataRequestPriority,
         channelId: ChannelId,

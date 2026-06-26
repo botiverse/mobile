@@ -16,7 +16,6 @@ import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDetailSummary
 import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
-import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.NetworkSlockTasksApi
 import ai.slock.compose.data.NetworkSlockThreadApi
 import ai.slock.compose.data.RealChannelRepository
@@ -75,7 +74,6 @@ import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
-import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
@@ -1652,15 +1650,7 @@ private fun ThreadPageScreen() {
                 logger = { message -> bridge.logDebug("shared_thread_cache $message") }
             )
         }
-    val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
-    val networkClient =
-        remember {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = networkModule,
-                warningLogger = { message -> bridge.log("kuikly_network $message") }
-            )
-        }
+    val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
         SlockAgentsApiClient(
             transport = SlockAgentsNetworkApi(networkClient),
@@ -1793,7 +1783,6 @@ private fun ThreadPageScreen() {
         initialPayload = payload,
         bridge = bridge,
         dataSource = dataSource,
-        networkModule = networkModule,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
         tasksDataStore = sharedStores.tasksDataStore,
@@ -2241,7 +2230,6 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    networkModule: SlockNetworkModule,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore? = null,

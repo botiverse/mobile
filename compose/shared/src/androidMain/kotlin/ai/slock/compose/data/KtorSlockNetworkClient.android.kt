@@ -28,6 +28,21 @@ class KtorSlockNetworkClient(
             body = bodyText
         ).toHomeNetworkResponse()
 
+    override suspend fun requestRawAbsoluteUrl(
+        priority: DataRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?
+    ): HomeNetworkResponse =
+        client.rawAbsoluteRequest(
+            priority = priority.toNetworkPriority(),
+            url = url,
+            method = method,
+            headers = headers,
+            body = bodyText
+        ).toHomeNetworkResponse()
+
     override suspend fun uploadAttachments(
         priority: DataRequestPriority,
         channelId: ChannelId,
