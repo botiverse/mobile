@@ -216,6 +216,62 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientDoesNotFanOutStableHeartbeatToRawListeners() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val events = mutableListOf<RealtimeEvent>()
+        val rawEvents = mutableListOf<String>()
+        client.observeEvents { events += it }
+        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1")),
+                lastSeq = 42
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 42))
+
+        assertTrue(events.single() is Heartbeat)
+        assertTrue(rawEvents.isEmpty())
+    }
+
+    @Test
+    fun clientFansOutHeartbeatOnlyWhenServerIsAhead() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val rawEvents = mutableListOf<String>()
+        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1")),
+                lastSeq = 42
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 43))
+        transport.receive(
+            RealtimeSocketEvents.MessageNew,
+            mapOf(
+                "id" to "message-raw",
+                "threadId" to "thread-1",
+                "channelId" to "channel-1",
+                "seq" to 43,
+                "content" to "Caught up",
+                "senderType" to "user",
+                "senderId" to "user-1",
+                "senderName" to "Artin"
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 43))
+
+        assertEquals(
+            listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew),
+            rawEvents
+        )
+    }
+
+    @Test
     fun clientReplaysJoinedChannelsAfterConnectButNotRoomsJoinedAck() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)

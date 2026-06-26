@@ -8,6 +8,7 @@ import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeClientDiagnostics
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeCursorState
+import ai.slock.compose.data.realtime.RealtimeCursorUpdate
 import ai.slock.compose.data.realtime.RealtimeHeartbeatWatchdog
 import ai.slock.compose.data.realtime.RealtimeHeartbeatWatchdogSnapshot
 import ai.slock.compose.data.realtime.RealtimeResumeRequest
@@ -227,11 +228,16 @@ class SocketIoRealtimeClient(
                 logger(
                     "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                 )
-                event?.let(::dispatch)
-                rawListeners.toList().forEach { it(eventName, payload) }
+                val cursorUpdate = event?.let(::dispatch)
+                if (shouldFanOutRawEvent(eventName, cursorUpdate?.serverAhead == true)) {
+                    rawListeners.toList().forEach { it(eventName, payload) }
+                }
             }
         }
     }
+
+    private fun shouldFanOutRawEvent(eventName: String, serverAhead: Boolean): Boolean =
+        eventName != RealtimeSocketEvents.Heartbeat || serverAhead
 
     private fun emitJoinChannel(channelId: ChannelId) {
         transport.emit(RealtimeSocketEvents.JoinChannel, mapOf("channelId" to channelId.value))
@@ -302,7 +308,7 @@ class SocketIoRealtimeClient(
         transport.connect(next.toWireMap())
     }
 
-    private fun dispatch(event: RealtimeEvent) {
+    private fun dispatch(event: RealtimeEvent): RealtimeCursorUpdate {
         val cursorUpdate = RealtimeCursorPolicy.updateFromEvent(cursor, event)
         cursor = cursorUpdate.state
         if (event is Heartbeat && cursorUpdate.serverAhead) {
@@ -317,6 +323,7 @@ class SocketIoRealtimeClient(
                 "serverMaxSeq=${cursor.serverMaxSeq} listeners=${listeners.size}"
         )
         listeners.toList().forEach { it(event) }
+        return cursorUpdate
     }
 
     companion object {
