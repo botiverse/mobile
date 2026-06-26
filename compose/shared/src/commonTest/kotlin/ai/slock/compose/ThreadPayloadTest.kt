@@ -665,14 +665,41 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadFocusedProgressiveMessageWindowKeepsThreadOriginPairSmall() {
+    fun threadOriginFirstFocusedMessageDoesNotDriveProgressiveWindow() {
         val messages = (0 until 50).map { index -> testThreadMessage("reply-$index") }
 
+        val progressiveFocusedMessageIndex =
+            threadProgressiveFocusedMessageIndex(
+                focusedMessageIndex = 0,
+                hasThreadOriginItem = true
+            )
+
+        assertEquals(-1, progressiveFocusedMessageIndex)
+        assertTrue(
+            threadShouldSuppressOriginFirstFocusedMessage(
+                focusedMessageIndex = 0,
+                hasThreadOriginItem = true
+            )
+        )
         assertEquals(
-            ThreadProgressiveMessageWindow(0, 1),
+            ThreadProgressiveMessageWindow(49, 50),
             threadInitialProgressiveMessageWindow(
                 messages = messages,
-                focusedMessageIndex = 0
+                focusedMessageIndex = progressiveFocusedMessageIndex
+            )
+        )
+        assertEquals(
+            12,
+            threadProgressiveFocusedMessageIndex(
+                focusedMessageIndex = 12,
+                hasThreadOriginItem = true
+            )
+        )
+        assertEquals(
+            0,
+            threadProgressiveFocusedMessageIndex(
+                focusedMessageIndex = 0,
+                hasThreadOriginItem = false
             )
         )
     }
