@@ -87,6 +87,7 @@ private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
 private val ComposerAgentActivityDotSize = 10.dp
+private val ComposerMemberSuggestionHandleWidth = 112.dp
 private val ComposerChannelSuggestionIconSize = 20.dp
 private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -1308,7 +1309,7 @@ private fun ComposerMemberSuggestionRow(
                 text = "@${member.handle}",
                 style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
                 color = handleColor,
-                modifier = Modifier.width(74.dp),
+                modifier = Modifier.width(ComposerMemberSuggestionHandleWidth),
                 textAlign = TextAlign.End,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
