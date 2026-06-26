@@ -912,7 +912,7 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
         } ?: return AnnotatedString(content)
     val settings =
         DefaultAnnotatorSettings(
-            linkTextSpanStyle = TextLinkStyles(style = style.toSpanStyle().copy(color = SlockMarkdownLinkBlue)),
+            linkTextSpanStyle = TextLinkStyles(style = slockMarkdownLinkSpanStyle(style)),
             codeSpanStyle = slockMarkdownInlineCodeTextStyle(style).toSpanStyle(),
             annotator = annotator
         )
@@ -1280,6 +1280,12 @@ private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
 private val SlockMarkdownMinimumInlineLineHeight = 24.sp
 
+internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
+    base.toSpanStyle().copy(
+        color = SlockMarkdownLinkBlue,
+        textDecoration = TextDecoration.Underline
+    )
+
 private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
     DefaultMarkdownColors(
         text = SlockColor.TextBlack,
@@ -1333,8 +1339,11 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
         ordered = resolvedBase,
         bullet = resolvedBase,
         list = resolvedBase,
-        link = resolvedBase.copy(color = SlockMarkdownLinkBlue),
-        textLink = TextLinkStyles(style = resolvedBase.toSpanStyle().copy(color = SlockMarkdownLinkBlue)),
+        link = resolvedBase.copy(
+            color = SlockMarkdownLinkBlue,
+            textDecoration = TextDecoration.Underline
+        ),
+        textLink = TextLinkStyles(style = slockMarkdownLinkSpanStyle(resolvedBase)),
         table = resolvedBase
     )
 }

@@ -9,8 +9,10 @@ import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -30,6 +32,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
+    private val expectedLinkBlue = Color(0xFF1D4ED8)
+
     @Test
     fun markdownImageStateIgnoresSameSizeUpdates() {
         val state = MarkdownImageStateImpl()
@@ -323,8 +327,30 @@ class SlockMarkdownTest {
         assertEquals(SlockType.Body.fontFamily, typography.text.fontFamily)
         assertEquals(SlockType.Body.fontFamily, typography.paragraph.fontFamily)
         assertEquals(SlockType.Body.fontFamily, typography.textLink.style?.fontFamily)
+        assertEquals(expectedLinkBlue, typography.textLink.style?.color)
+        assertEquals(TextDecoration.Underline, typography.textLink.style?.textDecoration)
+        assertEquals(expectedLinkBlue, typography.link.color)
+        assertEquals(TextDecoration.Underline, typography.link.textDecoration)
         assertEquals(SlockType.Caption.fontFamily, typography.code.fontFamily)
         assertFalse(typography.code.fontFamily == FontFamily.Monospace)
+    }
+
+    @Test
+    fun markdownLinksRenderBlueUnderline() {
+        val body = "Open [Raft](https://raft.build) now"
+        val annotated =
+            buildSlockMarkdownInlineTextAnnotatedString(
+                body,
+                SlockType.Body,
+                slockMarkdownAnnotator(body)
+            )
+        val link = annotated.getLinkAnnotations(0, annotated.length).single().item as LinkAnnotation.Url
+        val linkStyle = link.styles?.style
+
+        assertEquals("Open Raft now", annotated.text)
+        assertEquals("https://raft.build", link.url)
+        assertEquals(expectedLinkBlue, linkStyle?.color)
+        assertEquals(TextDecoration.Underline, linkStyle?.textDecoration)
     }
 
     @Test
