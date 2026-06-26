@@ -375,7 +375,7 @@ class SlockHomeComponentsTest {
     @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
-            13,
+            15,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -386,7 +386,7 @@ class SlockHomeComponentsTest {
             )
         )
         assertEquals(
-            8,
+            10,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -401,7 +401,7 @@ class SlockHomeComponentsTest {
     @Test
     fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
         assertEquals(
-            14,
+            16,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
@@ -412,7 +412,7 @@ class SlockHomeComponentsTest {
             )
         )
         assertEquals(
-            15,
+            17,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
@@ -436,6 +436,12 @@ class SlockHomeComponentsTest {
         assertEquals(3, homeListBeyondBoundsItemCount(0))
         assertEquals(6, homeListBeyondBoundsItemCount(40))
         assertEquals(6, homeListBeyondBoundsItemCount(400))
+    }
+
+    @Test
+    fun homePullToRefreshFollowsPayloadRefreshCapability() {
+        assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true))
+        assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = false))
     }
 
     @Test

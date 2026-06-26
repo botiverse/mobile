@@ -281,7 +281,10 @@ private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focu
 
 private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
 
-private const val HomePullToRefreshEnabled = false
+private const val HomePullToRefreshEnabled = true
+
+internal fun homePullToRefreshEnabled(contentRefreshEnabled: Boolean): Boolean =
+    contentRefreshEnabled && HomePullToRefreshEnabled
 
 @Composable
 private fun SlockHomePageContent() {
@@ -702,8 +705,8 @@ internal fun SlockStructuralHomeShell(
         onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
     }
     val listScope = rememberCoroutineScope()
-    val homePullToRefreshEnabled = contentRefreshEnabled && HomePullToRefreshEnabled
-    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing && homePullToRefreshEnabled)
+    val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
+    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing && pullToRefreshEnabled)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -746,7 +749,7 @@ internal fun SlockStructuralHomeShell(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
-                            if (homePullToRefreshEnabled) {
+                            if (pullToRefreshEnabled) {
                                 pullToRefreshItem(
                                     state = pullToRefreshState,
                                     scrollState = listState,
@@ -1162,7 +1165,8 @@ internal fun homeLazyItemCount(
     pinnedExpanded: Boolean = false
 ): Int {
     val fixedItems =
-        1 + // top spacer
+        1 + // pull refresh
+            1 + // top spacer
             1 + // search
             1 + // activity
             1 + // saved
