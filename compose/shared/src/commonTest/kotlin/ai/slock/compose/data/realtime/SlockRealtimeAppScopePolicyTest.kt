@@ -128,6 +128,69 @@ class SlockRealtimeAppScopePolicyTest {
         assertEquals(listOf(RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
     }
 
+    @Test
+    fun hostEngineConnectDecisionMatchesAppScopeCoordinatorRules() {
+        val engine = SlockRealtimeAppScopeEngine()
+
+        val first =
+            engine.connectDecisionForHost(
+                serverIdValue = "server-1",
+                accessToken = "token-1",
+                requestedLastSeq = 7,
+                forceReconnect = false,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected
+            )
+        engine.onMappedEvent(MessageNew(message(seq = 42)))
+        val sameConnected =
+            engine.connectDecisionForHost(
+                serverIdValue = "server-1",
+                accessToken = "token-1",
+                requestedLastSeq = 10,
+                forceReconnect = false,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateConnected
+            )
+        val forced =
+            engine.connectDecisionForHost(
+                serverIdValue = "server-1",
+                accessToken = "token-1",
+                requestedLastSeq = 10,
+                forceReconnect = true,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateConnected
+            )
+
+        assertTrue(first.shouldConnect)
+        assertEquals(7L, first.resumeSeq)
+        assertFalse(sameConnected.shouldConnect)
+        assertEquals(42L, sameConnected.resumeSeq)
+        assertTrue(forced.shouldConnect)
+        assertEquals(42L, forced.resumeSeq)
+    }
+
+    @Test
+    fun hostEngineOwnsJoinAndRawFanoutDecisions() {
+        val engine = SlockRealtimeAppScopeEngine()
+
+        assertFalse(engine.onRawEvent(RealtimeSocketEvents.MessageNew, "{}").shouldFanOut)
+        engine.connectDecisionForHost(
+            serverIdValue = "server-1",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected
+        )
+        val join = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val duplicateJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val heartbeat = engine.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
+        val message = engine.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
+
+        assertTrue(join.shouldJoin)
+        assertEquals(ChannelId("channel-1"), join.channelId)
+        assertFalse(duplicateJoin.shouldJoin)
+        assertFalse(heartbeat.shouldFanOut)
+        assertTrue(message.shouldFanOut)
+        assertEquals(ServerId("server-1"), message.serverId)
+    }
+
     private fun message(
         seq: Long = 1L,
         channelId: String? = "channel-1",
