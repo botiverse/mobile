@@ -1,18 +1,15 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
-import ai.slock.compose.data.realtime.SlockRealtimeRoomCommand
-import ai.slock.compose.data.realtime.SlockRealtimeRoomCommandHub
 import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 
 internal class KuiklyRealtimeEvents(
     private val pager: Pager
 ) {
-    private val module: NotifyModule
-        get() = pager.acquireModule(NotifyModule.MODULE_NAME)
+    private val module: SlockEnhancedNotifyModule
+        get() = SlockEnhancedNotifyModule(pager)
 
     fun addListener(onEvent: (JSONObject) -> Unit): CallbackRef =
         module.addNotify(SlockRealtimeNotifyContract.EventName, crossProcess = true) { data ->
@@ -34,18 +31,12 @@ internal class KuiklyRealtimeEvents(
 
     fun joinChannel(channelId: String) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
-        SlockRealtimeRoomCommandHub.publish(
-            SlockRealtimeRoomCommand(
-                action = SlockRealtimeNotifyContract.ActionJoinChannel,
-                channelIdValue = cleanChannelId,
-                reason = "notify"
-            )
-        )
         module.postNotify(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionJoinChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId),
+            source = "realtime_rooms"
         )
     }
 }
