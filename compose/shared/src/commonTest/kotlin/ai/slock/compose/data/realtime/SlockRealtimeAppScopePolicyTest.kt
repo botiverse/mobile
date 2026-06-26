@@ -117,18 +117,18 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun coordinatorAutoJoinsDirectMessagesAndFiltersHeartbeatFanout() = runBlocking {
+    fun coordinatorAutoJoinsDirectMessagesAndFansOutHeartbeatForVisibleBackfill() = runBlocking {
         val connection = FakeAppScopeConnection()
         val sink = FakeAppScopeSink()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
 
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
         coordinator.onMappedEvent(DirectMessageCreated(ChannelId("dm-1")))
-        coordinator.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
+        coordinator.onRawEvent(RealtimeSocketEvents.Heartbeat, """{"seq":43}""")
         coordinator.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
 
         assertEquals(listOf(ChannelId("dm-1")), connection.joinedChannels)
-        assertEquals(listOf(RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
+        assertEquals(listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
     }
 
     @Test
@@ -230,7 +230,8 @@ class SlockRealtimeAppScopePolicyTest {
         assertFalse(duplicateJoin.shouldJoin)
         assertFalse(blankJoin.shouldJoin)
         assertFalse(unsupportedJoin.shouldJoin)
-        assertFalse(heartbeat.shouldFanOut)
+        assertTrue(heartbeat.shouldFanOut)
+        assertEquals(ServerId("server-1"), heartbeat.serverId)
         assertTrue(message.shouldFanOut)
         assertEquals(ServerId("server-1"), message.serverId)
     }
