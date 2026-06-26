@@ -94,7 +94,7 @@ static std::string GetStringArg(napi_env env, napi_value value) {
         return "";
     }
     std::string buffer(length + 1, '\0');
-    napi_get_value_string_utf8(env, value, buffer.data(), buffer.size(), &length);
+    napi_get_value_string_utf8(env, value, &buffer[0], buffer.size(), &length);
     buffer.resize(length);
     return buffer;
 }
