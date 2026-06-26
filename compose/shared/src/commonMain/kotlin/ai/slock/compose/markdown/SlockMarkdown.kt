@@ -1439,7 +1439,9 @@ internal fun slockMarkdownInlineTagWidthSp(
     }
 
 private fun slockMarkdownPlainMentionWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 7.8f + 8f).coerceAtLeast(28f).sp
+    (label.sumOf { it.slockPlainMentionWidthSp().toDouble() }.toFloat() + SlockMarkdownMentionWidthSafetySp)
+        .coerceAtLeast(28f)
+        .sp
 
 internal fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.6f + SlockMarkdownInlineChipHorizontalChromeSp)
@@ -1495,12 +1497,35 @@ private const val SlockMarkdownInlineCodeMinHeightSp = 24f
 private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 private const val SlockMarkdownMeasuredWidthSafetySp = 6f
+private const val SlockMarkdownMentionWidthSafetySp = 32f
 private val SlockMarkdownInlineChipTextHeight = 22.dp
 private val SlockMarkdownMentionUnderlineInset = 3.dp
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
         total + if (char.code > 0x7F) 2 else 1
+    }
+
+private fun Char.slockPlainMentionWidthSp(): Float =
+    when {
+        code > 0x7F -> 14f
+        isDigit() -> 7.2f
+        isUpperCase() ->
+            when (this) {
+                'M', 'W' -> 10.4f
+                'I' -> 4.8f
+                else -> 8.6f
+            }
+        isLowerCase() ->
+            when (this) {
+                'f', 'i', 'j', 'l', 'r', 't' -> 4.8f
+                'm', 'w' -> 10.4f
+                else -> 7.4f
+            }
+        this == '@' -> 13.2f
+        this in "_-" -> 5.8f
+        this == '.' -> 3.8f
+        else -> 6.6f
     }
 
 private fun Char.slockInlineCodeWidthSp(): Float =

@@ -458,6 +458,16 @@ class SlockMarkdownTest {
                 "@Android-Developer-2",
                 ThreadMarkdownTagKind.UserMention
             ).value
+        val longAgentMentionWidth =
+            slockMarkdownInlineTagWidthSp(
+                "@Codex-KMP-Developer",
+                ThreadMarkdownTagKind.UserMention
+            ).value
+        val qaMentionWidth =
+            slockMarkdownInlineTagWidthSp(
+                "@Pi-QA-Smoke",
+                ThreadMarkdownTagKind.UserMention
+            ).value
         val selfMentionWidth =
             slockMarkdownInlineTagWidthSp(
                 "@artin",
@@ -466,7 +476,9 @@ class SlockMarkdownTest {
             ).value
         val taskWidth = slockMarkdownInlineChipWidthSp("#405").value
 
-        assertTrue(mentionWidth < 170f)
+        assertTrue(mentionWidth in 170f..180f)
+        assertTrue(longAgentMentionWidth in 180f..190f)
+        assertTrue(qaMentionWidth in 125f..135f)
         assertTrue(selfMentionWidth < 70f)
         assertTrue(taskWidth < 54f)
     }
