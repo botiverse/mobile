@@ -2915,6 +2915,10 @@ internal fun SharedThreadRouteContent(
         remember(serverMembersStore, currentSession?.currentServerId) {
             slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
         }
+    val memberAvatarResolver =
+        remember(serverMembersStore, currentSession?.currentServerId) {
+            slockMemberAvatarResolver(serverMembersStore, currentSession?.currentServerId)
+        }
     val routeUiState =
         remember(renderedPayload, threadState.membersLoadStatus) {
             ThreadRouteUiState(
@@ -3549,6 +3553,7 @@ internal fun SharedThreadRouteContent(
             onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
             highlightedMentions = threadState.highlightedMentions,
             agentStatusResolver = agentStatusResolver,
+            memberAvatarResolver = memberAvatarResolver,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -5902,6 +5907,7 @@ private fun ThreadPageContent(
     onOpenMemberProfile: (String) -> Unit,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
@@ -6027,6 +6033,7 @@ private fun ThreadPageContent(
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
@@ -6612,6 +6619,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -6669,6 +6677,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
         highlightedMentions = highlightedMentions,
         agentStatusResolver = agentStatusResolver,
+        memberAvatarResolver = memberAvatarResolver,
         pendingActionCardIds = pendingActionCardIds,
         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
         attachmentOpenStates = attachmentOpenStates,
@@ -6696,6 +6705,7 @@ private fun ThreadChatTab(
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -6746,6 +6756,7 @@ private fun ThreadChatTab(
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -6783,6 +6794,7 @@ private fun ThreadChatTab(
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -6814,6 +6826,7 @@ private fun ThreadChatTab(
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
@@ -6870,6 +6883,7 @@ private fun ThreadMessagesList(
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -7479,6 +7493,7 @@ private fun ThreadMessagesList(
                 },
                 onMentionAuthor = onMentionAuthor,
                 agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl
             )
@@ -7635,6 +7650,7 @@ private fun ThreadMessagesList(
                             diagnosticsLogger = diagnosticsLogger,
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
                             focused = activeFocusedMessageId == message.id,
                             alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = payload.showReplyActions,
@@ -8826,6 +8842,7 @@ private fun ThreadMessageCard(
     onMentionAuthor: (String) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -8838,6 +8855,9 @@ private fun ThreadMessageCard(
         } else {
             null
         }
+    val avatarWireValue =
+        rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
+            ?: message.resolvedThreadAvatarWireValue()
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
@@ -8874,7 +8894,7 @@ private fun ThreadMessageCard(
                 if (!alignOwnMessageRight) {
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = message.resolvedThreadAvatarWireValue(),
+                        avatarWireValue = avatarWireValue,
                         status = agentStatus,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
@@ -9051,7 +9071,7 @@ private fun ThreadMessageCard(
                 if (alignOwnMessageRight) {
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = message.resolvedThreadAvatarWireValue(),
+                        avatarWireValue = avatarWireValue,
                         status = agentStatus,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
@@ -10618,6 +10638,7 @@ private fun ThreadOriginCard(
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
     onMentionAuthor: (String) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -10672,6 +10693,7 @@ private fun ThreadOriginCard(
                             actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
                             showReplyAction = false,
                             resolvedTaskAssigneeName =
                                 linkedTaskAssigneeName

@@ -167,6 +167,54 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun memberProfileFlowEmitsOnlyForTargetProfileChanges() = runBlocking {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:robot")),
+                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:paint"))
+                )
+            )
+        )
+        val emissions = mutableListOf<MemberProfile?>()
+        val collectJob =
+            launch {
+                store.memberProfileFlow(ServerId("server-1"), "u1")
+                    .take(2)
+                    .toList(emissions)
+            }
+        yield()
+
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:robot")),
+                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:terminal"))
+                )
+            )
+        )
+        yield()
+        assertEquals(1, emissions.size)
+
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:spark")),
+                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:terminal"))
+                )
+            )
+        )
+        collectJob.join()
+
+        assertEquals(listOf("pixel:robot", "pixel:spark"), emissions.map { it?.avatar?.wireValue })
+    }
+
+    @Test
     fun memberSuggestionsAreOwnedByServerMembersStore() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] =
