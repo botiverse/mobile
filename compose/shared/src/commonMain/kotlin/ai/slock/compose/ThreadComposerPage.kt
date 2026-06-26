@@ -1168,7 +1168,7 @@ private fun ComposerMemberSuggestionPanel(
                 )
             }
             notInChannel.isNotEmpty() && index == headerIndex -> {
-                ComposerSuggestionSectionHeader(
+                ComposerSuggestionHeader(
                     text = "NOT IN THIS CHANNEL",
                     topDivider = inChannel.isNotEmpty()
                 )
@@ -1188,17 +1188,27 @@ private fun ComposerMemberSuggestionPanel(
 }
 
 @Composable
-private fun ComposerSuggestionSectionHeader(text: String, topDivider: Boolean = false) {
+private fun ComposerSuggestionHeader(
+    text: String,
+    topDivider: Boolean = false,
+    bottomDivider: Boolean = false
+) {
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         if (topDivider) {
             ComposerSuggestionDivider()
         }
         Text(
             text = text,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.Bold)
+                    .copy(color = SlockColor.TextMutedGray, letterSpacing = 1.1.sp),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
         )
+        if (bottomDivider) {
+            ComposerSuggestionDivider()
+        }
     }
 }
 
@@ -1243,7 +1253,7 @@ private fun ComposerMemberSuggestionRow(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Box(
                 modifier =
@@ -1682,15 +1692,10 @@ private fun ComposerSuggestionPanel(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack).background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        Text(
+        ComposerSuggestionHeader(
             text = title,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            bottomDivider = showTitleDivider
         )
-        if (showTitleDivider) {
-            ComposerSuggestionDivider()
-        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight)
         ) {
