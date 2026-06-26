@@ -94,6 +94,8 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -1598,6 +1600,9 @@ internal data class SharedThreadRealtimeEventSignal(
 internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
     RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat
 
+private fun RealtimeEvent.isTaskProjectionEvent(): Boolean =
+    this is TaskCreated || this is TaskUpdated || this is TaskDeleted
+
 private fun ThreadRealtimeCacheInvalidationSignal.matchesThreadRoute(
     payload: KuiklyThreadScreenPayload
 ): Boolean {
@@ -2707,13 +2712,6 @@ internal fun SharedThreadRouteContent(
                 .map { task -> task.toTaskSummary() }
                 .threadLinkedTasksByMessageLookup(taskProjectionReferences)
         }
-    val scopedTaskProjection by remember(tasksViewModel, taskProjectionReferences) {
-        tasksViewModel
-            ?.state
-            ?.map { state -> state.threadLinkedTasksProjection(taskProjectionReferences) }
-            ?.distinctUntilChanged()
-            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val sharedTaskProjection by remember(
         tasksDataStore,
         currentServerId,
@@ -2733,7 +2731,7 @@ internal fun SharedThreadRouteContent(
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val taskProjectionLookup =
         threadLinkedTasksLookup(
-            scopedProjection = scopedTaskProjection,
+            scopedProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
             sharedStoreProjection = sharedTaskProjection,
             fallbackLookup = fallbackTaskProjectionLookup
         )
@@ -2855,12 +2853,14 @@ internal fun SharedThreadRouteContent(
             initialPayload.originParentMessageId
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::MessageId)
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                event = signal.event,
-                activeReplyParentMessageId = activeReplyParentMessageId
+        if (!signal.event.isTaskProjectionEvent()) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    event = signal.event,
+                    activeReplyParentMessageId = activeReplyParentMessageId
+                )
             )
-        )
+        }
         if (signal.event is MemberPresenceUpdated) {
             serverMembersStore?.applyPresence(signal.event)
         }
@@ -4225,9 +4225,6 @@ internal fun SharedThreadRouteContent(
                         try {
                             when (val result = dataSource.convertMessageToTask(itemId)) {
                                 is DataResult.Content -> {
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(result.data))
-                                    )
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(result.data))
                                     bridge.toast("Task created")
                                 }
@@ -4258,7 +4255,6 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
-                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
@@ -4288,7 +4284,6 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
-                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
@@ -4318,7 +4313,6 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
                             is DataResult.Content -> {
                                 result.data?.let { task ->
-                                    threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeEvent(TaskUpdated(task)))
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
                                 bridge.toast("Task updated")
@@ -6088,7 +6082,6 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         payload = payload,
                         activeDraftRecords = activeDraftRecords,
-                        tasksViewModel = tasksViewModel,
                         tasksDataStore = tasksDataStore,
                         currentServerId = currentServerId,
                         taskChannelId = taskChannelId,
@@ -6674,7 +6667,6 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
-    tasksViewModel: SharedTasksViewModel?,
     tasksDataStore: SharedTasksDataStore?,
     currentServerId: String?,
     taskChannelId: ChannelId?,
@@ -6706,13 +6698,6 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         remember(payload.tasks, linkedTaskReferences) {
             payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageLookup(linkedTaskReferences)
         }
-    val projectedLinkedTasks by remember(tasksViewModel, linkedTaskReferences) {
-        tasksViewModel
-            ?.state
-            ?.map { state -> state.threadLinkedTasksProjection(linkedTaskReferences) }
-            ?.distinctUntilChanged()
-            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val sharedStoreLinkedTasks by remember(tasksDataStore, currentServerId, taskChannelId?.value, payload.title, linkedTaskReferences) {
         tasksDataStore
             ?.channelProjectionFlow(
@@ -6726,7 +6711,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val linkedTasksByMessageLookup =
         threadLinkedTasksLookup(
-            scopedProjection = projectedLinkedTasks,
+            scopedProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
             sharedStoreProjection = sharedStoreLinkedTasks,
             fallbackLookup = fallbackLinkedTasksByMessageLookup
         )

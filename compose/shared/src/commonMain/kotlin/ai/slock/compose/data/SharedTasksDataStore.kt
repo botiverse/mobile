@@ -131,6 +131,29 @@ internal class SharedTasksDataStore {
             .map { current -> current.selectChannelProjection(serverId, channelId, channelName) }
             .distinctUntilChanged()
 
+    fun projectionFlow(
+        serverId: String?,
+        scope: SharedTasksScope
+    ): Flow<SharedTasksProjectionSlice> =
+        when (scope) {
+            SharedTasksScope.Server ->
+                state
+                    .map { current -> current.selectServerProjection(serverId) }
+                    .distinctUntilChanged()
+            is SharedTasksScope.Channel ->
+                channelProjectionFlow(
+                    serverId = serverId,
+                    channelId = scope.channelId.value,
+                    channelName = null
+                )
+        }
+
+    private fun SharedTasksDataStoreState.selectServerProjection(serverId: String?): SharedTasksProjectionSlice {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedTasksProjectionSlice()
+        val snapshot = serverSnapshots[normalizedServerId] ?: return SharedTasksProjectionSlice()
+        return SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Loaded, tasks = snapshot.tasks)
+    }
+
     private fun SharedTasksDataStoreState.selectChannelProjection(
         serverId: String?,
         channelId: String?,

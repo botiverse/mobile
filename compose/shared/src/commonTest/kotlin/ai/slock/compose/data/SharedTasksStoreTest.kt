@@ -243,6 +243,30 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksDataStoreProjectsServerScopeFromServerSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1")),
+                            task("task-2", TaskStatus.InReview, channelId = ChannelId("channel-2"))
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val slice = store.projectionFlow("server-1", SharedTasksScope.Server).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1", "task-2"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
     fun sharedTasksDataStorePrefersChannelSnapshotOverServerProjection() = runBlocking {
         val store = SharedTasksDataStore()
 
