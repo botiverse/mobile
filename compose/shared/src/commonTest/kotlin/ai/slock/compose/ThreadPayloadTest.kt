@@ -584,7 +584,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            6,
+            5,
             threadMessagesLazyItemCount(
                 originStatus = "content",
                 showHistoryBoundary = true,
@@ -665,42 +665,31 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadOriginFirstFocusedMessageDoesNotDriveProgressiveWindow() {
+    fun threadFixedOriginDoesNotCountAsScrollableMessageRow() {
         val messages = (0 until 50).map { index -> testThreadMessage("reply-$index") }
 
-        val progressiveFocusedMessageIndex =
-            threadProgressiveFocusedMessageIndex(
-                focusedMessageIndex = 0,
-                hasThreadOriginItem = true
-            )
-
-        assertEquals(-1, progressiveFocusedMessageIndex)
-        assertTrue(
-            threadShouldSuppressOriginFirstFocusedMessage(
-                focusedMessageIndex = 0,
-                hasThreadOriginItem = true
+        assertEquals(
+            50,
+            threadMessagesLazyItemCount(
+                originStatus = "content",
+                showHistoryBoundary = true,
+                messagesCount = 49,
+                canLoadMoreAfter = false
             )
         )
         assertEquals(
             ThreadProgressiveMessageWindow(49, 50),
             threadInitialProgressiveMessageWindow(
                 messages = messages,
-                focusedMessageIndex = progressiveFocusedMessageIndex
+                focusedMessageIndex = -1
             )
         )
         assertEquals(
-            12,
-            threadProgressiveFocusedMessageIndex(
-                focusedMessageIndex = 12,
-                hasThreadOriginItem = true
-            )
-        )
-        assertEquals(
-            0,
-            threadProgressiveFocusedMessageIndex(
-                focusedMessageIndex = 0,
-                hasThreadOriginItem = false
-            )
+            3,
+            KuiklyThreadScreenPayload(
+                originStatus = "content",
+                messages = (0 until 3).map { index -> testThreadMessage("reply-$index") }
+            ).latestMessageListItemIndex()
         )
     }
 
