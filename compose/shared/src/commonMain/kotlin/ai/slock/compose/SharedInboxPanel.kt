@@ -371,7 +371,7 @@ private fun SharedActivityPanelContent(
                     .slockSwipeSelection(
                         items = swipeFilters,
                         selected = state.selectedFilter,
-                        enabled = true,
+                        enabled = SlockTopTabBarDefaults.SwipeGesturesEnabled,
                         onDragActiveChange = { active ->
                             dragActive = active
                             if (!active) {
