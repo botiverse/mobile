@@ -86,6 +86,7 @@ import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.RealtimeEvent
@@ -1501,6 +1502,9 @@ internal data class SharedThreadRealtimeEventSignal(
     val event: RealtimeEvent
 )
 
+internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
+    RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat
+
 private fun ThreadRealtimeCacheInvalidationSignal.matchesThreadRoute(
     payload: KuiklyThreadScreenPayload
 ): Boolean {
@@ -1599,7 +1603,7 @@ private fun ThreadPageScreen() {
                             ?.takeIf { it.isNotBlank() }
                             ?: return@launch
                     if (currentServerId != serverId) return@launch
-                    if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return@launch
+                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
                     threadRealtimeEventSequence += 1
                     threadRealtimeEventSignal =
                         SharedThreadRealtimeEventSignal(
@@ -2654,6 +2658,10 @@ internal fun SharedThreadRouteContent(
     }
     LaunchedEffect(realtimeEventSignal?.sequence, threadInstanceKey) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
+        if (signal.event is Heartbeat) {
+            threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(signal.event.seq))
+            return@LaunchedEffect
+        }
         val activeReplyParentMessageId =
             initialPayload.originParentMessageId
                 ?.takeIf { it.isNotBlank() }

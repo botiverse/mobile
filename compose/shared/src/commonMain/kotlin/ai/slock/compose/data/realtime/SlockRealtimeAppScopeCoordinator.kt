@@ -291,17 +291,6 @@ class SlockRealtimeAppScopeEngine {
                     rawPayload = rawPayload,
                     logMessage = "native_raw_event_skip reason=missing_server eventName=$eventName"
                 )
-        if (eventName == RealtimeSocketEvents.Heartbeat) {
-            return SlockRealtimeAppScopeRawDecision(
-                shouldFanOut = false,
-                serverId = currentServerId,
-                eventName = eventName,
-                rawPayload = rawPayload,
-                logMessage =
-                    "raw_event_fanout_skip eventName=$eventName serverId=${currentServerId.value} " +
-                        "reason=native_heartbeat"
-            )
-        }
         return SlockRealtimeAppScopeRawDecision(
             shouldFanOut = true,
             serverId = currentServerId,
