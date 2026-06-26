@@ -3,7 +3,9 @@ package ai.slock.compose.data
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AuthSessionStoreTest {
     @Test
@@ -65,16 +67,43 @@ class AuthSessionStoreTest {
         val keyValueStore = InMemorySlockKeyValueStore()
         val events = RecordingAuthSessionClearEventSink()
         val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
+        val staleSession = sampleSession()
 
-        store.saveSession(sampleSession())
+        store.saveSession(staleSession)
         store.clearSession()
         assertNull(store.readSession())
-        assertEquals(listOf("local"), events.reasons)
+        assertEquals(listOf(RecordedClearEvent("local", staleSession.authSessionClearFingerprint())), events.events)
 
-        store.saveSession(sampleSession())
-        store.clearSessionFromSessionClearedNotify("remote")
+        store.saveSession(staleSession)
+        assertTrue(
+            store.clearSessionFromSessionClearedNotify(
+                reason = "remote",
+                previousSessionFingerprint = staleSession.authSessionClearFingerprint()
+            )
+        )
         assertNull(store.readSession())
-        assertEquals(listOf("local"), events.reasons)
+        assertEquals(listOf(RecordedClearEvent("local", staleSession.authSessionClearFingerprint())), events.events)
+    }
+
+    @Test
+    fun mmkvAuthSessionStoreSkipsStaleRemoteClearAfterNewLogin() = runBlocking {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val events = RecordingAuthSessionClearEventSink()
+        val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
+        val staleSession = sampleSession()
+        val freshSession = sampleSession().copy(accessToken = "token-new", refreshToken = "token-new-r")
+
+        store.saveSession(staleSession)
+        store.clearSession()
+        store.saveSession(freshSession)
+
+        assertFalse(
+            store.clearSessionFromSessionClearedNotify(
+                reason = "remote",
+                previousSessionFingerprint = events.events.single().previousSessionFingerprint
+            )
+        )
+        assertEquals("token-new", store.readSession()?.accessToken)
     }
 
     private fun sampleSession(): StoredAuthSession =
@@ -103,11 +132,16 @@ class AuthSessionStoreTest {
                 )
         )
 
-    private class RecordingAuthSessionClearEventSink : SlockAuthSessionClearEventSink {
-        val reasons = mutableListOf<String>()
+    private data class RecordedClearEvent(
+        val reason: String,
+        val previousSessionFingerprint: String
+    )
 
-        override fun postSessionCleared(reason: String) {
-            reasons += reason
+    private class RecordingAuthSessionClearEventSink : SlockAuthSessionClearEventSink {
+        val events = mutableListOf<RecordedClearEvent>()
+
+        override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
+            events += RecordedClearEvent(reason, previousSessionFingerprint)
         }
     }
 }
