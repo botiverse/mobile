@@ -538,9 +538,9 @@ class ThreadPayloadTest {
     @Test
     fun threadInitialProgressiveBottomRenderStartLimitsLargeThreadToLatestWindow() {
         assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 0))
-        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 8))
-        assertEquals(1, threadInitialProgressiveBottomRenderStart(messagesCount = 9))
-        assertEquals(42, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
+        assertEquals(0, threadInitialProgressiveBottomRenderStart(messagesCount = 1))
+        assertEquals(1, threadInitialProgressiveBottomRenderStart(messagesCount = 2))
+        assertEquals(49, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
     }
 
     @Test
@@ -555,11 +555,40 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadPreviousProgressiveBottomRenderStartPrependsInStableChunks() {
-        assertEquals(34, threadPreviousProgressiveBottomRenderStart(currentStart = 42))
-        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 4))
-        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 0))
-        assertEquals(41, threadPreviousProgressiveBottomRenderStart(currentStart = 42, step = 1))
+    fun threadProgressiveBottomRenderPayloadKeyChangesWhenRemotePayloadRefreshes() {
+        val cachedEntryKey =
+            threadProgressiveBottomRenderPayloadKey(
+                messagesCount = 1,
+                latestMessageId = "cached-bottom"
+            )
+        val refreshedPayloadKey =
+            threadProgressiveBottomRenderPayloadKey(
+                messagesCount = 50,
+                latestMessageId = "remote-bottom"
+            )
+
+        assertFalse(cachedEntryKey == refreshedPayloadKey)
+        assertEquals(49, threadInitialProgressiveBottomRenderStart(messagesCount = 50))
+    }
+
+    @Test
+    fun threadPreviousProgressiveBottomRenderStartPrependsInFibonacciWindows() {
+        assertEquals(48, threadPreviousProgressiveBottomRenderStart(currentStart = 49, totalMessages = 50))
+        assertEquals(47, threadPreviousProgressiveBottomRenderStart(currentStart = 48, totalMessages = 50))
+        assertEquals(45, threadPreviousProgressiveBottomRenderStart(currentStart = 47, totalMessages = 50))
+        assertEquals(42, threadPreviousProgressiveBottomRenderStart(currentStart = 45, totalMessages = 50))
+        assertEquals(37, threadPreviousProgressiveBottomRenderStart(currentStart = 42, totalMessages = 50))
+        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 1, totalMessages = 5))
+        assertEquals(0, threadPreviousProgressiveBottomRenderStart(currentStart = 0, totalMessages = 50))
+    }
+
+    @Test
+    fun threadNextProgressiveBottomRenderMessageCountUsesFibonacciTargets() {
+        assertEquals(1, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 0))
+        assertEquals(2, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 1))
+        assertEquals(3, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 2))
+        assertEquals(5, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 3))
+        assertEquals(8, threadNextProgressiveBottomRenderMessageCount(currentRenderedCount = 5))
     }
 
     @Test

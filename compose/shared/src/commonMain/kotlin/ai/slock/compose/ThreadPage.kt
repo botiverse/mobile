@@ -333,8 +333,7 @@ private object ThreadLocalSendNextId {
 internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 internal const val ThreadReplyEmptyTitle = "No replies yet"
-internal const val ThreadInitialBottomRenderWindowMessageCount = 8
-internal const val ThreadProgressiveBottomRenderWindowStep = 8
+internal const val ThreadInitialBottomRenderWindowMessageCount = 1
 private const val ThreadProgressiveBottomRenderWindowDelayMs = 32L
 internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
@@ -6666,6 +6665,14 @@ private fun ThreadMessagesList(
         }
     var progressiveWindowStarted by remember(threadInstanceKey) { mutableStateOf(false) }
     var progressiveMessageStart by remember(threadInstanceKey) { mutableStateOf(0) }
+    var progressivePayloadKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val currentProgressivePayloadKey =
+        remember(payload.messages.size, payload.messages.lastOrNull()?.id) {
+            threadProgressiveBottomRenderPayloadKey(
+                messagesCount = payload.messages.size,
+                latestMessageId = payload.messages.lastOrNull()?.id
+            )
+        }
     val messageWindowStart =
         if (!progressiveWindowStarted && initialProgressiveMessageStart > 0) {
             initialProgressiveMessageStart
@@ -6695,19 +6702,20 @@ private fun ThreadMessagesList(
         }
     LaunchedEffect(
         threadInstanceKey,
-        payload.messages.size,
-        payload.messages.lastOrNull()?.id,
+        currentProgressivePayloadKey,
         focusedMessageIndex,
         initialProgressiveMessageStart
     ) {
         if (focusedMessageIndex >= 0) {
             progressiveWindowStarted = true
             progressiveMessageStart = 0
+            progressivePayloadKey = currentProgressivePayloadKey
             return@LaunchedEffect
         }
-        if (!progressiveWindowStarted && initialProgressiveMessageStart > 0) {
+        if (initialProgressiveMessageStart > 0 && progressivePayloadKey != currentProgressivePayloadKey) {
             progressiveWindowStarted = true
             progressiveMessageStart = initialProgressiveMessageStart
+            progressivePayloadKey = currentProgressivePayloadKey
             diagnosticsLogger(
                 "thread_progressive_bottom_render_window event=start instance=$threadInstanceKey " +
                     "messagesTotal=${payload.messages.size} renderStart=$initialProgressiveMessageStart " +
@@ -6716,6 +6724,7 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         progressiveMessageStart = progressiveMessageStart.coerceIn(0, payload.messages.size)
+        progressivePayloadKey = currentProgressivePayloadKey
     }
     // Bottom-anchor signature: only the fields the anchor logic actually
     // reads. The previous remember keys listed `payload.messages` (the
@@ -6763,7 +6772,11 @@ private fun ThreadMessagesList(
     ) {
         if (!initialBottomAnchorReady || !hasProgressiveOlderWindow) return@LaunchedEffect
         delay(ThreadProgressiveBottomRenderWindowDelayMs)
-        val nextStart = threadPreviousProgressiveBottomRenderStart(messageWindowStart)
+        val nextStart =
+            threadPreviousProgressiveBottomRenderStart(
+                currentStart = messageWindowStart,
+                totalMessages = payload.messages.size
+            )
         if (nextStart != progressiveMessageStart) {
             progressiveMessageStart = nextStart
             diagnosticsLogger(
@@ -7505,11 +7518,37 @@ internal fun threadInitialProgressiveBottomRenderStart(
         else -> messagesCount - ThreadInitialBottomRenderWindowMessageCount
     }
 
+internal fun threadProgressiveBottomRenderPayloadKey(
+    messagesCount: Int,
+    latestMessageId: String?
+): String =
+    "$messagesCount:${latestMessageId.orEmpty()}"
+
 internal fun threadPreviousProgressiveBottomRenderStart(
     currentStart: Int,
-    step: Int = ThreadProgressiveBottomRenderWindowStep
+    totalMessages: Int
 ): Int =
-    (currentStart - step.coerceAtLeast(1)).coerceAtLeast(0)
+    when {
+        currentStart <= 0 -> 0
+        totalMessages <= 0 -> 0
+        else -> {
+            val currentRenderedCount = (totalMessages - currentStart).coerceAtLeast(0)
+            val nextRenderedCount = threadNextProgressiveBottomRenderMessageCount(currentRenderedCount)
+            (totalMessages - nextRenderedCount).coerceAtLeast(0)
+        }
+    }
+
+internal fun threadNextProgressiveBottomRenderMessageCount(currentRenderedCount: Int): Int {
+    var previous = 1
+    var current = 1
+    val renderedCount = currentRenderedCount.coerceAtLeast(0)
+    while (current <= renderedCount) {
+        val next = previous + current
+        previous = current
+        current = next
+    }
+    return current
+}
 
 private data class ThreadLazyWindowStats(
     val totalItems: Int,
