@@ -233,13 +233,38 @@ These claims from the older draft should not be repeated:
 - "Thread realtime ownership root cause is still unknown." The `channelId` vs
   reply-stream `threadId` contract is now tested.
 
+## Verification Performed
+
+2026-06-27 focused Gradle verification passed:
+
+```bash
+./gradlew :shared:testDebugUnitTest \
+  --tests ai.slock.compose.data.SharedAgentDetailStoreTest \
+  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityPreservesServerSeq \
+  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityCompactionEntryProjectsWorkingStatus \
+  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityPreservesTrajectoryEntries \
+  --tests ai.slock.compose.data.SharedServerMembersStoreTest.applyPresencePatchesCachedAgentRoster \
+  --tests ai.slock.compose.data.SharedServerMembersStoreTest.applyPresenceRetainsFactBeforeRosterLoads \
+  --tests ai.slock.compose.data.SharedHomeStoreTest.realtimePresenceFlushKeepsNewestSequencedPresence
+```
+
+What this pins:
+- `RealtimeEventMapper` preserves `agent:activity.serverSeq` and structured
+  activity entries.
+- `SharedAgentDetailStore` rejects stale server seq, increments observed/version
+  state, resets seq on reconnect, applies unsequenced legacy pushes, and protects
+  newer sequenced realtime activity from stale REST detail snapshots.
+- `SharedServerMembersStore` applies and retains presence facts across roster
+  loads.
+- `SharedHomeStore` keeps the newest sequenced presence in memory without
+  writing transient presence back to durable Home cache.
+
 ## Recommended Next Work
 
-1. Run focused tests around current claims:
+1. Keep the focused tests above in the regression gate for realtime/status
+   changes, plus the thread ownership tests:
    - `RealtimeEventMapperTest.messageUpdatedPrefersChannelIdForTimelineIdentityWhenThreadIdIsReplyStream`
    - `SharedThreadStoreTest.realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline`
-   - Home shell realtime dispatch tests covering Home + Activity fanout
-   - agent activity seq/reset tests if available
 
 2. Add or update tests only for gaps that are not already pinned:
    - channel visible-gap recovery parity with reply-thread recovery;
