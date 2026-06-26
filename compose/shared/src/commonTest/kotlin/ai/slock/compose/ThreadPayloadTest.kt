@@ -51,7 +51,6 @@ import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
@@ -585,7 +584,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            5,
+            6,
             threadMessagesLazyItemCount(
                 originStatus = "content",
                 showHistoryBoundary = true,
@@ -607,25 +606,9 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadInitialRichContentRangeKeepsFullListScrollableButOnlyWarmsNearbyRows() {
-        assertEquals(48..49, threadInitialRichContentMessageRange(messagesCount = 50))
-        assertEquals(11..13, threadInitialRichContentMessageRange(messagesCount = 50, focusedMessageIndex = 12))
-        assertEquals(0..1, threadInitialRichContentMessageRange(messagesCount = 50, focusedMessageIndex = 0))
-        assertEquals(1..0, threadInitialRichContentMessageRange(messagesCount = 0))
-    }
-
-    @Test
-    fun threadBufferedMessageRangeClampsToPayloadEdges() {
-        assertEquals(4..8, threadBufferedMessageRange(firstMessageIndex = 5, lastMessageIndex = 7, messagesCount = 20))
-        assertEquals(0..2, threadBufferedMessageRange(firstMessageIndex = 0, lastMessageIndex = 1, messagesCount = 20))
-        assertEquals(17..19, threadBufferedMessageRange(firstMessageIndex = 18, lastMessageIndex = 19, messagesCount = 20))
-        assertEquals(1..0, threadBufferedMessageRange(firstMessageIndex = -1, lastMessageIndex = -1, messagesCount = 20))
-    }
-
-    @Test
-    fun threadFixedOriginDoesNotCountAsScrollableMessageRow() {
+    fun threadOriginCountsAsScrollableListRowAgain() {
         assertEquals(
-            50,
+            51,
             threadMessagesLazyItemCount(
                 originStatus = "content",
                 showHistoryBoundary = true,
@@ -634,7 +617,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            3,
+            4,
             KuiklyThreadScreenPayload(
                 originStatus = "content",
                 messages = (0 until 3).map { index -> testThreadMessage("reply-$index") }
@@ -729,49 +712,6 @@ class ThreadPayloadTest {
                 viewportHeight = 640
             )
         )
-    }
-
-    @Test
-    fun threadMeasuredItemReadinessRejectsZeroHeightBeforeAnchoring() {
-        assertFalse(isThreadMeasuredItemReady(itemSize = 0, minHeight = 0))
-        assertFalse(isThreadMeasuredItemReady(itemSize = 0, minHeight = 58))
-        assertFalse(isThreadMeasuredItemReady(itemSize = 49, minHeight = 58))
-        assertTrue(isThreadMeasuredItemReady(itemSize = 50, minHeight = 58))
-        assertTrue(isThreadMeasuredItemReady(itemSize = 1, minHeight = 0))
-    }
-
-    @Test
-    fun threadMeasuredRichHeightRequiresNonZeroTargetMeasurement() {
-        assertFalse(isThreadMeasuredRichHeightReady(0))
-        assertFalse(isThreadMeasuredRichHeightReady(-1))
-        assertTrue(isThreadMeasuredRichHeightReady(1))
-    }
-
-    @Test
-    fun threadSystemMessagesUseCollapsedMinHeightAndSkipRichHeightGate() {
-        val system =
-            KuiklyThreadMessageItem(
-                id = "system-1",
-                authorId = "system",
-                authorName = "System",
-                messageType = "System",
-                body = "line one\nline two\nline three\nline four"
-            )
-        val regular =
-            KuiklyThreadMessageItem(
-                id = "regular-1",
-                authorId = "u-regular-1",
-                authorName = "Regular",
-                messageType = "chat",
-                body = "line one\nline two\nline three\nline four"
-            )
-
-        assertEquals(32.dp, system.threadInitialMessageMinHeightDp())
-        assertFalse(system.requiresThreadMeasuredRichHeight())
-        assertFalse(system.shouldCacheMeasuredThreadRowHeight())
-        assertTrue(regular.threadInitialMessageMinHeightDp() > system.threadInitialMessageMinHeightDp())
-        assertTrue(regular.requiresThreadMeasuredRichHeight())
-        assertTrue(regular.shouldCacheMeasuredThreadRowHeight())
     }
 
     @Test
