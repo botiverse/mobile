@@ -23,9 +23,14 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     override fun willInit() {
+        configureSlockComposeSnapshotConsumption()
         registerSlockExternalModuleCreators()
         super.willInit()
         configureKuiklyThreadVerification()
+    }
+
+    private fun configureSlockComposeSnapshotConsumption() {
+        ComposeContainer.enableConsumeSnapshot = pageData.isAndroid
     }
 
     private fun registerSlockExternalModuleCreators() {

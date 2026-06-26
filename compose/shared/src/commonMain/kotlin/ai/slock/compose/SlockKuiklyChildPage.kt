@@ -1,11 +1,11 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.BasePager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -196,7 +196,7 @@ internal fun SlockKuiklyChildPage(
 }
 
 @Page(SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, supportInLocal = true)
-internal class SlockKuiklyChildPageHostSmokePage : ComposeContainer() {
+internal class SlockKuiklyChildPageHostSmokePage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockKuiklyChildPageHostSmokeScreen() }
@@ -258,7 +258,7 @@ private fun ChildPageStatusRow(label: String, status: String) {
 }
 
 @Page(SLOCK_CHILD_PAGE_SMOKE_ONE_PAGE, supportInLocal = true)
-internal class SlockKuiklyChildSmokeOnePage : ComposeContainer() {
+internal class SlockKuiklyChildSmokeOnePage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockKuiklyChildSmokeContent(tone = SlockColor.SurfaceWhite) }
@@ -266,7 +266,7 @@ internal class SlockKuiklyChildSmokeOnePage : ComposeContainer() {
 }
 
 @Page(SLOCK_CHILD_PAGE_SMOKE_TWO_PAGE, supportInLocal = true)
-internal class SlockKuiklyChildSmokeTwoPage : ComposeContainer() {
+internal class SlockKuiklyChildSmokeTwoPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockKuiklyChildSmokeContent(tone = SlockColor.BrandYellow) }

@@ -1,7 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.BasePager
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -27,7 +27,7 @@ import com.tencent.kuikly.core.annotations.Page
 const val SLOCK_LUCIDE_ICON_GALLERY_PAGE = "compose_icon_gallery"
 
 @Page(SLOCK_LUCIDE_ICON_GALLERY_PAGE, supportInLocal = true)
-internal class SlockLucideIconGalleryPage : ComposeContainer() {
+internal class SlockLucideIconGalleryPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockLucideIconGalleryScreen() }
