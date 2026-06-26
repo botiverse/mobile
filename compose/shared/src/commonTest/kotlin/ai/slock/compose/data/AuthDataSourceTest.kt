@@ -103,6 +103,35 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginClearsStaleCachedSessionBeforeRequestFailure() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "old-user", email = "old@slock.ai"),
+                    accessToken = "expired-access",
+                    refreshToken = "expired-refresh",
+                    selectedServerId = "server-old",
+                    selectedServerSlug = "old",
+                    servers = listOf(StoredAuthServer(id = "server-old", name = "Old", slug = "old"))
+                )
+            )
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(loginResponse = AuthNetworkResponse(401, null, """{"error":"bad"}""")),
+                sessionStore = store,
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.login("user@slock.ai", "wrong")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.InvalidCredentials, result.code)
+        assertEquals(null, store.readSession())
+        assertTrue(logs.any { it.contains("auth_login_clear_cached_session_result result=success") })
+    }
+
+    @Test
     fun loginRejectsLegacyTokenAliasesAtTypedApiBoundary() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val source =

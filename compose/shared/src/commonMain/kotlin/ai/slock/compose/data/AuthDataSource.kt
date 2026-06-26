@@ -39,6 +39,15 @@ class SharedAuthDataSource(
             )
         }
 
+        diagnosticsLogger("auth_login_clear_cached_session_start provider=password")
+        runCatchingPreservingCancellation { sessionStore.clearSession() }
+            .getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_login_clear_cached_session_result result=failure stage=session_clear ${throwable.persistenceDiagnostics()} mapped=pre_login_setup"
+                )
+                return loginStageFailure("session_clear", "Could not clear previous session locally.")
+            }
+        diagnosticsLogger("auth_login_clear_cached_session_result result=success provider=password")
         diagnosticsLogger("auth_login_start provider=password")
         val login =
             when (
