@@ -118,6 +118,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.requiredWidth
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
@@ -173,7 +174,7 @@ private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 32.dp
 private val MembersHeaderMessageButtonWidth = 116.dp
-private val MembersAgentActivityTimeColumnWidth = 42.dp
+private val MembersAgentActivityTimeColumnWidth = 60.dp
 private val MembersAgentActivityIndicatorLaneWidth = 13.dp
 private val MembersAgentActivityContentGap = 6.dp
 
@@ -6101,10 +6102,10 @@ private fun MembersAgentActivityRow(
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             textAlign = TextAlign.End,
-            modifier = Modifier.width(MembersAgentActivityTimeColumnWidth)
+            modifier = Modifier.requiredWidth(MembersAgentActivityTimeColumnWidth)
         )
         Box(
-            modifier = Modifier.width(MembersAgentActivityIndicatorLaneWidth),
+            modifier = Modifier.requiredWidth(MembersAgentActivityIndicatorLaneWidth),
             contentAlignment = Alignment.TopCenter
         ) {
             SlockStatusIndicator(
