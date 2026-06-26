@@ -101,9 +101,9 @@ internal class SlockSharedStoreProvider private constructor(
                             reason = signal.reason,
                             previousSessionFingerprint = signal.previousSessionFingerprint
                         )
-                    }.onSuccess { cleared ->
+                    }.onSuccess { applied ->
                         logger(
-                            "auth_session_clear_notify_result result=success cleared=$cleared " +
+                            "auth_session_clear_notify_result result=success applied=$applied " +
                                 "source=${signal.source} reason=${signal.reason}"
                         )
                     }.onFailure { throwable ->
