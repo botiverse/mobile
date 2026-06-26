@@ -1248,6 +1248,9 @@ internal fun childHostAppShellComposedTabs(selectedTab: String, mountedTabs: Set
     }
 }
 
+internal fun childHostAppShellInactivePaneKeepsLayout(tab: String): Boolean =
+    tab !in AppShellChildPageTabKeys && retainedAppShellInactivePaneKeepsLayout(tab)
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -1316,7 +1319,7 @@ private fun RetainedAppShellTabs(
             key("retained-$tab") {
                 RetainedAppShellTabPane(
                     active = tab == activeTab,
-                    keepLayoutWhenInactive = retainedAppShellInactivePaneKeepsLayout(tab)
+                    keepLayoutWhenInactive = childHostAppShellInactivePaneKeepsLayout(tab)
                 ) {
                     if (tab in AppShellChildPageTabKeys) {
                         SlockAppShellChildTabHost(

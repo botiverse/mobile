@@ -117,6 +117,14 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun childHostAppShellInactivePaneDoesNotKeepNativeSurfaceLayout() {
+        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("home"))
+        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("tasks"))
+        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("members"))
+        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("settings"))
+    }
+
+    @Test
     fun retainedHomeSecondaryDestinationKeepsOnlyActiveKnownDestination() {
         assertEquals(null, retainedHomeSecondaryDestination(null))
         assertEquals("search", retainedHomeSecondaryDestination("search"))
