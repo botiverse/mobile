@@ -1,5 +1,8 @@
 package ai.slock.compose.data.realtime
 
+import ai.slock.compose.data.SlockEnhancedNotifyCenter
+import ai.slock.compose.data.SlockEnhancedNotifyEvent
+import ai.slock.compose.data.SlockEnhancedNotifyEventBus
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.model.ChannelId
@@ -16,33 +19,6 @@ interface SlockRealtimeAppScopeConnection {
     fun emitJoinChannel(channelId: ChannelId)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
     fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription
-}
-
-data class SlockRealtimeRoomCommand(
-    val action: String,
-    val channelIdValue: String?,
-    val reason: String = "notify"
-)
-
-interface SlockRealtimeAppScopeRoomCommandBus {
-    fun observeRoomCommands(listener: (SlockRealtimeRoomCommand) -> Unit): RealtimeSubscription
-}
-
-object SlockRealtimeRoomCommandHub : SlockRealtimeAppScopeRoomCommandBus {
-    private val listeners = mutableListOf<(SlockRealtimeRoomCommand) -> Unit>()
-
-    override fun observeRoomCommands(listener: (SlockRealtimeRoomCommand) -> Unit): RealtimeSubscription {
-        listeners += listener
-        return RealtimeSubscription {
-            listeners -= listener
-        }
-    }
-
-    fun publish(command: SlockRealtimeRoomCommand) {
-        listeners.toList().forEach { listener ->
-            listener(command)
-        }
-    }
 }
 
 interface SlockRealtimeAppScopeSink {
@@ -339,13 +315,13 @@ class SlockRealtimeAppScopeEngine {
 class SlockRealtimeAppScopeCoordinator(
     private val connection: SlockRealtimeAppScopeConnection,
     private val sink: SlockRealtimeAppScopeSink,
-    private val roomCommandBus: SlockRealtimeAppScopeRoomCommandBus? = SlockRealtimeRoomCommandHub,
+    private val enhancedNotifyBus: SlockEnhancedNotifyEventBus? = SlockEnhancedNotifyCenter,
     private val engine: SlockRealtimeAppScopeEngine = SlockRealtimeAppScopeEngine()
 ) {
-    private var roomCommandSubscription: RealtimeSubscription? = null
+    private var enhancedNotifySubscription: RealtimeSubscription? = null
 
     init {
-        installRoomCommandBus()
+        installEnhancedNotifyBus()
     }
 
     val joinedChannelCount: Int
@@ -371,15 +347,11 @@ class SlockRealtimeAppScopeCoordinator(
         engine.onAppHidden()
     }
 
-    private fun installRoomCommandBus() {
-        if (roomCommandSubscription != null) return
-        roomCommandSubscription =
-            roomCommandBus?.observeRoomCommands { command ->
-                onRoomCommand(
-                    action = command.action,
-                    channelIdValue = command.channelIdValue,
-                    reason = command.reason
-                )
+    private fun installEnhancedNotifyBus() {
+        if (enhancedNotifySubscription != null) return
+        enhancedNotifySubscription =
+            enhancedNotifyBus?.observeNotifyEvents { event ->
+                onEnhancedNotify(event)
             }
     }
 
@@ -448,6 +420,15 @@ class SlockRealtimeAppScopeCoordinator(
             return false
         }
         return onRoomCommand(action = action, channelId = channelId, reason = reason)
+    }
+
+    private fun onEnhancedNotify(event: SlockEnhancedNotifyEvent): Boolean {
+        if (event.eventName != SlockRealtimeNotifyContract.RoomsEventName) return false
+        return onRoomCommand(
+            action = event.eventData.optString(SlockRealtimeNotifyContract.KeyAction),
+            channelIdValue = event.eventData.optString(SlockRealtimeNotifyContract.KeyChannelId),
+            reason = event.source
+        )
     }
 
     suspend fun onMappedEvent(event: RealtimeEvent) {

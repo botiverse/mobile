@@ -2,6 +2,8 @@ package ai.slock.compose.data.realtime
 
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SlockEnhancedNotifyEvent
+import ai.slock.compose.data.SlockEnhancedNotifyEventBus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.DirectMessageCreated
@@ -14,6 +16,7 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ThreadId
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -131,31 +134,28 @@ class SlockRealtimeAppScopePolicyTest {
     @Test
     fun coordinatorConsumesRoomCommandsBeforeEmittingJoin() = runBlocking {
         val connection = FakeAppScopeConnection()
-        val roomCommandBus = FakeRoomCommandBus()
-        val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), roomCommandBus)
+        val enhancedNotifyBus = FakeEnhancedNotifyBus()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), enhancedNotifyBus)
 
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
 
-        roomCommandBus.emit(
-            SlockRealtimeRoomCommand(
-                action = SlockRealtimeNotifyContract.ActionJoinChannel,
-                channelIdValue = "channel-1",
-                reason = "notify"
-            )
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionJoinChannel,
+            channelId = "channel-1"
         )
-        roomCommandBus.emit(
-            SlockRealtimeRoomCommand(
-                action = SlockRealtimeNotifyContract.ActionJoinChannel,
-                channelIdValue = "channel-1",
-                reason = "notify"
-            )
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionJoinChannel,
+            channelId = "channel-1"
         )
-        roomCommandBus.emit(SlockRealtimeRoomCommand(action = "unsupported", channelIdValue = "channel-2"))
-        roomCommandBus.emit(
-            SlockRealtimeRoomCommand(
-                action = SlockRealtimeNotifyContract.ActionJoinChannel,
-                channelIdValue = "",
-                reason = "notify"
+        enhancedNotifyBus.emitRoomCommand(action = "unsupported", channelId = "channel-2")
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionJoinChannel,
+            channelId = ""
+        )
+        enhancedNotifyBus.emit(
+            SlockEnhancedNotifyEvent(
+                eventName = "unrelated",
+                eventData = JSONObject().put(SlockRealtimeNotifyContract.KeyChannelId, "channel-3")
             )
         )
 
@@ -259,11 +259,11 @@ class SlockRealtimeAppScopePolicyTest {
             parentMessageId = parentMessageId?.let(::MessageId)
         )
 
-    private class FakeRoomCommandBus : SlockRealtimeAppScopeRoomCommandBus {
-        private val listeners = mutableListOf<(SlockRealtimeRoomCommand) -> Unit>()
+    private class FakeEnhancedNotifyBus : SlockEnhancedNotifyEventBus {
+        private val listeners = mutableListOf<(SlockEnhancedNotifyEvent) -> Unit>()
 
-        override fun observeRoomCommands(
-            listener: (SlockRealtimeRoomCommand) -> Unit
+        override fun observeNotifyEvents(
+            listener: (SlockEnhancedNotifyEvent) -> Unit
         ): RealtimeSubscription {
             listeners += listener
             return RealtimeSubscription {
@@ -271,9 +271,22 @@ class SlockRealtimeAppScopePolicyTest {
             }
         }
 
-        fun emit(command: SlockRealtimeRoomCommand) {
+        fun emitRoomCommand(action: String, channelId: String) {
+            emit(
+                SlockEnhancedNotifyEvent(
+                    eventName = SlockRealtimeNotifyContract.RoomsEventName,
+                    eventData =
+                        JSONObject()
+                            .put(SlockRealtimeNotifyContract.KeyAction, action)
+                            .put(SlockRealtimeNotifyContract.KeyChannelId, channelId),
+                    source = "notify"
+                )
+            )
+        }
+
+        fun emit(event: SlockEnhancedNotifyEvent) {
             listeners.toList().forEach { listener ->
-                listener(command)
+                listener(event)
             }
         }
     }
