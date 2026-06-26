@@ -127,10 +127,14 @@ def main() -> int:
     if args.atrace_window > 0:
         atrace_path = "/data/local/tmp/perf-coldstart-atrace.txt"
         adb_shell(args.device, f"rm -f {atrace_path}", timeout=5.0)
+        # Background atrace inside the device's shell using nohup + setsid so the
+        # shell command returns immediately. `&` alone often hangs the
+        # `adb shell` wrapper on macOS.
         atrace_proc = adb_shell_rc(
             args.device,
-            f"atrace -a {args.package} -b 65536 -t {int(args.atrace_window)} "
-            f"-o {atrace_path} sched freq gfx view input dalvik am wm res &",
+            f"nohup setsid atrace -a {args.package} -b 65536 "
+            f"-t {int(args.atrace_window)} -o {atrace_path} "
+            f"sched freq gfx view input dalvik am wm res </dev/null >/dev/null 2>&1 &",
             timeout=10.0,
         )
 

@@ -172,10 +172,14 @@ def main() -> int:
     atrace_path = "/data/local/tmp/perf-interaction-atrace.txt"
     adb_shell(args.device, f"rm -f {atrace_path}", timeout=5.0)
     print(f"[stage] atrace -t {args.atrace_window}s categories={args.atrace_categories}", flush=True)
+    # Background atrace inside the device's shell using nohup + setsid so the
+    # shell command returns immediately. `&` alone often hangs the
+    # `adb shell` wrapper on macOS.
     atrace_proc = adb_shell_rc(
         args.device,
-        f"atrace -a {args.package} -b 32768 -t {int(args.atrace_window)} "
-        f"-o {atrace_path} {args.atrace_categories} &",
+        f"nohup setsid atrace -a {args.package} -b 32768 "
+        f"-t {int(args.atrace_window)} -o {atrace_path} {args.atrace_categories} "
+        f"</dev/null >/dev/null 2>&1 &",
         timeout=10.0,
     )
 
