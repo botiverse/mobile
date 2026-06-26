@@ -5887,7 +5887,7 @@ private fun ThreadPageContent(
                     onSelectedKeyChange = selectThreadTab,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     itemKeyPrefix = "thread-tab",
-                    swipeEnabled = true,
+                    swipeEnabled = SlockTopTabBarDefaults.SwipeGesturesEnabled,
                     canSwipe = { activeModal == null },
                     content = renderThreadTabContent
                 )

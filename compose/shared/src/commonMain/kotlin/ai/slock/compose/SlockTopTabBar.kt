@@ -71,6 +71,7 @@ internal object SlockTopTabBarDefaults {
     val Height = 32.dp
     val TabWidth = 98.dp
     val SwipePreviewMaxOffset = 156.dp
+    const val SwipeGesturesEnabled = false
     const val SwipeSettleAnimationMs = 160
     const val SwipeEdgeResistance = 0.28f
 }
