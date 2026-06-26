@@ -60,6 +60,23 @@ class AuthSessionStoreTest {
         )
     }
 
+    @Test
+    fun mmkvAuthSessionStoreBroadcastsLocalClearOnly() = runBlocking {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val events = RecordingAuthSessionClearEventSink()
+        val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
+
+        store.saveSession(sampleSession())
+        store.clearSession()
+        assertNull(store.readSession())
+        assertEquals(listOf("local"), events.reasons)
+
+        store.saveSession(sampleSession())
+        store.clearSessionFromSessionClearedNotify("remote")
+        assertNull(store.readSession())
+        assertEquals(listOf("local"), events.reasons)
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user =
@@ -85,4 +102,12 @@ class AuthSessionStoreTest {
                     )
                 )
         )
+
+    private class RecordingAuthSessionClearEventSink : SlockAuthSessionClearEventSink {
+        val reasons = mutableListOf<String>()
+
+        override fun postSessionCleared(reason: String) {
+            reasons += reason
+        }
+    }
 }
