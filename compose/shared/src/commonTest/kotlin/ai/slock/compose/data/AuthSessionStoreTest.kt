@@ -68,21 +68,30 @@ class AuthSessionStoreTest {
         val events = RecordingAuthSessionClearEventSink()
         val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
         val staleSession = sampleSession()
+        val staleFingerprint = staleSession.authSessionClearFingerprint()
 
         store.saveSession(staleSession)
         store.clearSession()
         assertNull(store.readSession())
-        assertEquals(listOf(RecordedClearEvent("local", staleSession.authSessionClearFingerprint())), events.events)
+        assertEquals(listOf(RecordedClearEvent("local", staleFingerprint)), events.events)
+
+        assertTrue(
+            store.clearSessionFromSessionClearedNotify(
+                reason = "remote",
+                previousSessionFingerprint = staleFingerprint
+            )
+        )
+        assertNull(store.readSession())
 
         store.saveSession(staleSession)
         assertTrue(
             store.clearSessionFromSessionClearedNotify(
                 reason = "remote",
-                previousSessionFingerprint = staleSession.authSessionClearFingerprint()
+                previousSessionFingerprint = staleFingerprint
             )
         )
         assertNull(store.readSession())
-        assertEquals(listOf(RecordedClearEvent("local", staleSession.authSessionClearFingerprint())), events.events)
+        assertEquals(listOf(RecordedClearEvent("local", staleFingerprint)), events.events)
     }
 
     @Test

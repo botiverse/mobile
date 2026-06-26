@@ -261,19 +261,22 @@ class KuiklyMMKVAuthSessionStore(
         reason: String,
         previousSessionFingerprint: String
     ): Boolean {
-        val shouldClear =
+        val shouldInvalidate =
             mutex.withLock {
                 val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
-                if (current?.authSessionClearFingerprint() != previousSessionFingerprint) {
-                    return@withLock false
+                when {
+                    current == null -> true
+                    current.authSessionClearFingerprint() == previousSessionFingerprint -> {
+                        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                        true
+                    }
+                    else -> false
                 }
-                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
-                true
             }
-        if (shouldClear) {
+        if (shouldInvalidate) {
             invalidations.emit(Unit)
         }
-        return shouldClear
+        return shouldInvalidate
     }
 
     private suspend fun clearSession(notifyPeers: Boolean, reason: String) {
