@@ -336,7 +336,7 @@ internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 internal const val ThreadReplyEmptyTitle = "No replies yet"
 internal const val ThreadInitialBottomRenderWindowMessageCount = 1
-private const val ThreadProgressiveBottomRenderWindowDelayMs = 32L
+private const val ThreadProgressiveWindowEdgeVisibleMessageThreshold = 0
 internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -6988,36 +6988,12 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
-    LaunchedEffect(
-        threadInstanceKey,
-        initialBottomAnchorReady,
-        hasProgressiveMessageWindow,
-        messageWindow,
-        focusedMessageIndex,
-        payload.messages.size
-    ) {
-        if (!initialBottomAnchorReady || !hasProgressiveMessageWindow) return@LaunchedEffect
-        delay(ThreadProgressiveBottomRenderWindowDelayMs)
-        val nextWindow =
-            threadNextProgressiveMessageWindow(
-                messages = payload.messages,
-                currentWindow = messageWindow,
-                focusedMessageIndex = focusedMessageIndex
-            )
-        if (nextWindow != progressiveMessageWindow) {
-            progressiveMessageWindow = nextWindow
-            diagnosticsLogger(
-                "thread_progressive_message_window event=expand instance=$threadInstanceKey " +
-                    "messagesTotal=${payload.messages.size} renderStart=${nextWindow.startInclusive} " +
-                    "renderEnd=${nextWindow.endExclusive} renderCount=${nextWindow.count}"
-            )
-        }
-    }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var userScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
+    var pendingProgressiveWindowAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var consumedFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     val latestMessageLayoutKey = remember(
@@ -7157,6 +7133,70 @@ private fun ThreadMessagesList(
                     allowBottomAutoAnchor = nextAllow
                 }
             }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        hasProgressiveMessageWindow,
+        messageWindow,
+        focusedMessageIndex,
+        payload.messages.size,
+        userScrollGeneration
+    ) {
+        if (!initialBottomAnchorReady || !hasProgressiveMessageWindow) return@LaunchedEffect
+        snapshotFlow {
+            val range = listState.threadVisibleMessageRange(renderPayload)
+            ThreadProgressiveWindowExpansionState(
+                firstVisibleMessageIndex = range.firstVisibleMessageIndex,
+                lastVisibleMessageIndex = range.lastVisibleMessageIndex,
+                shouldExpand =
+                    threadShouldExpandProgressiveMessageWindow(
+                        hasProgressiveOlderWindow = hasProgressiveOlderWindow,
+                        hasProgressiveNewerWindow = hasProgressiveNewerWindow,
+                        firstVisibleMessageIndex = range.firstVisibleMessageIndex,
+                        lastVisibleMessageIndex = range.lastVisibleMessageIndex,
+                        renderedMessagesCount = renderPayload.messages.size,
+                        userScrollGeneration = userScrollGeneration,
+                        isLatestItemAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                    )
+            )
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                if (!state.shouldExpand) return@collect
+                val nextWindow =
+                    threadNextProgressiveMessageWindow(
+                        messages = payload.messages,
+                        currentWindow = messageWindow,
+                        focusedMessageIndex = focusedMessageIndex
+                    )
+                if (nextWindow != progressiveMessageWindow) {
+                    pendingProgressiveWindowAnchor = listState.threadFirstVisibleMessageAnchor(renderPayload)
+                    progressiveMessageWindow = nextWindow
+                    diagnosticsLogger(
+                        "thread_progressive_message_window event=edge_expand instance=$threadInstanceKey " +
+                            "messagesTotal=${payload.messages.size} renderStart=${nextWindow.startInclusive} " +
+                            "renderEnd=${nextWindow.endExclusive} renderCount=${nextWindow.count} " +
+                            "firstVisibleMessage=${state.firstVisibleMessageIndex} " +
+                            "lastVisibleMessage=${state.lastVisibleMessageIndex} " +
+                            "userScrollGeneration=$userScrollGeneration"
+                    )
+                }
+            }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        renderPayload.messages.size,
+        renderPayload.messages.firstOrNull()?.id,
+        pendingProgressiveWindowAnchor
+    ) {
+        val anchor = pendingProgressiveWindowAnchor ?: return@LaunchedEffect
+        pendingProgressiveWindowAnchor = null
+        listState.awaitThreadMessagesLayoutFrame()
+        val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
+        if (targetIndex >= 0) {
+            listState.scrollToItem(targetIndex, -anchor.offset)
+        }
     }
     LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
         if (latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
@@ -7954,8 +7994,55 @@ private data class ThreadLazyWindowStats(
     val visibleMessages: Int
 )
 
+private data class ThreadVisibleMessageRange(
+    val firstVisibleMessageIndex: Int,
+    val lastVisibleMessageIndex: Int
+)
+
+private data class ThreadProgressiveWindowExpansionState(
+    val firstVisibleMessageIndex: Int,
+    val lastVisibleMessageIndex: Int,
+    val shouldExpand: Boolean
+)
+
+internal fun threadShouldExpandProgressiveMessageWindow(
+    hasProgressiveOlderWindow: Boolean,
+    hasProgressiveNewerWindow: Boolean,
+    firstVisibleMessageIndex: Int,
+    lastVisibleMessageIndex: Int,
+    renderedMessagesCount: Int,
+    userScrollGeneration: Int,
+    isLatestItemAtRenderedBottom: Boolean
+): Boolean {
+    if (userScrollGeneration <= 0 || renderedMessagesCount <= 0) return false
+    val nearOlderEdge =
+        hasProgressiveOlderWindow &&
+            !isLatestItemAtRenderedBottom &&
+            firstVisibleMessageIndex in 0..ThreadProgressiveWindowEdgeVisibleMessageThreshold
+    val nearNewerEdge =
+        hasProgressiveNewerWindow &&
+            lastVisibleMessageIndex >=
+            renderedMessagesCount - 1 - ThreadProgressiveWindowEdgeVisibleMessageThreshold
+    return nearOlderEdge || nearNewerEdge
+}
+
 private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
     "message:$index:${messageId.take(8)}"
+
+private fun LazyListState.threadVisibleMessageRange(
+    payload: KuiklyThreadScreenPayload
+): ThreadVisibleMessageRange {
+    val firstMessageListItemIndex = payload.firstMessageListItemIndex()
+    val visibleMessageIndexes =
+        layoutInfo.visibleItemsInfo.mapNotNull { item ->
+            (item.index - firstMessageListItemIndex)
+                .takeIf { it in payload.messages.indices }
+        }
+    return ThreadVisibleMessageRange(
+        firstVisibleMessageIndex = visibleMessageIndexes.firstOrNull() ?: -1,
+        lastVisibleMessageIndex = visibleMessageIndexes.lastOrNull() ?: -1
+    )
+}
 
 private fun LazyListState.threadLazyWindowStats(
     payload: KuiklyThreadScreenPayload,

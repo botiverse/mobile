@@ -775,6 +775,77 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadProgressiveWindowDoesNotExpandBeforeUserScroll() {
+        assertFalse(
+            threadShouldExpandProgressiveMessageWindow(
+                hasProgressiveOlderWindow = true,
+                hasProgressiveNewerWindow = false,
+                firstVisibleMessageIndex = 0,
+                lastVisibleMessageIndex = 0,
+                renderedMessagesCount = 1,
+                userScrollGeneration = 0,
+                isLatestItemAtRenderedBottom = false
+            )
+        )
+    }
+
+    @Test
+    fun threadProgressiveWindowExpandsOnlyWhenScrolledToRenderedEdge() {
+        assertFalse(
+            threadShouldExpandProgressiveMessageWindow(
+                hasProgressiveOlderWindow = true,
+                hasProgressiveNewerWindow = false,
+                firstVisibleMessageIndex = 1,
+                lastVisibleMessageIndex = 2,
+                renderedMessagesCount = 3,
+                userScrollGeneration = 1,
+                isLatestItemAtRenderedBottom = false
+            )
+        )
+        assertTrue(
+            threadShouldExpandProgressiveMessageWindow(
+                hasProgressiveOlderWindow = true,
+                hasProgressiveNewerWindow = false,
+                firstVisibleMessageIndex = 0,
+                lastVisibleMessageIndex = 1,
+                renderedMessagesCount = 3,
+                userScrollGeneration = 1,
+                isLatestItemAtRenderedBottom = false
+            )
+        )
+    }
+
+    @Test
+    fun threadProgressiveWindowDoesNotExpandOlderWhileLatestIsStillBottomAnchored() {
+        assertFalse(
+            threadShouldExpandProgressiveMessageWindow(
+                hasProgressiveOlderWindow = true,
+                hasProgressiveNewerWindow = false,
+                firstVisibleMessageIndex = 0,
+                lastVisibleMessageIndex = 0,
+                renderedMessagesCount = 1,
+                userScrollGeneration = 1,
+                isLatestItemAtRenderedBottom = true
+            )
+        )
+    }
+
+    @Test
+    fun threadProgressiveWindowCanExpandNewerFocusedEdgeAfterUserScroll() {
+        assertTrue(
+            threadShouldExpandProgressiveMessageWindow(
+                hasProgressiveOlderWindow = false,
+                hasProgressiveNewerWindow = true,
+                firstVisibleMessageIndex = 0,
+                lastVisibleMessageIndex = 1,
+                renderedMessagesCount = 2,
+                userScrollGeneration = 1,
+                isLatestItemAtRenderedBottom = false
+            )
+        )
+    }
+
+    @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             0,
