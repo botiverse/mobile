@@ -163,9 +163,11 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
@@ -2503,6 +2505,7 @@ internal fun SharedThreadRouteContent(
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<KuiklyThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -3591,6 +3594,14 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to copy link")
                     }
                 }
+                action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
+                    val message = renderedThread.threadActionMessage(itemId)
+                    if (message?.body.isNullOrBlank()) {
+                        bridge.toast("No text to select")
+                    } else {
+                        textSelectionMessage = message
+                    }
+                }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     val parentMessage =
                         renderedThread.messages.firstOrNull { it.id == itemId }
@@ -4566,6 +4577,16 @@ internal fun SharedThreadRouteContent(
                 }
             }
         )
+        textSelectionMessage?.let { message ->
+            ThreadMessageTextSelectionDialog(
+                message = message,
+                onCopyAll = {
+                    bridge.copyToPasteboard(message.body)
+                    bridge.toast("Copied")
+                },
+                onDismiss = { textSelectionMessage = null }
+            )
+        }
         imagePreviewState?.let { preview ->
             ThreadImagePreviewOverlay(
                 state = preview,
@@ -7553,6 +7574,10 @@ private fun ThreadMessagesList(
                         actionMessageId = null
                         onThreadEvent("copyMessage", message.id, null, null)
                     },
+                    onSelectText = {
+                        actionMessageId = null
+                        onThreadEvent("openSelectMessageText", message.id, null, null)
+                    },
                     onSave = {
                         actionMessageId = null
                         onThreadEvent("toggleMessageSaved", message.id, null, null)
@@ -9622,6 +9647,7 @@ private fun threadMessageMenuActions(
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
+    onSelectText: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
     onTaskStatusChange: (String) -> Unit,
@@ -9638,6 +9664,7 @@ private fun threadMessageMenuActions(
             )
         )
         add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction("Select Text", SlockLucideIconName.FileText, "copy", onClick = onSelectText))
         add(
             ThreadMessageMenuAction(
                 label = "Share Messages...",
@@ -9717,6 +9744,7 @@ private fun ThreadMessageActionMenu(
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
+    onSelectText: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
     onReact: (String) -> Unit,
@@ -9736,6 +9764,7 @@ private fun ThreadMessageActionMenu(
             onReply,
             onCopyLink,
             onCopy,
+            onSelectText,
             onSave,
             onFollowThread,
             onTaskStatusChange,
@@ -9752,6 +9781,7 @@ private fun ThreadMessageActionMenu(
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,
+                onSelectText = onSelectText,
                 onSave = onSave,
                 onFollowThread = onFollowThread,
                 onTaskStatusChange = onTaskStatusChange,
@@ -9799,6 +9829,102 @@ private fun ThreadMessageActionMenu(
                         menuSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                     }
         )
+    }
+}
+
+@Composable
+private fun ThreadMessageTextSelectionDialog(
+    message: KuiklyThreadMessageItem,
+    onCopyAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val originalText = message.body
+    var fieldValue by remember(message.id, originalText) {
+        mutableStateOf(TextFieldValue(originalText, selection = TextRange(0, originalText.length)))
+    }
+    Modal(onWillDismiss = { onDismiss() }) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SlockColor.ShadowBlack.copy(alpha = 0.48f))
+                .padding(SlockSpacing.Md)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Select text",
+                            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = listOf(message.authorName, message.timestampLabel)
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · "),
+                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    SlockToolbarChip(
+                        label = "Copy all",
+                        iconName = SlockLucideIconName.Copy,
+                        onClick = onCopyAll,
+                        uppercase = false,
+                        activeBackgroundColor = SlockColor.BrandYellow,
+                        inactiveBackgroundColor = SlockColor.SurfaceWhite,
+                        borderColor = SlockColor.BorderBlack
+                    )
+                    SlockToolbarChip(
+                        label = "Close",
+                        iconName = SlockLucideIconName.X,
+                        onClick = onDismiss,
+                        uppercase = false,
+                        activeBackgroundColor = SlockColor.SurfaceWhite,
+                        inactiveBackgroundColor = SlockColor.SurfaceWhite,
+                        borderColor = SlockColor.BorderBlack
+                    )
+                }
+                TextField(
+                    value = fieldValue,
+                    onValueChange = { fieldValue = it },
+                    autoFocus = true,
+                    maxLines = Int.MAX_VALUE,
+                    systemNewlineAction = true,
+                    contentAlignment = Alignment.TopStart,
+                    textStyle =
+                        SlockType.Body.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(SlockSpacing.Sm)
+                )
+            }
+        }
     }
 }
 
