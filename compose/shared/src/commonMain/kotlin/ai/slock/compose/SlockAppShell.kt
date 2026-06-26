@@ -6,6 +6,7 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -21,6 +22,12 @@ internal data class SlockAppShellScope(
 
     fun bottomInset(includeBottomTabBar: Boolean): Dp =
         if (includeBottomTabBar) bottomTabBarContentInset else bottomSafeArea + SlockSpacing.Lg
+
+    fun bottomTabBarHostInset(includeBottomTabBar: Boolean): Dp =
+        if (includeBottomTabBar) bottomTabBarContentInset - SlockSpacing.Lg else 0.dp
+
+    fun contentBottomInset(includeBottomTabBar: Boolean): Dp =
+        if (includeBottomTabBar) SlockSpacing.Lg else bottomSafeArea + SlockSpacing.Lg
 }
 
 @Composable
@@ -60,7 +67,12 @@ internal fun SlockAppShellSurface(
     content: @Composable () -> Unit
 ) {
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+        ) {
             content()
         }
         if (showBottomTabs) {

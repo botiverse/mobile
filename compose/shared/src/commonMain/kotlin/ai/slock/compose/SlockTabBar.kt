@@ -221,6 +221,7 @@ internal fun SlockAppBottomTabBarHost(
             .fillMaxWidth()
             .height(slockSharedBottomTabBarHostHeight(bottomSafeArea))
             .background(SlockColor.SurfaceWhite)
+            .clickable(onClick = {})
     ) {
         SlockBottomTabBar(
             items = items,
@@ -243,6 +244,7 @@ private fun SlockOhosHdsBottomTabBarHost(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
+            .clickable(onClick = {})
     ) {
         SlockOhosHdsTabBar(
             items = items,

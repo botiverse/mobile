@@ -32,6 +32,10 @@ class SlockAppShellTest {
         assertEquals(88.dp, scope.bottomTabBarContentInset)
         assertEquals(88.dp, scope.bottomInset(includeBottomTabBar = true))
         assertEquals(18.dp + SlockSpacing.Lg, scope.bottomInset(includeBottomTabBar = false))
+        assertEquals(88.dp - SlockSpacing.Lg, scope.bottomTabBarHostInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.bottomTabBarHostInset(includeBottomTabBar = false))
+        assertEquals(SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = true))
+        assertEquals(18.dp + SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = false))
     }
 
     @Test
@@ -114,14 +118,6 @@ class SlockAppShellTest {
         assertEquals(true, retainedAppShellInactivePaneKeepsLayout("home"))
         assertEquals(false, retainedAppShellInactivePaneKeepsLayout("tasks"))
         assertEquals(false, retainedAppShellInactivePaneKeepsLayout("settings"))
-    }
-
-    @Test
-    fun childHostAppShellInactivePaneDoesNotKeepNativeSurfaceLayout() {
-        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("home"))
-        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("tasks"))
-        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("members"))
-        assertEquals(false, childHostAppShellInactivePaneKeepsLayout("settings"))
     }
 
     @Test

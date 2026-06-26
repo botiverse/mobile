@@ -1248,9 +1248,6 @@ internal fun childHostAppShellComposedTabs(selectedTab: String, mountedTabs: Set
     }
 }
 
-internal fun childHostAppShellInactivePaneKeepsLayout(tab: String): Boolean =
-    tab !in AppShellChildPageTabKeys && retainedAppShellInactivePaneKeepsLayout(tab)
-
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -1319,7 +1316,7 @@ private fun RetainedAppShellTabs(
             key("retained-$tab") {
                 RetainedAppShellTabPane(
                     active = tab == activeTab,
-                    keepLayoutWhenInactive = childHostAppShellInactivePaneKeepsLayout(tab)
+                    keepLayoutWhenInactive = retainedAppShellInactivePaneKeepsLayout(tab)
                 ) {
                     if (tab in AppShellChildPageTabKeys) {
                         SlockAppShellChildTabHost(
@@ -2471,7 +2468,7 @@ private fun SlockAppShellContent() {
     val appShellBottomTabItems = remember(selectedTab) {
         appShellBottomTabs(selectedTab)
     }
-    val appShellBottomContentInset = shellScope.bottomInset(showAppShellBottomTabs)
+    val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
 
     val mainRouteContent: @Composable () -> Unit = {
         SlockAppShellSurface(
