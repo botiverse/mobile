@@ -6865,11 +6865,23 @@ private fun ThreadMessagesList(
                 ?.let { focusedMessageId -> payload.messages.indexOfFirst { it.id == focusedMessageId } }
                 ?: -1
         }
+    val suppressThreadOriginFirstFocusedMessage =
+        remember(payload.originStatus, focusedMessageIndex) {
+            threadShouldSuppressOriginFirstFocusedMessage(
+                focusedMessageIndex = focusedMessageIndex,
+                hasThreadOriginItem = payload.hasThreadOriginItem()
+            )
+        }
+    val progressiveFocusedMessageIndex =
+        threadProgressiveFocusedMessageIndex(
+            focusedMessageIndex = focusedMessageIndex,
+            hasThreadOriginItem = payload.hasThreadOriginItem()
+        )
     val initialProgressiveMessageWindow =
-        remember(payload.messages, payload.messages.lastOrNull()?.id, focusedMessageIndex) {
+        remember(payload.messages, payload.messages.lastOrNull()?.id, progressiveFocusedMessageIndex) {
             threadInitialProgressiveMessageWindow(
                 messages = payload.messages,
-                focusedMessageIndex = focusedMessageIndex
+                focusedMessageIndex = progressiveFocusedMessageIndex
             )
         }
     var progressiveWindowStarted by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -6902,12 +6914,25 @@ private fun ThreadMessagesList(
     val hasProgressiveNewerWindow = messageWindow.endExclusive < payload.messages.size
     val hasProgressiveMessageWindow = hasProgressiveOlderWindow || hasProgressiveNewerWindow
     val renderPayload =
-        remember(payload, renderMessages, hasProgressiveMessageWindow, hasProgressiveOlderWindow, hasProgressiveNewerWindow) {
-            if (!hasProgressiveMessageWindow) {
+        remember(
+            payload,
+            renderMessages,
+            hasProgressiveMessageWindow,
+            hasProgressiveOlderWindow,
+            hasProgressiveNewerWindow,
+            suppressThreadOriginFirstFocusedMessage
+        ) {
+            if (!hasProgressiveMessageWindow && !suppressThreadOriginFirstFocusedMessage) {
                 payload
             } else {
                 payload.copy(
                     messages = renderMessages,
+                    focusedMessageId =
+                        if (suppressThreadOriginFirstFocusedMessage) {
+                            null
+                        } else {
+                            payload.focusedMessageId
+                        },
                     canLoadMoreBefore = hasProgressiveOlderWindow || payload.canLoadMoreBefore,
                     canLoadMoreAfter = hasProgressiveNewerWindow || payload.canLoadMoreAfter,
                     olderMessagesStatus = if (hasProgressiveOlderWindow) "loading" else payload.olderMessagesStatus,
@@ -6918,7 +6943,7 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         currentProgressivePayloadKey,
-        focusedMessageIndex,
+        progressiveFocusedMessageIndex,
         initialProgressiveMessageWindow
     ) {
         if (!initialProgressiveMessageWindow.isFull(payload.messages.size) &&
@@ -6927,7 +6952,7 @@ private fun ThreadMessagesList(
             progressiveWindowStarted = true
             progressiveMessageWindow = initialProgressiveMessageWindow
             progressivePayloadKey = currentProgressivePayloadKey
-            val event = if (focusedMessageIndex >= 0) "focused_start" else "start"
+            val event = if (progressiveFocusedMessageIndex >= 0) "focused_start" else "start"
             diagnosticsLogger(
                 "thread_progressive_message_window event=$event instance=$threadInstanceKey " +
                     "messagesTotal=${payload.messages.size} renderStart=${initialProgressiveMessageWindow.startInclusive} " +
@@ -6987,7 +7012,7 @@ private fun ThreadMessagesList(
         initialBottomAnchorReady,
         hasProgressiveMessageWindow,
         messageWindow,
-        focusedMessageIndex,
+        progressiveFocusedMessageIndex,
         payload.messages.size
     ) {
         if (!initialBottomAnchorReady || !hasProgressiveMessageWindow) return@LaunchedEffect
@@ -6996,7 +7021,7 @@ private fun ThreadMessagesList(
             threadNextProgressiveMessageWindow(
                 messages = payload.messages,
                 currentWindow = messageWindow,
-                focusedMessageIndex = focusedMessageIndex
+                focusedMessageIndex = progressiveFocusedMessageIndex
             )
         if (nextWindow != progressiveMessageWindow) {
             progressiveMessageWindow = nextWindow
@@ -7789,6 +7814,22 @@ internal fun threadInitialProgressiveMessageWindow(
             messages = messages,
             targetBusinessMessageCount = ThreadInitialBottomRenderWindowMessageCount
         )
+    }
+
+internal fun threadShouldSuppressOriginFirstFocusedMessage(
+    focusedMessageIndex: Int,
+    hasThreadOriginItem: Boolean
+): Boolean =
+    hasThreadOriginItem && focusedMessageIndex == 0
+
+internal fun threadProgressiveFocusedMessageIndex(
+    focusedMessageIndex: Int,
+    hasThreadOriginItem: Boolean
+): Int =
+    if (threadShouldSuppressOriginFirstFocusedMessage(focusedMessageIndex, hasThreadOriginItem)) {
+        -1
+    } else {
+        focusedMessageIndex
     }
 
 internal fun threadProgressiveBottomRenderPayloadKey(
