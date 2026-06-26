@@ -616,10 +616,107 @@ class ThreadPayloadTest {
     @Test
     fun threadInitialProgressiveBottomRenderStartKeepsFocusedMessageAvailable() {
         assertEquals(
-            0,
+            12,
             threadInitialProgressiveBottomRenderStart(
                 messagesCount = 50,
                 focusedMessageIndex = 12
+            )
+        )
+    }
+
+    @Test
+    fun threadInitialProgressiveMessageWindowCentersFocusedMessageOnly() {
+        val messages = (0 until 50).map { index -> testThreadMessage("m$index") }
+
+        assertEquals(
+            ThreadProgressiveMessageWindow(12, 13),
+            threadInitialProgressiveMessageWindow(
+                messages = messages,
+                focusedMessageIndex = 12
+            )
+        )
+    }
+
+    @Test
+    fun threadFocusedProgressiveMessageWindowGrowsAroundFocusedMessage() {
+        val messages = (0 until 50).map { index -> testThreadMessage("m$index") }
+        val initial =
+            threadInitialProgressiveMessageWindow(
+                messages = messages,
+                focusedMessageIndex = 12
+            )
+
+        assertEquals(
+            ThreadProgressiveMessageWindow(11, 13),
+            threadNextProgressiveMessageWindow(
+                messages = messages,
+                currentWindow = initial,
+                focusedMessageIndex = 12
+            )
+        )
+        assertEquals(
+            ThreadProgressiveMessageWindow(11, 14),
+            threadNextProgressiveMessageWindow(
+                messages = messages,
+                currentWindow = ThreadProgressiveMessageWindow(11, 13),
+                focusedMessageIndex = 12
+            )
+        )
+    }
+
+    @Test
+    fun threadFocusedProgressiveMessageWindowKeepsThreadOriginPairSmall() {
+        val messages = (0 until 50).map { index -> testThreadMessage("reply-$index") }
+
+        assertEquals(
+            ThreadProgressiveMessageWindow(0, 1),
+            threadInitialProgressiveMessageWindow(
+                messages = messages,
+                focusedMessageIndex = 0
+            )
+        )
+    }
+
+    @Test
+    fun threadProgressiveMessageWindowDoesNotCountSystemMessagesAsBusinessRows() {
+        val messages =
+            listOf(
+                testThreadMessage("m0"),
+                testThreadMessage("sys-1", messageType = "System"),
+                testThreadMessage("m2"),
+                testThreadMessage("sys-3", messageType = "System"),
+                testThreadMessage("m4")
+            )
+
+        assertEquals(
+            ThreadProgressiveMessageWindow(4, 5),
+            threadInitialProgressiveMessageWindow(messages = messages)
+        )
+        assertEquals(
+            ThreadProgressiveMessageWindow(2, 4),
+            threadInitialProgressiveMessageWindow(
+                messages =
+                    listOf(
+                        testThreadMessage("m0"),
+                        testThreadMessage("m1"),
+                        testThreadMessage("m2"),
+                        testThreadMessage("sys-3", messageType = "System")
+                    )
+            )
+        )
+        assertEquals(
+            ThreadProgressiveMessageWindow(2, 5),
+            threadNextProgressiveMessageWindow(
+                messages = messages,
+                currentWindow = ThreadProgressiveMessageWindow(4, 5)
+            )
+        )
+        assertEquals(
+            ThreadProgressiveMessageWindow(0, 3),
+            threadNextProgressiveMessageWindow(
+                messages = messages,
+                currentWindow = ThreadProgressiveMessageWindow(2, 3),
+                focusedMessageIndex = 2
             )
         )
     }
@@ -4690,5 +4787,17 @@ class ThreadPayloadTest {
             authorId = authorId,
             authorName = authorHandle,
             authorHandle = authorHandle
+        )
+
+    private fun testThreadMessage(
+        id: String,
+        messageType: String = "chat"
+    ): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = "u-$id",
+            authorName = "User $id",
+            messageType = messageType,
+            body = "body $id"
         )
 }
