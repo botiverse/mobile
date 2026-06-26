@@ -87,7 +87,8 @@ private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
 private val ComposerAgentActivityDotSize = 10.dp
-private val ComposerChannelSuggestionIconSize = 22.dp
+private val ComposerChannelSuggestionIconSize = 20.dp
+private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualPreviewUri =
@@ -924,6 +925,7 @@ internal fun ThreadComposerContent(
             } else if (showChannelSuggestions) {
                 ComposerSuggestionPanel(
                     title = "CHANNELS",
+                    showTitleDivider = false,
                     itemCount = filteredChannelSuggestions.size,
                     itemKey = { index -> "channel-$index-${filteredChannelSuggestions[index].name}" }
                 ) { index ->
@@ -1729,10 +1731,14 @@ private fun ComposerChannelSuggestionRow(
                     Modifier
                         .size(ComposerChannelSuggestionIconSize)
                         .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                Text("#", style = SlockType.Button.copy(fontSize = 13.sp), color = SlockColor.TextBlack)
+                SlockLucideIcon(
+                    SlockLucideIconName.Hash,
+                    modifier = Modifier.size(ComposerChannelSuggestionGlyphSize),
+                    color = SlockColor.TextBlackArgb
+                )
             }
             Text(
                 text = channel.name,
