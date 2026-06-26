@@ -496,7 +496,8 @@ internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
 @Composable
 private fun SharedHomeSearchEntityLeadingAvatar(
     result: SearchEntityResult,
-    agentStatusResolver: SlockAgentStatusResolver
+    agentStatusResolver: SlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
 ) {
     when (result.type) {
         SearchEntityType.Channel ->
@@ -513,6 +514,10 @@ private fun SharedHomeSearchEntityLeadingAvatar(
 
         else ->
             run {
+                val memberAvatarWireValue =
+                    result.memberId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { rememberSlockMemberAvatarWireValue(memberAvatarResolver, it) }
                 val status =
                     if (result.showPresence) {
                         result.memberId
@@ -530,7 +535,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     statusPulsing = status?.pulsing == true
                 ) {
                     SlockAvatar(
-                        avatarWireValue = result.avatarWireValue ?: "random:${result.key}",
+                        avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: "random:${result.key}",
                         label = result.title.removePrefix("@").removePrefix("#")
                     )
                 }
@@ -797,6 +802,10 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
         remember(environment.serverMembersStore, searchServerId) {
             slockAgentStatusResolver(environment.serverMembersStore, searchServerId)
         }
+    val memberAvatarResolver =
+        remember(environment.serverMembersStore, searchServerId) {
+            slockMemberAvatarResolver(environment.serverMembersStore, searchServerId)
+        }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         environment.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -807,6 +816,7 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
         state = searchSavedState.search,
         homeState = homeState,
         agentStatusResolver = agentStatusResolver,
+        memberAvatarResolver = memberAvatarResolver,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
@@ -841,8 +851,26 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
+    var savedServerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(environment.authStore, environment.serverMembersStore) {
+        val serverId =
+            environment.authStore
+                .readSession()
+                ?.currentServerId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        savedServerId = serverId
+        if (serverId != null) {
+            environment.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+        }
+    }
+    val memberAvatarResolver =
+        remember(environment.serverMembersStore, savedServerId) {
+            slockMemberAvatarResolver(environment.serverMembersStore, savedServerId)
+        }
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
+        memberAvatarResolver = memberAvatarResolver,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
@@ -10115,6 +10143,7 @@ private fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     interactiveSearchField: Boolean = true,
@@ -10231,6 +10260,7 @@ private fun SharedHomeSearchPanel(
                         SharedHomeSearchEntityRow(
                             result = entityResults[index],
                             agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
                             onOpen = { onOpenEntity(entityResults[index]) }
                         )
                     }
@@ -10246,6 +10276,7 @@ private fun SharedHomeSearchPanel(
                             item(key = group.item.key) {
                                 SharedHomeSearchMessageResultRow(
                                     item = group.item,
+                                    memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpen = { onOpenItem(group.item) }
                                 )
@@ -10255,6 +10286,7 @@ private fun SharedHomeSearchPanel(
                             item(key = group.key) {
                                 SharedHomeThreadResultGroup(
                                     group = group,
+                                    memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpenItem = onOpenItem
                                 )
@@ -10542,6 +10574,7 @@ private fun SharedHomeSearchInput(
 @Composable
 private fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     onOpenItem: (InboxItem) -> Unit,
@@ -10644,6 +10677,7 @@ private fun SharedHomeSavedPanel(
                     SharedHomeSavedResultCard(
                         item = item,
                         selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                        memberAvatarResolver = memberAvatarResolver,
                         onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
                         onOpen = {
                             selectedItemKey = item.key
@@ -11176,6 +11210,7 @@ private fun SharedHomeSavedSelectedSurface(
 private fun SharedHomeSavedResultCard(
     item: InboxItem,
     selected: Boolean,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
     onContextMenu: (Offset) -> Unit,
@@ -11254,7 +11289,7 @@ private fun SharedHomeSavedResultCard(
                     sender?.let {
                         SharedHomeSavedSenderMeta(
                             senderName = it,
-                            avatarWireValue = item.senderAvatarWireValueForPreview(),
+                            avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -11371,6 +11406,22 @@ private fun InboxItem.senderAvatarWireValueForPreview(): String? {
     return latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
 }
 
+@Composable
+private fun InboxItem.resolvedSenderAvatarWireValueForPreview(
+    memberAvatarResolver: SlockMemberAvatarResolver
+): String? {
+    val senderId = previewSenderMemberId()
+    val memberAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, senderId)
+    return memberAvatarWireValue ?: senderAvatarWireValueForPreview()
+}
+
+private fun InboxItem.previewSenderMemberId(): String? =
+    when {
+        latestActivitySenderKind != null && latestActivitySenderId != null -> latestActivitySenderId
+        lastMessageSenderKind != null && lastMessageSenderId != null -> lastMessageSenderId
+        else -> latestActivitySenderId ?: lastMessageSenderId
+    }
+
 private fun savedSenderAvatarFallback(senderName: String): String? =
     if (senderName.contains("developer", ignoreCase = true) || senderName.contains("agent", ignoreCase = true)) {
         "pixel:robot"
@@ -11426,6 +11477,7 @@ private fun SharedHomeSearchSectionLabel(label: String) {
 private fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
     agentStatusResolver: SlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onOpen: () -> Unit
 ) {
     Row(
@@ -11440,7 +11492,7 @@ private fun SharedHomeSearchEntityRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver)
+        SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -11488,6 +11540,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
 @Composable
 private fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpenItem: (InboxItem) -> Unit
 ) {
@@ -11558,6 +11611,7 @@ private fun SharedHomeThreadResultGroup(
             SharedHomeSearchMessageResultRow(
                 item = item,
                 nested = true,
+                memberAvatarResolver = memberAvatarResolver,
                 timeContext = timeContext,
                 onOpen = { onOpenItem(item) }
             )
@@ -11569,6 +11623,7 @@ private fun SharedHomeThreadResultGroup(
 private fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     nested: Boolean = false,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpen: () -> Unit
 ) {
@@ -11616,7 +11671,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!sender.isNullOrBlank()) {
                 SharedHomeSearchSenderMeta(
                     sender = sender,
-                    avatarWireValue = item.senderAvatarWireValueForPreview(),
+                    avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
                     modifier = Modifier.weight(1f),
                     compact = compactMeta
                 )
