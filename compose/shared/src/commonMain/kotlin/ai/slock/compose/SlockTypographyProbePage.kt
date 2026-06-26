@@ -1,8 +1,8 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.BasePager
 import ai.slock.compose.markdown.SlockMarkdownBody
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -25,7 +25,7 @@ import com.tencent.kuikly.core.annotations.Page
 const val SLOCK_TYPOGRAPHY_PROBE_PAGE = "compose_typography_probe"
 
 @Page(SLOCK_TYPOGRAPHY_PROBE_PAGE, supportInLocal = true)
-internal class SlockTypographyProbePage : ComposeContainer() {
+internal class SlockTypographyProbePage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockTypographyProbeScreen() }

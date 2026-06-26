@@ -1269,51 +1269,60 @@ private fun ComposerMemberSuggestionRow(
                     avatarWireValue = member.avatarWireValue,
                     label = member.avatarLabel.ifBlank { member.displayName },
                     avatarSize = ComposerMemberSuggestionAvatarSize,
-                    borderWidth = SlockStroke.Default,
+                    borderWidth = SlockStroke.Thin,
                     gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
                 )
             }
-            if (muted) {
-                SlockLucideIcon(
-                    SlockLucideIconName.UserMinus,
-                    modifier = Modifier.size(12.dp),
-                    color = SlockColor.TextMutedGrayArgb
-                )
-            }
-            Text(
-                text = member.displayName,
-                style = SlockType.Button.copy(color = contentColor),
-                color = contentColor,
-                modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (inChannel && member.kind == MemberKind.Agent) {
-                rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
-                    ComposerAgentStatusDot(status)
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (muted) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.UserMinus,
+                        modifier = Modifier.size(12.dp),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
                 }
-            }
-            if (secondary != null) {
                 Text(
-                    text = secondary,
-                    style = SlockType.Caption.copy(color = secondaryColor),
-                    color = secondaryColor,
-                    modifier = Modifier.weight(1f),
+                    text = member.displayName,
+                    style = SlockType.Button.copy(color = contentColor),
+                    color = contentColor,
+                    modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            } else {
-                Box(modifier = Modifier.weight(1f))
+                if (inChannel && member.kind == MemberKind.Agent) {
+                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
+                        ComposerAgentStatusDot(status)
+                    }
+                }
+                if (secondary != null) {
+                    Text(
+                        text = secondary,
+                        style = SlockType.Caption.copy(color = secondaryColor),
+                        color = secondaryColor,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
-            Text(
-                text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
-                color = handleColor,
+            Box(
                 modifier = Modifier.width(ComposerMemberSuggestionHandleWidth),
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = "@${member.handle}",
+                    style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                    color = handleColor,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1695,13 +1704,15 @@ private fun ComposerSuggestionPanel(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack).background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        ComposerSuggestionHeader(
-            text = title,
-            bottomDivider = showTitleDivider
-        )
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight)
         ) {
+            item(key = "header-$title", contentType = "header") {
+                ComposerSuggestionHeader(
+                    text = title,
+                    bottomDivider = showTitleDivider
+                )
+            }
             items(itemCount, key = itemKey) { index ->
                 itemContent(index)
             }
