@@ -116,7 +116,6 @@ internal data class WireThreadLaunchPayload(
             todayEpochDay = todayEpochDay,
             nowEpochMillis = nowEpochMillis,
             timeFormat = timeFormat,
-            filesPayload = "{}",
             composer = resolvedComposer,
             showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,

@@ -836,7 +836,6 @@ class ThreadPayloadTest {
         assertEquals("payload_parse_failed", payload.errorCode)
         assertEquals(emptyList(), payload.messages)
         assertEquals(emptyList(), payload.members)
-        assertEquals("{}", payload.filesPayload)
         assertEquals("", payload.resolveThreadComposer().seedText)
     }
 
@@ -875,7 +874,6 @@ class ThreadPayloadTest {
         assertEquals(emptyList<KuiklyThreadTaskItem>(), payload.tasks)
         assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.members)
         assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.memberCandidates)
-        assertEquals("{}", payload.filesPayload)
         assertEquals("", payload.resolveThreadComposer().seedText)
         assertEquals(false, payload.resolveThreadComposer().seedAsTask)
         assertEquals(emptyList(), payload.settingsActions)
@@ -884,20 +882,17 @@ class ThreadPayloadTest {
     @Test
     fun threadFilesRouteStartPayloadIgnoresLegacyFilesPayloadSeed() {
         val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "thread-launch-1",
-                sourceThreadId = "channel-1",
-                streamChannelId = "channel-1",
-                filesPayload =
+            parseThreadScreenPayload(
+                payload =
                     """
                     {
-                      "instanceId": "seed-instance",
-                      "status": "content",
-                      "items": [
-                        {"attachmentId": "seed-file", "name": "must-not-seed.pdf"}
-                      ]
+                      "instanceId": "thread-launch-1",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
+                      "filesPayload": "{\"instanceId\":\"seed-instance\",\"status\":\"content\",\"items\":[{\"attachmentId\":\"seed-file\",\"name\":\"must-not-seed.pdf\"}]}"
                     }
-                    """.trimIndent()
+                    """.trimIndent(),
+                instanceId = "fallback"
             )
 
         val filesPayload = payload.initialThreadFilesRoutePayload()

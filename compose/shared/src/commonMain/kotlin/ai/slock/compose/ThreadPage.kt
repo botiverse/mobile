@@ -483,7 +483,6 @@ internal data class KuiklyThreadScreenPayload(
     val errorCode: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
-    val filesPayload: String = "{}",
     val composer: KuiklyThreadComposerPayload = KuiklyThreadComposerPayload(),
     val showComposer: Boolean = true,
     val joined: Boolean = true,
@@ -4494,7 +4493,6 @@ internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThread
         originStatus = "none",
         originErrorCode = null,
         errorCode = null,
-        filesPayload = "{}",
         composer = composer
     ).withLaunchHeaderContext()
 }
@@ -4540,7 +4538,6 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
             canLoadMoreBefore = false,
             canLoadMoreAfter = false,
             errorCode = null,
-            filesPayload = "{}",
             composer =
                 buildThreadSurfaceComposerPayload(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4578,7 +4575,6 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
         originStatus = "none",
         originErrorCode = null,
         errorCode = null,
-        filesPayload = "{}",
         composer =
             KuiklyThreadComposerPayload(
                 surfaceKind = surfaceKind,
@@ -5048,7 +5044,6 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
         errorCode = null,
-        filesPayload = "{}",
         composer =
             KuiklyThreadComposerPayload(
                 surfaceKind = parentSurfaceKind,
@@ -5138,7 +5133,6 @@ internal fun threadVisualFixture(
                     ),
                 showComposer = false,
                 joined = true,
-                filesPayload = "{}",
                 composer =
                     KuiklyThreadComposerPayload(
                         instanceId = resolvedInstanceId,
@@ -5195,7 +5189,6 @@ internal fun threadVisualFixture(
                     ),
                 showComposer = false,
                 joined = true,
-                filesPayload = "{}",
                 composer =
                     KuiklyThreadComposerPayload(
                         instanceId = resolvedInstanceId,
@@ -5295,7 +5288,6 @@ internal fun threadVisualFixture(
                     ),
                 showComposer = false,
                 joined = true,
-                filesPayload = "{}",
                 composer =
                     KuiklyThreadComposerPayload(
                         instanceId = resolvedInstanceId,
@@ -5350,7 +5342,6 @@ internal fun threadVisualFixture(
                     ),
                 showComposer = false,
                 joined = true,
-                filesPayload = "{}",
                 composer =
                     KuiklyThreadComposerPayload(
                         instanceId = resolvedInstanceId,

@@ -3554,7 +3554,6 @@ private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThre
             tasks = emptyList(),
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
-            filesPayload = "{}",
             members = emptyList(),
             memberCandidates = emptyList(),
             settingsActions = emptyList()
@@ -3572,7 +3571,6 @@ private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThre
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
             errorCode = null,
-            filesPayload = "{}",
             showComposer = true,
             joined = true,
             canSend = true,
@@ -4426,7 +4424,6 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         olderMessagesStatus = patch.olderMessagesStatus,
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
-        filesPayload = "{}",
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         dmPeerName = dmPeerName,
