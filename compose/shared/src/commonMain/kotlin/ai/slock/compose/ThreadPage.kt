@@ -10363,7 +10363,8 @@ private fun ThreadMessageAvatar(
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
-            statusPulsing = status?.pulsing == true
+            // Keep Thread rows static while scrolling; global status pulse is preserved elsewhere.
+            statusPulsing = false
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
@@ -10395,7 +10396,8 @@ private fun ThreadMessageStaticAvatar(
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
-            statusPulsing = status?.pulsing == true
+            // Keep Thread rows static while scrolling; global status pulse is preserved elsewhere.
+            statusPulsing = false
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
