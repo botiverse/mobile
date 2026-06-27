@@ -2486,7 +2486,7 @@ private fun SlockAppShellContent() {
                 emitRouteMarker = { event ->
                     if (event.shouldEmitAppShellRouteMarker()) {
                         bridge.performanceMarker(
-                            phase = "realtime_batch_apply",
+                            phase = event.performanceMarkerPhase(),
                             routeName = "kuikly_home",
                             event = "instant",
                             metadata =
@@ -12799,6 +12799,25 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is AgentCreated -> "agent_created"
         is SyncResumeResponse -> "sync_resume"
         is Heartbeat -> "heartbeat"
+    }
+
+private fun RealtimeEvent.performanceMarkerPhase(): String =
+    when (this) {
+        is MemberPresenceUpdated -> "realtime_presence_apply"
+        is MessageNew,
+        is MessageUpdated,
+        is ThreadUpdated,
+        is TaskCreated,
+        is TaskUpdated,
+        is TaskDeleted,
+        is DirectMessageCreated,
+        is SyncResumeResponse -> "realtime_content_apply"
+        is RealtimeRefreshRequired -> "realtime_refresh_apply"
+        is ServerMembershipRemoved,
+        is ServerDeleted,
+        is ServerPlanUpdated,
+        is AgentCreated -> "realtime_membership_apply"
+        is Heartbeat -> "realtime_heartbeat"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =

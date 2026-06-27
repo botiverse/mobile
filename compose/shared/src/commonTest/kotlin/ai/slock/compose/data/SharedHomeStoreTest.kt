@@ -775,6 +775,84 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun agentPresenceUsesMemberStoreProjectionWithoutPatchingHomeRows() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        val agentDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-agent-1"),
+                channelId = ChannelId("dm-agent-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Agent One",
+                directMessagePeerType = "agent",
+                presence = Presence.Offline,
+                presenceMemberId = MemberId("agent-1")
+            )
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
+        )
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = sessionStore,
+                    api = ThrowingHomeApi(),
+                    serverMembersStore = SharedServerMembersStore(EmptyMemberRepository),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add,
+            presenceFlushDelayMillis = 0L
+        )
+        store.accept(SharedHomeIntent.Start)
+        logs.clear()
+        val beforeContent = store.state.value.content as SharedHomeContentState.Content
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Agents,
+                        reason = "agent:activity",
+                        serverId = ServerId("server-1"),
+                        subjectId = "agent-1"
+                    )
+            )
+        )
+
+        val afterContent = store.state.value.content as SharedHomeContentState.Content
+        assertTrue(afterContent === beforeContent)
+        assertEquals(Presence.Offline, afterContent.snapshot.directMessages.single().presence)
+        assertEquals(
+            listOf(
+                "home_realtime_refresh_lightweight scope=Agents reason=agent:activity",
+                "home_agent_status_refresh_skip reason=member_store_projection"
+            ),
+            logs.filter {
+                it.startsWith("home_realtime_refresh_lightweight ") ||
+                    it.startsWith("home_agent_status_refresh_skip ")
+            }
+        )
+        assertEquals(emptyList(), logs.filter { it.startsWith("home_presence_realtime_project ") })
+        scope.cancel()
+    }
+
+    @Test
     fun realtimePresenceOverlayRematerializesAfterCachedRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -1473,7 +1551,7 @@ class SharedHomeStoreTest {
 
         val notification = store.state.value.notifications.single()
         assertEquals("announcement-1", notification.id)
-        assertEquals(listOf("GET announcements/active", "GET announcements/active"), announcementsApi.calls)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
         scope.cancel()
     }
 
@@ -1756,6 +1834,118 @@ class SharedHomeStoreTest {
     }
 
     // end #81 ----------------------------------------------------------------
+
+    private object EmptyMemberRepository : MemberRepository {
+        private fun <T> noMembers(): DataResult<T> =
+            DataResult.Empty(EmptyReason.NoMembers)
+
+        override suspend fun getMembers(
+            priority: DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> = noMembers()
+
+        override suspend fun getMemberProfile(
+            priority: DataRequestPriority,
+            memberId: MemberId
+        ): DataResult<MemberProfile> = noMembers()
+
+        override suspend fun updateAgentProfile(
+            priority: DataRequestPriority,
+            request: AgentProfileUpdateRequest
+        ): DataResult<MemberProfile> = noMembers()
+
+        override suspend fun uploadAgentAvatar(
+            priority: DataRequestPriority,
+            request: AgentAvatarUploadRequest
+        ): DataResult<MemberProfile> = noMembers()
+
+        override suspend fun getAgentDetail(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDetailSnapshot> = noMembers()
+
+        override suspend fun getAgentDirectMessages(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDmSnapshot> = noMembers()
+
+        override suspend fun getAgentReminders(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentReminderSnapshot> = noMembers()
+
+        override suspend fun getAgentActivity(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentActivitySnapshot> = noMembers()
+
+        override suspend fun getAgentWorkspaces(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceSnapshot> = noMembers()
+
+        override suspend fun getAgentWorkspaceTree(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceTreeSnapshot> = noMembers()
+
+        override suspend fun getAgentWorkspaceChildren(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            dirPath: String
+        ): DataResult<AgentWorkspaceChildrenSnapshot> = noMembers()
+
+        override suspend fun readAgentWorkspaceFile(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            path: String
+        ): DataResult<AgentWorkspaceFilePreviewSnapshot> = noMembers()
+
+        override suspend fun getAgentSkills(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentSkillsSnapshot> = noMembers()
+
+        override suspend fun startAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = noMembers()
+
+        override suspend fun stopAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = noMembers()
+
+        override suspend fun resetAgent(
+            priority: DataRequestPriority,
+            request: AgentResetRequest
+        ): DataResult<AgentLifecycleActionResult> = noMembers()
+
+        override suspend fun deleteAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = noMembers()
+
+        override suspend fun assignAgentMachine(
+            priority: DataRequestPriority,
+            request: AgentMachineAssignmentRequest
+        ): DataResult<AgentLifecycleActionResult> = noMembers()
+
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> = noMembers()
+
+        override suspend fun addChannelMember(
+            priority: DataRequestPriority,
+            request: AddChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = noMembers()
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = noMembers()
+    }
 
     private fun source(
         api: SlockHomeApi,

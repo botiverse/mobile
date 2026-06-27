@@ -337,7 +337,9 @@ class SharedHomeStore(
                 }
             }
             is MemberPresenceUpdated -> {
-                if (recordPresenceFacts(serverId, listOf(event)) > 0) {
+                if (recordPresenceFacts(serverId, listOf(event)) > 0 &&
+                    event.affectsHomePresenceProjection()
+                ) {
                     markHomeRealtimeDirty(serverId, "presence")
                 }
             }
@@ -400,6 +402,9 @@ class SharedHomeStore(
         diagnosticsLogger("home_realtime_dirty serverId=${serverId.value} reason=$reason")
         reduceState(current.copy(homeRealtimeDirty = true))
     }
+
+    private fun MemberPresenceUpdated.affectsHomePresenceProjection(): Boolean =
+        !dataSource.projectsAgentStatusFromMemberStore || kind != MemberKind.Agent
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
         when (event.scope) {
@@ -577,7 +582,8 @@ class SharedHomeStore(
                 activeSession = activeSession,
                 activeServer = activeServer,
                 priority = DataRequestPriority.Visible,
-                forceNetwork = false
+                forceNetwork = false,
+                refreshNotificationsAfterLoad = true
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -612,7 +618,8 @@ class SharedHomeStore(
                         activeSession = activeSession,
                         activeServer = activeServer,
                         priority = DataRequestPriority.Background,
-                        forceNetwork = true
+                        forceNetwork = true,
+                        refreshNotificationsAfterLoad = false
                     )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -632,7 +639,8 @@ class SharedHomeStore(
         activeSession: StoredAuthSession,
         activeServer: ServerId?,
         priority: DataRequestPriority,
-        forceNetwork: Boolean
+        forceNetwork: Boolean,
+        refreshNotificationsAfterLoad: Boolean
     ) {
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         val previousContent = _state.value.content as? SharedHomeContentState.Content
@@ -710,7 +718,11 @@ class SharedHomeStore(
                     appBadgeCount = nextBadge
                 )
             )
-            loadNotifications()
+            if (refreshNotificationsAfterLoad) {
+                loadNotifications()
+            } else {
+                diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
+            }
             if (freshSnapshot != null) {
                 launchAgentDirectMessageStatusRefresh(
                     request = request,
@@ -726,6 +738,10 @@ class SharedHomeStore(
         snapshot: HomeSnapshot
     ) {
         if (snapshot.directMessages.none { it.isAgentDirectMessage }) return
+        if (dataSource.projectsAgentStatusFromMemberStore) {
+            diagnosticsLogger("home_agent_status_refresh_skip reason=member_store_projection")
+            return
+        }
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob =
             scope.launch {
@@ -811,7 +827,9 @@ class SharedHomeStore(
         val changedFacts = recordPresenceFacts(serverId, events)
         if (changedFacts == 0) return
         if (!homeSurfaceVisible) {
-            markHomeRealtimeDirty(serverId, "presence")
+            if (events.any { it.affectsHomePresenceProjection() }) {
+                markHomeRealtimeDirty(serverId, "presence")
+            }
             return
         }
         val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
@@ -889,7 +907,11 @@ class SharedHomeStore(
 
     private fun projectPresence(snapshot: HomeSnapshot): PresenceProjection {
         val facts = presenceFactsByServer[snapshot.server.id]?.values.orEmpty()
-        val patch = snapshot.directMessages.withPresenceEvents(facts)
+        val patch =
+            snapshot.directMessages.withPresenceEvents(
+                events = facts,
+                projectAgentDirectMessagePresence = !dataSource.projectsAgentStatusFromMemberStore
+            )
         if (patch.changedCount == 0) {
             return PresenceProjection(snapshot, changedCount = 0)
         }
@@ -1611,7 +1633,8 @@ private data class PresenceProjection(
 )
 
 private fun List<ConversationSummary>.withPresenceEvents(
-    events: Collection<MemberPresenceUpdated>
+    events: Collection<MemberPresenceUpdated>,
+    projectAgentDirectMessagePresence: Boolean
 ): PresencePatch {
     if (isEmpty() || events.isEmpty()) {
         return PresencePatch(this, changedCount = 0)
@@ -1621,7 +1644,10 @@ private fun List<ConversationSummary>.withPresenceEvents(
     val updated =
         map { conversation ->
             val event = latestEvents.firstOrNull { presenceEvent ->
-                conversation.matchesPresenceMember(presenceEvent)
+                conversation.matchesPresenceMember(
+                    event = presenceEvent,
+                    projectAgentDirectMessagePresence = projectAgentDirectMessagePresence
+                )
             } ?: return@map conversation
             val next =
                 conversation.copy(
@@ -1644,9 +1670,11 @@ private fun List<ConversationSummary>.withPresenceEvents(
 }
 
 private fun ConversationSummary.matchesPresenceMember(
-    event: MemberPresenceUpdated
+    event: MemberPresenceUpdated,
+    projectAgentDirectMessagePresence: Boolean
 ): Boolean =
     kind == ConversationKind.DirectMessage &&
+        (projectAgentDirectMessagePresence || !isAgentDirectMessage || event.kind != MemberKind.Agent) &&
         (event.kind == null || event.kind == MemberKind.Agent || event.kind == MemberKind.Human) &&
         (presenceMemberId == event.memberId ||
             channelId?.value == event.memberId.value ||

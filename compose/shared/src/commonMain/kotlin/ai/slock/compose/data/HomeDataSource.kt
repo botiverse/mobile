@@ -47,6 +47,9 @@ class SharedHomeDataSource(
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
     private val typedComputersApi = computersApi?.let(::SlockComputersApiClient)
 
+    internal val projectsAgentStatusFromMemberStore: Boolean
+        get() = serverMembersStore != null
+
     data class AgentDirectMessageStatusPatch(
         val snapshot: HomeSnapshot,
         val changed: Boolean,
