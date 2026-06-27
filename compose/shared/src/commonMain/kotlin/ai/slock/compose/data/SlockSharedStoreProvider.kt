@@ -7,7 +7,6 @@ import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberPresenceUpdated
-import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
@@ -209,13 +208,6 @@ internal class SlockSharedStoreProvider private constructor(
     }
 }
 
-internal data class ThreadRealtimeCacheInvalidationSignal(
-    val sequence: Long,
-    val serverId: String,
-    val threadIds: Set<String>,
-    val broadcast: Boolean = false
-)
-
 internal interface RealtimeDomainEventOwner {
     fun registerSinks(sinks: RealtimeDomainEventSinks)
     fun unregisterSinks(sinks: RealtimeDomainEventSinks)
@@ -229,14 +221,12 @@ internal data class RealtimeDomainEventSinks(
     val requestMemberDetailRefresh: () -> Unit = {},
     val joinChannel: (String) -> Unit = {},
     val emitRouteMarker: (RealtimeEvent) -> Unit = {},
-    val emitThreadCacheInvalidation: (ThreadRealtimeCacheInvalidationSignal) -> Unit = {},
     val log: (String) -> Unit = {}
 )
 
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null
 ) : RealtimeDomainEventOwner {
-    private var nextSequence = 0L
     private var sinks: RealtimeDomainEventSinks? = null
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
@@ -279,33 +269,8 @@ internal class SharedRealtimeDomainEventOwner(
             activeSinks?.requestMemberDetailRefresh?.invoke()
         }
         activeSinks?.emitRouteMarker?.invoke(event)
-        emitThreadCacheInvalidation(resolvedServerId, event, source, activeSinks)
-    }
-
-    private fun emitThreadCacheInvalidation(
-        serverId: String,
-        event: RealtimeEvent,
-        source: String,
-        activeSinks: RealtimeDomainEventSinks?
-    ) {
-        val threadIds = event.threadCacheInvalidationThreadIds()
-        val broadcast = event.broadcastsThreadCacheInvalidation()
-        if (threadIds.isEmpty() && !broadcast) {
-            activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$serverId threadCache=none")
-            return
-        }
-        nextSequence += 1
-        val signal =
-            ThreadRealtimeCacheInvalidationSignal(
-                sequence = nextSequence,
-                serverId = serverId,
-                threadIds = threadIds,
-                broadcast = broadcast
-            )
-        activeSinks?.emitThreadCacheInvalidation?.invoke(signal)
         activeSinks?.log?.invoke(
-            "realtime_domain_accept source=$source serverId=$serverId threadCache=invalidated " +
-                "seq=$nextSequence ids=${threadIds.joinToString(",")} broadcast=$broadcast"
+            "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
         )
     }
 
@@ -328,23 +293,6 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 }
-
-private fun RealtimeEvent.threadCacheInvalidationThreadIds(): Set<String> =
-    when (this) {
-        is MessageNew -> setOf(message.cacheThreadId())
-        is MessageUpdated -> setOf(message.cacheThreadId())
-        is SyncResumeResponse -> messages.mapTo(linkedSetOf()) { it.cacheThreadId() }
-        is ThreadUpdated -> setOf(threadChannelId.value, parentMessageId.value)
-        is TaskCreated -> tasks.mapNotNullTo(linkedSetOf()) { it.threadId?.value ?: it.channelId?.value }
-        is TaskUpdated -> setOfNotNull(task.threadId?.value ?: task.channelId?.value)
-        else -> emptySet()
-    }.filterTo(linkedSetOf()) { it.isNotBlank() }
-
-private fun RealtimeEvent.broadcastsThreadCacheInvalidation(): Boolean =
-    this is ThreadUpdated
-
-private fun Message.cacheThreadId(): String =
-    channelId?.value ?: threadId.value
 
 private fun RealtimeEvent.refreshesMemberDetail(): Boolean =
     this is AgentCreated ||

@@ -2003,7 +2003,6 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
-    data object ApplyRealtimeCacheSnapshot : SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -2085,8 +2084,6 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            SharedThreadIntent.ApplyRealtimeCacheSnapshot ->
-                scope.launch { applyRealtimeCacheSnapshot() }
             SharedThreadIntent.MarkVisibleReadAll -> {
                 scope.launch { markVisibleReadAll() }
             }
@@ -2143,7 +2140,6 @@ internal class SharedThreadStore(
                     event = intent.event,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
-            SharedThreadIntent.ApplyRealtimeCacheSnapshot -> applyRealtimeCacheSnapshot()
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -2538,26 +2534,6 @@ internal class SharedThreadStore(
             )
             recoverRealtimeGapFromVisibleTail(replyCountGap)
         }
-    }
-
-    private suspend fun applyRealtimeCacheSnapshot(routePayload: KuiklyThreadScreenPayload = _state.value.payload) {
-        val cached =
-            dataSource
-                .cachedPayload(routePayload.cacheThreadId().orEmpty())
-                ?.withRouteContext(routePayload)
-                ?: return
-        val emitted =
-            reducePayloadPatch(cachePayload = true) { currentPayload ->
-                if (!routeStillCurrent(routePayload, "thread_realtime_cache", "apply", currentPayload)) {
-                    return@reducePayloadPatch currentPayload
-                }
-                currentPayload.withThreadContentProjectionFrom(cached.preserveStableTimelineFrom(currentPayload))
-            }
-        diagnosticsLogger?.invoke(
-            "thread_realtime_cache_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "hit=true emitted=$emitted messages=${cached.messages.size} " +
-                cached.originDiagnostics()
-            )
     }
 
     private data class ReplyCountRealtimeGap(

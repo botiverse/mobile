@@ -18,12 +18,11 @@ Implemented pieces now exist in common/shared code:
 - `RealtimeDomainEventOwner` accepts typed `RealtimeEvent` values once per
   server/source and dedupes accepted keys.
 - `RealtimeDomainEventSinks` fan accepted events into Home shell, Settings,
-  agent activity/member detail refresh, dynamic channel join, route markers,
-  and Thread cache invalidation.
+  agent activity/member detail refresh, dynamic channel join, and route markers.
 - `SharedTasksDataStore` is updated by the domain owner for task events.
-- Thread cache invalidation is emitted as `ThreadRealtimeCacheInvalidationSignal`
-  instead of making every visible Thread page independently own durable socket
-  writes.
+- Thread cache invalidation/readback has been removed. The remaining active
+  Thread route effect dispatches accepted raw route events directly into
+  `SharedThreadStore` and shared task/member stores.
 
 For the current Android ingress-to-consumer code path, including the remaining
 raw Thread route path, see `docs/android-realtime-code-path-2026-06-27.md`.

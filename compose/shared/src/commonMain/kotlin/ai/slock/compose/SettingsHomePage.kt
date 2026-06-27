@@ -28,7 +28,6 @@ import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
 import ai.slock.compose.data.KuiklyHostNetworkEvents
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRealtimeEvents
-import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -1607,7 +1606,6 @@ private fun SlockAppShellContent() {
             )
         }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
-    val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
     val notificationPreferenceRepository =
@@ -2459,7 +2457,6 @@ private fun SlockAppShellContent() {
         sharedStores.realtimeDomainEventOwner,
         homeShellStore,
         settingsViewModel,
-        threadCacheInvalidationEvents,
         bridge
     ) {
         val sinks =
@@ -2496,7 +2493,6 @@ private fun SlockAppShellContent() {
                         )
                     }
                 },
-                emitThreadCacheInvalidation = threadCacheInvalidationEvents::postInvalidation,
                 log = { message -> bridge.log(message) }
             )
         sharedStores.realtimeDomainEventOwner.registerSinks(sinks)

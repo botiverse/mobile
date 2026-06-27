@@ -4334,35 +4334,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeCacheSnapshotReadsMemoryThreadStateWithoutEventProjection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        dataSource.cachePayload(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        dataSource.cachePayload(
-            contentPayloadForRoute(
-                base = basePayload(),
-                body = "cache body",
-                id = "m2"
-            )
-        )
-
-        store.accept(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
-
-        assertEquals(listOf("cache body"), store.state.value.payload.messages.map { it.body })
-        assertNull(localStore.readThread(ThreadId("channel-1")))
-        scope.cancel()
-    }
-
-    @Test
     fun realtimeMessageNewUsesCachedHomeDirectMessageAvatar() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

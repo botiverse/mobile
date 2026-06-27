@@ -69,8 +69,7 @@ architecture.
      `realtimeLastSeq`, and calls
      `sharedStores.realtimeDomainEventOwner.accept(serverId, event, "app_shell")`.
    - It registers `RealtimeDomainEventSinks` for Home shell, Settings, agent
-     activity, member detail refresh, dynamic channel join, route markers, and
-     Thread cache invalidation.
+     activity, member detail refresh, dynamic channel join, and route markers.
 
 9. `SharedRealtimeDomainEventOwner` is the current typed domain fanout.
    - It dedupes accepted events by stable event keys.
@@ -81,15 +80,10 @@ architecture.
    - `DirectMessageCreated` requests a room join.
    - Agent presence/activity updates `SharedAgentDetailStore` and
      `SharedServerMembersStore`.
-   - Thread cache invalidation is emitted only when
-     `threadCacheInvalidationThreadIds()` returns target ids or
-     `broadcastsThreadCacheInvalidation()` is true.
-
-The old provider-level
-`RealtimeRoutePolicy.shouldForwardToActiveThread(event)` check is not needed in
-`emitThreadCacheInvalidation()`: heartbeat returns before invalidation, and
-presence/member events produce no thread invalidation ids. Active-thread raw
-event filtering remains separate in `ThreadPage`.
+The old provider-level Thread cache invalidation bus has been removed. Active
+Thread route realtime now dispatches directly into `SharedThreadStore`, while
+AppShell/domain fanout keeps owning Home, Settings, Tasks, member detail, agent
+activity, and route markers.
 
 ## Concrete Consumers
 
@@ -116,21 +110,22 @@ event filtering remains separate in `ThreadPage`.
       stores consume their task projections.
 
 13. Thread
-    - `ThreadPage` joins the active route rooms with `KuiklyRealtimeEvents`.
-    - It still listens to raw bridged realtime events. The route-local
-      `shouldDeliverToActiveThreadRealtimeSignal` keeps heartbeat for gap
-      recovery while filtering noisy presence from the legacy raw-event reducer
-      path.
+    - `SharedThreadRouteContent` joins the active route rooms with
+      `KuiklyRealtimeEvents`.
+    - It listens to raw bridged realtime events as a route effect. The
+      route-local `shouldDeliverToActiveThreadRealtimeSignal` keeps heartbeat
+      for gap recovery while filtering noisy presence from the raw-event
+      reducer path.
     - Non-task, non-presence raw events still dispatch
       `SharedThreadIntent.ApplyRealtimeEvent`.
-    - Thread cache invalidation is a separate AppShell/domain-owner signal:
-      matching `ThreadRealtimeCacheInvalidationSignal` triggers
-      `SharedThreadIntent.ApplyRealtimeCacheSnapshot`.
+    - Task updates dispatch to the shared Tasks projection route store. Member
+      presence and suggestion refreshes dispatch to the shared member stores.
 
 ## Current Cleanup Boundary
 
-The provider-side thread invalidation guard can be removed safely because the
-invalidation-specific id/broadcast policy is the real decision point.
+The provider-side thread invalidation bus and Thread cache snapshot readback are
+removed. There is no remaining `ThreadRealtimeCacheInvalidationSignal` ->
+`SharedThreadIntent.ApplyRealtimeCacheSnapshot` path.
 
 This does not remove the need for `RealtimeRoutePolicy.shouldForwardToActiveThread`
 inside `ThreadPage` while Thread still has a raw visible-event path. Removing

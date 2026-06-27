@@ -3,13 +3,13 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
-import ai.slock.compose.model.Message
-import ai.slock.compose.model.MessageId
-import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskId
@@ -17,7 +17,6 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadId
-import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -25,66 +24,22 @@ import kotlin.test.assertEquals
 
 class SharedRealtimeDomainEventOwnerTest {
     @Test
-    fun ignoresBlankServerIdsAndNonThreadProjectionEvents() {
+    fun ignoresBlankServerIdsAndHeartbeats() {
         val owner = SharedRealtimeDomainEventOwner()
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                emitThreadCacheInvalidation = invalidations::add
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
             )
         )
 
         owner.accept("", DirectMessageCreated(ChannelId("dm-1")))
-        assertEquals(emptyList(), invalidations)
-
         owner.accept("server-1", Heartbeat(seq = 10L))
-        assertEquals(emptyList(), invalidations)
-    }
 
-    @Test
-    fun invalidatesThreadCacheWithSequence() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                emitThreadCacheInvalidation = invalidations::add
-            )
-        )
-        val messageEvent =
-            MessageNew(
-                Message(
-                    id = MessageId("m1"),
-                    threadId = ThreadId("channel-1"),
-                    channelId = ChannelId("channel-1"),
-                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
-                    timestampLabel = "now",
-                    body = "hello"
-                )
-            )
-        val threadEvent =
-            ThreadUpdated(
-                parentMessageId = MessageId("m1"),
-                threadChannelId = ChannelId("thread-1"),
-                replyCount = 2,
-                lastReplyAt = null,
-                participantIds = emptyList()
-            )
-
-        owner.accept("server-1", messageEvent)
-
-        val first = invalidations.single()
-        assertEquals(1L, first.sequence)
-        assertEquals("server-1", first.serverId)
-        assertEquals(setOf("channel-1"), first.threadIds)
-        assertEquals(false, first.broadcast)
-
-        owner.accept("server-1", threadEvent)
-
-        val second = invalidations.last()
-        assertEquals(2L, second.sequence)
-        assertEquals("server-1", second.serverId)
-        assertEquals(setOf("thread-1", "m1"), second.threadIds)
-        assertEquals(true, second.broadcast)
+        assertEquals(emptyList(), homeEvents)
+        assertEquals(emptyList(), settingsEvents)
     }
 
     @Test
@@ -93,14 +48,12 @@ class SharedRealtimeDomainEventOwnerTest {
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
         val joinedChannels = mutableListOf<String>()
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
         val logs = mutableListOf<String>()
         val sinks =
             RealtimeDomainEventSinks(
                 applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
                 applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) },
                 joinChannel = { channelId -> joinedChannels += channelId },
-                emitThreadCacheInvalidation = invalidations::add,
                 log = logs::add
             )
         val event = DirectMessageCreated(ChannelId("dm-1"))
@@ -112,55 +65,31 @@ class SharedRealtimeDomainEventOwnerTest {
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
         assertEquals(listOf("dm-1"), joinedChannels)
-        assertEquals(emptyList(), invalidations)
         assertEquals(true, logs.any { it.contains("reason=duplicate") })
     }
 
     @Test
-    fun heartbeatDoesNotPatchDomainSinks() {
+    fun agentPresenceUpdatesActivityAndMemberDetailSinks() {
         val owner = SharedRealtimeDomainEventOwner()
-        var homeEvents = 0
-        var settingsEvents = 0
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                applyHomeShell = { _, _ -> homeEvents += 1 },
-                applySettings = { _, _ -> settingsEvents += 1 },
-                emitThreadCacheInvalidation = invalidations::add
-            )
-        )
-
-        owner.accept("server-1", Heartbeat(seq = 42L), source = "app_shell")
-
-        assertEquals(0, homeEvents)
-        assertEquals(0, settingsEvents)
-        assertEquals(emptyList(), invalidations)
-    }
-
-    @Test
-    fun presenceDoesNotInvalidateThreadCache() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
-        val logs = mutableListOf<String>()
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                emitThreadCacheInvalidation = invalidations::add,
-                log = logs::add
-            )
-        )
-
-        owner.accept(
-            "server-1",
+        val activityEvents = mutableListOf<MemberPresenceUpdated>()
+        var refreshRequests = 0
+        val event =
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
                 kind = MemberKind.Agent
-            ),
-            source = "app_shell"
+            )
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyAgentActivity = activityEvents::add,
+                requestMemberDetailRefresh = { refreshRequests += 1 }
+            )
         )
 
-        assertEquals(emptyList(), invalidations)
-        assertEquals(true, logs.any { it.contains("threadCache=none") })
+        owner.accept("server-1", event, source = "app_shell")
+
+        assertEquals(listOf(event), activityEvents)
+        assertEquals(1, refreshRequests)
     }
 
     @Test
@@ -196,12 +125,14 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun messageEventsUseStableIdentityForDedupeButStillProjectThread() {
+    fun messageEventsUseStableIdentityForDedupe() {
         val owner = SharedRealtimeDomainEventOwner()
-        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                emitThreadCacheInvalidation = invalidations::add
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
             )
         )
         val event =
@@ -220,9 +151,8 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", event, source = "app_shell")
         owner.accept("server-1", event, source = "app_shell")
 
-        assertEquals(1, invalidations.size)
-        assertEquals(1L, invalidations.single().sequence)
-        assertEquals(setOf("channel-1"), invalidations.single().threadIds)
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
     }
 
     private data class RealtimeEventRecord(
