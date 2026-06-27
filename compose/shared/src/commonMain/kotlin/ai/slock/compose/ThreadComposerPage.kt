@@ -87,6 +87,7 @@ private val ComposerSuggestionPanelMaxHeight = 240.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
+private val ComposerMemberSuggestionAvatarNameGap = 8.dp
 private val ComposerAgentActivityDotSize = 10.dp
 private val ComposerMemberSuggestionHandleWidth = 124.dp
 private val ComposerChannelSuggestionIconSize = 20.dp
@@ -1269,6 +1270,7 @@ private fun ComposerMemberSuggestionRow(
                 gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
             )
         }
+        Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically
