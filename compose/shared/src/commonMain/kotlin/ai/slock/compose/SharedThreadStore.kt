@@ -282,20 +282,7 @@ internal class SharedThreadDataSource(
             ?: DataResult.Error(ScreenError("channel_repository_unavailable", retryable = false))
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
-        val cacheablePayload = payload.withoutTransientLocalSendingMessages()
-        val session = readSession()
-        val snapshot =
-            cacheablePayload.toThreadSnapshot(
-                currentUserId = session?.user?.id,
-                currentUserName = session?.user?.bestDisplayName
-            ) ?: return
-        localWriteThrough?.writeThreadResult(
-            result = DataResult.Content(snapshot),
-            source = "shared_thread_data_source",
-            fallbackThreadId = cacheablePayload.cacheThreadId()?.let(::ThreadId),
-            fallbackHeader = snapshot.conversation,
-            fallbackParentMessage = snapshot.parentMessage
-        )
+        cachePayload(payload)
     }
 
     suspend fun writeCanonicalPayloadAndRead(
@@ -304,8 +291,7 @@ internal class SharedThreadDataSource(
         trimToLatestThreadWindow: Boolean = false
     ): KuiklyThreadScreenPayload {
         cachePayload(payload)
-        writeCachedPayload(payload)
-        return readCachedPayload(basePayload, trimToLatestThreadWindow) ?: payload
+        return payload
     }
 
     suspend fun commitAgentCreateActionCard(
@@ -1826,19 +1812,44 @@ internal class SharedThreadDataSource(
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): KuiklyThreadScreenPayload {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
-        senderProfilesCache[serverId.value]?.let { profilesById ->
-            return withSenderProfiles(profilesById)
+        if (serverMembersStore == null) {
+            senderProfilesCache[serverId.value]?.let { profilesById ->
+                return withSenderProfiles(profilesById)
+            }
         }
-        val memberProfilesById =
-            serverMembersStore
-                ?.cachedSnapshot(serverId)
-                ?.members
-                ?.associateBy { it.id.value }
-                .orEmpty()
-        val profilesById = memberProfilesById + loadThreadSenderAgentProfiles(serverId)
-        senderProfilesCache[serverId.value] = profilesById
+        val memberProfilesById = cachedServerMemberProfilesById(serverId)
+        val profilesById =
+            if (serverMembersStore != null) {
+                val missingAgentProfiles =
+                    senderAgentAuthorIds().count { authorId -> authorId !in memberProfilesById }
+                if (missingAgentProfiles > 0) {
+                    diagnosticsLogger(
+                        "thread_sender_profiles_refresh_skip reason=member_store_projection missingAgents=$missingAgentProfiles"
+                    )
+                }
+                memberProfilesById
+            } else {
+                memberProfilesById + loadThreadSenderAgentProfiles(serverId)
+            }
+        if (serverMembersStore == null) {
+            senderProfilesCache[serverId.value] = profilesById
+        }
         return withSenderProfiles(profilesById)
     }
+
+    private fun cachedServerMemberProfilesById(serverId: ServerId): Map<String, MemberProfile> =
+        serverMembersStore
+            ?.cachedSnapshot(serverId)
+            ?.members
+            ?.associateBy { it.id.value }
+            .orEmpty()
+
+    private fun KuiklyThreadScreenPayload.senderAgentAuthorIds(): Set<String> =
+        (messages + listOfNotNull(originMessage))
+            .asSequence()
+            .filter { message -> message.authorKind.equals("agent", ignoreCase = true) }
+            .mapNotNull { message -> message.authorId.takeIf { it.isNotBlank() } }
+            .toSet()
 
     private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
         session: StoredAuthSession
@@ -1861,8 +1872,14 @@ internal class SharedThreadDataSource(
     private suspend fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return this
-        val cachedProfiles = senderProfilesCache[serverId].orEmpty()
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        val cachedProfiles =
+            if (serverMembersStore != null) {
+                cachedServerMemberProfilesById(serverId)
+            } else {
+                senderProfilesCache[serverId.value].orEmpty()
+            }
+        if (cachedProfiles.isEmpty()) return this
         return withSenderProfiles(cachedProfiles)
     }
 
@@ -2127,8 +2144,7 @@ internal class SharedThreadStore(
                 scope.launch {
                     applyRealtimeEvent(
                         event = intent.event,
-                        activeReplyParentMessageId = intent.activeReplyParentMessageId,
-                        persist = true
+                        activeReplyParentMessageId = intent.activeReplyParentMessageId
                     )
                 }
             }
@@ -2186,8 +2202,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(
                     event = intent.event,
-                    activeReplyParentMessageId = intent.activeReplyParentMessageId,
-                    persist = true
+                    activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.ApplyRealtimeCacheSnapshot -> applyRealtimeCacheSnapshot()
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
@@ -2583,8 +2598,7 @@ internal class SharedThreadStore(
 
     private suspend fun applyRealtimeEvent(
         event: RealtimeEvent,
-        activeReplyParentMessageId: MessageId? = null,
-        persist: Boolean = true
+        activeReplyParentMessageId: MessageId? = null
     ) {
         val existing = _state.value.payload
         val realtimeGapServerSeq =
@@ -2604,104 +2618,59 @@ internal class SharedThreadStore(
             } else {
                 dataSource.enrichCachedSenderProfiles(rawMerged)
             }
-        if (persist) {
-            runCatching {
-                if (existing.hasRenderableThreadContent()) {
-                    dataSource.writeCanonicalPayloadAndRead(
-                        basePayload = existing,
-                        payload = existing,
-                        trimToLatestThreadWindow = false
-                    )
-                }
-                dataSource.writeRealtimeEvents(
-                    events = listOf(event),
-                    activeConversationId = existing.resolveThreadRouteIdentity().timelineChannelId
-                )
-            }.onFailure { throwable ->
-                if (throwable is CancellationException) throw throwable
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_persist_failed events=1 type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
-                )
-            }
-            if (realtimeGapServerSeq != null) {
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
-                        "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                        "serverSeq=$realtimeGapServerSeq"
-                )
-                recoverRealtimeGap(realtimeGapServerSeq)
-                return
-            }
-            if (rawMerged === existing) {
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                        "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
-                )
-                return
-            }
-            val cached =
-                dataSource
-                    .readCachedPayload(existing, trimToLatestThreadWindow = false)
-                    ?.withRouteContext(existing)
-            val selected =
-                cached
-                    ?.takeIf { candidate -> candidate.coversRealtimeProjection(previous = existing, direct = merged) }
-                    ?: merged
-            val stableSelected =
-                selected.preserveStableTimelineFrom(
-                    previous = existing,
-                    preserveSelectedReactions = false
-                )
-            val emitted =
-                reducePayloadPatch(cachePayload = true) { currentPayload ->
-                    if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
-                        return@reducePayloadPatch currentPayload
-                    }
-                    currentPayload.withThreadContentProjectionFrom(stableSelected)
-                }
+        if (realtimeGapServerSeq != null) {
+            diagnosticsLogger?.invoke(
+                "thread_realtime_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
+                    "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                    "serverSeq=$realtimeGapServerSeq"
+            )
+            recoverRealtimeGap(realtimeGapServerSeq)
+            return
+        }
+        if (rawMerged === existing) {
             diagnosticsLogger?.invoke(
                 "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                    "source=${if (selected === cached) "cache" else "direct"} emitted=$emitted " +
-                    "messages=${stableSelected.messages.size}"
+                    "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
             )
-            if (cached != null) {
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_cache_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                        "hit=true emitted=$emitted messages=${cached.messages.size} " +
-                        cached.originDiagnostics()
-                )
-            }
-            val replyCountGap =
-                stableSelected.realtimeReplyCountGap(
-                    event = event,
-                    previous = existing,
-                    activeReplyParentMessageId = activeReplyParentMessageId
-                )
-            if (replyCountGap != null) {
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_reply_count_gap_detected threadId=${stableSelected.sourceThreadId.orEmpty()} " +
-                        "visibleMaxSeq=${stableSelected.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                        "loadedReplies=${stableSelected.loadedReplyTimelineCount()} " +
-                        "replyCount=${replyCountGap.replyCount}"
-                )
-                recoverRealtimeGapFromVisibleTail(replyCountGap)
-            }
-        } else {
-            val stableMerged =
-                merged.preserveStableTimelineFrom(
-                    previous = existing,
-                    preserveSelectedReactions = false
-                )
+            return
+        }
+        val stableSelected =
+            merged.preserveStableTimelineFrom(
+                previous = existing,
+                preserveSelectedReactions = false
+            )
+        val emitted =
             reducePayloadPatch(cachePayload = true) { currentPayload ->
-                currentPayload.withThreadContentProjectionFrom(stableMerged)
+                if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
+                    return@reducePayloadPatch currentPayload
+                }
+                currentPayload.withThreadContentProjectionFrom(stableSelected)
             }
+        diagnosticsLogger?.invoke(
+            "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                "source=direct emitted=$emitted messages=${stableSelected.messages.size}"
+        )
+        val replyCountGap =
+            stableSelected.realtimeReplyCountGap(
+                event = event,
+                previous = existing,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
+        if (replyCountGap != null) {
+            diagnosticsLogger?.invoke(
+                "thread_realtime_reply_count_gap_detected threadId=${stableSelected.sourceThreadId.orEmpty()} " +
+                    "visibleMaxSeq=${stableSelected.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                    "loadedReplies=${stableSelected.loadedReplyTimelineCount()} " +
+                    "replyCount=${replyCountGap.replyCount}"
+            )
+            recoverRealtimeGapFromVisibleTail(replyCountGap)
         }
     }
 
     private suspend fun applyRealtimeCacheSnapshot(routePayload: KuiklyThreadScreenPayload = _state.value.payload) {
         val cached =
             dataSource
-                .readCachedPayload(routePayload, trimToLatestThreadWindow = false)
+                .cachedPayload(routePayload.cacheThreadId().orEmpty())
                 ?.withRouteContext(routePayload)
                 ?: return
         val emitted =
@@ -2717,58 +2686,6 @@ internal class SharedThreadStore(
                 cached.originDiagnostics()
             )
     }
-
-    private fun KuiklyThreadScreenPayload.coversRealtimeProjection(
-        previous: KuiklyThreadScreenPayload,
-        direct: KuiklyThreadScreenPayload
-    ): Boolean {
-        if (direct === previous) {
-            return true
-        }
-        val previousById = previous.messages.associateBy { message -> message.id }
-        val candidateById = messages.associateBy { message -> message.id }
-        return direct.messages.all { directMessage ->
-            val previousMessage = previousById[directMessage.id]
-            val candidateMessage = candidateById[directMessage.id] ?: return@all false
-            when {
-                previousMessage == null -> candidateMessage.coversRealtimeFieldsFrom(directMessage)
-                previousMessage == directMessage -> true
-                else -> candidateMessage.coversRealtimeFieldsFrom(directMessage)
-            }
-        }
-    }
-
-    private fun KuiklyThreadMessageItem.coversRealtimeFieldsFrom(direct: KuiklyThreadMessageItem): Boolean =
-        id == direct.id &&
-            authorId == direct.authorId &&
-            authorName == direct.authorName &&
-            authorHandle == direct.authorHandle &&
-            authorKind == direct.authorKind &&
-            isOwn == direct.isOwn &&
-            timestampLabel == direct.timestampLabel &&
-            seq == direct.seq &&
-            messageType == direct.messageType &&
-            systemEventType == direct.systemEventType &&
-            metadata == direct.metadata &&
-            body == direct.body &&
-            threadChannelId == direct.threadChannelId &&
-            replyCount == direct.replyCount &&
-            unreadReplyCount == direct.unreadReplyCount &&
-            firstUnreadReplyMessageId == direct.firstUnreadReplyMessageId &&
-            isThreadFollowed == direct.isThreadFollowed &&
-            isSaved == direct.isSaved &&
-            taskId == direct.taskId &&
-            taskNumber == direct.taskNumber &&
-            taskStatus == direct.taskStatus &&
-            taskAssigneeId == direct.taskAssigneeId &&
-            taskAssigneeName == direct.taskAssigneeName &&
-            reactions == direct.reactions &&
-            attachments == direct.attachments &&
-            commentRef == direct.commentRef &&
-            deliveryState == direct.deliveryState &&
-            pendingSendContext == direct.pendingSendContext &&
-            pendingSendErrorCode == direct.pendingSendErrorCode &&
-            pendingSendErrorMessage == direct.pendingSendErrorMessage
 
     private data class ReplyCountRealtimeGap(
         val replyCount: Int
@@ -3688,11 +3605,20 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload,
     preserveSelectedReactions: Boolean = true
 ): KuiklyThreadScreenPayload {
-    val timelineMessages =
-        if (messages.isEmpty()) {
-            messages.withRetainedTransientLocalSendingMessagesFrom(previous.messages)
+    val visibleWindowMessages =
+        if (
+            (canLoadMoreBefore || previous.canLoadMoreBefore) &&
+            messages.shouldRetainExpandedTimelineWindowFrom(previous.messages)
+        ) {
+            messages.mergeIntoExpandedTimelineWindow(previous.messages)
         } else {
             messages
+        }
+    val timelineMessages =
+        if (visibleWindowMessages.isEmpty()) {
+            visibleWindowMessages.withRetainedTransientLocalSendingMessagesFrom(previous.messages)
+        } else {
+            visibleWindowMessages
         }
     val stableMessages =
         timelineMessages
@@ -3756,6 +3682,34 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         originErrorCode = stableOriginErrorCode,
         tasks = stableTasks
     )
+}
+
+private fun List<KuiklyThreadMessageItem>.shouldRetainExpandedTimelineWindowFrom(
+    previous: List<KuiklyThreadMessageItem>
+): Boolean {
+    if (isEmpty() || previous.size <= size) return false
+    val previousIds = previous.map { it.id }
+    val previousIdSet = previousIds.toSet()
+    val existingIncomingIds = map { it.id }.filter { it in previousIdSet }
+    if (existingIncomingIds.isEmpty()) return false
+    if (
+        previous.size >= SharedThreadPaging.initialPageSize &&
+        existingIncomingIds.size < SharedThreadPaging.initialPageSize / 2
+    ) {
+        return false
+    }
+    return existingIncomingIds == previousIds.takeLast(existingIncomingIds.size)
+}
+
+private fun List<KuiklyThreadMessageItem>.mergeIntoExpandedTimelineWindow(
+    previous: List<KuiklyThreadMessageItem>
+): List<KuiklyThreadMessageItem> {
+    val incomingById = associateBy { it.id }
+    val previousIds = previous.mapTo(mutableSetOf()) { it.id }
+    return (
+        previous.map { message -> incomingById[message.id] ?: message } +
+            filterNot { message -> message.id in previousIds }
+        ).sortedByThreadTimeline()
 }
 
 private fun KuiklyThreadScreenPayload.shouldPreserveLoadedOriginFrom(
@@ -4719,6 +4673,16 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
+    val resolvedAvatar =
+        resolveMergedAvatarSlot(
+            kind = profile.kind,
+            id = profile.id.value,
+            currentAvatarWireValue = avatarWireValue,
+            currentGravatarHash = gravatarHash,
+            incomingAvatarWireValue = profile.avatar?.wireValue,
+            incomingAvatarUrl = profile.avatarUrl,
+            incomingGravatarHash = profile.gravatarHash
+        )
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
         authorHandle = authorHandle.ifBlank { profile.handle },
@@ -4729,6 +4693,8 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
                 else -> authorKind
         },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
+        avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
+        gravatarHash = resolvedAvatar.gravatarHash,
         senderMembershipStatus = senderMembershipStatus ?: profile.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = authorDeletedAt ?: profile.agentDeletedAt?.takeIf { it.isNotBlank() }
     )

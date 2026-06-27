@@ -53,6 +53,7 @@ import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SavedMessageStatusSnapshot
 import ai.slock.compose.data.SavedStatusRepository
 import ai.slock.compose.data.SharedCreateAgentCoordinator
+import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.SlockAgentsApi
 import ai.slock.compose.data.SlockAgentsApiClient
@@ -1352,6 +1353,70 @@ class SharedThreadStoreTest {
         val cached = localStore.readThread(ThreadId("joint-1"))
         assertEquals("joint-1", cached?.conversation?.name)
         assertEquals(ConversationKind.Channel, cached?.conversation?.kind)
+    }
+
+    @Test
+    fun canonicalPayloadWriteKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(threadSnapshot(body = "stale db body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val freshPayload = contentPayload("fresh memory body")
+
+        val selected =
+            dataSource.writeCanonicalPayloadAndRead(
+                basePayload = basePayload(),
+                payload = freshPayload,
+                trimToLatestThreadWindow = false
+            )
+
+        assertEquals(listOf("fresh memory body"), selected.messages.map { it.body })
+        assertEquals(listOf("fresh memory body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
+        assertEquals(listOf("stale db body"), localStore.readThread(ThreadId("channel-1"))?.messages?.map { it.body })
+    }
+
+    @Test
+    fun shorterInitialWindowDoesNotShrinkExpandedVisibleTimeline() {
+        val expandedMessages =
+            (1..72).map { index ->
+                KuiklyThreadMessageItem(
+                    id = "m$index",
+                    authorId = "u1",
+                    authorName = "Artin",
+                    body = "body $index",
+                    seq = index.toLong()
+                )
+            }
+        val previous =
+            basePayload().copy(
+                status = "content",
+                messages = expandedMessages,
+                canLoadMoreBefore = true
+            )
+        val latestWindow =
+            previous.copy(
+                messages =
+                    expandedMessages
+                        .takeLast(50)
+                        .map { message ->
+                            if (message.id == "m72") {
+                                message.copy(body = "updated tail")
+                            } else {
+                                message.copy()
+                            }
+                        },
+                canLoadMoreBefore = true
+            )
+
+        val stable = latestWindow.preserveStableTimelineFrom(previous)
+
+        assertEquals(72, stable.messages.size)
+        assertEquals("m1", stable.messages.first().id)
+        assertEquals("updated tail", stable.messages.last().body)
     }
 
     @Test
@@ -2748,6 +2813,56 @@ class SharedThreadStoreTest {
         val enriched = dataSource.enrichSenderProfiles(payload)
 
         val message = enriched.messages.single()
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
+    }
+
+    @Test
+    fun senderProfileEnrichmentUsesSharedServerMembersWithoutAgentsRefresh() = runBlocking {
+        val serverMembersStore = SharedServerMembersStore(FakeMemberRepository())
+        serverMembersStore.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Agent One",
+                            handle = "agent-one",
+                            kind = MemberKind.Agent,
+                            avatar = AvatarReference.Pixel("tree")
+                        )
+                    )
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                serverMembersStore = serverMembersStore,
+                agentsApiClient = SlockAgentsApiClient(RecordingAgentsApi())
+            )
+        val payload =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "agent-1",
+                            authorKind = "agent",
+                            avatarWireValue = "pixel:robot",
+                            body = "agent body"
+                        )
+                    )
+            )
+
+        val enriched = dataSource.enrichSenderProfiles(payload)
+
+        val message = enriched.messages.single()
+        assertEquals("Agent One", message.authorName)
+        assertEquals("agent-one", message.authorHandle)
         assertEquals("pixel:tree", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
