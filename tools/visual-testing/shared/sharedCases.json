@@ -655,6 +655,7 @@
       "title": "Thread Message Share Preview",
       "captureType": "component-fixture",
       "surface": "thread",
+      "baselineStatus": "pending",
       "category": "app/thread",
       "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview",
       "viewport": {
@@ -674,7 +675,13 @@
       "capture": {
         "selector": "body",
         "crop": "element",
-        "contract": "viewport-with-portal"
+        "contract": "viewport-with-portal",
+        "interactions": [
+          {
+            "type": "wait",
+            "ms": 3000
+          }
+        ]
       },
       "reactPathHint": "packages/web/src/components/message/SelectShareLightbox.tsx",
       "androidCaseHint": "compose_thread_message_row_visual visualFixture=share_preview",
@@ -683,7 +690,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Covers the KMP share preview page where selected messages can be copied or generated into the composer."
+      "notes": "Pending for Android visual baselines until the fixture can drive the merged native screenshot/export bridge and render the real exported image preview."
     },
     {
       "id": "components.home.server-switcher.open",
@@ -3340,8 +3347,8 @@
       "surface": "thread",
       "category": "app/thread",
       "group": "components-thread",
-      "status": "baseline",
-      "notes": "Android shared/KMP selected-message share preview page with Copy and Generate actions. React source of truth is SelectShareLightbox; KMP preview lists the selected messages before draft generation.",
+      "status": "pending",
+      "notes": "React source of truth uses SelectShareLightbox with a real captureSelectedMessages image. Android app flow now calls a native screenshot/export bridge, but the visual fixture remains pending until it can drive that real export path instead of instantiating the modal directly.",
       "providers": [
         {
           "id": "react",
@@ -3354,14 +3361,14 @@
         },
         {
           "id": "android",
-          "status": "ready",
+          "status": "pending",
           "components": [
-            "ThreadSharePreviewModal",
-            "ThreadSharePreviewMessageRow"
+            "ThreadSharePreviewModal"
           ],
           "source": "kmp-shared",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview"
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview",
+          "reason": "The user flow has a native screenshot/export bridge, but this visual fixture still instantiates the modal directly and cannot yet produce the real captured PNG preview."
         },
         {
           "id": "harmony",
