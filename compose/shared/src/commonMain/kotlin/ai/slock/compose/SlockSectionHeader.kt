@@ -5,8 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -25,7 +23,6 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -40,12 +37,14 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
 private val SectionChevronSize = 12.dp
+private val LoadingSpinnerSize = 14.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
+    const val AnimationDurationSeconds: Float = AnimationDurationMillis / 1000f
 }
 
 @Composable
@@ -93,7 +92,12 @@ internal fun SlockTopPageHeader(
                                 .border(SlockStroke.Default, SlockColor.BorderBlack),
                         contentAlignment = Alignment.Center
                     ) {
-                        SlockLucideIcon(iconName, modifier = Modifier.size(18.dp), color = "#FF000000")
+                        SlockLucideIcon(
+                            iconName,
+                            modifier = Modifier.size(18.dp),
+                            color = "#FF000000",
+                            spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
+                        )
                     }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -135,14 +139,26 @@ internal fun SlockTopPageHeader(
 internal fun SlockHeaderRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
-    Text(
-        text = "Refreshing...",
-        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier.widthIn(min = 0.dp, max = 118.dp)
-    )
+    Row(
+        modifier = modifier.widthIn(min = 0.dp, max = 136.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.LoaderCircle,
+            modifier = Modifier.size(LoadingSpinnerSize),
+            color = SlockColor.TextBlackArgb,
+            spinning = true
+        )
+        Text(
+            text = "Refreshing...",
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 110.dp)
+        )
+    }
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -157,13 +173,25 @@ internal fun SlockRaftPullRefreshIndicator(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Refreshing...",
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.LoaderCircle,
+                modifier = Modifier.size(LoadingSpinnerSize),
+                color = SlockColor.TextBlackArgb,
+                spinning = true
+            )
+            Text(
+                text = "Refreshing...",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 118.dp)
+            )
+        }
     }
 }
 
@@ -176,15 +204,27 @@ internal fun SlockCenteredLoading(
         modifier = modifier.background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = message,
-            style = SlockType.Caption
-                .copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 18.sp)
-                .withSlockFontWeight(FontWeight.SemiBold),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.LoaderCircle,
+                modifier = Modifier.size(16.dp),
+                color = SlockColor.TextMutedGrayArgb,
+                spinning = true
+            )
+            Text(
+                text = message,
+                style = SlockType.Caption
+                    .copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.SemiBold),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 220.dp)
+            )
+        }
     }
 }
 
@@ -208,16 +248,11 @@ internal fun SlockCollapsibleSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
-        val rotation by animateFloatAsState(
-            targetValue = if (expanded) 90f else 0f,
-            animationSpec = tween(durationMillis = SlockCollapsibleSectionTokens.AnimationDurationMillis),
-            label = "slock-collapsible-section-chevron-rotation"
-        )
         SlockLucideIcon(
             SlockLucideIconName.ChevronRight,
-            Modifier
-                .size(SectionChevronSize)
-                .graphicsLayer(rotationZ = rotation)
+            Modifier.size(SectionChevronSize),
+            rotationDegrees = if (expanded) 90f else 0f,
+            rotationAnimationDurationSeconds = SlockCollapsibleSectionTokens.AnimationDurationSeconds
         )
         Text(
             label.uppercase(),

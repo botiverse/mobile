@@ -445,7 +445,7 @@ private fun SettingsProfileAvatar(
                         .border(SlockStroke.Default, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp))
+                SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
             }
         }
     }

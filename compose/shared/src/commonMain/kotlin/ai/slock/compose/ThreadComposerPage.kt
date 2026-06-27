@@ -1562,7 +1562,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.Loader, modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucideIcon(SlockLucideIconName.Loader, modifier = Modifier.size(16.dp), color = "#FF000000", spinning = true)
             Text(
                 text = if (progress > 0) "$progress%" else "Uploading",
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
@@ -1862,6 +1862,7 @@ private fun ComposerIconButton(
     disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
     disabledIconColor: String = "#4D000000",
+    iconSpinning: Boolean = false,
     onClick: () -> Unit
 ) {
     SlockBrutalIconButton(
@@ -1877,7 +1878,8 @@ private fun ComposerIconButton(
         disabledIconColor = disabledIconColor,
         size = ThreadComposerIconButtonSize,
         shadowOffset = 2.dp,
-        iconSize = ThreadComposerIconSize
+        iconSize = ThreadComposerIconSize,
+        iconSpinning = iconSpinning
     )
 }
 
@@ -1896,6 +1898,7 @@ private fun ComposerSendButton(
             disabledBackgroundColor = SlockColor.AccentPink,
             disabledAlpha = 1f,
             disabledIconColor = "#FF000000",
+            iconSpinning = true,
             onClick = onClick
         )
         return

@@ -252,7 +252,8 @@ private fun SettingsStorageButton(
 ) {
     SlockBrutalActionButton(
         label = if (loading) "$text..." else text,
-        leadingIcon = iconName,
+        leadingIcon = if (loading) SlockLucideIconName.Loader else iconName,
+        leadingIconSpinning = loading,
         onClick = onClick,
         enabled = enabled && !loading,
         modifier = Modifier.fillMaxWidth(),

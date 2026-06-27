@@ -5405,7 +5405,12 @@ private fun SettingsServerSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        SlockLucideIcon(
+            iconName,
+            modifier = Modifier.size(16.dp),
+            color = "#FF000000",
+            spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
+        )
         Text(title, style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
     }
 }

@@ -196,11 +196,13 @@ internal fun SlockModalActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    iconSpinning: Boolean = icon == SlockLucideIconName.Loader || icon == SlockLucideIconName.LoaderCircle
 ) {
     SlockBrutalActionButton(
         label = label,
         leadingIcon = icon,
+        leadingIconSpinning = iconSpinning,
         onClick = onClick,
         modifier = modifier,
         backgroundColor = color,
@@ -216,7 +218,8 @@ internal fun SlockModalFullWidthActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    iconSpinning: Boolean = icon == SlockLucideIconName.Loader || icon == SlockLucideIconName.LoaderCircle
 ) {
     val shadowOffset = 3.dp
     Box(
@@ -248,7 +251,7 @@ internal fun SlockModalFullWidthActionButton(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000")
+                SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000", spinning = iconSpinning)
                 Text(
                     text = label,
                     style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
@@ -268,7 +271,8 @@ internal fun SlockModalSquareActionButton(
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
     enabled: Boolean = true,
-    size: Dp = 28.dp
+    size: Dp = 28.dp,
+    iconSpinning: Boolean = icon == SlockLucideIconName.Loader || icon == SlockLucideIconName.LoaderCircle
 ) {
     SlockBrutalIconButton(
         iconName = icon,
@@ -277,7 +281,8 @@ internal fun SlockModalSquareActionButton(
         enabled = enabled,
         backgroundColor = color,
         size = size,
-        shadowOffset = 3.dp
+        shadowOffset = 3.dp,
+        iconSpinning = iconSpinning
     )
 }
 

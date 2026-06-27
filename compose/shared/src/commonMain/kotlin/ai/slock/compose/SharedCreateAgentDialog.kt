@@ -1203,7 +1203,8 @@ private fun SlockCreateAgentSpinnerIcon() {
     SlockLucideIcon(
         SlockLucideIconName.Loader,
         modifier = Modifier.size(13.dp),
-        color = SlockColor.TextMutedGrayArgb
+        color = SlockColor.TextMutedGrayArgb,
+        spinning = true
     )
 }
 

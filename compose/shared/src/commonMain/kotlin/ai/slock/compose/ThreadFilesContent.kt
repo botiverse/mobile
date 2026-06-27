@@ -396,7 +396,8 @@ private fun ThreadFileIconActionButton(
         onClick = onClick,
         enabled = enabled,
         size = 28.dp,
-        iconSize = 14.dp
+        iconSize = 14.dp,
+        iconSpinning = iconName == SlockLucideIconName.Loader
     )
 }
 

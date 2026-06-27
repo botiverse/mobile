@@ -140,6 +140,7 @@ private fun AddComputerTypeStep(
                 },
                 enabled = state.canManage && !state.atLimit && !state.registering,
                 leadingIcon = if (state.registering) SlockLucideIconName.Loader else SlockLucideIconName.Plus,
+                leadingIconSpinning = state.registering,
                 backgroundColor = SlockColor.AccentPink
             )
         }

@@ -8705,7 +8705,8 @@ private fun ThreadMessageLocalSendStatus(
                 SlockLucideIcon(
                     if (isFailed) SlockLucideIconName.RefreshCw else SlockLucideIconName.LoaderCircle,
                     modifier = Modifier.size(13.dp),
-                    color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb
+                    color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb,
+                    spinning = !isFailed
                 )
                 Text(
                     text = label,
@@ -8734,7 +8735,8 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
         SlockLucideIcon(
             SlockLucideIconName.Loader,
             modifier = Modifier.size(14.dp),
-            color = SlockColor.TextMutedGrayArgb
+            color = SlockColor.TextMutedGrayArgb,
+            spinning = true
         )
     }
 }
@@ -11135,6 +11137,7 @@ private fun ThreadAttachmentCommentComposer(
             icon = if (state.sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
             enabled = enabled && state.draft.isNotBlank(),
             color = SlockColor.AccentCyan,
+            iconSpinning = state.sending,
             onClick = onSend
         )
     }

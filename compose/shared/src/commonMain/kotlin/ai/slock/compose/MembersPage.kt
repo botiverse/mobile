@@ -3795,7 +3795,8 @@ private fun MembersAgentAvatarChoiceGrid(
                 SlockLucideIcon(
                     if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
                     modifier = Modifier.size(16.dp),
-                    color = "#99000000"
+                    color = "#99000000",
+                    spinning = uploading
                 )
             }
         }
@@ -7456,7 +7457,8 @@ private fun SlockSpinnerIcon(
     SlockLucideIcon(
         SlockLucideIconName.Loader,
         modifier = Modifier.size(size),
-        color = color
+        color = color,
+        spinning = true
     )
 }
 
