@@ -766,11 +766,9 @@ internal class SharedThreadDataSource(
         }
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val serverMembers = serverId?.let { serverMembersStore?.cachedSnapshot(it)?.members }
-        val serverMembersByKey = serverMembers.orEmpty().associateBy { it.memberKey }
         val members =
             channelMembers.data.members
                 .distinctBy { it.memberKey }
-                .map { member -> member.withProfileAvatarFallback(serverMembersByKey[member.memberKey]) }
         val memberKeys = members.map { it.memberKey }.toSet()
         val candidates =
             if (serverMembers == null) {
@@ -3685,16 +3683,6 @@ private fun KuiklyThreadTaskItem.matchesAnyThreadTaskReference(
 
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
-
-private fun MemberProfile.withProfileAvatarFallback(profile: MemberProfile?): MemberProfile {
-    profile ?: return this
-    return copy(
-        avatarUrl = avatarUrl ?: profile.avatarUrl,
-        gravatarHash = gravatarHash ?: profile.gravatarHash,
-        avatar = avatar ?: profile.avatar,
-        avatarLabel = avatarLabel.ifBlank { profile.avatarLabel }
-    )
-}
 
 private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = null): KuiklyThreadMemberItem =
     KuiklyThreadMemberItem(

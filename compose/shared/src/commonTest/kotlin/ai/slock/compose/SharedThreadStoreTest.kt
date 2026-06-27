@@ -1809,7 +1809,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadMembersKeepsHumanUploadedAvatarFromServerProfile() = runBlocking {
+    fun loadMembersDoesNotBackfillAvatarsFromServerProfile() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val uploadedAvatar = "https://cdn.slock.ai/avatars/users/stdrc.webp"
         val memberRepository =
@@ -1828,7 +1828,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         store.accept(SharedThreadIntent.LoadMembers)
 
-        assertEquals(uploadedAvatar, store.state.value.payload.members.single().avatarUrl)
+        assertNull(store.state.value.payload.members.single().avatarUrl)
         scope.cancel()
     }
 

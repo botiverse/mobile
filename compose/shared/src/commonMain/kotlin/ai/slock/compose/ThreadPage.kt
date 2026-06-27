@@ -6020,6 +6020,7 @@ private fun ThreadPageContent(
                 membersCount = payload.membersCount,
                 canAddMembers = payload.canAddMembers,
                 agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
                 onDismiss = { activeModal = null },
                 onAddMember = {
                     activeModal = "addMember"
@@ -6039,6 +6040,7 @@ private fun ThreadPageContent(
                     membersCount = payload.membersCount,
                     canAddMembers = payload.canAddMembers,
                     agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
                     onDismiss = { activeModal = null },
                     onAddMember = {
                         activeModal = "addMember"
@@ -6056,6 +6058,7 @@ private fun ThreadPageContent(
                     candidates = payload.memberCandidates,
                     canAddMembers = payload.canAddMembers,
                     agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
                     addMemberStatus = payload.addMemberStatus,
                     addMemberErrorCode = payload.addMemberErrorCode,
                     onDismiss = { activeModal = "members" },
@@ -11665,6 +11668,7 @@ private fun ThreadMembersModal(
     membersCount: Int,
     canAddMembers: Boolean,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     removeMemberStatus: String,
     removingMemberId: String?,
     removeMemberErrorCode: String?,
@@ -11721,11 +11725,13 @@ private fun ThreadMembersModal(
                             val member = agents[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                                ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 sourceBadgeLabel = member.sourceServerLabel,
-                                avatarWireValue = member.modalAvatarWireValue(),
+                                avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
@@ -11742,11 +11748,13 @@ private fun ThreadMembersModal(
                             val member = humans[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                                ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
                                 sourceBadgeLabel = member.sourceServerLabel,
-                                avatarWireValue = member.modalAvatarWireValue(),
+                                avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
@@ -11776,6 +11784,7 @@ private fun ThreadAddMemberModal(
     candidates: List<KuiklyThreadMemberItem>,
     canAddMembers: Boolean,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     addMemberStatus: String,
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
@@ -11859,10 +11868,12 @@ private fun ThreadAddMemberModal(
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                                ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
-                                avatarWireValue = member.modalAvatarWireValue(),
+                                avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
@@ -11885,10 +11896,12 @@ private fun ThreadAddMemberModal(
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                                ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
-                                avatarWireValue = member.modalAvatarWireValue(),
+                                avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
