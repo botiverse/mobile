@@ -27,11 +27,17 @@ import io.ktor.client.request.forms.ChannelProvider
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
+    private val networkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             METHOD_REQUEST -> {
@@ -49,58 +55,81 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         }
     }
 
+    override fun onDestroy() {
+        activeRequests.values.forEach { active ->
+            active.cancelled.set(true)
+            active.job?.cancel()
+        }
+        activeRequests.clear()
+        networkScope.cancel()
+        super.onDestroy()
+    }
+
     private fun request(params: String?, callback: KuiklyRenderCallback?) {
         val command = JSONObject(params ?: "{}")
         val requestId = command.optString("requestId").takeIf { it.isNotBlank() }
                 ?: "android-${System.nanoTime()}"
         val active = ActiveNetworkRequest()
         activeRequests[requestId] = active
-        SlockKuiklyThreadAdapter.execute("network-request-$requestId") {
-            val result =
-                    runCatching {
-                                val headers = command.optJSONObject("headers") ?: JSONObject()
-                                val method = command.optString("method", "GET").uppercase()
-                                if (active.cancelled.get()) {
-                                    throw RequestCancelledException()
-                                }
-                                runBlocking {
-                                    active.job = coroutineContext[Job]
-                                    val response =
-                                            CLIENT.request(rewriteEnvironmentUrl(command.optString("url"))) {
-                                                this.method = HttpMethod(method)
-                                                applyHeaders(headers, skipContentType = command.has("multipartFiles"))
-                                                applyBody(command, method, activity, active)
-                                            }
-                                    val body = response.bodyAsText()
-                                    mapOf(
-                                            "code" to response.status.value,
-                                            "bodyText" to if (response.status.value in 200..299) body else "",
-                                            "errorBodyText" to if (response.status.value in 200..299) "" else body
-                                    )
-                                }
-                            }
-                            .getOrElse { throwable ->
-                                mapOf(
-                                        "code" to 0,
-                                        "bodyText" to "",
-                                        "errorBodyText" to (throwable.message ?: "Network unavailable"),
-                                        "message" to (throwable.message ?: "Network unavailable")
-                                )
-                            }
-            if (active.cancelled.get()) {
-                SlockDiagnosticsLogger.record(
-                        "SlockKuiklyNetwork",
-                        "request_callback_drop requestId=$requestId reason=cancelled thread=${Thread.currentThread().name}"
-                )
-            } else {
-                SlockDiagnosticsLogger.record(
-                        "SlockKuiklyNetwork",
-                        "request_callback requestId=$requestId thread=${Thread.currentThread().name}"
-                )
-                callback?.invoke(result)
-            }
-            activeRequests.remove(requestId, active)
+        val job =
+                networkScope.launch {
+                    SlockDiagnosticsLogger.record(
+                            "SlockKuiklyNetwork",
+                            "request_start requestId=$requestId thread=${Thread.currentThread().name}"
+                    )
+                    val result =
+                            runCatching {
+                                        executeRequest(command = command, active = active)
+                                    }
+                                    .getOrElse { throwable ->
+                                        mapOf(
+                                                "code" to 0,
+                                                "bodyText" to "",
+                                                "errorBodyText" to (throwable.message ?: "Network unavailable"),
+                                                "message" to (throwable.message ?: "Network unavailable")
+                                        )
+                                    }
+                    try {
+                        if (active.cancelled.get()) {
+                            SlockDiagnosticsLogger.record(
+                                    "SlockKuiklyNetwork",
+                                    "request_callback_drop requestId=$requestId reason=cancelled thread=${Thread.currentThread().name}"
+                            )
+                        } else {
+                            SlockDiagnosticsLogger.record(
+                                    "SlockKuiklyNetwork",
+                                    "request_callback requestId=$requestId thread=${Thread.currentThread().name}"
+                            )
+                            callback?.invoke(result)
+                        }
+                    } finally {
+                        activeRequests.remove(requestId, active)
+                    }
+                }
+        active.job = job
+        if (active.cancelled.get()) {
+            job.cancel()
         }
+    }
+
+    private suspend fun executeRequest(command: JSONObject, active: ActiveNetworkRequest): Map<String, Any> {
+        val headers = command.optJSONObject("headers") ?: JSONObject()
+        val method = command.optString("method", "GET").uppercase()
+        if (active.cancelled.get()) {
+            throw RequestCancelledException()
+        }
+        val response =
+                CLIENT.request(rewriteEnvironmentUrl(command.optString("url"))) {
+                    this.method = HttpMethod(method)
+                    applyHeaders(headers, skipContentType = command.has("multipartFiles"))
+                    applyBody(command, method, activity, active)
+                }
+        val body = response.bodyAsText()
+        return mapOf(
+                "code" to response.status.value,
+                "bodyText" to if (response.status.value in 200..299) body else "",
+                "errorBodyText" to if (response.status.value in 200..299) "" else body
+        )
     }
 
     private fun rewriteEnvironmentUrl(url: String): String {

@@ -419,16 +419,38 @@ class SharedHomeStore(
             RealtimeRefreshScope.ServerMembers,
             RealtimeRefreshScope.Settings,
             RealtimeRefreshScope.Reminders -> {
-                diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
-                val nextSwitch = _state.value.serverSwitchState.refresh()
-                reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-                load(
-                    nextSwitch,
-                    showRefreshAffordance = false,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
-                )
+                launchCoalescedRealtimeHomeReload(event)
             }
         }
+    }
+
+    private fun launchCoalescedRealtimeHomeReload(event: RealtimeRefreshRequired) {
+        val activeLoad = loadJob?.takeIf { it.isActive }
+        val activeRefresh = refreshJob?.takeIf { it.isActive }
+        if (activeLoad != null || activeRefresh != null) {
+            diagnosticsLogger(
+                "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
+                    "active=${if (activeLoad != null) "load" else "refresh"}"
+            )
+            return
+        }
+        diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
+        val nextSwitch = _state.value.serverSwitchState.refresh()
+        reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+        loadJob =
+            scope.launch {
+                val previousReason = stateDiagnosticsReason
+                stateDiagnosticsReason = "RealtimeRefresh"
+                try {
+                    load(
+                        nextSwitch,
+                        showRefreshAffordance = false,
+                        backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                    )
+                } finally {
+                    stateDiagnosticsReason = previousReason
+                }
+            }
     }
 
     private fun launchAgentDirectMessageStatusRefreshForCurrentSnapshot() {

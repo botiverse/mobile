@@ -478,6 +478,73 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun clusteredRefreshRequiredEventsCoalesceHomeReload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+        logs.clear()
+
+        val blockedRefresh = api.blockNextChannels()
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.ServerMembers,
+                        reason = "server:member-updated",
+                        serverId = ServerId("server-1")
+                    )
+            )
+        )
+        blockedRefresh.awaitStarted()
+        val callsBeforeCluster = api.calls.toList()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Settings,
+                        reason = "settings:updated",
+                        serverId = ServerId("server-1")
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Reminders,
+                        reason = "reminder:updated",
+                        serverId = ServerId("server-1")
+                    )
+            )
+        )
+
+        assertEquals(callsBeforeCluster, api.calls)
+        assertContains(logs, "home_realtime_refresh scope=ServerMembers reason=server:member-updated")
+        assertContains(logs, "home_realtime_refresh_coalesce scope=Settings reason=settings:updated active=load")
+        assertContains(logs, "home_realtime_refresh_coalesce scope=Reminders reason=reminder:updated active=load")
+
+        blockedRefresh.release()
+        awaitCondition { api.calls.size == 4 }
+        assertEquals(
+            setOf("channels:server-1", "dms:server-1", "unread:server-1", "summary:server-1"),
+            api.calls.toSet()
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun agentSessionRefreshDoesNotReloadVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = RecordingHomeApi()
