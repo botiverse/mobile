@@ -4178,7 +4178,7 @@ class ThreadPayloadTest {
             )
 
         val projected =
-            payload.withThreadLinkedTasksProjection(
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
                 ThreadLinkedTasksProjection(
                     authoritative = true,
                     lookup = listOf(task).threadLinkedTasksByMessageLookup()
@@ -4186,7 +4186,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("Done", projected.messages.single().taskStatus)
-        assertEquals("Todo", projected.tasks.single().status)
+        assertEquals("Todo", payload.tasks.single().status)
     }
 
     @Test
@@ -4210,7 +4210,7 @@ class ThreadPayloadTest {
             )
 
         val projected =
-            payload.withThreadLinkedTasksProjection(
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
                 ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap())
             )
 

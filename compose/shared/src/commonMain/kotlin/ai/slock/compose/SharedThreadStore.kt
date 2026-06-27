@@ -2068,7 +2068,7 @@ internal class SharedThreadStore(
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
-            .map { threadState -> threadState.payload }
+            .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
             .distinctUntilChanged()
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> =
@@ -3389,7 +3389,7 @@ internal class SharedThreadViewModel(
     val state: StateFlow<SharedThreadState>
         get() = store.state
     val currentPayload: KuiklyThreadScreenPayload
-        get() = store.state.value.payload
+        get() = store.state.value.payload.withoutThreadTimelineContent()
     val currentTimelineSlice: ThreadTimelineSlice
         get() = store.state.value.timelineSlice
     val currentHighlightedMentions: Set<String>

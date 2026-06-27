@@ -4550,7 +4550,8 @@ class SharedThreadStoreTest {
         val job = launch(Dispatchers.Unconfined) {
             store.payloadFlow().collect { payload -> payloadEvents += payload }
         }
-        assertEquals(listOf("cached body"), payloadEvents.single().messages.map { it.body })
+        assertEquals(emptyList(), payloadEvents.single().messages)
+        assertEquals(listOf("cached body"), store.state.value.timelineSlice.messages.map { it.body })
         payloadEvents.clear()
 
         store.accept(SharedThreadIntent.LoadMembers)

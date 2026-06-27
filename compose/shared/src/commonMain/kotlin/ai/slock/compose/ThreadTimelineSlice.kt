@@ -1,5 +1,11 @@
 package ai.slock.compose
 
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskSummary
 
 internal data class ThreadTimelineSlice(
@@ -45,6 +51,21 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         showTaskStatusActions = showTaskStatusActions,
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel()
+    )
+
+internal fun KuiklyThreadScreenPayload.withoutThreadTimelineContent(): KuiklyThreadScreenPayload =
+    copy(
+        messages = emptyList(),
+        originMessage = null,
+        focusedMessageId = null,
+        originStatus = "none",
+        originErrorCode = null,
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        olderMessagesStatus = "idle",
+        newerMessagesStatus = "idle",
+        emptyTitle = "",
+        emptyDetail = ""
     )
 
 internal fun ThreadTimelineSlice.hasThreadHistoryBoundaryItem(): Boolean =
@@ -154,6 +175,96 @@ internal fun ThreadTimelineSlice.threadActionMessage(
         ?.let { message ->
             message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
         }
+
+internal fun ThreadTimelineSlice.findTaskParentMessage(taskId: String): KuiklyThreadMessageItem? =
+    messages.firstOrNull { message ->
+        message.id == taskId || message.taskId == taskId
+    } ?: originMessage?.takeIf { message ->
+        message.id == taskId || message.taskId == taskId
+    }
+
+internal fun ThreadTimelineSlice.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
+    val key = tag.label.removePrefix("#").trim()
+    val taskNumber = key.toIntOrNull()
+    return messages.firstOrNull { message ->
+        message.taskId?.equals(key, ignoreCase = true) == true ||
+            message.taskNumber == taskNumber
+    }?.taskId
+        ?: originMessage?.takeIf { message ->
+            message.taskId?.equals(key, ignoreCase = true) == true ||
+                message.taskNumber == taskNumber
+        }?.taskId
+}
+
+internal fun ThreadTimelineSlice.findThreadAuthorProfile(memberId: String): MemberProfile? =
+    (listOfNotNull(originMessage) + messages)
+        .firstOrNull { it.authorId == memberId }
+        ?.toThreadAuthorProfile()
+
+private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile =
+    MemberProfile(
+        id = MemberId(authorId),
+        displayName = authorName.ifBlank { authorId },
+        handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
+        kind = if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
+        gravatarHash = gravatarHash,
+        avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
+        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
+        agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
+    )
+
+internal fun ThreadTimelineSlice.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
+    val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
+    messageCandidates.forEach { message ->
+        val images = message.attachments.filter { it.isImageAttachment() }
+        val currentIndex = images.indexOfFirst { it.id == attachmentId }
+        if (currentIndex >= 0) {
+            return ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex)
+        }
+    }
+    return null
+}
+
+internal fun ThreadTimelineSlice.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+    (listOfNotNull(originMessage) + messages)
+        .asSequence()
+        .flatMap { it.attachments.asSequence() }
+        .firstOrNull { it.id == attachmentId }
+
+internal fun ThreadTimelineSlice.findAttachmentCommentTarget(attachmentId: String): ThreadAttachmentCommentTarget? {
+    val cleanAttachmentId = attachmentId.trim()
+    if (cleanAttachmentId.isBlank()) return null
+    val allMessages = listOfNotNull(originMessage) + messages
+    allMessages.forEach { message ->
+        val attachment = message.attachments.firstOrNull { it.id == cleanAttachmentId }
+        if (attachment != null) {
+            return ThreadAttachmentCommentTarget(attachment = attachment, parentMessage = message)
+        }
+    }
+    return null
+}
+
+internal fun ThreadTimelineSlice.threadReactionToggleTarget(
+    messageId: String,
+    emoji: String
+): ThreadReactionToggleTarget? {
+    val cleanMessageId = messageId.trim()
+    val cleanEmoji = emoji.trim()
+    if (cleanMessageId.isBlank() || cleanEmoji.isBlank()) return null
+    val candidates =
+        (messages + listOfNotNull(originMessage))
+            .filter { message -> message.id == cleanMessageId && !message.isSystemMessage() }
+    if (candidates.isEmpty()) return null
+    val selectedCandidate =
+        candidates.firstOrNull { message ->
+            message.reactions.any { reaction -> reaction.emoji == cleanEmoji && reaction.selected }
+        }
+    val message = selectedCandidate ?: candidates.first()
+    return ThreadReactionToggleTarget(
+        message = message,
+        nextSelected = selectedCandidate == null
+    )
+}
 
 internal fun ThreadTimelineSlice.messageIndexSignature(): String =
     messages.joinToString(separator = "|") { message -> message.id }

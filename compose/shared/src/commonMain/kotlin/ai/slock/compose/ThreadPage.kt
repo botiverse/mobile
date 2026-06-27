@@ -224,11 +224,16 @@ internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
 internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
-    (backgroundRefreshing && messages.isEmpty() && originMessage == null && originPreview.isNullOrBlank()) ||
+    shouldRenderThreadEarlyLoadingShell(toThreadTimelineSlice())
+
+internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
+    timelineSlice: ThreadTimelineSlice
+): Boolean =
+    (backgroundRefreshing && timelineSlice.messages.isEmpty() && timelineSlice.originMessage == null && originPreview.isNullOrBlank()) ||
         (
             status == "loading" &&
-                messages.isEmpty() &&
-                originMessage == null &&
+                timelineSlice.messages.isEmpty() &&
+                timelineSlice.originMessage == null &&
                 originPreview.isNullOrBlank()
         )
 
@@ -864,12 +869,12 @@ private data class ThreadCreateAgentActionDialogState(
     val errorCode: String? = null
 )
 
-private data class ThreadImageAttachmentGroup(
+internal data class ThreadImageAttachmentGroup(
     val images: List<KuiklyThreadAttachmentItem>,
     val currentIndex: Int
 )
 
-private data class ThreadAttachmentCommentTarget(
+internal data class ThreadAttachmentCommentTarget(
     val attachment: KuiklyThreadAttachmentItem,
     val parentMessage: KuiklyThreadMessageItem
 )
@@ -1057,9 +1062,12 @@ private fun TasksUiState.threadTasksJoinDiagnosticsResult(): Pair<String, Int>? 
     }
 
 private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
+    threadRenderDiagnosticsSource(toThreadTimelineSlice())
+
+private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(timelineSlice: ThreadTimelineSlice): String =
     when {
         status == "loading" -> "loading"
-        status == "content" && messages.isNotEmpty() -> "content"
+        status == "content" && timelineSlice.messages.isNotEmpty() -> "content"
         status == "content" -> "empty_content"
         isRenderableEmptyReplyThread() -> "empty_reply"
         errorCode != null -> "error"
@@ -1177,7 +1185,10 @@ internal fun shouldShowThreadComposerForReadyContent(
     shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
 
 internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(): Boolean =
-    !shouldRenderThreadEarlyLoadingShell() &&
+    hasRenderableContentForComposer(toThreadTimelineSlice())
+
+internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(timelineSlice: ThreadTimelineSlice): Boolean =
+    !shouldRenderThreadEarlyLoadingShell(timelineSlice) &&
         status != "no_permission" &&
         status != "error"
 
@@ -1507,7 +1518,7 @@ private fun ThreadPageScreen() {
         },
         realtimeEventSignal = threadRealtimeEventSignal,
         realtimeCacheInvalidationSequence = threadRealtimeCacheInvalidationSequence,
-        onOpenMemberProfile = { currentPayload, memberId ->
+        onOpenMemberProfile = { currentPayload, timelineSlice, memberId ->
             val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
@@ -1516,7 +1527,7 @@ private fun ThreadPageScreen() {
                     "instanceId=${currentPayload.instanceId}"
                 )
             } else {
-                currentPayload.findThreadAuthorProfile(memberId)
+                timelineSlice.findThreadAuthorProfile(memberId)
                     ?.toThreadCandidateAgentDetailSnapshot()
                     ?.let { candidate ->
                         val agentDetailStore = SlockSharedStoreRegistry.get(pager, bridge).agentDetailStore
@@ -1985,7 +1996,7 @@ internal fun SharedThreadRouteContent(
     realtimeCacheInvalidationSequence: Long = 0L,
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, String) -> Unit = { _, _ -> }
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String) -> Unit = { _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
@@ -2223,12 +2234,12 @@ internal fun SharedThreadRouteContent(
                     mapOf(
                         "status" to timelineSlice.status.ifBlank { "unknown" },
                         "messages" to timelineSlice.messages.size.toString(),
-                        "source" to payload.threadRenderDiagnosticsSource()
+                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice)
                     )
             )
             bridge.log(
                 "thread_first_render threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} status=${timelineSlice.status} " +
-                    "messages=${timelineSlice.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
+                    "messages=${timelineSlice.messages.size} source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
             )
         }
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
@@ -2241,14 +2252,14 @@ internal fun SharedThreadRouteContent(
                 metadata =
                     mapOf(
                         "status" to timelineSlice.status.ifBlank { "unknown" },
-                        "source" to payload.threadRenderDiagnosticsSource(),
+                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice),
                         "messages" to timelineSlice.messages.size.toString()
                     )
             )
             bridge.log(
                 "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
                     "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
-                    "source=${payload.threadRenderDiagnosticsSource()}"
+                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
             )
             if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
                 performanceSnapshotLoggedThreadId = threadInstanceKey
@@ -2623,7 +2634,7 @@ internal fun SharedThreadRouteContent(
 
     fun openAttachmentComments(attachmentId: String) {
         if (!attachmentCommentsEnabled) return
-        val target = renderedThread.findAttachmentCommentTarget(attachmentId)
+        val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
         if (target == null) {
             bridge.toast("Comments are unavailable")
             return
@@ -2737,14 +2748,14 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(
         renderedThread.status,
         renderedThread.errorCode,
-        renderedThread.olderMessagesStatus,
-        renderedThread.newerMessagesStatus
+        renderedTimelineSlice.olderMessagesStatus,
+        renderedTimelineSlice.newerMessagesStatus
     ) {
         if (
             renderedThread.status == "no_permission" ||
             renderedThread.status == "error" ||
-            renderedThread.olderMessagesStatus == "error" ||
-            renderedThread.newerMessagesStatus == "error"
+            renderedTimelineSlice.olderMessagesStatus == "error" ||
+            renderedTimelineSlice.newerMessagesStatus == "error"
         ) {
             routeAuthRequired(renderedThread.errorCode)
         }
@@ -3185,7 +3196,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
-            onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
+            onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, memberId) },
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
@@ -3200,19 +3211,19 @@ internal fun SharedThreadRouteContent(
                 when {
                     action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
                         val imageGroup =
-                            renderedThread.findThreadImageAttachmentGroup(attachmentId)
+                            renderedTimelineSlice.findThreadImageAttachmentGroup(attachmentId)
                         if (imageGroup != null) {
                             openImagePreview(imageGroup)
                         } else {
                             val attachment =
-                                renderedThread.findThreadAttachment(attachmentId)
+                                renderedTimelineSlice.findThreadAttachment(attachmentId)
                                     ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                             openAttachmentNoPreview(attachment)
                         }
                     }
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
                         val attachment =
-                            renderedThread.findThreadAttachment(attachmentId)
+                            renderedTimelineSlice.findThreadAttachment(attachmentId)
                                 ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                         openAttachmentExternally(attachment)
                     }
@@ -3405,8 +3416,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
                     val previousSaved =
-                        renderedThread.threadActionMessage(itemId)?.isSaved
-                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }?.isSaved
+                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)?.isSaved
                             ?: false
                     val nextSaved = !previousSaved
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
@@ -3486,8 +3496,7 @@ internal fun SharedThreadRouteContent(
                     if (reactionKey in pendingReactionKeys) {
                         return@ThreadPageContent
                     }
-                    val previousPayload = renderedThread
-                    val toggleTarget = previousPayload.threadReactionToggleTarget(itemId, tab)
+                    val toggleTarget = renderedTimelineSlice.threadReactionToggleTarget(itemId, tab)
                     if (toggleTarget == null) {
                         return@ThreadPageContent
                     }
@@ -3527,7 +3536,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
-                    val parentMessage = renderedThread.findTaskParentMessage(itemId)
+                    val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId)
                     if (parentMessage == null) {
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
@@ -3774,8 +3783,8 @@ internal fun SharedThreadRouteContent(
                     if (itemId in pendingTaskConvertMessageIds) {
                         return@ThreadPageContent
                     }
-                    val message = renderedThread.threadActionMessage(itemId)
-                    if (message == null || !renderedThread.canConvertMessagesToTasks() || !message.canConvertToTask()) {
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)
+                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
                         bridge.toast("Unable to convert message")
                         return@ThreadPageContent
                     }
@@ -5560,7 +5569,7 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
-    val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell()
+    val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell(timelineSlice)
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     var selectedTab by remember(payload.selectedTab) {
@@ -5624,7 +5633,7 @@ private fun ThreadPageContent(
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
             }
             ThreadMarkdownTagKind.Task -> {
-                val taskId = payload.findMarkdownTaskId(tag)
+                val taskId = timelineSlice.findMarkdownTaskId(tag)
                 if (!taskId.isNullOrBlank()) {
                     onThreadEvent("openTask", taskId, null, null)
                 } else {
@@ -5754,7 +5763,7 @@ private fun ThreadPageContent(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
-            } else if (payload.hasRenderableContentForComposer() && showComposerForSelectedTab) {
+            } else if (payload.hasRenderableContentForComposer(timelineSlice) && showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(
@@ -6948,6 +6957,7 @@ private fun ThreadMessagesList(
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
                         payload = payload,
+                        timelineSlice = renderPayload,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
@@ -7183,7 +7193,7 @@ private fun ThreadMessagesList(
             )
         }
         actionMessageId?.let { messageId ->
-            payload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
+            renderPayload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
                 ThreadMessageActionMenu(
                     message = message,
@@ -7246,7 +7256,7 @@ private fun ThreadMessagesList(
             }
         }
         taskStatusMenuMessageId?.let { messageId ->
-            payload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
+            renderPayload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
                 SlockBaseMenuOverlay(
                     anchor = taskStatusMenuAnchor,
@@ -7286,15 +7296,12 @@ internal data class ThreadHistoryStatusSpec(
 )
 
 internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): ThreadHistoryStatusSpec =
-    threadOlderMessagesStatusSpec(
-        canLoadMoreBefore = payload.canLoadMoreBefore,
-        secondaryLabel = payload.threadBeginningReplyCountLabel()
-    )
+    threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())
 
-internal fun threadOlderMessagesStatusSpec(payload: ThreadTimelineSlice): ThreadHistoryStatusSpec =
+internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(
-        canLoadMoreBefore = payload.canLoadMoreBefore,
-        secondaryLabel = payload.beginningReplyCountLabel
+        canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
+        secondaryLabel = timelineSlice.beginningReplyCountLabel
     )
 
 internal fun threadOlderMessagesStatusSpec(
@@ -9844,6 +9851,7 @@ private fun ThreadMessageMenuDivider() {
 @Composable
 private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
+    timelineSlice: ThreadTimelineSlice,
     linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap(),
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
@@ -9868,7 +9876,7 @@ private fun ThreadOriginCard(
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
     ) {
-        when (payload.originStatus) {
+        when (timelineSlice.originStatus) {
             "loading" -> {
                 Text(
                     text = "Refreshing original message...",
@@ -9898,7 +9906,7 @@ private fun ThreadOriginCard(
                 }
             }
             else -> {
-                payload.originMessage?.let { origin ->
+                timelineSlice.originMessage?.let { origin ->
                     val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(origin)
                     val displayOrigin = origin.withLinkedTask(linkedTask)
                     val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
@@ -10294,7 +10302,7 @@ private fun ThreadMessageCommentRefChip(
 
 private val SharedThreadAttachmentImageSize = 92.dp
 
-private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
+internal fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
     mimeType.startsWith("image/", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
