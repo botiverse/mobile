@@ -354,8 +354,6 @@ class SqlDelightComposeLocalDataStoreTest {
                             kind = ConversationKind.DirectMessage,
                             name = "Codex Agent",
                             directMessagePeerType = "agent",
-                            presence = Presence.Active,
-                            agentStatus = AgentStatus.Working,
                             presenceMemberId = MemberId("agent-1")
                         )
                     ),
@@ -367,7 +365,7 @@ class SqlDelightComposeLocalDataStoreTest {
         assertEquals("general", assertNotNull(directory.resolveProjection(serverId, "channel-1")).title)
         val dmByMember = assertNotNull(directory.resolveProjection(serverId, "agent-1"))
         assertEquals("Codex Agent", dmByMember.title)
-        assertEquals(AgentStatus.Working, dmByMember.agentStatus)
+        assertEquals("agent-1", dmByMember.peerMemberId)
     }
 
     @Test

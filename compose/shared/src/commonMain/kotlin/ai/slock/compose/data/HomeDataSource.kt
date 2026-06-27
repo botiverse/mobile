@@ -5,8 +5,6 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
-import ai.slock.compose.model.MemberKind
-import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
@@ -123,61 +121,11 @@ class SharedHomeDataSource(
     suspend fun refreshAgentDirectMessageStatuses(
         snapshot: HomeSnapshot,
         priority: DataRequestPriority = DataRequestPriority.Background
-    ): AgentDirectMessageStatusPatch {
-        if (snapshot.directMessages.none { it.isAgentDirectMessage }) {
-            return AgentDirectMessageStatusPatch(snapshot, changed = false)
-        }
-        val patched = snapshot.withAgentDirectMessageStatuses(snapshot.server.id, priority)
-        val changed = patched != snapshot
-        val changedDirectMessages =
-            if (changed) {
-                patched.directMessages.filter { patchedConversation ->
-                    patchedConversation.isAgentDirectMessage &&
-                        patchedConversation != snapshot.directMessages.firstOrNull { it.threadId == patchedConversation.threadId }
-                }
-            } else {
-                emptyList()
-            }
-        return AgentDirectMessageStatusPatch(
-            snapshot = patched,
-            changed = changed,
-            directMessages = changedDirectMessages
-        )
-    }
+    ): AgentDirectMessageStatusPatch =
+        AgentDirectMessageStatusPatch(snapshot, changed = false)
 
     suspend fun writeHomeSnapshot(snapshot: HomeSnapshot, source: String): Boolean =
         localWriteThrough?.writeHomeResult(DataResult.Content(snapshot), source) ?: false
-
-    private suspend fun HomeSnapshot.withAgentDirectMessageStatuses(
-        serverId: ServerId,
-        priority: DataRequestPriority
-    ): HomeSnapshot {
-        val membersResult =
-            try {
-                serverMembersStore?.loadMembers(serverId, priority)
-                    ?: memberRepository?.getMembers(priority, serverId)
-                    ?: return this
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                diagnosticsLogger("home_agent_status_refresh_failed result=exception errorType=${throwable.safeHomeDiagnosticsType()}")
-                return this
-            }
-        val members =
-            when (membersResult) {
-                is DataResult.Content -> membersResult.data.members
-                is DataResult.Empty -> return this
-                is DataResult.Error -> {
-                    diagnosticsLogger("home_agent_status_refresh_failed result=error code=${membersResult.error.code}")
-                    return this
-                }
-                is DataResult.NoPermission -> {
-                    diagnosticsLogger("home_agent_status_refresh_failed result=no_permission code=${membersResult.blocker.code}")
-                    return this
-                }
-            }
-        return withAgentDirectMessageStatuses(members)
-    }
 
     suspend fun readCachedHome(serverId: ServerId? = null): DataResult<HomeSnapshot> {
         val session = sessionStore.readSession()
@@ -255,38 +203,6 @@ class SharedHomeDataSource(
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         return client.dismissAnnouncement(id)
     }
-}
-
-private val ConversationSummary.isAgentDirectMessage: Boolean
-    get() =
-        kind == ConversationKind.DirectMessage &&
-            directMessagePeerType.equals("agent", ignoreCase = true)
-
-private fun HomeSnapshot.withAgentDirectMessageStatuses(members: List<MemberProfile>): HomeSnapshot {
-    if (directMessages.isEmpty() || members.isEmpty()) return this
-    val agentsById =
-        members
-            .asSequence()
-            .filter { it.kind == MemberKind.Agent }
-            .associateBy { it.id }
-    if (agentsById.isEmpty()) return this
-    var changed = false
-    val nextDirectMessages =
-        directMessages.map { conversation ->
-            if (!conversation.isAgentDirectMessage) return@map conversation
-            val memberId = conversation.presenceMemberId ?: return@map conversation
-            val member = agentsById[memberId] ?: return@map conversation
-            val next =
-                conversation.copy(
-                    presence = member.presence,
-                    agentStatus = member.agentStatus ?: conversation.agentStatus
-                )
-            if (next != conversation) {
-                changed = true
-            }
-            next
-        }
-    return if (changed) copy(directMessages = nextDirectMessages) else this
 }
 
 private fun mergeHomeNotificationResults(
