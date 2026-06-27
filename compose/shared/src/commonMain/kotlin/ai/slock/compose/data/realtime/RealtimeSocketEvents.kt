@@ -18,6 +18,7 @@ object RealtimeSocketEvents {
     const val SyncResume = GeneratedRealtimeContract.SocketEvent.SyncResume
     const val SyncResumeResponse = GeneratedRealtimeContract.SocketEvent.SyncResumeResponse
     const val JoinChannel = GeneratedRealtimeContract.SocketEvent.JoinChannel
+    const val LeaveChannel = GeneratedRealtimeContract.SocketEvent.LeaveChannel
     const val Heartbeat = GeneratedRealtimeContract.SocketEvent.Heartbeat
     const val MessageNew = GeneratedRealtimeContract.SocketEvent.MessageNew
     const val MessageUpdated = GeneratedRealtimeContract.SocketEvent.MessageUpdated

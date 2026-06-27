@@ -70,6 +70,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         repository.joinChannel(channelId)
     }
 
+    override fun emitLeaveChannel(channelId: ChannelId) {
+        repository.leaveChannel(channelId)
+    }
+
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         repository.observeEvents(listener)
 

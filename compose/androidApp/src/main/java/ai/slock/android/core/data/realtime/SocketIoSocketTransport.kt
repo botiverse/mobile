@@ -103,7 +103,7 @@ class SocketIoSocketTransport(
 }
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
-    if (eventName == RealtimeSocketEvents.JoinChannel) {
+    if (eventName == RealtimeSocketEvents.JoinChannel || eventName == RealtimeSocketEvents.LeaveChannel) {
         payload["channelId"] as? String ?: JSONObject(payload)
     } else {
         JSONObject(payload)

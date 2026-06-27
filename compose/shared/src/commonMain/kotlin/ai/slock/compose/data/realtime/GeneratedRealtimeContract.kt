@@ -9,6 +9,7 @@ object GeneratedRealtimeContract {
 
     object RoomAction {
         const val JoinChannel = "joinChannel"
+        const val LeaveChannel = "leaveChannel"
     }
 
     object PayloadKey {
@@ -50,6 +51,7 @@ object GeneratedRealtimeContract {
         const val SyncResume = "sync:resume"
         const val SyncResumeResponse = "sync:resume:response"
         const val JoinChannel = "join:channel"
+        const val LeaveChannel = "leave:channel"
         const val Heartbeat = "heartbeat"
         const val MessageNew = "message:new"
         const val MessageUpdated = "message:updated"

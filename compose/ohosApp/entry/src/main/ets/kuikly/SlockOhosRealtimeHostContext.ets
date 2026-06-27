@@ -226,6 +226,10 @@ export class SlockOhosRealtimeHostContext {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
     if (!decision.shouldJoin || decision.channelId === null || decision.channelId.length === 0) {
+      if (decision.shouldLeave && decision.channelId !== null && decision.channelId.length > 0) {
+        this.joinedChannels.delete(decision.channelId);
+        this.emitLeaveChannel(decision.channelId);
+      }
       return;
     }
     this.joinedChannels.add(decision.channelId);
@@ -235,6 +239,12 @@ export class SlockOhosRealtimeHostContext {
   private emitJoinChannel(channelId: string): void {
     if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId)) {
       console.info('[SlockOhosRealtime] join_channel_deferred');
+    }
+  }
+
+  private emitLeaveChannel(channelId: string): void {
+    if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.LeaveChannel, channelId)) {
+      console.info('[SlockOhosRealtime] leave_channel_deferred');
     }
   }
 

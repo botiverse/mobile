@@ -12,6 +12,7 @@ object SlockRealtimeNotifyContract {
     const val EventName = GeneratedRealtimeContract.Notify.EventName
     const val RoomsEventName = GeneratedRealtimeContract.Notify.RoomsEventName
     const val ActionJoinChannel = GeneratedRealtimeContract.RoomAction.JoinChannel
+    const val ActionLeaveChannel = GeneratedRealtimeContract.RoomAction.LeaveChannel
     const val KeyAction = GeneratedRealtimeContract.PayloadKey.Action
     const val KeyChannelId = GeneratedRealtimeContract.PayloadKey.ChannelId
     const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId
@@ -94,6 +95,11 @@ class SlockRealtimeAppScopeState {
     fun markChannelJoined(channelId: ChannelId): Boolean {
         if (channelId.value.isBlank()) return false
         return joinedChannels.add(channelId)
+    }
+
+    fun markChannelLeft(channelId: ChannelId): Boolean {
+        if (channelId.value.isBlank()) return false
+        return joinedChannels.remove(channelId)
     }
 
     fun resetForSessionEnd() {

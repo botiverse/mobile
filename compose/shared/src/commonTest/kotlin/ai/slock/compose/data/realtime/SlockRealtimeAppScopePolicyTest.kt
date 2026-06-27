@@ -152,6 +152,14 @@ class SlockRealtimeAppScopePolicyTest {
             action = SlockRealtimeNotifyContract.ActionJoinChannel,
             channelId = ""
         )
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionLeaveChannel,
+            channelId = "channel-1"
+        )
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionLeaveChannel,
+            channelId = "channel-1"
+        )
         enhancedNotifyBus.emit(
             SlockEnhancedNotifyEvent(
                 eventName = "unrelated",
@@ -160,6 +168,7 @@ class SlockRealtimeAppScopePolicyTest {
         )
 
         assertEquals(listOf(ChannelId("channel-1")), connection.joinedChannels)
+        assertEquals(listOf(ChannelId("channel-1")), connection.leftChannels)
     }
 
     @Test
@@ -214,6 +223,18 @@ class SlockRealtimeAppScopePolicyTest {
         )
         val join = engine.joinChannelDecisionForHost("channel-1", "notify")
         val duplicateJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val leave =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionLeaveChannel,
+                "channel-1",
+                "notify"
+            )
+        val duplicateLeave =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionLeaveChannel,
+                "channel-1",
+                "notify"
+            )
         val blankJoin =
             engine.roomCommandDecisionForHost(
                 SlockRealtimeNotifyContract.ActionJoinChannel,
@@ -228,6 +249,9 @@ class SlockRealtimeAppScopePolicyTest {
         assertTrue(join.shouldJoin)
         assertEquals(ChannelId("channel-1"), join.channelId)
         assertFalse(duplicateJoin.shouldJoin)
+        assertTrue(leave.shouldLeave)
+        assertEquals(ChannelId("channel-1"), leave.channelId)
+        assertFalse(duplicateLeave.shouldLeave)
         assertFalse(blankJoin.shouldJoin)
         assertFalse(unsupportedJoin.shouldJoin)
         assertTrue(heartbeat.shouldFanOut)
@@ -296,6 +320,7 @@ class SlockRealtimeAppScopePolicyTest {
         override var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         val connectedLastSeqs = mutableListOf<Long>()
         val joinedChannels = mutableListOf<ChannelId>()
+        val leftChannels = mutableListOf<ChannelId>()
 
         override suspend fun connect(
             serverId: ServerId,
@@ -313,6 +338,10 @@ class SlockRealtimeAppScopePolicyTest {
 
         override fun emitJoinChannel(channelId: ChannelId) {
             joinedChannels += channelId
+        }
+
+        override fun emitLeaveChannel(channelId: ChannelId) {
+            leftChannels += channelId
         }
 
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =

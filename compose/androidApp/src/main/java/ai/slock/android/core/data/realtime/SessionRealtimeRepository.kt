@@ -72,6 +72,10 @@ class SessionRealtimeRepository(
         client.joinChannel(channelId)
     }
 
+    override fun leaveChannel(channelId: ChannelId) {
+        client.leaveChannel(channelId)
+    }
+
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         client.observeEvents(listener)
 

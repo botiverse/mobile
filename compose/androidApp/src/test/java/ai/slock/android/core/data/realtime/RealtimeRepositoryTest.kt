@@ -320,14 +320,55 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun androidTransportUsesRawChannelIdForJoinChannel() {
-        val payload =
+    fun clientLeavesJoinedChannelAndDoesNotReplayItAfterReconnect() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.joinChannel(ChannelId("channel-1"))
+        client.joinChannel(ChannelId("channel-2"))
+        client.leaveChannel(ChannelId("channel-1"))
+        client.leaveChannel(ChannelId("channel-1"))
+
+        assertEquals(
+            listOf(
+                RealtimeSocketEvents.JoinChannel,
+                RealtimeSocketEvents.JoinChannel,
+                RealtimeSocketEvents.LeaveChannel
+            ),
+            transport.emitted.map { it.first }
+        )
+        assertEquals("channel-1", transport.emitted.last().second["channelId"])
+
+        transport.emitted.clear()
+        transport.receive(RealtimeSocketEvents.Reconnect)
+
+        val joinRooms =
+            transport.emitted
+                .filter { it.first == RealtimeSocketEvents.JoinChannel }
+                .map { it.second["channelId"] }
+        assertEquals(listOf("channel-2"), joinRooms)
+    }
+
+    @Test
+    fun androidTransportUsesRawChannelIdForRoomCommands() {
+        val joinPayload =
             realtimeSocketIoWirePayload(
                 RealtimeSocketEvents.JoinChannel,
                 mapOf("channelId" to "channel-1")
             )
+        val leavePayload =
+            realtimeSocketIoWirePayload(
+                RealtimeSocketEvents.LeaveChannel,
+                mapOf("channelId" to "channel-1")
+            )
 
-        assertEquals("channel-1", payload)
+        assertEquals("channel-1", joinPayload)
+        assertEquals("channel-1", leavePayload)
     }
 
     @Test

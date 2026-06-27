@@ -7,6 +7,7 @@ enum GeneratedRealtimeContract {
 
     enum RoomAction {
         static let joinChannel = "joinChannel"
+        static let leaveChannel = "leaveChannel"
     }
 
     enum PayloadKey {
@@ -40,6 +41,7 @@ enum GeneratedRealtimeContract {
         static let syncResume = "sync:resume"
         static let syncResumeResponse = "sync:resume:response"
         static let joinChannel = "join:channel"
+        static let leaveChannel = "leave:channel"
         static let heartbeat = "heartbeat"
         static let messageNew = "message:new"
         static let messageUpdated = "message:updated"

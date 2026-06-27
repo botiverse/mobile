@@ -4,7 +4,8 @@
     "roomsEventName": "slockRealtimeRooms"
   },
   "roomActions": {
-    "joinChannel": "joinChannel"
+    "joinChannel": "joinChannel",
+    "leaveChannel": "leaveChannel"
   },
   "payloadKeys": {
     "action": "action",
@@ -36,6 +37,7 @@
     "syncResume": "sync:resume",
     "syncResumeResponse": "sync:resume:response",
     "joinChannel": "join:channel",
+    "leaveChannel": "leave:channel",
     "heartbeat": "heartbeat",
     "messageNew": "message:new",
     "messageUpdated": "message:updated",

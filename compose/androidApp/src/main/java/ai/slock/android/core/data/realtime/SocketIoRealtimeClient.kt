@@ -125,6 +125,13 @@ class SocketIoRealtimeClient(
         emitJoinChannel(channelId)
     }
 
+    fun leaveChannel(channelId: ChannelId) {
+        val removed = joinedChannels.remove(channelId)
+        logger("leave_room channelId=${channelId.value} removed=$removed")
+        if (!removed) return
+        emitLeaveChannel(channelId)
+    }
+
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
         listeners += listener
         return RealtimeSubscription { listeners -= listener }
@@ -241,6 +248,10 @@ class SocketIoRealtimeClient(
 
     private fun emitJoinChannel(channelId: ChannelId) {
         transport.emit(RealtimeSocketEvents.JoinChannel, mapOf("channelId" to channelId.value))
+    }
+
+    private fun emitLeaveChannel(channelId: ChannelId) {
+        transport.emit(RealtimeSocketEvents.LeaveChannel, mapOf("channelId" to channelId.value))
     }
 
     private fun rejoinChannels(reason: String) {

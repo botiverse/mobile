@@ -6,6 +6,7 @@ class GeneratedRealtimeNotifyContract {
 
 class GeneratedRealtimeRoomActionContract {
   readonly JoinChannel: string = "joinChannel";
+  readonly LeaveChannel: string = "leaveChannel";
 }
 
 class GeneratedRealtimePayloadKeyContract {
@@ -38,6 +39,7 @@ class GeneratedRealtimeSocketEventContract {
   readonly SyncResume: string = "sync:resume";
   readonly SyncResumeResponse: string = "sync:resume:response";
   readonly JoinChannel: string = "join:channel";
+  readonly LeaveChannel: string = "leave:channel";
   readonly Heartbeat: string = "heartbeat";
   readonly MessageNew: string = "message:new";
   readonly MessageUpdated: string = "message:updated";

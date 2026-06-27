@@ -433,6 +433,7 @@ interface RealtimeRepository {
     suspend fun connect(serverId: ServerId, lastSeq: Long = 0): DataResult<Unit>
     fun disconnect()
     fun joinChannel(channelId: ChannelId)
+    fun leaveChannel(channelId: ChannelId)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
 }
 
