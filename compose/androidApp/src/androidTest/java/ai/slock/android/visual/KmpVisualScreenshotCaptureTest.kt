@@ -209,6 +209,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageShareSelection() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-share.selection",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-share-selection")
+                    .put("visualFixture", "share_selection"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageSharePreview() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-share.preview",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-share-preview")
+                    .put("visualFixture", "share_preview"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowRichContent() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.rich-content",

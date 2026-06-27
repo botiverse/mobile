@@ -1586,6 +1586,56 @@ private fun ThreadMessageVisualScreen() {
         remember(visualFixture) {
             if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT) setOf("artin") else emptySet()
         }
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
+        val messages = payload.toThreadTimelineSlice().messages
+        Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
+            messages.forEach { selectedMessage ->
+                ThreadMessageCard(
+                    message = selectedMessage,
+                    highlightedMentions = highlightedMentions,
+                    shareSelectionActive = true,
+                    selectedForShare = true,
+                    onToggleShareSelection = {},
+                    alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
+                    showReplyAction = payload.showReplyActions,
+                    taskOpenEnabled = payload.showTaskOpenActions,
+                    taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    timestampLabel = payload.formatTimestampLabel(selectedMessage.timestampLabel),
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onToggleSaved = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {},
+                    outerPadding = 0.dp
+                )
+            }
+            Spacer(Modifier.height(SlockSpacing.Sm))
+            ThreadShareSelectionToolbar(
+                selectedCount = messages.size,
+                onCancel = {},
+                onShare = {},
+                onCopyMarkdown = {},
+                onGenerateMessage = {}
+            )
+        }
+        return
+    }
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            ThreadSharePreviewModal(
+                messages = payload.toThreadTimelineSlice().messages,
+                onDismiss = {},
+                onCopyMarkdown = {},
+                onGenerateMessage = {}
+            )
+        }
+        return
+    }
     val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
         remember(baseMessage, menuVariant) {
@@ -1617,6 +1667,7 @@ private fun ThreadMessageVisualScreen() {
                     onCopyLink = {},
                     onCopy = {},
                     onSelectText = {},
+                    onShareMessages = {},
                     onSave = {},
                     onFollowThread = {},
                     onUnfollowThread = {},
@@ -3282,6 +3333,13 @@ internal fun SharedThreadRouteContent(
                         bridge.copyToPasteboard(body)
                         bridge.toast("Copied")
                     }
+                }
+                action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
+                    bridge.copyToPasteboard(itemId)
+                    bridge.toast("Copied")
+                }
+                action == "shareSelectionGenerated" -> {
+                    bridge.toast("Message generated")
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
@@ -5131,6 +5189,8 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 
 internal fun threadVisualFixture(
@@ -5327,6 +5387,71 @@ internal fun threadVisualFixture(
                             assigneeId = "agent-cindy",
                             assigneeName = "Cindy",
                             updatedAtLabel = "06/22 23:30"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION,
+        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Share selected messages fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-share-visual-a",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "06/27 09:20",
+                            messageType = "Chat",
+                            body = "Selected the two discussion points that should become a summarized handoff message."
+                        ),
+                        KuiklyThreadMessageItem(
+                            id = "msg-share-visual-b",
+                            authorId = "visual-user",
+                            authorName = "artin",
+                            authorKind = "human",
+                            avatarLabel = "AR",
+                            timestampLabel = "06/27 09:24",
+                            messageType = "Chat",
+                            body = "Generate a message from these selected items, but keep it editable in the composer before sending."
                         )
                     ),
                 members =
@@ -5666,6 +5791,22 @@ private fun ThreadPageContent(
         }
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
+    val selectedShareMessages =
+        remember(timelineSlice, selectedShareMessageIds) {
+            timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
+        }
+    val selectedShareMarkdown =
+        remember(selectedShareMessages) {
+            selectedShareMessages.threadShareMarkdown()
+        }
+    val clearShareSelection = {
+        selectedShareMessageIds = emptySet()
+        if (activeModal == "sharePreview") {
+            activeModal = null
+        }
+    }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
     val showComposerForSelectedTab =
@@ -5727,6 +5868,9 @@ private fun ThreadPageContent(
         }
     val selectThreadTab: (KuiklyThreadTab) -> Unit = { tab ->
         selectedTab = tab
+        if (tab != KuiklyThreadTab.Chat) {
+            clearShareSelection()
+        }
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
     val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier) -> Unit = { tab, contentModifier ->
@@ -5767,6 +5911,20 @@ private fun ThreadPageContent(
                         onOpenMarkdownTag = openMarkdownTag,
                         onOpenMarkdownUrl = openMarkdownUrl,
                         diagnosticsLogger = diagnosticsLogger,
+                        shareSelectionActive = shareSelectionActive,
+                        selectedShareMessageIds = selectedShareMessageIds,
+                        onEnterShareSelection = { messageId ->
+                            selectedShareMessageIds = setOf(messageId)
+                            activeModal = null
+                        },
+                        onToggleShareSelection = { messageId ->
+                            selectedShareMessageIds =
+                                if (messageId in selectedShareMessageIds) {
+                                    selectedShareMessageIds - messageId
+                                } else {
+                                    selectedShareMessageIds + messageId
+                                }
+                        },
                         onThreadContentReady = {}
                     )
                 KuiklyThreadTab.Tasks ->
@@ -5830,6 +5988,33 @@ private fun ThreadPageContent(
                 ThreadJoinFooter(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
+                )
+            } else if (shareSelectionActive) {
+                ThreadShareSelectionToolbar(
+                    selectedCount = selectedShareMessages.size,
+                    onCancel = clearShareSelection,
+                    onShare = {
+                        if (selectedShareMessages.isNotEmpty()) {
+                            activeModal = "sharePreview"
+                        }
+                    },
+                    onCopyMarkdown = {
+                        if (selectedShareMarkdown.isNotBlank()) {
+                            onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                        }
+                    },
+                    onGenerateMessage = {
+                        if (selectedShareMarkdown.isNotBlank()) {
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.Change(
+                                    seedText = selectedShareMarkdown,
+                                    seedAsTask = false
+                                )
+                            )
+                            clearShareSelection()
+                            onThreadEvent("shareSelectionGenerated", null, null, null)
+                        }
+                    }
                 )
             } else if (payload.hasRenderableContentForComposer(timelineSlice) && showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
@@ -5922,6 +6107,28 @@ private fun ThreadPageContent(
                     onOpenAction = { actionId ->
                         activeModal = null
                         onThreadEvent("settingsAction", actionId, null, null)
+                    }
+                )
+            "sharePreview" ->
+                ThreadSharePreviewModal(
+                    messages = selectedShareMessages,
+                    onDismiss = { activeModal = null },
+                    onCopyMarkdown = {
+                        if (selectedShareMarkdown.isNotBlank()) {
+                            onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                        }
+                    },
+                    onGenerateMessage = {
+                        if (selectedShareMarkdown.isNotBlank()) {
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.Change(
+                                    seedText = selectedShareMarkdown,
+                                    seedAsTask = false
+                                )
+                            )
+                            clearShareSelection()
+                            onThreadEvent("shareSelectionGenerated", null, null, null)
+                        }
                     }
                 )
         }
@@ -6357,6 +6564,10 @@ private fun ThreadChatTab(
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
+    shareSelectionActive: Boolean = false,
+    selectedShareMessageIds: Set<String> = emptySet(),
+    onEnterShareSelection: (String) -> Unit = {},
+    onToggleShareSelection: (String) -> Unit = {},
     onThreadContentReady: () -> Unit = {}
 ) {
     val chatRenderBranch =
@@ -6409,6 +6620,10 @@ private fun ThreadChatTab(
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
+                    shareSelectionActive = shareSelectionActive,
+                    selectedShareMessageIds = selectedShareMessageIds,
+                    onEnterShareSelection = onEnterShareSelection,
+                    onToggleShareSelection = onToggleShareSelection,
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
@@ -6448,6 +6663,10 @@ private fun ThreadChatTab(
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
+                    shareSelectionActive = shareSelectionActive,
+                    selectedShareMessageIds = selectedShareMessageIds,
+                    onEnterShareSelection = onEnterShareSelection,
+                    onToggleShareSelection = onToggleShareSelection,
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
@@ -6481,6 +6700,10 @@ private fun ThreadChatTab(
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                 diagnosticsLogger = diagnosticsLogger,
+                shareSelectionActive = shareSelectionActive,
+                selectedShareMessageIds = selectedShareMessageIds,
+                onEnterShareSelection = onEnterShareSelection,
+                onToggleShareSelection = onToggleShareSelection,
                 onThreadContentReady = onThreadContentReady
             )
     }
@@ -6539,6 +6762,10 @@ private fun ThreadMessagesList(
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
+    shareSelectionActive: Boolean = false,
+    selectedShareMessageIds: Set<String> = emptySet(),
+    onEnterShareSelection: (String) -> Unit = {},
+    onToggleShareSelection: (String) -> Unit = {},
     onThreadContentReady: () -> Unit = {}
 ) {
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
@@ -7059,7 +7286,10 @@ private fun ThreadMessagesList(
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
                         onOpenMarkdownTag = onOpenMarkdownTag,
-                        onOpenMarkdownUrl = onOpenMarkdownUrl
+                        onOpenMarkdownUrl = onOpenMarkdownUrl,
+                        shareSelectionActive = shareSelectionActive,
+                        selectedShareMessageIds = selectedShareMessageIds,
+                        onToggleShareSelection = onToggleShareSelection
                     )
                 }
             }
@@ -7176,6 +7406,9 @@ private fun ThreadMessagesList(
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             focused = activeFocusedMessageId == message.id,
+                            shareSelectionActive = shareSelectionActive,
+                            selectedForShare = message.id in selectedShareMessageIds,
+                            onToggleShareSelection = { onToggleShareSelection(message.id) },
                             isMessageListScrolling = listState.isScrollInProgress,
                             alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = renderPayload.showReplyActions,
@@ -7297,6 +7530,10 @@ private fun ThreadMessagesList(
                         actionMessageId = null
                         onThreadEvent("openSelectMessageText", message.id, null, null)
                     },
+                    onShareMessages = {
+                        actionMessageId = null
+                        onEnterShareSelection(message.id)
+                    },
                     onSave = {
                         actionMessageId = null
                         onThreadEvent("toggleMessageSaved", message.id, null, null)
@@ -7368,6 +7605,23 @@ internal data class ThreadHistoryStatusSpec(
     val leadingIcon: SlockLucideIconName? = null,
     val secondaryLabel: String? = null
 )
+
+private fun ThreadTimelineSlice.threadSelectedShareMessages(
+    selectedIds: Set<String>
+): List<KuiklyThreadMessageItem> {
+    if (selectedIds.isEmpty()) return emptyList()
+    return (listOfNotNull(originMessage) + messages)
+        .filter { message -> message.id in selectedIds && !message.isSystemMessage() }
+        .distinctBy { message -> message.id }
+}
+
+private fun ThreadTimelineSlice.threadSelectedShareMarkdown(selectedIds: Set<String>): String =
+    threadSelectedShareMessages(selectedIds).threadShareMarkdown()
+
+private fun List<KuiklyThreadMessageItem>.threadShareMarkdown(): String =
+    joinToString("\n\n") { message ->
+        "**${message.authorName.ifBlank { "Unknown" }}**: ${message.body.trim()}"
+    }
 
 internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())
@@ -8134,6 +8388,9 @@ private fun ThreadMessageCard(
     isMessageListScrolling: Boolean = false,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     captureLongPressAnchor: Boolean = true,
+    shareSelectionActive: Boolean = false,
+    selectedForShare: Boolean = false,
+    onToggleShareSelection: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -8183,6 +8440,13 @@ private fun ThreadMessageCard(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = horizontalArrangement
             ) {
+                if (shareSelectionActive && !alignOwnMessageRight) {
+                    ThreadMessageSelectionToggle(
+                        checked = selectedForShare,
+                        onClick = onToggleShareSelection,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
                 if (!alignOwnMessageRight) {
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
@@ -8194,8 +8458,12 @@ private fun ThreadMessageCard(
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
-                Box(
-                    modifier =
+                val contentModifier =
+                    if (shareSelectionActive) {
+                        Modifier
+                            .weight(1f)
+                            .clickable(onClick = onToggleShareSelection)
+                    } else {
                         Modifier
                             .weight(1f)
                             .threadMessageLongPressActions(
@@ -8204,6 +8472,9 @@ private fun ThreadMessageCard(
                                 onShowActions = onShowActions,
                                 onPressChanged = { pressed = it }
                             )
+                    }
+                Box(
+                    modifier = contentModifier
                 ) {
                     Column(
                         modifier =
@@ -8374,6 +8645,46 @@ private fun ThreadMessageCard(
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
+                if (shareSelectionActive && alignOwnMessageRight) {
+                    ThreadMessageSelectionToggle(
+                        checked = selectedForShare,
+                        onClick = onToggleShareSelection,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageSelectionToggle(
+    checked: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        pressFeedback = false,
+        modifier =
+            modifier
+                .size(28.dp)
+                .background(Color.Transparent)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(22.dp)
+                    .background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Check,
+                    modifier = Modifier.size(14.dp),
+                    color = "#FF000000"
+                )
             }
         }
     }
@@ -9250,6 +9561,7 @@ private fun threadMessageMenuActions(
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
     onSelectText: () -> Unit,
+    onShareMessages: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
     onUnfollowThread: (String) -> Unit,
@@ -9273,8 +9585,7 @@ private fun threadMessageMenuActions(
                 label = "Share Messages...",
                 icon = SlockLucideIconName.Share2,
                 group = "copy",
-                enabled = false,
-                onClick = {}
+                onClick = onShareMessages
             )
         )
         if (showReplyAction) {
@@ -9355,6 +9666,7 @@ private fun ThreadMessageActionMenu(
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
     onSelectText: () -> Unit,
+    onShareMessages: () -> Unit,
     onSave: () -> Unit,
     onFollowThread: () -> Unit,
     onUnfollowThread: (String) -> Unit,
@@ -9376,6 +9688,7 @@ private fun ThreadMessageActionMenu(
             onCopyLink,
             onCopy,
             onSelectText,
+            onShareMessages,
             onSave,
             onFollowThread,
             onUnfollowThread,
@@ -9394,6 +9707,7 @@ private fun ThreadMessageActionMenu(
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,
                 onSelectText = onSelectText,
+                onShareMessages = onShareMessages,
                 onSave = onSave,
                 onFollowThread = onFollowThread,
                 onUnfollowThread = onUnfollowThread,
@@ -9949,7 +10263,10 @@ private fun ThreadOriginCard(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
+    onOpenMarkdownUrl: (String) -> Unit,
+    shareSelectionActive: Boolean = false,
+    selectedShareMessageIds: Set<String> = emptySet(),
+    onToggleShareSelection: (String) -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -10003,6 +10320,9 @@ private fun ThreadOriginCard(
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
+                            shareSelectionActive = shareSelectionActive,
+                            selectedForShare = origin.id in selectedShareMessageIds,
+                            onToggleShareSelection = { onToggleShareSelection(origin.id) },
                             showReplyAction = false,
                             resolvedTaskAssigneeName =
                                 linkedTaskAssigneeName
@@ -11004,6 +11324,224 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
         )
     }
 }
+
+@Composable
+private fun ThreadShareSelectionToolbar(
+    selectedCount: Int,
+    onCancel: () -> Unit,
+    onShare: () -> Unit,
+    onCopyMarkdown: () -> Unit,
+    onGenerateMessage: () -> Unit
+) {
+    val hasSelection = selectedCount > 0
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(30.dp)
+                            .background(SlockColor.BrandYellow)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = selectedCount.coerceAtMost(99).toString(),
+                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    text = if (selectedCount == 1) "1 message selected" else "$selectedCount messages selected",
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.X,
+                onClick = onCancel,
+                size = 34.dp,
+                shadowOffset = 2.dp
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockBrutalActionButton(
+                label = "Share",
+                leadingIcon = SlockLucideIconName.Share2,
+                onClick = onShare,
+                enabled = hasSelection,
+                modifier = Modifier.weight(1f),
+                minWidth = 0.dp,
+                minHeight = 38.dp,
+                backgroundColor = SlockColor.AccentPink,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
+            )
+            SlockBrutalActionButton(
+                label = "Copy MD",
+                leadingIcon = SlockLucideIconName.Copy,
+                onClick = onCopyMarkdown,
+                enabled = hasSelection,
+                modifier = Modifier.weight(1f),
+                minWidth = 0.dp,
+                minHeight = 38.dp,
+                backgroundColor = SlockColor.SurfaceWhite,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
+            )
+            SlockBrutalActionButton(
+                label = "Generate",
+                leadingIcon = SlockLucideIconName.MessageSquarePlus,
+                onClick = onGenerateMessage,
+                enabled = hasSelection,
+                modifier = Modifier.weight(1f),
+                minWidth = 0.dp,
+                minHeight = 38.dp,
+                backgroundColor = SlockColor.BrandYellow,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadSharePreviewModal(
+    messages: List<KuiklyThreadMessageItem>,
+    onDismiss: () -> Unit,
+    onCopyMarkdown: () -> Unit,
+    onGenerateMessage: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = "SHARE MESSAGES",
+        onDismiss = onDismiss,
+        minWidth = 320.dp,
+        maxWidth = 360.dp,
+        contentPadding = 20.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(16.dp), color = "#FF000000")
+                Text(
+                    text = if (messages.size == 1) "1 selected message" else "${messages.size} selected messages",
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockModalListShell(height = threadSharePreviewListHeight(messages.size).dp) {
+                if (messages.isEmpty()) {
+                    item {
+                        ThreadModalEmptyState(
+                            title = "NO MESSAGES",
+                            detail = "SELECT MESSAGES FROM CHAT FIRST."
+                        )
+                    }
+                } else {
+                    items(messages.size, key = { messages[it].id }) { index ->
+                        ThreadSharePreviewMessageRow(messages[index])
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockModalActionButton(
+                    label = "Cancel",
+                    icon = SlockLucideIconName.X,
+                    onClick = onDismiss
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                SlockModalActionButton(
+                    label = "Copy",
+                    icon = SlockLucideIconName.Copy,
+                    onClick = onCopyMarkdown,
+                    enabled = messages.isNotEmpty()
+                )
+                SlockModalActionButton(
+                    label = "Generate",
+                    icon = SlockLucideIconName.MessageSquarePlus,
+                    color = SlockColor.BrandYellow,
+                    onClick = onGenerateMessage,
+                    enabled = messages.isNotEmpty()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadSharePreviewMessageRow(message: KuiklyThreadMessageItem) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp, vertical = 6.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = message.authorName.ifBlank { "Unknown" },
+                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = message.timestampLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = message.body.trim().ifBlank { "(empty message)" },
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun threadSharePreviewListHeight(messageCount: Int): Int =
+    (messageCount.coerceAtLeast(1).coerceAtMost(4) * 92).coerceAtMost(360)
 
 @Composable
 private fun ThreadMembersModal(

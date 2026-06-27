@@ -616,6 +616,76 @@
       }
     },
     {
+      "id": "components.thread.message-share.selection",
+      "title": "Thread Message Share Selection",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageShareSelection",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "selected-two-messages",
+          "name": "Two Selected Messages",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "viewport-with-portal"
+      },
+      "reactPathHint": "packages/web/src/components/message/SelectModeToolbar.tsx",
+      "androidCaseHint": "compose_thread_message_row_visual visualFixture=share_selection",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Covers KMP selected message rows plus the shared-message action toolbar."
+    },
+    {
+      "id": "components.thread.message-share.preview",
+      "title": "Thread Message Share Preview",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "preview-selected-messages",
+          "name": "Preview Selected Messages",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "viewport-with-portal"
+      },
+      "reactPathHint": "packages/web/src/components/message/SelectShareLightbox.tsx",
+      "androidCaseHint": "compose_thread_message_row_visual visualFixture=share_preview",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Covers the KMP share preview page where selected messages can be copied or generated into the composer."
+    },
+    {
       "id": "components.home.server-switcher.open",
       "title": "Home Server Switcher Open",
       "surface": "home",
@@ -3217,6 +3287,91 @@
           "source": "kmp-shared-ohos",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android menu cases are stable."
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-share.selection",
+      "title": "Thread Message Share Selection",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "notes": "Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "SelectModeToolbar"
+          ],
+          "path": "packages/web/src/components/message/SelectModeToolbar.tsx",
+          "fixture": "React select-mode toolbar with two selected messages"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard",
+            "ThreadMessageSelectionToggle",
+            "ThreadShareSelectionToolbar"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageShareSelection"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadShareSelectionToolbar"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after Android shared fixture lands."
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-share.preview",
+      "title": "Thread Message Share Preview",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "notes": "Android shared/KMP selected-message share preview page with Copy and Generate actions. React source of truth is SelectShareLightbox; KMP preview lists the selected messages before draft generation.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "SelectShareLightbox"
+          ],
+          "path": "packages/web/src/components/message/SelectShareLightbox.tsx",
+          "fixture": "React share preview lightbox after SelectModeToolbar Share"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadSharePreviewModal",
+            "ThreadSharePreviewMessageRow"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadSharePreviewModal"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after Android shared fixture lands."
         }
       ]
     },
