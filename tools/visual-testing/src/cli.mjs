@@ -245,6 +245,26 @@ function overlayComparisonScript() {
         image.onerror = () => reject(new Error("Unable to load overlay image: " + src));
         image.src = src;
       });
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const sliderValue = (panel, selector, fallback) => {
+        const value = Number(panel.querySelector(selector)?.value ?? fallback);
+        return Number.isFinite(value) ? clamp(value / 100, 0, 1) : fallback / 100;
+      };
+      const snapValue = (value, size) => {
+        const snapPoints = [0, -size, -size / 2, size / 2, size];
+        const threshold = Math.max(4, size * 0.02);
+        for (const point of snapPoints) {
+          if (Math.abs(value - point) <= threshold) return point;
+        }
+        return value;
+      };
+      const snappedOffset = (panel, x, y, width, height) => {
+        if (!panel.querySelector("[data-overlay-snap]")?.checked) return { x, y };
+        return {
+          x: snapValue(x, width),
+          y: snapValue(y, height),
+        };
+      };
 
       const drawOverlay = (panel, baselineImage, currentImage) => {
         const canvas = panel.querySelector("canvas[data-overlay-canvas]");
@@ -254,20 +274,77 @@ function overlayComparisonScript() {
         const width = Number(panel.dataset.overlayWidth) || baselineImage.naturalWidth || currentImage.naturalWidth;
         const height = Number(panel.dataset.overlayHeight) || baselineImage.naturalHeight || currentImage.naturalHeight;
         const mode = panel.querySelector("[data-overlay-mode]")?.value || "blend";
-        const opacity = Number(panel.querySelector("[data-overlay-opacity]")?.value || 50) / 100;
+        const baselineOpacity = sliderValue(panel, "[data-overlay-baseline-opacity]", 100);
+        const currentOpacity = sliderValue(panel, "[data-overlay-opacity]", 50);
+        const split = Math.max(0, Math.min(1, Number(panel.dataset.overlaySplit || 0.5)));
+        const offsetX = Number(panel.dataset.overlayOffsetX || 0);
+        const offsetY = Number(panel.dataset.overlayOffsetY || 0);
+        panel.dataset.overlayMode = mode;
         canvas.width = width;
         canvas.height = height;
         context.clearRect(0, 0, width, height);
-        context.globalAlpha = 1;
+        context.globalAlpha = baselineOpacity;
         context.globalCompositeOperation = "source-over";
         context.drawImage(baselineImage, 0, 0, width, height);
         context.save();
-        context.globalAlpha = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0.5;
+        context.globalAlpha = mode === "split" ? 1 : currentOpacity;
         context.globalCompositeOperation = mode === "difference" ? "difference" : "source-over";
-        context.drawImage(currentImage, 0, 0, width, height);
+        if (mode === "split") {
+          context.beginPath();
+          context.rect(0, 0, Math.round(width * split), height);
+          context.clip();
+          context.globalAlpha = 1;
+        }
+        context.drawImage(currentImage, mode === "align" ? offsetX : 0, mode === "align" ? offsetY : 0, width, height);
         context.restore();
+        if (mode === "split") {
+          const x = Math.round(width * split);
+          context.save();
+          context.strokeStyle = "#141111";
+          context.lineWidth = Math.max(2, Math.round(width / 160));
+          context.beginPath();
+          context.moveTo(x, 0);
+          context.lineTo(x, height);
+          context.stroke();
+          context.fillStyle = "#FFD440";
+          context.strokeStyle = "#141111";
+          context.lineWidth = Math.max(1, Math.round(width / 300));
+          context.beginPath();
+          context.arc(x, Math.max(20, Math.round(height * 0.08)), Math.max(8, Math.round(width / 36)), 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+        if (mode === "align") {
+          context.save();
+          context.strokeStyle = "rgba(20, 17, 17, 0.35)";
+          context.lineWidth = Math.max(1, Math.round(width / 300));
+          context.setLineDash([6, 6]);
+          context.beginPath();
+          context.moveTo(width / 2, 0);
+          context.lineTo(width / 2, height);
+          context.moveTo(0, height / 2);
+          context.lineTo(width, height / 2);
+          context.stroke();
+          context.setLineDash([]);
+          context.strokeStyle = "#141111";
+          context.fillStyle = "#FFD440";
+          context.lineWidth = Math.max(2, Math.round(width / 180));
+          context.strokeRect(offsetX, offsetY, width, height);
+          context.beginPath();
+          context.arc(clamp(offsetX + width / 2, 12, width - 12), clamp(offsetY + height * 0.08, 12, height - 12), Math.max(8, Math.round(width / 40)), 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+        const baselineValueLabel = panel.querySelector("[data-overlay-baseline-opacity-value]");
+        if (baselineValueLabel) baselineValueLabel.textContent = Math.round(baselineOpacity * 100) + "%";
         const valueLabel = panel.querySelector("[data-overlay-opacity-value]");
-        if (valueLabel) valueLabel.textContent = Math.round((Number.isFinite(opacity) ? opacity : 0.5) * 100) + "%";
+        if (valueLabel) valueLabel.textContent = Math.round(currentOpacity * 100) + "%";
+        const splitLabel = panel.querySelector("[data-overlay-split-value]");
+        if (splitLabel) splitLabel.textContent = Math.round(split * 100) + "%";
+        const offsetLabel = panel.querySelector("[data-overlay-offset-value]");
+        if (offsetLabel) offsetLabel.textContent = Math.round(offsetX) + "px, " + Math.round(offsetY) + "px";
       };
 
       for (const panel of document.querySelectorAll("[data-overlay-comparison]")) {
@@ -278,8 +355,74 @@ function overlayComparisonScript() {
           loadImage(panel.dataset.currentSrc),
         ]).then(([baselineImage, currentImage]) => {
           const redraw = () => drawOverlay(panel, baselineImage, currentImage);
+          const updateSplitFromPointer = (event) => {
+            const rect = canvas.getBoundingClientRect();
+            if (!rect.width) return;
+            panel.dataset.overlaySplit = String(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)));
+            redraw();
+          };
+          const beginAlignDrag = (event) => {
+            const rect = canvas.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            panel.dataset.overlayDragClientX = String(event.clientX);
+            panel.dataset.overlayDragClientY = String(event.clientY);
+            panel.dataset.overlayDragStartX = String(Number(panel.dataset.overlayOffsetX || 0));
+            panel.dataset.overlayDragStartY = String(Number(panel.dataset.overlayOffsetY || 0));
+            panel.dataset.overlayDragScaleX = String(canvas.width / rect.width);
+            panel.dataset.overlayDragScaleY = String(canvas.height / rect.height);
+          };
+          const updateAlignFromPointer = (event) => {
+            const startClientX = Number(panel.dataset.overlayDragClientX || event.clientX);
+            const startClientY = Number(panel.dataset.overlayDragClientY || event.clientY);
+            const startX = Number(panel.dataset.overlayDragStartX || 0);
+            const startY = Number(panel.dataset.overlayDragStartY || 0);
+            const scaleX = Number(panel.dataset.overlayDragScaleX || 1);
+            const scaleY = Number(panel.dataset.overlayDragScaleY || 1);
+            const next = snappedOffset(
+              panel,
+              startX + (event.clientX - startClientX) * scaleX,
+              startY + (event.clientY - startClientY) * scaleY,
+              canvas.width,
+              canvas.height,
+            );
+            panel.dataset.overlayOffsetX = String(next.x);
+            panel.dataset.overlayOffsetY = String(next.y);
+            redraw();
+          };
           panel.querySelector("[data-overlay-mode]")?.addEventListener("change", redraw);
           panel.querySelector("[data-overlay-opacity]")?.addEventListener("input", redraw);
+          panel.querySelector("[data-overlay-baseline-opacity]")?.addEventListener("input", redraw);
+          panel.querySelector("[data-overlay-snap]")?.addEventListener("change", redraw);
+          panel.querySelector("[data-overlay-reset]")?.addEventListener("click", () => {
+            panel.dataset.overlayOffsetX = "0";
+            panel.dataset.overlayOffsetY = "0";
+            panel.dataset.overlaySplit = "0.5";
+            redraw();
+          });
+          canvas.addEventListener("pointerdown", (event) => {
+            const currentMode = panel.querySelector("[data-overlay-mode]")?.value;
+            if (currentMode !== "split" && currentMode !== "align") return;
+            canvas.setPointerCapture(event.pointerId);
+            if (currentMode === "split") {
+              updateSplitFromPointer(event);
+            } else {
+              beginAlignDrag(event);
+              updateAlignFromPointer(event);
+            }
+          });
+          canvas.addEventListener("pointermove", (event) => {
+            const currentMode = panel.querySelector("[data-overlay-mode]")?.value;
+            if (currentMode !== "split" && currentMode !== "align") return;
+            if (!canvas.hasPointerCapture(event.pointerId)) return;
+            if (currentMode === "split") updateSplitFromPointer(event);
+            else updateAlignFromPointer(event);
+          });
+          canvas.addEventListener("pointerup", (event) => {
+            if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          });
+          canvas.addEventListener("pointercancel", (event) => {
+            if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          });
           redraw();
         }).catch((error) => {
           const status = panel.querySelector("[data-overlay-status]");
@@ -1468,8 +1611,11 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .overlayControls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
     .overlayControls label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
     .overlayControls select, .overlayControls input { accent-color: #FFD440; }
+    .overlayControls button { border: 1px solid #141111; background: #fff; padding: 3px 6px; font-size: 12px; font-weight: 800; box-shadow: 2px 2px 0 #141111; cursor: pointer; }
     .overlayCanvasWrap { overflow: auto; border: 1px solid #cfc7c2; background: #fff; }
-    .overlayCanvasWrap canvas { display: block; width: 100%; height: auto; image-rendering: auto; }
+    .overlayCanvasWrap canvas { display: block; width: 100%; height: auto; image-rendering: auto; touch-action: none; cursor: crosshair; }
+    .overlayComparison[data-overlay-mode='split'] .overlayCanvasWrap canvas { cursor: ew-resize; }
+    .overlayComparison[data-overlay-mode='align'] .overlayCanvasWrap canvas { cursor: move; }
     .rawCaptures { margin-top: 10px; }
     .rawCaptures summary { cursor: pointer; font-weight: 800; }
     .rawGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 8px; }
@@ -1612,12 +1758,24 @@ function overlayComparisonHtml(item, baselineImage, currentImage) {
         <select data-overlay-mode>
           <option value="blend">Blend</option>
           <option value="difference">Difference</option>
+          <option value="split">Split drag</option>
+          <option value="align">Align drag</option>
         </select>
       </label>
+      <label>${xmlEscape(baselineLabel)} opacity
+        <input data-overlay-baseline-opacity type="range" min="0" max="100" value="100" />
+      </label>
+      <code data-overlay-baseline-opacity-value>100%</code>
       <label>${xmlEscape(currentLabel)} opacity
         <input data-overlay-opacity type="range" min="0" max="100" value="50" />
       </label>
       <code data-overlay-opacity-value>50%</code>
+      <label>Snap
+        <input data-overlay-snap type="checkbox" checked />
+      </label>
+      <button type="button" data-overlay-reset>Reset</button>
+      <span class="cropInfo">Split <code data-overlay-split-value>50%</code></span>
+      <span class="cropInfo">Offset <code data-overlay-offset-value>0px, 0px</code></span>
       <span class="cropInfo" data-overlay-status>${width > 0 && height > 0 ? `Canvas ${width}x${height}` : "Canvas auto"}</span>
     </div>
     <div class="overlayCanvasWrap">
