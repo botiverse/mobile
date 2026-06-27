@@ -5603,6 +5603,10 @@ private fun ThreadPageContent(
     val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell(timelineSlice)
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeReplyDraftParentMessageIds =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toReplyComposerDraftParentMessageIds()
+        }
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -5722,7 +5726,7 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         renderConfig = timelineRenderConfig,
                         timelineSlice = timelineSlice,
-                        activeDraftRecords = activeDraftRecords,
+                        activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
@@ -6315,7 +6319,7 @@ private fun ThreadChatTab(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
-    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
+    activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
@@ -6367,7 +6371,7 @@ private fun ThreadChatTab(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
-                    activeDraftRecords = activeDraftRecords,
+                    activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
@@ -6406,7 +6410,7 @@ private fun ThreadChatTab(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
-                    activeDraftRecords = activeDraftRecords,
+                    activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
@@ -6439,7 +6443,7 @@ private fun ThreadChatTab(
                 threadInstanceKey = threadInstanceKey,
                 renderConfig = renderConfig,
                 timelineSlice = timelineSlice,
-                activeDraftRecords = activeDraftRecords,
+                activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                 highlightedMentions = highlightedMentions,
@@ -6497,7 +6501,7 @@ private fun ThreadMessagesList(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
-    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
+    activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
@@ -7146,7 +7150,7 @@ private fun ThreadMessagesList(
                     } else {
                         ThreadMessageCard(
                             message = displayMessage,
-                            hasReplyDraft = activeDraftRecords.hasReplyComposerDraft(message.id),
+                            hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
                             actionCard = actionCard,
                             messageIndex = absoluteMessageIndex,
                             diagnosticsLogger = diagnosticsLogger,
@@ -9063,8 +9067,13 @@ internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): St
         }
     }
 
-internal fun Set<SharedThreadComposerDraftRecord>.hasReplyComposerDraft(parentMessageId: String): Boolean =
-    any { record -> record.matchesReplyThread(parentMessageId) }
+internal fun Set<SharedThreadComposerDraftRecord>.toReplyComposerDraftParentMessageIds(): Set<String> =
+    mapNotNull { record ->
+        record.parentMessageId?.takeIf { !record.isRootComposer && it.isNotBlank() }
+    }.toSet()
+
+internal fun Set<String>.hasReplyComposerDraft(parentMessageId: String): Boolean =
+    parentMessageId in this
 
 internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
     val replyCount = originMessage?.replyCount ?: return null
