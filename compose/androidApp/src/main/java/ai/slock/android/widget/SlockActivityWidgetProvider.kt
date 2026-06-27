@@ -5,20 +5,27 @@ import ai.slock.android.R
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InboxFilter
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealInboxRepository
+import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealSavedRepository
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.avatarWireValueForRenderedAvatar
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.view.View
 import android.widget.RemoteViews
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import java.text.DateFormat
 import java.util.Date
 
@@ -63,12 +71,25 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val ACTION_REFRESH = "ai.slock.android.widget.ACTION_REFRESH_STATUS_WIDGET"
         private const val TAG = "SlockStatusWidget"
+        private const val MAX_HOME_ROWS = 3
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val avatarHttpClient = OkHttpClient()
 
         fun refreshWidget(context: Context, appWidgetId: Int) {
             val appContext = context.applicationContext
             val appWidgetManager = AppWidgetManager.getInstance(appContext)
             val appWidgetIds = intArrayOf(appWidgetId)
+            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
+            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+        }
+
+        fun refreshAllWidgets(context: Context) {
+            val appContext = context.applicationContext
+            val appWidgetManager = AppWidgetManager.getInstance(appContext)
+            val appWidgetIds =
+                appWidgetManager.getAppWidgetIds(
+                    ComponentName(appContext, SlockActivityWidgetProvider::class.java)
+                )
             renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
             refreshWidgets(appContext, appWidgetManager, appWidgetIds)
         }
@@ -141,11 +162,20 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     is DataResult.Empty -> 0
                     else -> previous.savedCount
                 }
+            val memberProfiles =
+                when (val result = runCatching {
+                    RealMemberRepository(sessionStore, networkClient).getMembers(DataRequestPriority.Visible, serverId)
+                }.getOrNull()) {
+                    is DataResult.Content -> result.data.members
+                    else -> emptyList()
+                }
+            val membersById = memberProfiles.associateBy { it.id.value }
             return SlockWidgetState.Content(
                 serverName = home.server.name,
                 unreadCount = home.unreadTotal,
                 activityUnreadCount = maxOf(home.unreadTotal, inboxUnread),
                 savedCount = savedCount,
+                rows = home.toWidgetRows(context, membersById),
                 lastUpdatedAtMillis = System.currentTimeMillis(),
                 staleReason = null
             )
@@ -176,12 +206,75 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.slock_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
             val showStats = state is SlockWidgetState.Content
             views.setViewVisibility(R.id.slock_widget_stats, if (showStats) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.slock_widget_rows, if (showStats) View.VISIBLE else View.GONE)
             if (state is SlockWidgetState.Content) {
-                views.setTextViewText(R.id.slock_widget_unread_value, state.unreadCount.displayCount())
                 views.setTextViewText(R.id.slock_widget_activity_value, state.activityUnreadCount.displayCount())
                 views.setTextViewText(R.id.slock_widget_saved_value, state.savedCount.displayCount())
+                views.setTextViewText(
+                    R.id.slock_widget_detail,
+                    if (state.rows.isEmpty()) "No unread rows" else "Rows with messages"
+                )
+                bindHomeRows(views, state.rows)
             }
             return views
+        }
+
+        private fun bindHomeRows(views: RemoteViews, rows: List<SlockWidgetHomeRow>) {
+            val rowIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1,
+                    R.id.slock_widget_row_2,
+                    R.id.slock_widget_row_3
+                )
+            val avatarTextIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1_avatar,
+                    R.id.slock_widget_row_2_avatar,
+                    R.id.slock_widget_row_3_avatar
+                )
+            val avatarImageIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1_avatar_image,
+                    R.id.slock_widget_row_2_avatar_image,
+                    R.id.slock_widget_row_3_avatar_image
+                )
+            val titleIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1_title,
+                    R.id.slock_widget_row_2_title,
+                    R.id.slock_widget_row_3_title
+                )
+            val detailIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1_detail,
+                    R.id.slock_widget_row_2_detail,
+                    R.id.slock_widget_row_3_detail
+                )
+            val countIds =
+                intArrayOf(
+                    R.id.slock_widget_row_1_count,
+                    R.id.slock_widget_row_2_count,
+                    R.id.slock_widget_row_3_count
+                )
+            rowIds.indices.forEach { index ->
+                val row = rows.getOrNull(index)
+                views.setViewVisibility(rowIds[index], if (row == null) View.GONE else View.VISIBLE)
+                if (row != null) {
+                    views.setTextViewText(titleIds[index], row.title)
+                    views.setTextViewText(detailIds[index], row.detail)
+                    views.setTextViewText(countIds[index], row.unreadCount.displayCount())
+                    val bitmap = row.avatarImagePath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
+                    if (bitmap != null) {
+                        views.setViewVisibility(avatarImageIds[index], View.VISIBLE)
+                        views.setViewVisibility(avatarTextIds[index], View.GONE)
+                        views.setImageViewBitmap(avatarImageIds[index], bitmap)
+                    } else {
+                        views.setViewVisibility(avatarImageIds[index], View.GONE)
+                        views.setViewVisibility(avatarTextIds[index], View.VISIBLE)
+                        views.setTextViewText(avatarTextIds[index], row.avatarLabel.take(2).uppercase())
+                    }
+                }
+            }
         }
 
         private fun launchAppIntent(context: Context): PendingIntent {
@@ -223,6 +316,49 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
 
         private fun Int.displayCount(): String =
             if (this > 99) "99+" else this.coerceAtLeast(0).toString()
+
+        private fun ai.slock.compose.data.HomeSnapshot.toWidgetRows(
+            context: Context,
+            membersById: Map<String, MemberProfile>
+        ): List<SlockWidgetHomeRow> =
+            (channels + directMessages)
+                .filter { it.unreadCount > 0 || it.mentionCount > 0 }
+                .sortedWith(
+                    compareByDescending<ConversationSummary> { it.mentionCount }
+                        .thenByDescending { it.unreadCount }
+                        .thenBy { it.name.lowercase() }
+                )
+                .take(MAX_HOME_ROWS)
+                .map { conversation ->
+                    conversation.toWidgetRow(
+                        context = context,
+                        member = conversation.presenceMemberId?.value?.let(membersById::get)
+                    )
+                }
+
+        private fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): SlockWidgetHomeRow {
+            val title = name.ifBlank { "Conversation" }
+            val detail =
+                lastMessagePreview?.takeIf { it.isNotBlank() }
+                    ?: lastMessageSenderName?.takeIf { it.isNotBlank() }?.let { "Latest from $it" }
+                    ?: subtitle?.takeIf { it.isNotBlank() }
+                    ?: when (kind) {
+                        ConversationKind.DirectMessage -> "Direct message"
+                        ConversationKind.Thread -> "Thread"
+                        else -> "Channel"
+                    }
+            val avatarWireValue = member?.avatarWireValueForRenderedAvatar()
+            val imagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it, avatarHttpClient) }
+            return SlockWidgetHomeRow(
+                title = title,
+                detail = detail,
+                avatarLabel =
+                    member?.avatarLabel?.takeIf { it.isNotBlank() }
+                        ?: if (kind == ConversationKind.DirectMessage) title.take(1).uppercase() else "#",
+                unreadCount = maxOf(unreadCount, mentionCount),
+                avatarImagePath = imagePath
+            )
+        }
 
         private fun SlockWidgetState.updatedLabel(context: Context): String {
             if (refreshing) return "Updating..."

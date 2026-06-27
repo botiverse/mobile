@@ -6,27 +6,26 @@ import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.model.AgentStatus
-import ai.slock.compose.model.MemberKind
-import ai.slock.compose.model.MemberProfile
-import ai.slock.compose.model.Presence
-import ai.slock.compose.model.ServerId
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.view.View
 import android.widget.RemoteViews
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
 
@@ -64,12 +63,25 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val ACTION_REFRESH = "ai.slock.android.widget.ACTION_REFRESH_AGENT_STATUS_WIDGET"
         private const val TAG = "SlockAgentWidget"
+        private const val MAX_AGENT_ROWS = 3
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val avatarHttpClient = OkHttpClient()
 
         fun refreshWidget(context: Context, appWidgetId: Int) {
             val appContext = context.applicationContext
             val appWidgetManager = AppWidgetManager.getInstance(appContext)
             val appWidgetIds = intArrayOf(appWidgetId)
+            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
+            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+        }
+
+        fun refreshAllWidgets(context: Context) {
+            val appContext = context.applicationContext
+            val appWidgetManager = AppWidgetManager.getInstance(appContext)
+            val appWidgetIds =
+                appWidgetManager.getAppWidgetIds(
+                    ComponentName(appContext, SlockAgentStatusWidgetProvider::class.java)
+                )
             renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
             refreshWidgets(appContext, appWidgetManager, appWidgetIds)
         }
@@ -107,62 +119,164 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 selectedServerSlug = selectedServer.slug
             )
             val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
-            val serverId = ServerId(selectedServer.id)
             val networkClient = RealSlockNetworkClientFactory.create(sessionStore)
-            val result =
+            val response =
                 runCatching {
-                    RealMemberRepository(sessionStore, networkClient).getMembers(DataRequestPriority.Visible, serverId)
+                    networkClient.request(DataRequestPriority.Visible, path = "agents")
                 }.getOrElse { throwable ->
                     SlockDiagnosticsLogger.w(TAG, "agent refresh failed: ${throwable.javaClass.simpleName}")
                     return previous.asStale("Could not refresh")
                 }
-            val members = when (result) {
-                is DataResult.Content -> result.data.members
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> return previous.asStale(result.error.code)
-                is DataResult.NoPermission -> return previous.asStale(result.blocker.code)
+            if (!response.isSuccessful) {
+                return previous.asStale("http_${response.code}")
             }
-            val selected = members.filter { it.kind == MemberKind.Agent }.maxByOrNull { it.agentWidgetRank() }
-                ?: return SlockAgentWidgetState(
+            val agents =
+                runCatching { response.bodyText?.toAgentWidgetSummaries().orEmpty() }
+                    .getOrElse { return previous.asStale("agents_contract") }
+            val rows = agents
+                .filter { it.hasSignal }
+                .sortedWith(
+                    compareByDescending<AgentWidgetSummary> { it.sortKey }
+                        .thenBy { it.name.lowercase() }
+                )
+                .take(MAX_AGENT_ROWS)
+                .map { it.toWidgetRow(context) }
+            if (rows.isEmpty()) {
+                return SlockAgentWidgetState(
                     title = "Live Agents",
                     agentName = "No agents yet",
                     avatarLabel = "A",
-                    statusLabel = "Create an agent in Raft",
+                    statusLabel = "No live agent activity",
                     statusTone = SlockAgentWidgetTone.Offline,
                     lastUpdatedAtMillis = System.currentTimeMillis()
                 )
-            return selected.toWidgetState()
+            }
+            return SlockAgentWidgetState(
+                title = "Live Agents",
+                agentName = rows.first().name,
+                avatarLabel = rows.first().avatarLabel,
+                statusLabel = rows.first().detail,
+                statusTone = rows.first().statusTone,
+                rows = rows,
+                lastUpdatedAtMillis = System.currentTimeMillis()
+            )
         }
 
-        private fun MemberProfile.agentWidgetRank(): Int =
-            when (agentStatus) {
+        private data class AgentWidgetSummary(
+            val id: String,
+            val name: String,
+            val detail: String,
+            val status: AgentStatus?,
+            val avatarWireValue: String?,
+            val latestAt: String?,
+            val sourceIndex: Int
+        ) {
+            val hasSignal: Boolean
+                get() = detail.isNotBlank() || status != null
+
+            val sortKey: String
+                get() =
+                    listOf(
+                        latestAt.orEmpty(),
+                        status.rank().toString().padStart(3, '0'),
+                        (Int.MAX_VALUE - sourceIndex).toString().padStart(10, '0')
+                    ).joinToString("|")
+        }
+
+        private fun String.toAgentWidgetSummaries(): List<AgentWidgetSummary> {
+            val array = toAgentWidgetArray() ?: return emptyList()
+            return buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val name =
+                        item.optString("displayName").takeIf { it.isNotBlank() }
+                            ?: item.optString("name").takeIf { it.isNotBlank() }
+                            ?: id
+                    val activityDetail = item.optString("activityDetail").takeIf { it.isNotBlank() }
+                    val activity = item.optString("activity").takeIf { it.isNotBlank() }
+                    val statusValue = item.optString("status").takeIf { it.isNotBlank() }
+                    val status = AgentStatus.fromWireValue(activity ?: statusValue)
+                    val runtime =
+                        item.optString("runtime").takeIf { it.isNotBlank() }
+                            ?: item.optJSONObject("runtimeProfile")
+                                ?.optJSONObject("current")
+                                ?.optString("runtime")
+                                ?.takeIf { it.isNotBlank() }
+                    val detail =
+                        activityDetail
+                            ?: activity?.toAgentStatusLabel()
+                            ?: status?.label
+                            ?: runtime
+                            ?: item.optString("description").takeIf { it.isNotBlank() }
+                            ?: "Online"
+                    val latestAt =
+                        item.optString("updatedAt").takeIf { it.isNotBlank() }
+                            ?: item.optString("activityAt").takeIf { it.isNotBlank() }
+                            ?: item.optString("lastActivityAt").takeIf { it.isNotBlank() }
+                            ?: item.optString("lastSeenAt").takeIf { it.isNotBlank() }
+                            ?: item.optString("createdAt").takeIf { it.isNotBlank() }
+                    add(
+                        AgentWidgetSummary(
+                            id = id,
+                            name = name,
+                            detail = detail,
+                            status = status,
+                            avatarWireValue = item.optString("avatarUrl").takeIf { it.isNotBlank() }
+                                ?: "pixel:robot",
+                            latestAt = latestAt,
+                            sourceIndex = index
+                        )
+                    )
+                }
+            }
+        }
+
+        private fun String.toAgentWidgetArray(): JSONArray? =
+            runCatching { JSONArray(this) }.getOrNull()
+                ?: runCatching {
+                    val root = JSONObject(this)
+                    root.optJSONArray("agents")
+                        ?: root.optJSONArray("items")
+                        ?: root.optJSONArray("results")
+                        ?: root.optJSONArray("data")
+                        ?: root.optJSONObject("data")?.optJSONArray("agents")
+                        ?: root.optJSONObject("data")?.optJSONArray("items")
+                        ?: root.optJSONObject("data")?.optJSONArray("results")
+                }.getOrNull()
+
+        private fun AgentStatus?.rank(): Int =
+            when (this) {
                 AgentStatus.Working -> 50
                 AgentStatus.Thinking -> 45
                 AgentStatus.Online -> 40
                 AgentStatus.Idle -> 30
                 AgentStatus.Error -> 20
                 AgentStatus.Disconnected -> 10
-                AgentStatus.Offline, null -> if (presence == Presence.Active) 35 else 0
+                AgentStatus.Offline, null -> 0
             }
 
-        private fun MemberProfile.toWidgetState(): SlockAgentWidgetState {
-            val status = agentStatus
-            val label = status?.label ?: roleDescription ?: presence.name
+        private fun String.toAgentStatusLabel(): String =
+            split('_', '-', ' ')
+                .filter { it.isNotBlank() }
+                .joinToString(" ") { token -> token.replaceFirstChar { char -> char.uppercase() } }
+                .ifBlank { this }
+
+        private fun AgentWidgetSummary.toWidgetRow(context: Context): SlockAgentWidgetRow {
             val tone =
                 when (status) {
                     AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Online -> SlockAgentWidgetTone.Active
                     AgentStatus.Idle -> SlockAgentWidgetTone.Idle
                     AgentStatus.Error -> SlockAgentWidgetTone.Error
                     AgentStatus.Disconnected, AgentStatus.Offline, null ->
-                        if (presence == Presence.Active) SlockAgentWidgetTone.Active else SlockAgentWidgetTone.Offline
+                        if (status == null && detail.isNotBlank()) SlockAgentWidgetTone.Active else SlockAgentWidgetTone.Offline
                 }
-            return SlockAgentWidgetState(
-                title = "Live Agents",
-                agentName = displayName.ifBlank { handle },
-                avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "A" } },
-                statusLabel = label,
+            return SlockAgentWidgetRow(
+                name = name,
+                detail = detail,
+                avatarLabel = name.take(1).uppercase().ifBlank { "A" },
                 statusTone = tone,
-                lastUpdatedAtMillis = System.currentTimeMillis()
+                avatarImagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it, avatarHttpClient) }
             )
         }
 
@@ -187,12 +301,70 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.slock_agent_widget_refresh, refreshIntent(context, appWidgetId))
             views.setTextViewText(R.id.slock_agent_widget_title, state.title)
             views.setTextViewText(R.id.slock_agent_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
-            views.setTextViewText(R.id.slock_agent_widget_avatar, state.avatarLabel.take(2).uppercase())
-            views.setTextViewText(R.id.slock_agent_widget_name, state.agentName)
-            views.setTextViewText(R.id.slock_agent_widget_status, state.updatedDetail)
             views.setTextViewText(R.id.slock_agent_widget_updated, state.updatedLabel(context))
-            views.setInt(R.id.slock_agent_widget_status_dot, "setBackgroundResource", state.statusTone.drawableRes)
+            bindAgentRows(views, state)
             return views
+        }
+
+        private fun bindAgentRows(views: RemoteViews, state: SlockAgentWidgetState) {
+            val rows = state.rows.ifEmpty {
+                listOf(
+                    SlockAgentWidgetRow(
+                        name = state.agentName,
+                        detail = state.updatedDetail,
+                        avatarLabel = state.avatarLabel,
+                        statusTone = state.statusTone
+                    )
+                )
+            }
+            val rowIds =
+                intArrayOf(
+                    R.id.slock_agent_widget_row_1,
+                    R.id.slock_agent_widget_row_2,
+                    R.id.slock_agent_widget_row_3
+                )
+            val avatarTextIds =
+                intArrayOf(
+                    R.id.slock_agent_widget_row_1_avatar,
+                    R.id.slock_agent_widget_row_2_avatar,
+                    R.id.slock_agent_widget_row_3_avatar
+                )
+            val avatarImageIds =
+                intArrayOf(
+                    R.id.slock_agent_widget_row_1_avatar_image,
+                    R.id.slock_agent_widget_row_2_avatar_image,
+                    R.id.slock_agent_widget_row_3_avatar_image
+                )
+            val dotIds =
+                intArrayOf(
+                    R.id.slock_agent_widget_row_1_status_dot,
+                    R.id.slock_agent_widget_row_2_status_dot,
+                    R.id.slock_agent_widget_row_3_status_dot
+                )
+            val detailIds =
+                intArrayOf(
+                    R.id.slock_agent_widget_row_1_detail,
+                    R.id.slock_agent_widget_row_2_detail,
+                    R.id.slock_agent_widget_row_3_detail
+                )
+            rowIds.indices.forEach { index ->
+                val row = rows.getOrNull(index)
+                views.setViewVisibility(rowIds[index], if (row == null) View.GONE else View.VISIBLE)
+                if (row != null) {
+                    val bitmap = row.avatarImagePath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
+                    if (bitmap != null) {
+                        views.setViewVisibility(avatarImageIds[index], View.VISIBLE)
+                        views.setViewVisibility(avatarTextIds[index], View.GONE)
+                        views.setImageViewBitmap(avatarImageIds[index], bitmap)
+                    } else {
+                        views.setViewVisibility(avatarImageIds[index], View.GONE)
+                        views.setViewVisibility(avatarTextIds[index], View.VISIBLE)
+                        views.setTextViewText(avatarTextIds[index], row.avatarLabel.take(2).uppercase())
+                    }
+                    views.setInt(dotIds[index], "setBackgroundResource", row.statusTone.drawableRes)
+                    views.setTextViewText(detailIds[index], "${row.name} · ${row.detail}")
+                }
+            }
         }
 
         private val SlockAgentWidgetTone.drawableRes: Int

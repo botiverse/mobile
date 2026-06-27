@@ -3,7 +3,16 @@ package ai.slock.android.widget
 import android.content.Context
 import ai.slock.android.core.data.auth.AndroidMMKVKeyValueStore
 import ai.slock.compose.data.SlockKeyValueStore
+import org.json.JSONArray
 import org.json.JSONObject
+
+data class SlockWidgetHomeRow(
+    val title: String,
+    val detail: String,
+    val avatarLabel: String,
+    val unreadCount: Int,
+    val avatarImagePath: String? = null
+)
 
 sealed class SlockWidgetState(
     open val lastUpdatedAtMillis: Long,
@@ -32,6 +41,7 @@ sealed class SlockWidgetState(
         override val unreadCount: Int,
         override val activityUnreadCount: Int,
         override val savedCount: Int,
+        val rows: List<SlockWidgetHomeRow> = emptyList(),
         override val lastUpdatedAtMillis: Long,
         val staleReason: String? = null,
         override val refreshing: Boolean = false
@@ -71,6 +81,7 @@ class SlockWidgetCache(context: Context) {
                         unreadCount = json.optInt("unreadCount", 0),
                         activityUnreadCount = json.optInt("activityUnreadCount", 0),
                         savedCount = json.optInt("savedCount", 0),
+                        rows = json.optJSONArray("rows").toHomeRows(),
                         lastUpdatedAtMillis = json.optLong("lastUpdatedAtMillis", 0L),
                         staleReason = json.optString("staleReason").takeIf { it.isNotBlank() },
                         refreshing = refreshing
@@ -96,6 +107,7 @@ class SlockWidgetCache(context: Context) {
                 json.put("unreadCount", state.unreadCount)
                 json.put("activityUnreadCount", state.activityUnreadCount)
                 json.put("savedCount", state.savedCount)
+                json.put("rows", state.rows.toJsonArray())
                 json.put("lastUpdatedAtMillis", state.lastUpdatedAtMillis)
                 json.put("staleReason", state.staleReason)
             }
@@ -122,5 +134,37 @@ class SlockWidgetCache(context: Context) {
         private const val KEY_STATE = "state"
 
         private fun stateKey(appWidgetId: Int): String = "state:$appWidgetId"
+
+        private fun JSONArray?.toHomeRows(): List<SlockWidgetHomeRow> {
+            if (this == null) return emptyList()
+            return buildList {
+                for (index in 0 until length()) {
+                    val item = optJSONObject(index) ?: continue
+                    add(
+                        SlockWidgetHomeRow(
+                            title = item.optString("title"),
+                            detail = item.optString("detail"),
+                            avatarLabel = item.optString("avatarLabel", "#"),
+                            unreadCount = item.optInt("unreadCount", 0),
+                            avatarImagePath = item.optString("avatarImagePath").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        }
+
+        private fun List<SlockWidgetHomeRow>.toJsonArray(): JSONArray =
+            JSONArray().also { array ->
+                forEach { row ->
+                    array.put(
+                        JSONObject()
+                            .put("title", row.title)
+                            .put("detail", row.detail)
+                            .put("avatarLabel", row.avatarLabel)
+                            .put("unreadCount", row.unreadCount)
+                            .put("avatarImagePath", row.avatarImagePath)
+                    )
+                }
+            }
     }
 }

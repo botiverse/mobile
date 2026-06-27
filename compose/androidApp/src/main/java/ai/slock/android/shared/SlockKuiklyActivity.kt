@@ -66,6 +66,8 @@ import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
+import ai.slock.android.widget.SlockActivityWidgetProvider
+import ai.slock.android.widget.SlockAgentStatusWidgetProvider
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
@@ -182,6 +184,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             context = applicationContext,
             source = "activity_on_resume"
         )
+        SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
+        SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
