@@ -168,6 +168,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowDeletedHuman() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.deleted-human",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-deleted-human")
+                    .put("visualFixture", "deleted_human"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageMenuDefault() {
         captureKmpComponentCase(
             caseId = "components.thread.message-menu.default",

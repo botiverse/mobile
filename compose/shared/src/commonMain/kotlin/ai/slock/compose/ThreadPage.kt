@@ -5253,6 +5253,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 
@@ -5312,6 +5313,63 @@ internal fun threadVisualFixture(
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                filesPayload = "{}",
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Deleted human author fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-deleted-human",
+                            authorId = "visual-human-designer",
+                            authorName = "Designer",
+                            authorHandle = "designer",
+                            authorKind = "user",
+                            avatarLabel = "DE",
+                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue,
+                            senderMembershipStatus = "deleted",
+                            timestampLabel = "06/26 17:15",
+                            messageType = "Chat",
+                            body = "Deleted human author fixture keeps the avatar muted and the sender tag aligned with React.",
+                            threadChannelId = "thread-msg-deleted-human",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "👀", count = 1, selected = false)
+                                )
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "visual-human-designer",
+                            displayName = "Designer",
+                            handle = "designer",
+                            kind = "human",
+                            avatarLabel = "DE",
+                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue
                         )
                     ),
                 showComposer = false,
@@ -8190,6 +8248,7 @@ private fun ThreadMessageCard(
     val avatarWireValue =
         rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
             ?: message.resolvedThreadAvatarWireValue()
+    val authorBadgeLabel = message.threadAuthorBadgeLabel()
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
@@ -8229,6 +8288,7 @@ private fun ThreadMessageCard(
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
+                        muted = authorBadgeLabel != null,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -8282,7 +8342,7 @@ private fun ThreadMessageCard(
                                                 if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId)
                                             }
                                 )
-                                message.threadAuthorBadgeLabel()?.let { label ->
+                                authorBadgeLabel?.let { label ->
                                     ThreadMessageAuthorBadge(label)
                                 }
                                 Text(
@@ -8408,6 +8468,7 @@ private fun ThreadMessageCard(
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
+                        muted = authorBadgeLabel != null,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -8890,7 +8951,7 @@ private fun ThreadMessageAuthorBadge(label: String) {
             Modifier
                 .heightIn(min = 18.dp)
                 .background(SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.TextBlack)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
                 .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -8909,7 +8970,7 @@ private fun ThreadMessageAuthorBadge(label: String) {
 
 internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
     when {
-        isDeletedThreadAgent() -> "DELETED"
+        isDeletedThreadAuthor() -> "DELETED"
         isRemovedThreadHuman() -> "REMOVED"
         else -> null
     }
@@ -8984,12 +9045,8 @@ private fun KuiklyThreadMessageItem.threadMentionHandle(): String? =
         .takeIf { it.isNotBlank() }
         ?.takeIf { threadAuthorBadgeLabel() == null }
 
-private fun KuiklyThreadMessageItem.isDeletedThreadAgent(): Boolean =
-    isThreadAgentAuthor() &&
-        (
-            !authorDeletedAt.isNullOrBlank() ||
-                senderMembershipStatus.equals("deleted", ignoreCase = true)
-        )
+private fun KuiklyThreadMessageItem.isDeletedThreadAuthor(): Boolean =
+    !authorDeletedAt.isNullOrBlank() || senderMembershipStatus.equals("deleted", ignoreCase = true)
 
 private fun KuiklyThreadMessageItem.isRemovedThreadHuman(): Boolean =
     !isThreadAgentAuthor() && senderMembershipStatus.equals("removed", ignoreCase = true)
@@ -10093,6 +10150,7 @@ private fun ThreadMessageAvatar(
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
+    muted: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -10113,19 +10171,30 @@ private fun ThreadMessageAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = status?.color,
+            statusColor = if (muted) null else status?.color,
             avatarSize = 40.dp,
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing
         ) {
-            SlockAvatar(
-                avatarWireValue = avatarSource,
-                label = avatarLabel,
-                avatarSize = 40.dp,
-                borderWidth = SlockStroke.Default
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                SlockAvatar(
+                    avatarWireValue = avatarSource,
+                    label = avatarLabel,
+                    modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
+                    avatarSize = 40.dp,
+                    borderWidth = SlockStroke.Default
+                )
+                if (muted) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .background(SlockColor.EmptyStateGray.copy(alpha = 0.38f))
+                    )
+                }
+            }
         }
     }
 }

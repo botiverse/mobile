@@ -505,6 +505,41 @@
       }
     },
     {
+      "id": "components.thread.message-row.deleted-human",
+      "title": "Thread Message Row Deleted Human",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "fixture": "fixtures/components.thread.message-row.deleted-human.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "deleted-human",
+          "name": "Deleted Human Author",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.message-row.deleted-human']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageItem.tsx",
+      "androidCaseHint": "compose_thread_message_row_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Covers deleted human authors in message rows: muted real avatar treatment and gray-border Deleted badge."
+    },
+    {
       "id": "components.thread.message-menu.default",
       "title": "Thread Message Context Menu / Default Message",
       "surface": "thread",
@@ -3052,6 +3087,47 @@
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
           "reason": "Depends on shared thread fixture route and OHOS capture.",
           "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-row.deleted-human",
+      "title": "Thread Message Row Deleted Human",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "notes": "Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.deleted-human.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowDeletedHuman"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
     },
