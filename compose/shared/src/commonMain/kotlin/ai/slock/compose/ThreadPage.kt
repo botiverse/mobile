@@ -1610,11 +1610,6 @@ private fun KuiklyThreadScreenPayload.realtimeCacheCandidateIds(): Set<String> =
         .filter { it.isNotBlank() }
         .toSet()
 
-internal data class ThreadRouteUiState(
-    val thread: KuiklyThreadScreenPayload,
-    val membersLoadStatus: LoadMembersStatus
-)
-
 private val KuiklyThreadTab.icon: SlockLucideIconName
     get() =
         when (this) {
@@ -2398,8 +2393,12 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
             SharedThreadViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
-    val threadState by threadViewModel.state.collectAsState()
-    val payload = threadState.payload
+    val payload by remember(threadViewModel) {
+        threadViewModel.payloadFlow()
+    }.collectAsState(threadViewModel.currentPayload)
+    val highlightedMentions by remember(threadViewModel) {
+        threadViewModel.highlightedMentionsFlow()
+    }.collectAsState(threadViewModel.currentHighlightedMentions)
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
@@ -2833,7 +2832,7 @@ internal fun SharedThreadRouteContent(
             initialPayload.originParentMessageId
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::MessageId)
-        if (!signal.event.isTaskProjectionEvent()) {
+        if (!signal.event.isTaskProjectionEvent() && signal.event !is MemberPresenceUpdated) {
             threadViewModel.dispatch(
                 SharedThreadIntent.ApplyRealtimeEvent(
                     event = signal.event,
@@ -2969,14 +2968,7 @@ internal fun SharedThreadRouteContent(
         remember(serverMembersStore, currentSession?.currentServerId) {
             slockMemberAvatarResolver(serverMembersStore, currentSession?.currentServerId)
         }
-    val routeUiState =
-        remember(renderedPayload, threadState.membersLoadStatus) {
-            ThreadRouteUiState(
-                thread = renderedPayload,
-                membersLoadStatus = threadState.membersLoadStatus
-            )
-        }
-    val renderedThread = routeUiState.thread
+    val renderedThread = renderedPayload
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -3587,7 +3579,7 @@ internal fun SharedThreadRouteContent(
             },
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
             onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
-            highlightedMentions = threadState.highlightedMentions,
+            highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
             diagnosticsLogger = { bridge.log(it) },

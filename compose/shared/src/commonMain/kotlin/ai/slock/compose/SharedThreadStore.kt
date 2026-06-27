@@ -103,9 +103,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -2057,6 +2060,16 @@ internal class SharedThreadStore(
 ) {
     private val _state = MutableStateFlow(SharedThreadState())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
+    fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
+        state
+            .map { threadState -> threadState.payload }
+            .distinctUntilChanged()
+
+    fun highlightedMentionsFlow(): Flow<Set<String>> =
+        state
+            .map { threadState -> threadState.highlightedMentions }
+            .distinctUntilChanged()
+
     private var loadJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
     private var backgroundMembersHydrationJob: Job? = null
@@ -2606,6 +2619,13 @@ internal class SharedThreadStore(
                         "serverSeq=$realtimeGapServerSeq"
                 )
                 recoverRealtimeGap(realtimeGapServerSeq)
+                return
+            }
+            if (rawMerged === existing) {
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                        "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
+                )
                 return
             }
             val cached =
@@ -3356,6 +3376,14 @@ internal class SharedThreadViewModel(
     private val store: SharedThreadStore by storeDelegate
     val state: StateFlow<SharedThreadState>
         get() = store.state
+    val currentPayload: KuiklyThreadScreenPayload
+        get() = store.state.value.payload
+    val currentHighlightedMentions: Set<String>
+        get() = store.state.value.highlightedMentions
+
+    fun payloadFlow(): Flow<KuiklyThreadScreenPayload> = store.payloadFlow()
+
+    fun highlightedMentionsFlow(): Flow<Set<String>> = store.highlightedMentionsFlow()
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)

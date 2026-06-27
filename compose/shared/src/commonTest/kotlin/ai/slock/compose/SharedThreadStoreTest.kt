@@ -4497,15 +4497,20 @@ class SharedThreadStoreTest {
     @Test
     fun irrelevantRealtimeMessageDoesNotChangeVisibleThread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload()))
+        dataSource.writeCachedPayload(store.state.value.payload)
         val before = store.state.value
+        logs.clear()
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
@@ -4524,6 +4529,35 @@ class SharedThreadStoreTest {
 
         assertTrue(before === store.state.value)
         assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+        assertTrue(logs.any { it.contains("reason=no_projection") })
+        assertFalse(logs.any { it.startsWith("thread_realtime_cache_result") })
+        scope.cancel()
+    }
+
+    @Test
+    fun payloadSelectorDoesNotEmitForMembersLoadStatusOnlyChanges() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val payloadEvents = CopyOnWriteArrayList<KuiklyThreadScreenPayload>()
+        val job = launch(Dispatchers.Unconfined) {
+            store.payloadFlow().collect { payload -> payloadEvents += payload }
+        }
+        assertEquals(listOf("cached body"), payloadEvents.single().messages.map { it.body })
+        payloadEvents.clear()
+
+        store.accept(SharedThreadIntent.LoadMembers)
+
+        assertEquals(LoadMembersStatus.Loaded, store.state.value.membersLoadStatus)
+        assertEquals(emptyList(), payloadEvents.toList())
+        job.cancel()
         scope.cancel()
     }
 
