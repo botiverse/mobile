@@ -173,8 +173,6 @@ data class SlockHomeConversationItem(
     val gravatarUrl: String? = null,
     val peerType: String? = null,
     val presenceMemberId: String? = null,
-    val presence: SlockPresence? = null,
-    val agentStatus: String? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false
@@ -828,8 +826,6 @@ internal fun SlockStructuralHomeShell(
                                             gravatarUrl = pinned.gravatarUrl,
                                             peerType = pinned.peerType,
                                             memberId = pinned.presenceMemberId,
-                                            presence = pinned.presence,
-                                            agentStatus = pinned.agentStatus,
                                             agentStatusResolver = agentStatusResolver,
                                             memberAvatarResolver = memberAvatarResolver,
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -988,8 +984,6 @@ internal fun SlockStructuralHomeShell(
                                     gravatarUrl = dm.gravatarUrl,
                                     peerType = dm.peerType,
                                     memberId = dm.presenceMemberId,
-                                    presence = dm.presence,
-                                    agentStatus = dm.agentStatus,
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1197,25 +1191,6 @@ private enum class SlockHomeSortSection { Channels, DirectMessages, Pinned }
 private val SlockHomeSortMenuItems =
     SlockSidebarSortMode.entries.map { mode ->
         SlockBaseMenuItem(id = mode.wireValue, label = mode.label)
-    }
-
-internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
-    presence ?: SlockPresence.Offline
-
-internal fun homeDmStatusIndicatorState(
-    agentStatus: String?,
-    presence: SlockPresence?
-): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
-        statusValue = agentStatus,
-        fallbackPresence = homeDmStatusPresence(presence).toModelPresence()
-    )
-
-private fun SlockPresence.toModelPresence(): Presence =
-    when (this) {
-        SlockPresence.Online -> Presence.Active
-        SlockPresence.Unknown -> Presence.Away
-        SlockPresence.Offline -> Presence.Offline
     }
 
 internal fun homeActivitySidebarUnreadCount(
@@ -2068,7 +2043,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected

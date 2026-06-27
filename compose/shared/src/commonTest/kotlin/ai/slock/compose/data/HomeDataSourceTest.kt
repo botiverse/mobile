@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class HomeDataSourceTest {
@@ -97,7 +98,6 @@ class HomeDataSourceTest {
                 kind = ConversationKind.DirectMessage,
                 name = "Agent One",
                 directMessagePeerType = "agent",
-                presence = Presence.Offline,
                 presenceMemberId = MemberId("agent-1")
             )
         val humanDm =
@@ -107,7 +107,6 @@ class HomeDataSourceTest {
                 kind = ConversationKind.DirectMessage,
                 name = "Human One",
                 directMessagePeerType = "user",
-                presence = Presence.Offline,
                 presenceMemberId = MemberId("human-1")
             )
         val memberRepository =
@@ -149,28 +148,22 @@ class HomeDataSourceTest {
         val result = source.loadHome()
 
         val dms = (result as DataResult.Content).data.directMessages
-        assertEquals(null, dms[0].agentStatus)
-        assertEquals(Presence.Offline, dms[0].presence)
-        assertEquals(null, dms[1].agentStatus)
-        assertEquals(Presence.Offline, dms[1].presence)
+        assertEquals(MemberId("agent-1"), dms[0].presenceMemberId)
+        assertEquals(MemberId("human-1"), dms[1].presenceMemberId)
         assertEquals(0, memberRepository.getMembersCalls)
 
         val patch = source.refreshAgentDirectMessageStatuses(result.data)
 
-        assertTrue(patch.changed)
-        assertEquals(1, memberRepository.getMembersCalls)
-        assertEquals(listOf(ThreadId("dm-agent-1")), patch.directMessages.map { it.threadId })
-        assertEquals(AgentStatus.Working, patch.snapshot.directMessages[0].agentStatus)
-        assertEquals(Presence.Active, patch.snapshot.directMessages[0].presence)
+        assertFalse(patch.changed)
+        assertEquals(0, memberRepository.getMembersCalls)
+        assertEquals(emptyList(), patch.directMessages)
         val cached = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
-        assertEquals(null, cached[0].agentStatus)
-        assertEquals(Presence.Offline, cached[0].presence)
+        assertEquals(MemberId("agent-1"), cached[0].presenceMemberId)
 
         source.writeHomeSnapshot(patch.snapshot, source = "test_agent_dm_status_refresh")
 
         val cachedAfterWrite = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
-        assertEquals(AgentStatus.Working, cachedAfterWrite[0].agentStatus)
-        assertEquals(Presence.Active, cachedAfterWrite[0].presence)
+        assertEquals(MemberId("agent-1"), cachedAfterWrite[0].presenceMemberId)
     }
 
     @Test

@@ -63,7 +63,6 @@ class ComposeLocalWriteThroughTest {
             name = "Cindy",
             subtitle = "Onboarding Assistant",
             avatar = AvatarReference.Pixel("heart"),
-            presence = Presence.Active,
             presenceMemberId = MemberId("agent-1")
         )
         store.writeHome(home(directMessages = listOf(dm)))
@@ -77,7 +76,6 @@ class ComposeLocalWriteThroughTest {
                                 name = "dm-1",
                                 subtitle = null,
                                 avatar = null,
-                                presence = null,
                                 presenceMemberId = null,
                                 lastMessagePreview = "new"
                             )
@@ -91,7 +89,6 @@ class ComposeLocalWriteThroughTest {
         assertEquals("Cindy", cached?.name)
         assertEquals("Onboarding Assistant", cached?.subtitle)
         assertEquals("pixel:heart", cached?.avatar?.wireValue)
-        assertEquals(Presence.Active, cached?.presence)
         assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
         assertEquals("new", cached?.lastMessagePreview)
     }
@@ -578,7 +575,6 @@ class ComposeLocalWriteThroughTest {
                 channelId = ChannelId("dm-1"),
                 kind = ConversationKind.DirectMessage,
                 name = "Agent",
-                presence = Presence.Offline,
                 presenceMemberId = MemberId("agent-1")
             )
         store.writeHome(home(directMessages = listOf(dm)))
@@ -593,7 +589,7 @@ class ComposeLocalWriteThroughTest {
         )
 
         val cached = store.readHome(serverId)?.directMessages?.single()
-        assertEquals(Presence.Offline, cached?.presence)
+        assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
     }
 
     @Test
@@ -610,7 +606,6 @@ class ComposeLocalWriteThroughTest {
                             channelId = ChannelId("dm-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Agent One",
-                            presence = Presence.Offline,
                             presenceMemberId = MemberId("agent-1")
                         ),
                         ConversationSummary(
@@ -618,7 +613,6 @@ class ComposeLocalWriteThroughTest {
                             channelId = ChannelId("dm-2"),
                             kind = ConversationKind.DirectMessage,
                             name = "Agent Two",
-                            presence = Presence.Offline,
                             presenceMemberId = MemberId("agent-2")
                         )
                     )
@@ -642,8 +636,8 @@ class ComposeLocalWriteThroughTest {
         )
 
         val cached = store.readHome(serverId)?.directMessages.orEmpty()
-        assertEquals(Presence.Offline, cached[0].presence)
-        assertEquals(Presence.Offline, cached[1].presence)
+        assertEquals(MemberId("agent-1"), cached[0].presenceMemberId)
+        assertEquals(MemberId("agent-2"), cached[1].presenceMemberId)
         assertEquals(emptyList(), logs.filter { it.startsWith("write_home_realtime source=presence_batch") })
     }
 

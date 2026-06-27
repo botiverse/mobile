@@ -340,8 +340,6 @@ internal class SqlDelightComposeLocalDataStore(
             lastMessagePreview = lastMessagePreview,
             lastMessageAt = updatedAtLabel,
             lastMessageSenderName = lastMessageSenderName,
-            presence = presence?.let { runCatching { Presence.valueOf(it) }.getOrNull() },
-            agentStatus = agentStatus?.let { runCatching { AgentStatus.valueOf(it) }.getOrNull() },
             presenceMemberId = presenceMemberId?.let(::MemberId),
             hasDraft = hasDraft != 0L,
             hasDraftKnown = true,
@@ -416,10 +414,6 @@ internal class SqlDelightComposeLocalDataStore(
             if (shouldPreserveDmMetadata) incomingAvatarUrl ?: existingDirectMessage.avatarUrl else incomingAvatarUrl
         val storedDescription =
             if (shouldPreserveDmMetadata) channel.subtitle ?: existingDirectMessage.description else channel.subtitle
-        val storedPresence =
-            if (shouldPreserveDmMetadata) channel.presence?.name ?: existingDirectMessage.presence else channel.presence?.name
-        val storedAgentStatus =
-            if (shouldPreserveDmMetadata) channel.agentStatus?.name ?: existingDirectMessage.agentStatus else channel.agentStatus?.name
         val storedPresenceMemberId =
             if (shouldPreserveDmMetadata) incomingPresenceMemberId ?: existingDirectMessage.presenceMemberId else incomingPresenceMemberId
         upsertChannel(
@@ -431,8 +425,6 @@ internal class SqlDelightComposeLocalDataStore(
             parentChannelId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentChannelId?.value else null,
             parentMessageId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentMessageId?.value else null,
             avatarUrl = storedAvatarUrl,
-            presence = storedPresence,
-            agentStatus = storedAgentStatus,
             presenceMemberId = storedPresenceMemberId,
             joined = channel.joined.toLongFlag(),
             archived = channel.archived.toLongFlag(),

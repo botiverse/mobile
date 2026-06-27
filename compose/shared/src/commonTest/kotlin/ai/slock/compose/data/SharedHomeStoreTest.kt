@@ -635,7 +635,6 @@ class SharedHomeStoreTest {
                             channelId = ChannelId("dm-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Agent",
-                            presence = Presence.Active,
                             presenceMemberId = MemberId("agent-1")
                         )
                     )
@@ -712,11 +711,7 @@ class SharedHomeStoreTest {
         )
 
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
-        assertTrue(before !== after)
-        assertTrue(before[0] !== after[0])
-        assertTrue(before[1] === after[1])
-        assertEquals(Presence.Active, after[0].presence)
-        assertEquals(Presence.Active, after[1].presence)
+        assertTrue(before === after)
         scope.cancel()
     }
 
@@ -764,12 +759,9 @@ class SharedHomeStoreTest {
 
         val contentAfter = store.state.value.content as SharedHomeContentState.Content
         val after = contentAfter.snapshot.directMessages
-        assertTrue(before !== after)
-        assertTrue(before[0] !== after[0])
-        assertTrue(before[1] === after[1])
-        assertEquals(Presence.Active, after[0].presence)
-        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages[0].presence)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
+        assertTrue(before === after)
+        assertTrue(contentAfter.snapshot === contentAfter.baseSnapshot)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presenceMemberId)
         assertEquals(emptyList(), logs)
         scope.cancel()
     }
@@ -786,7 +778,6 @@ class SharedHomeStoreTest {
                 kind = ConversationKind.DirectMessage,
                 name = "Agent One",
                 directMessagePeerType = "agent",
-                presence = Presence.Offline,
                 presenceMemberId = MemberId("agent-1")
             )
         localStore.writeHome(
@@ -837,7 +828,7 @@ class SharedHomeStoreTest {
 
         val afterContent = store.state.value.content as SharedHomeContentState.Content
         assertTrue(afterContent === beforeContent)
-        assertEquals(Presence.Offline, afterContent.snapshot.directMessages.single().presence)
+        assertEquals(MemberId("agent-1"), afterContent.snapshot.directMessages.single().presenceMemberId)
         assertEquals(
             listOf(
                 "home_realtime_refresh_lightweight scope=Agents reason=agent:activity",
@@ -890,8 +881,7 @@ class SharedHomeStoreTest {
             )
         )
         val beforeRefresh = store.state.value.content as SharedHomeContentState.Content
-        assertEquals(Presence.Active, beforeRefresh.snapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, beforeRefresh.baseSnapshot.directMessages.single().presence)
+        assertEquals(MemberId("agent-1"), beforeRefresh.snapshot.directMessages.single().presenceMemberId)
 
         localStore.writeHome(
             sampleHome(ServerId("server-1")).copy(
@@ -906,9 +896,9 @@ class SharedHomeStoreTest {
 
         val afterRefresh = store.state.value.content as SharedHomeContentState.Content
         assertEquals("channel-2", afterRefresh.baseSnapshot.channels.single().threadId.value)
-        assertEquals(Presence.Offline, afterRefresh.baseSnapshot.directMessages.single().presence)
-        assertEquals(Presence.Active, afterRefresh.snapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        assertEquals(MemberId("agent-1"), afterRefresh.baseSnapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), afterRefresh.snapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
         scope.cancel()
     }
 
@@ -977,14 +967,9 @@ class SharedHomeStoreTest {
 
         val contentAfter = store.state.value.content as SharedHomeContentState.Content
         val after = contentAfter.snapshot.directMessages
-        assertTrue(before !== after)
-        assertTrue(before[0] !== after[0])
-        assertTrue(before[1] === after[1])
-        assertEquals(Presence.Away, after[0].presence)
-        assertEquals(Presence.Active, after[1].presence)
-        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages[0].presence)
-        assertEquals(Presence.Active, contentAfter.baseSnapshot.directMessages[1].presence)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
+        assertTrue(before === after)
+        assertEquals(MemberId("agent-1"), contentAfter.baseSnapshot.directMessages[0].presenceMemberId)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presenceMemberId)
         scope.cancel()
     }
 
@@ -1041,9 +1026,9 @@ class SharedHomeStoreTest {
         delay(10L)
 
         val contentAfter = store.state.value.content as SharedHomeContentState.Content
-        assertEquals(Presence.Active, contentAfter.snapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        assertEquals(MemberId("agent-1"), contentAfter.snapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), contentAfter.baseSnapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
         scope.cancel()
     }
 
@@ -1142,21 +1127,18 @@ class SharedHomeStoreTest {
 
         val afterState = store.state.value
         assertTrue(afterState.content === beforeContent)
-        assertEquals(true, afterState.homeRealtimeDirty)
-        assertEquals(Presence.Offline, beforeContent.snapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, beforeContent.baseSnapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
-        assertEquals(
-            listOf("home_realtime_dirty serverId=server-1 reason=presence"),
-            logs.filter { it.startsWith("home_realtime_dirty ") }
-        )
+        assertEquals(false, afterState.homeRealtimeDirty)
+        assertEquals(MemberId("agent-1"), beforeContent.snapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), beforeContent.baseSnapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
+        assertEquals(emptyList(), logs.filter { it.startsWith("home_realtime_dirty ") })
 
         store.accept(SharedHomeIntent.SetSurfaceVisible(true))
         val visibleContent = store.state.value.content as SharedHomeContentState.Content
-        assertEquals(Presence.Active, visibleContent.snapshot.directMessages.single().presence)
-        assertEquals(Presence.Offline, visibleContent.baseSnapshot.directMessages.single().presence)
+        assertEquals(MemberId("agent-1"), visibleContent.snapshot.directMessages.single().presenceMemberId)
+        assertEquals(MemberId("agent-1"), visibleContent.baseSnapshot.directMessages.single().presenceMemberId)
         assertEquals(false, store.state.value.homeRealtimeDirty)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
         scope.cancel()
     }
 
@@ -2399,7 +2381,6 @@ class SharedHomeStoreTest {
             channelId = ChannelId(id),
             kind = ConversationKind.DirectMessage,
             name = name,
-            presence = presence,
             presenceMemberId = MemberId(memberId)
         )
 

@@ -2,12 +2,10 @@ package ai.slock.compose.data
 
 import ai.slock.compose.KuiklyThreadSurfaceKind
 import ai.slock.compose.resolveThreadRouteIdentity
-import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
-import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.isGenericDisplayName
@@ -51,8 +49,6 @@ internal data class SharedConversationDirectoryProjection(
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(2).uppercase(),
     val peerMemberId: String? = null,
-    val presence: Presence? = null,
-    val agentStatus: AgentStatus? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val joined: Boolean = true,
@@ -125,8 +121,6 @@ internal class SharedConversationDirectoryStore(
                 parentChannelId = merged.parentChannelId,
                 parentMessageId = merged.parentMessageId,
                 avatarUrl = merged.avatarUrl,
-                presence = merged.presence,
-                agentStatus = merged.agentStatus,
                 presenceMemberId = merged.presenceMemberId,
                 joined = merged.joined,
                 archived = merged.archived,
@@ -260,8 +254,6 @@ internal class SharedConversationDirectoryStore(
             parentChannelId = incomingDraft.parentChannelId ?: existing.parentChannelId,
             parentMessageId = incomingDraft.parentMessageId ?: existing.parentMessageId,
             avatarUrl = incomingDraft.avatarUrl ?: existing.avatarUrl,
-            presence = incomingDraft.presence ?: existing.presence,
-            agentStatus = incomingDraft.agentStatus ?: existing.agentStatus,
             presenceMemberId = incomingDraft.presenceMemberId ?: existing.presenceMemberId,
             joined = if (incoming.joined) existing.joined else incomingDraft.joined,
             archived = if (incoming.archived) incomingDraft.archived else existing.archived,
@@ -298,8 +290,6 @@ private data class ChannelEntityDraft(
     val parentChannelId: String?,
     val parentMessageId: String?,
     val avatarUrl: String?,
-    val presence: String?,
-    val agentStatus: String?,
     val presenceMemberId: String?,
     val joined: Long,
     val archived: Long,
@@ -333,8 +323,6 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         avatarUrl = conversationDirectoryAvatarWireValue(),
-        presence = presence?.name,
-        agentStatus = agentStatus?.name,
         presenceMemberId = presenceMemberId?.value,
         joined = joined.toLongFlag(),
         archived = archived.toLongFlag(),
@@ -408,8 +396,6 @@ private fun ChannelEntity.toProjection(
         avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() },
         avatarLabel = title.take(2).uppercase(),
         peerMemberId = presenceMemberId?.takeIf { it.isNotBlank() },
-        presence = presence?.let { runCatching { Presence.valueOf(it) }.getOrNull() },
-        agentStatus = agentStatus?.let { runCatching { AgentStatus.valueOf(it) }.getOrNull() },
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         joined = joined != 0L,

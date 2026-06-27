@@ -1393,8 +1393,7 @@ class ThreadPayloadTest {
                 title = "Product-UX-Designer",
                 avatarWireValue = "pixel:robot",
                 avatarLabel = "PR",
-                peerMemberId = "agent-1",
-                agentStatus = AgentStatus.Online
+                peerMemberId = "agent-1"
             )
 
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)

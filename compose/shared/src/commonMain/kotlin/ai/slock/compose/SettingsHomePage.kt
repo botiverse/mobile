@@ -12107,7 +12107,6 @@ private data class SearchEntityResult(
     val memberId: String?,
     val conversation: ConversationSummary?,
     val avatarWireValue: String? = null,
-    val presence: SlockPresence? = null,
     val showPresence: Boolean = false
 )
 
@@ -12195,7 +12194,6 @@ private fun homeSearchEntityResults(
                 memberId = conversation.presenceMemberId?.value,
                 conversation = conversation,
                 avatarWireValue = conversation.avatar?.wireValue ?: conversation.avatarUrl,
-                presence = conversation.presence.toSharedPresence(),
                 showPresence = conversation.isAgentDirectMessage()
             )
         }
@@ -12217,7 +12215,6 @@ private fun homeSearchEntityResults(
                 memberId = sender.id,
                 conversation = conversation,
                 avatarWireValue = conversation?.avatar?.wireValue ?: conversation?.avatarUrl ?: sender.avatarWireValue ?: "random:${sender.id}",
-                presence = (conversation?.presence ?: sender.agentStatus?.presence ?: sender.presence).toSharedPresence(),
                 showPresence = sender.kind == MemberKind.Agent
             )
         }
@@ -12228,7 +12225,7 @@ private fun homeSearchEntityResults(
 
 private fun ConversationSummary.isAgentDirectMessage(): Boolean =
     kind == ConversationKind.DirectMessage &&
-        (directMessagePeerType.equals("agent", ignoreCase = true) || agentStatus != null)
+        directMessagePeerType.equals("agent", ignoreCase = true)
 
 private val SearchTimeRange.searchLabel: String
     get() =
@@ -12324,8 +12321,6 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackChannelType: String? = null,
     val fallbackDescription: String? = null,
     val fallbackAvatarWireValue: String? = null,
-    val fallbackPresence: Presence? = null,
-    val fallbackAgentStatus: AgentStatus? = null,
     val fallbackJoined: Boolean = true,
     val fallbackArchived: Boolean = false
 )
@@ -12358,8 +12353,6 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
         fallbackAvatarWireValue = avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl,
-        fallbackPresence = presence,
-        fallbackAgentStatus = agentStatus,
         fallbackJoined = joined && permissions.canRead,
         fallbackArchived = archived
     )
@@ -12382,8 +12375,6 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         gravatarUrl = gravatarUrl,
         peerType = peerType,
         presenceMemberId = directoryProjection?.peerMemberId ?: fallbackPresenceMemberId,
-        presence = (directoryProjection?.presence ?: fallbackPresence).toSharedPresence(),
-        agentStatus = (directoryProjection?.agentStatus ?: fallbackAgentStatus)?.name,
         hasDraft = draftProjection.hasRootDraft(id),
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived
@@ -13898,8 +13889,7 @@ private val homeSearchVisualDirectMessages = listOf(
         lastMessageAt = "09:42",
         lastMessageSenderName = "Product UX Designer",
         avatar = AvatarReference.Random("product-ux-designer"),
-        presence = Presence.Active,
-        agentStatus = AgentStatus.Idle
+        presenceMemberId = MemberId("agent_product")
     )
 )
 

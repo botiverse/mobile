@@ -25,34 +25,6 @@ import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
     @Test
-    fun homeDmStatusFallsBackToOfflineWhenPresenceIsMissing() {
-        assertEquals(SlockPresence.Offline, homeDmStatusPresence(null))
-    }
-
-    @Test
-    fun homeDmStatusKeepsKnownPresence() {
-        assertEquals(SlockPresence.Online, homeDmStatusPresence(SlockPresence.Online))
-        assertEquals(SlockPresence.Unknown, homeDmStatusPresence(SlockPresence.Unknown))
-        assertEquals(SlockPresence.Offline, homeDmStatusPresence(SlockPresence.Offline))
-    }
-
-    @Test
-    fun homeDmStatusIndicatorUsesAgentStatusBeforePresence() {
-        val working = homeDmStatusIndicatorState(AgentStatus.Working.name, SlockPresence.Online)
-        val idle = homeDmStatusIndicatorState(AgentStatus.Idle.name, SlockPresence.Offline)
-        val fallback = homeDmStatusIndicatorState(null, SlockPresence.Unknown)
-
-        assertEquals(AgentStatus.Working, working.status)
-        assertEquals(SlockColor.BrandYellow, working.color)
-        assertTrue(working.pulsing)
-        assertEquals(AgentStatus.Idle, idle.status)
-        assertEquals(SlockColor.AccentLime, idle.color)
-        assertFalse(idle.pulsing)
-        assertEquals(null, fallback.status)
-        assertEquals(SlockColor.BrandYellow, fallback.color)
-    }
-
-    @Test
     fun homeActivitySidebarUnreadCountUsesActivityUnreadOnly() {
         assertEquals(
             14,
@@ -234,7 +206,6 @@ class SlockHomeComponentsTest {
                 fallbackChannelType = "channel",
                 fallbackDescription = "stale-subtitle",
                 fallbackAvatarWireValue = "https://example.invalid/stale.png",
-                fallbackPresence = Presence.Offline,
                 fallbackJoined = false,
                 fallbackArchived = false
             )
@@ -248,7 +219,6 @@ class SlockHomeComponentsTest {
                 title = "fresh-name",
                 subtitle = "fresh-subtitle",
                 avatarWireValue = "pixel:fresh",
-                presence = Presence.Active,
                 joined = true,
                 archived = true
             )
@@ -271,7 +241,6 @@ class SlockHomeComponentsTest {
         assertEquals(7, item.unreadCount)
         assertEquals("fresh-subtitle", item.description)
         assertEquals("pixel:fresh", item.avatarWireValue)
-        assertEquals(SlockPresence.Online, item.presence)
         assertTrue(item.hasDraft)
         assertTrue(item.joined)
         assertTrue(item.archived)
@@ -548,8 +517,7 @@ class SlockHomeComponentsTest {
                             name = "Display title must stay out",
                             kind = "thread",
                             avatarWireValue = "pixel:tree",
-                            gravatarUrl = "https://www.gravatar.com/avatar/thread",
-                            agentStatus = AgentStatus.Working.name
+                            gravatarUrl = "https://www.gravatar.com/avatar/thread"
                         )
                     )
             )
@@ -578,8 +546,7 @@ class SlockHomeComponentsTest {
                             name = "Product-UX-Designer",
                             kind = "dm",
                             avatarWireValue = "pixel:tree",
-                            gravatarUrl = "https://www.gravatar.com/avatar/agent",
-                            agentStatus = AgentStatus.Working.name
+                            gravatarUrl = "https://www.gravatar.com/avatar/agent"
                         )
                     )
             )

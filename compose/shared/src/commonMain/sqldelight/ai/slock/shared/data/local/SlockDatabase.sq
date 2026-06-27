@@ -9,8 +9,6 @@ CREATE TABLE channelEntity (
   parentChannelId TEXT,
   parentMessageId TEXT,
   avatarUrl TEXT,
-  presence TEXT,
-  agentStatus TEXT,
   presenceMemberId TEXT,
   joined INTEGER NOT NULL DEFAULT 1,
   archived INTEGER NOT NULL DEFAULT 0,
@@ -327,8 +325,6 @@ INSERT OR REPLACE INTO channelEntity(
   parentChannelId,
   parentMessageId,
   avatarUrl,
-  presence,
-  agentStatus,
   presenceMemberId,
   joined,
   archived,
@@ -350,7 +346,7 @@ INSERT OR REPLACE INTO channelEntity(
   capabilities,
   updatedAtLabel,
   lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertConversationAlias:
 INSERT OR REPLACE INTO conversationAliasEntity(

@@ -76,8 +76,6 @@ data class ConversationSummary(
     val originMessageSenderId: String? = null,
     val originMessageSenderKind: MemberKind? = null,
     val originMessageExpected: Boolean = false,
-    val presence: Presence? = null,
-    val agentStatus: AgentStatus? = null,
     val presenceMemberId: MemberId? = null,
     val hasDraft: Boolean = false,
     val hasDraftKnown: Boolean = false,

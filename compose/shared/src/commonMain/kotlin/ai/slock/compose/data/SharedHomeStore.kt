@@ -5,8 +5,6 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
-import ai.slock.compose.model.MemberId
-import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
@@ -18,7 +16,6 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,15 +81,11 @@ class SharedHomeStore(
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
-    private var presenceFlushJob: Job? = null
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
     // base snapshot and clobber any server-side pinned list.
     private val sidebarOrderMutex = Mutex()
     private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
-    private var pendingPresenceServerId: ServerId? = null
-    private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
-    private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
@@ -124,11 +117,6 @@ class SharedHomeStore(
         refreshJob = null
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
-        presenceFlushJob?.cancel()
-        presenceFlushJob = null
-        pendingPresenceEvents.clear()
-        pendingPresenceServerId = null
-        presenceFactsByServer.clear()
         sidebarOrderByServer.clear()
         hiddenHomeSnapshotDirty = false
     }
@@ -278,10 +266,7 @@ class SharedHomeStore(
             applyRealtimeRefresh(event)
             return
         }
-        if (event is MemberPresenceUpdated) {
-            enqueuePresenceEvent(serverId, event)
-            return
-        }
+        if (event is MemberPresenceUpdated) return
         val result = dataSource.applyRealtimeEvent(
             serverId = serverId,
             event = event,
@@ -336,13 +321,7 @@ class SharedHomeStore(
                     markHomeRealtimeDirty(serverId, "refresh:${event.scope}")
                 }
             }
-            is MemberPresenceUpdated -> {
-                if (recordPresenceFacts(serverId, listOf(event)) > 0 &&
-                    event.affectsHomePresenceProjection()
-                ) {
-                    markHomeRealtimeDirty(serverId, "presence")
-                }
-            }
+            is MemberPresenceUpdated -> Unit
             else -> {
                 dataSource.applyRealtimeEvent(
                     serverId = serverId,
@@ -383,8 +362,7 @@ class SharedHomeStore(
             }
             val nextContent =
                 currentContent?.let { content ->
-                    val projection = projectPresence(content.baseSnapshot)
-                    content.copy(snapshot = projection.snapshot.preserveStableRowsFrom(content.snapshot))
+                    content.copy(snapshot = content.baseSnapshot.preserveStableRowsFrom(content.snapshot))
                 } ?: current.content
             reduceState(
                 current.copy(
@@ -402,9 +380,6 @@ class SharedHomeStore(
         diagnosticsLogger("home_realtime_dirty serverId=${serverId.value} reason=$reason")
         reduceState(current.copy(homeRealtimeDirty = true))
     }
-
-    private fun MemberPresenceUpdated.affectsHomePresenceProjection(): Boolean =
-        !dataSource.projectsAgentStatusFromMemberStore || kind != MemberKind.Agent
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
         when (event.scope) {
@@ -771,114 +746,10 @@ class SharedHomeStore(
                     )
                     return@launch
                 }
-                val nextSnapshot =
-                    currentContent.baseSnapshot.withAgentDirectMessageStatusesFrom(patch.directMessages)
-                if (nextSnapshot == currentContent.baseSnapshot) return@launch
-                dataSource.writeHomeSnapshot(
-                    snapshot = nextSnapshot,
-                    source = "shared_home_agent_dm_status_refresh"
-                )
-                val nextContent =
-                    contentFromDurableSnapshot(
-                        snapshot = nextSnapshot,
-                        session = currentContent.session,
-                        contentRefreshing = currentContent.contentRefreshing,
-                        previousContent = currentContent
-                    )
-                val emitted =
-                    reduceState(
-                        _state.value.copy(content = nextContent)
-                    )
                 diagnosticsLogger(
-                    "home_agent_status_refresh_result serverId=${patch.snapshot.server.id.value} emitted=$emitted"
+                    "home_agent_status_refresh_result serverId=${patch.snapshot.server.id.value} ignored=true reason=member_store_ssot"
                 )
             }
-    }
-
-    private fun enqueuePresenceEvent(serverId: ServerId, event: MemberPresenceUpdated) {
-        val pendingServerId = pendingPresenceServerId
-        if (pendingServerId != null && pendingServerId != serverId) {
-            presenceFlushJob?.cancel()
-            presenceFlushJob = null
-            pendingPresenceEvents.clear()
-        }
-        pendingPresenceServerId = serverId
-        val previous = pendingPresenceEvents[event.memberId]
-        if (event.shouldReplacePresenceFact(previous)) {
-            pendingPresenceEvents[event.memberId] = event
-        }
-        if (presenceFlushJob?.isActive == true) return
-        presenceFlushJob =
-            scope.launch {
-                if (presenceFlushDelayMillis > 0) {
-                    delay(presenceFlushDelayMillis)
-                }
-                flushPresenceEvents()
-            }
-    }
-
-    private fun flushPresenceEvents() {
-        val serverId = pendingPresenceServerId ?: return
-        val events = pendingPresenceEvents.values.toList()
-        pendingPresenceEvents.clear()
-        pendingPresenceServerId = null
-        presenceFlushJob = null
-        if (events.isEmpty()) return
-        val changedFacts = recordPresenceFacts(serverId, events)
-        if (changedFacts == 0) return
-        if (!homeSurfaceVisible) {
-            if (events.any { it.affectsHomePresenceProjection() }) {
-                markHomeRealtimeDirty(serverId, "presence")
-            }
-            return
-        }
-        val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
-        val visibleServerId = currentContent.baseSnapshot.server.id
-        val selectedServerId = _state.value.serverSwitchState.selectedServerId
-        if (visibleServerId != serverId) return
-        if (selectedServerId != null && selectedServerId != serverId.value) return
-        val projection = projectPresence(currentContent.baseSnapshot)
-        if (projection.changedCount == 0) return
-        val nextContent =
-            currentContent.copy(
-                snapshot = projection.snapshot.preserveStableRowsFrom(currentContent.snapshot)
-            )
-        if (nextContent == currentContent) return
-        diagnosticsLogger(
-            "home_presence_realtime_project serverId=${serverId.value} members=${events.distinctBy { it.memberId }.size} changed=${projection.changedCount}"
-        )
-        reduceState(
-            _state.value.copy(
-                content = nextContent
-            )
-        )
-    }
-
-    private fun recordPresenceFacts(
-        serverId: ServerId,
-        events: List<MemberPresenceUpdated>
-    ): Int {
-        if (events.isEmpty()) return 0
-        val serverFacts = presenceFactsByServer.getOrPut(serverId) { linkedMapOf() }
-        var changedCount = 0
-        events.forEach { event ->
-            val previous = serverFacts[event.memberId]
-            if (event.shouldReplacePresenceFact(previous)) {
-                serverFacts[event.memberId] = event
-                changedCount += 1
-            }
-        }
-        return changedCount
-    }
-
-    private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean {
-        previous ?: return true
-        val nextSeq = serverSeq
-        val previousSeq = previous.serverSeq
-        if (nextSeq != null && previousSeq != null && nextSeq <= previousSeq) {
-            return false
-        }
-        return this != previous
     }
 
     private fun contentFromDurableSnapshot(
@@ -896,28 +767,11 @@ class SharedHomeStore(
                 snapshot
             }
         val baseSnapshot = snapshotWithSidebarOrder.preserveStableRowsFrom(previousContent?.baseSnapshot)
-        val projection = projectPresence(baseSnapshot)
         return SharedHomeContentState.Content(
-            snapshot = projection.snapshot.preserveStableRowsFrom(previousContent?.snapshot),
+            snapshot = baseSnapshot.preserveStableRowsFrom(previousContent?.snapshot),
             session = session,
             contentRefreshing = contentRefreshing,
             baseSnapshot = baseSnapshot
-        )
-    }
-
-    private fun projectPresence(snapshot: HomeSnapshot): PresenceProjection {
-        val facts = presenceFactsByServer[snapshot.server.id]?.values.orEmpty()
-        val patch =
-            snapshot.directMessages.withPresenceEvents(
-                events = facts,
-                projectAgentDirectMessagePresence = !dataSource.projectsAgentStatusFromMemberStore
-            )
-        if (patch.changedCount == 0) {
-            return PresenceProjection(snapshot, changedCount = 0)
-        }
-        return PresenceProjection(
-            snapshot = snapshot.copy(directMessages = patch.directMessages),
-            changedCount = patch.changedCount
         )
     }
 
@@ -1241,29 +1095,6 @@ private val ConversationSummary.isAgentDirectMessage: Boolean
     get() =
         kind == ConversationKind.DirectMessage &&
             directMessagePeerType.equals("agent", ignoreCase = true)
-
-private fun HomeSnapshot.withAgentDirectMessageStatusesFrom(patches: List<ConversationSummary>): HomeSnapshot {
-    val patchByThreadId =
-        patches
-            .asSequence()
-            .filter { it.isAgentDirectMessage }
-            .associateBy { it.threadId }
-    if (patchByThreadId.isEmpty()) return this
-    var changed = false
-    val nextDirectMessages =
-        directMessages.map { conversation ->
-            if (!conversation.isAgentDirectMessage) return@map conversation
-            val statusPatch = patchByThreadId[conversation.threadId] ?: return@map conversation
-            val next =
-                conversation.copy(
-                    presence = statusPatch.presence,
-                    agentStatus = statusPatch.agentStatus ?: conversation.agentStatus
-                )
-            if (next != conversation) changed = true
-            next
-        }
-    return if (changed) copy(directMessages = nextDirectMessages) else this
-}
 
 class SharedHomeViewModel(
     authStore: SlockAuthSessionStore,
@@ -1621,64 +1452,6 @@ private fun SharedHomeContentState.refreshFailureMapping(): String =
         is SharedHomeContentState.Content -> "keep_cached_content"
         else -> "home_error_panel"
     }
-
-private data class PresencePatch(
-    val directMessages: List<ConversationSummary>,
-    val changedCount: Int
-)
-
-private data class PresenceProjection(
-    val snapshot: HomeSnapshot,
-    val changedCount: Int
-)
-
-private fun List<ConversationSummary>.withPresenceEvents(
-    events: Collection<MemberPresenceUpdated>,
-    projectAgentDirectMessagePresence: Boolean
-): PresencePatch {
-    if (isEmpty() || events.isEmpty()) {
-        return PresencePatch(this, changedCount = 0)
-    }
-    val latestEvents = events.associateBy { event -> event.memberId }.values
-    var changedCount = 0
-    val updated =
-        map { conversation ->
-            val event = latestEvents.firstOrNull { presenceEvent ->
-                conversation.matchesPresenceMember(
-                    event = presenceEvent,
-                    projectAgentDirectMessagePresence = projectAgentDirectMessagePresence
-                )
-            } ?: return@map conversation
-            val next =
-                conversation.copy(
-                    presence = event.presence,
-                    agentStatus = event.agentStatus ?: conversation.agentStatus,
-                    presenceMemberId = conversation.presenceMemberId ?: event.memberId
-                )
-            if (next == conversation) {
-                conversation
-            } else {
-                changedCount += 1
-                next
-            }
-        }
-    return if (changedCount == 0) {
-        PresencePatch(this, changedCount = 0)
-    } else {
-        PresencePatch(updated, changedCount)
-    }
-}
-
-private fun ConversationSummary.matchesPresenceMember(
-    event: MemberPresenceUpdated,
-    projectAgentDirectMessagePresence: Boolean
-): Boolean =
-    kind == ConversationKind.DirectMessage &&
-        (projectAgentDirectMessagePresence || !isAgentDirectMessage || event.kind != MemberKind.Agent) &&
-        (event.kind == null || event.kind == MemberKind.Agent || event.kind == MemberKind.Human) &&
-        (presenceMemberId == event.memberId ||
-            channelId?.value == event.memberId.value ||
-            threadId.value == event.memberId.value)
 
 private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
     when (this) {

@@ -112,8 +112,6 @@ internal fun SharedConversationDirectoryProjection?.headerProjectionDiagnostics(
             append(" avatar=").append(projection.avatarWireValue.headerAvatarDiagnosticValue())
             append(" avatarLabel=").append(projection.avatarLabel.headerDiagnosticValue())
             append(" peerMemberId=").append(projection.peerMemberId.headerDiagnosticValue())
-            append(" presence=").append(projection.presence?.name ?: "null")
-            append(" agentStatus=").append(projection.agentStatus?.name ?: "null")
             append(" parentChannelId=").append(projection.parentChannelId.headerDiagnosticValue())
             append(" parentMessageId=").append(projection.parentMessageId.headerDiagnosticValue())
             append(" joined=").append(projection.joined)
