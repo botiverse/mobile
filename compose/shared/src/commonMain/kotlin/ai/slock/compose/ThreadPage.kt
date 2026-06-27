@@ -11661,13 +11661,14 @@ private fun ThreadShareSelectionToolbar(
     onCopyMarkdown: () -> Unit
 ) {
     val hasSelection = selectedCount > 0
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
@@ -11680,21 +11681,6 @@ private fun ThreadShareSelectionToolbar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(30.dp)
-                            .background(SlockColor.BrandYellow)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = selectedCount.coerceAtMost(99).toString(),
-                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
                 Text(
                     text = if (selectedCount == 1) "1 message selected" else "$selectedCount messages selected",
                     style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
