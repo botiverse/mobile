@@ -98,7 +98,7 @@ if [[ "${PUBLISH}" != "true" ]]; then
   exit 0
 fi
 
-read -r -a modules <<< "${SLOCK_KTOR_OHOS_MODULES:-:ktor-io :ktor-utils :ktor-http :ktor-http-cio :ktor-events :ktor-sse :ktor-websockets :ktor-websocket-serialization :ktor-serialization :ktor-serialization-kotlinx :ktor-serialization-kotlinx-json :ktor-client-core :ktor-client-content-negotiation :ktor-client-cio :ktor-client-json :ktor-client-logging}"
+read -r -a modules <<< "${SLOCK_KTOR_OHOS_MODULES:-:ktor-io :ktor-utils :ktor-http :ktor-http-cio :ktor-events :ktor-sse :ktor-websockets :ktor-websocket-serialization :ktor-network :ktor-network-tls :ktor-serialization :ktor-serialization-kotlinx :ktor-serialization-kotlinx-json :ktor-client-core :ktor-client-content-negotiation :ktor-client-cio :ktor-client-json :ktor-client-logging}"
 tasks=()
 for module in "${modules[@]}"; do
   tasks+=("${module}:publishKotlinMultiplatformPublicationToMavenLocal")
