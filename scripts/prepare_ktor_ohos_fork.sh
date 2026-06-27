@@ -59,8 +59,9 @@ python3 - <<PY
 from pathlib import Path
 
 version = "${VERSION_NAME}"
-path = Path("gradle.properties")
-lines = path.read_text().splitlines()
+
+properties = Path("gradle.properties")
+lines = properties.read_text().splitlines()
 updated = []
 found = False
 for line in lines:
@@ -71,7 +72,11 @@ for line in lines:
         updated.append(line)
 if not found:
     updated.append(f"version={version}")
-path.write_text("\\n".join(updated) + "\\n")
+properties.write_text("\\n".join(updated) + "\\n")
+
+version_file = Path("VERSION")
+if version_file.exists():
+    version_file.write_text(version + "\\n")
 PY
 
 if [[ -d "${PATCH_DIR}" ]]; then
@@ -100,4 +105,4 @@ for module in "${modules[@]}"; do
   tasks+=("${module}:publishOhosArm64PublicationToMavenLocal")
 done
 
-./gradlew --no-daemon --console=plain "${tasks[@]}"
+./gradlew --no-daemon --no-configuration-cache --console=plain -PreleaseVersion="${VERSION_NAME}" "${tasks[@]}"
