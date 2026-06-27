@@ -9480,6 +9480,18 @@ private fun SharedHomeScreen(
                 remember(serverMembersStore, snapshot.server.id.value) {
                     slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
                 }
+            val memberAvatarResolver =
+                remember(serverMembersStore, snapshot.server.id.value) {
+                    slockMemberAvatarResolver(serverMembersStore, snapshot.server.id.value) { message ->
+                        bridge.log("shared_home_member_avatar_resolver $message")
+                    }
+                }
+            LaunchedEffect(serverMembersStore, snapshot.server.id) {
+                bridge.log(
+                    "shared_home_avatar_chain serverId=${snapshot.server.id.value} " +
+                        "memberStore=${serverMembersStore != null} resolver=member_ssot"
+                )
+            }
             LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing) {
                 if (!current.contentRefreshing) {
                     serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
@@ -9669,6 +9681,10 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.ArchiveChannel(conversationId))
                 },
                 agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                avatarDiagnosticsLogger = { message ->
+                    bridge.log("shared_home_dm_avatar_row $message")
+                },
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )

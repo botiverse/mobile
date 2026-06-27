@@ -317,7 +317,9 @@ private fun SlockHomePageContent() {
         }
     val memberAvatarResolver =
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
-            slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
+            slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId) { message ->
+                bridge.log("home_member_avatar_resolver $message")
+            }
         }
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -380,7 +382,10 @@ private fun SlockHomePageContent() {
             bridge.settingsEvent(payload.instanceId, "archiveChannel", conversationId)
         },
         agentStatusResolver = agentStatusResolver,
-        memberAvatarResolver = memberAvatarResolver
+        memberAvatarResolver = memberAvatarResolver,
+        avatarDiagnosticsLogger = { message ->
+            bridge.log("home_dm_avatar_row $message")
+        }
     )
 }
 
@@ -587,6 +592,7 @@ internal fun SlockStructuralHomeShell(
     onArchiveChannel: (String) -> Unit = {},
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    avatarDiagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
@@ -823,6 +829,7 @@ internal fun SlockStructuralHomeShell(
                                             memberId = pinned.presenceMemberId,
                                             agentStatusResolver = agentStatusResolver,
                                             memberAvatarResolver = memberAvatarResolver,
+                                            avatarDiagnosticsLogger = avatarDiagnosticsLogger,
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
@@ -979,6 +986,7 @@ internal fun SlockStructuralHomeShell(
                                     memberId = dm.presenceMemberId,
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
+                                    avatarDiagnosticsLogger = avatarDiagnosticsLogger,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -2036,7 +2044,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, avatarDiagnosticsLogger: (String) -> Unit = {}, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -2045,6 +2053,14 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, memberId)
+    LaunchedEffect(memberId, avatarWireValue) {
+        avatarDiagnosticsLogger(
+            "source=member_ssot memberId=${memberId.slockAvatarDiagnosticsId()} " +
+                "peerType=${peerType?.take(32) ?: "none"} " +
+                "avatarSource=${avatarWireValue.slockAvatarDiagnosticsSource()} " +
+                "fallback=${avatarWireValue.isNullOrBlank()}"
+        )
+    }
     val effectiveInteractionState = when {
         selected -> ChannelRowInteractionState.Selected
         pressed -> ChannelRowInteractionState.Pressed

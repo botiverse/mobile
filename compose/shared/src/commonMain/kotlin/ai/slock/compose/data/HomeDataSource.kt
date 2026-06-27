@@ -1,10 +1,12 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.slockAvatarDiagnosticsSource
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
@@ -114,9 +116,16 @@ class SharedHomeDataSource(
             }
         val result = parseHome(payload, session)
         if (result is DataResult.Content) {
+            val directMessagePeerProfiles = payload.directMessagePeerProfiles(result.data.server.id)
+            diagnosticsLogger(
+                directMessagePeerProfiles.homeDirectMessageAvatarSeedDiagnostics(
+                    serverId = result.data.server.id,
+                    storeAvailable = serverMembersStore != null
+                )
+            )
             serverMembersStore?.seedProfiles(
                 serverId = result.data.server.id,
-                profiles = payload.directMessagePeerProfiles(result.data.server.id),
+                profiles = directMessagePeerProfiles,
                 server = result.data.server
             )
         }
@@ -522,6 +531,26 @@ private fun DataResult<*>.homeDiagnosticsSummary(): String =
         is DataResult.Error -> "result=error code=${error.code}"
         is DataResult.NoPermission -> "result=no_permission code=${blocker.code}"
     }
+
+private fun List<MemberProfile>.homeDirectMessageAvatarSeedDiagnostics(
+    serverId: ServerId,
+    storeAvailable: Boolean
+): String {
+    val withAvatar = count { profile ->
+        !profile.avatar?.wireValue.isNullOrBlank() || !profile.avatarUrl.isNullOrBlank()
+    }
+    val withGravatar = count { !it.gravatarHash.isNullOrBlank() }
+    val sample =
+        take(6)
+            .joinToString(separator = ";") { profile ->
+                val avatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
+                "member=${profile.id.value.take(64)}:" +
+                    "avatar=${avatarWireValue.slockAvatarDiagnosticsSource()}:" +
+                    "gravatar=${profile.gravatarHash.slockAvatarDiagnosticsSource()}"
+            }
+    return "home_dm_avatar_seed serverId=${serverId.value} store=$storeAvailable " +
+        "peers=$size withAvatar=$withAvatar withGravatar=$withGravatar sample=$sample"
+}
 
 private fun Throwable.safeHomeDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
