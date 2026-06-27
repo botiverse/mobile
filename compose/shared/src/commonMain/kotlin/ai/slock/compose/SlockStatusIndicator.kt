@@ -1,8 +1,13 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
+import androidx.compose.runtime.State
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
+import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -10,18 +15,13 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.base.Animation
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewConst
-import com.tencent.kuikly.core.base.event.Event
-import com.tencent.kuikly.core.base.Color as KuiklyCoreColor
-import kotlin.math.roundToInt
 
 internal enum class SlockStatusIndicatorShape {
     Circle,
@@ -40,73 +40,6 @@ internal object SlockStatusIndicatorTokens {
     val BorderColor: Color = SlockColor.BorderBlack
 }
 
-private const val SlockStatusPulseMinAlpha = 0.5f
-private const val SlockStatusPulseDurationSeconds = 1f
-private const val SlockStatusPulseResetDurationSeconds = 0.01f
-
-private class SlockNativeStatusIndicatorView : DeclarativeBaseView<Attr, Event>() {
-    private var appliedFillColor: Long? = null
-    private var appliedBorderColor: Long? = null
-    private var appliedSize: Float? = null
-    private var appliedShape: SlockStatusIndicatorShape? = null
-    private var appliedBorderWidth: Float? = null
-    private var appliedPulsing: Boolean? = null
-
-    override fun createAttr(): Attr = Attr()
-
-    override fun createEvent(): Event = Event()
-
-    override fun viewName(): String = ViewConst.TYPE_VIEW
-
-    fun applyStatusAttrs(
-        fillColor: Long,
-        borderColor: Long,
-        size: Float,
-        shape: SlockStatusIndicatorShape,
-        borderWidth: Float,
-        pulsing: Boolean,
-        force: Boolean = false
-    ) {
-        val styleChanged =
-            force ||
-                appliedFillColor != fillColor ||
-                appliedBorderColor != borderColor ||
-                appliedSize != size ||
-                appliedShape != shape ||
-                appliedBorderWidth != borderWidth
-        if (styleChanged) {
-            appliedFillColor = fillColor
-            appliedBorderColor = borderColor
-            appliedSize = size
-            appliedShape = shape
-            appliedBorderWidth = borderWidth
-            getViewAttr().run {
-                backgroundColor(KuiklyCoreColor(fillColor))
-                borderRadius(if (shape == SlockStatusIndicatorShape.Circle) size / 2f else 0f)
-                border(Border(borderWidth.coerceAtLeast(0f), BorderStyle.SOLID, KuiklyCoreColor(borderColor)))
-            }
-        }
-        val previousPulsing = appliedPulsing
-        if (force || previousPulsing != pulsing) {
-            appliedPulsing = pulsing
-            if (pulsing) {
-                animateToAttr(
-                    Animation.easeInOut(SlockStatusPulseDurationSeconds)
-                        .repeatForever(true)
-                ) {
-                    opacity(SlockStatusPulseMinAlpha)
-                }
-            } else if (previousPulsing == true) {
-                animateToAttr(Animation.linear(SlockStatusPulseResetDurationSeconds)) {
-                    opacity(1f)
-                }
-            } else {
-                getViewAttr().opacity(1f)
-            }
-        }
-    }
-}
-
 @Composable
 internal fun SlockStatusIndicator(
     color: Color,
@@ -117,50 +50,64 @@ internal fun SlockStatusIndicator(
     borderWidth: Dp = SlockStatusIndicatorTokens.BorderWidth,
     pulsing: Boolean = false
 ) {
-    val fillColor = color.toKuiklyCoreArgb()
-    val outlineColor = borderColor.toKuiklyCoreArgb()
-    val sizeValue = size.value
-    val borderWidthValue = borderWidth.value
-    val updateStatusAttrs =
-        remember(fillColor, outlineColor, sizeValue, shape, borderWidthValue, pulsing) {
-            { view: SlockNativeStatusIndicatorView ->
-                view.applyStatusAttrs(
-                    fillColor = fillColor,
-                    borderColor = outlineColor,
-                    size = sizeValue,
-                    shape = shape,
-                    borderWidth = borderWidthValue,
-                    pulsing = pulsing
+    val pulseAlphaState: State<Float>? =
+        if (pulsing) {
+            val transition = rememberInfiniteTransition(label = "slock-status-pulse")
+            transition.animateFloat(
+                initialValue = 1f,
+                targetValue = 0.5f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 1000),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                label = "slock-status-pulse-alpha"
+            )
+        } else {
+            null
+        }
+    // Match React StatusDot's Tailwind `animate-pulse`: the whole dot breathes by opacity,
+    // while its layout footprint stays exactly `size` for row-end and avatar overlay anchors.
+    Canvas(modifier = modifier.size(size)) {
+        // Read the animation state in the draw phase so pulsing only invalidates the Canvas draw,
+        // not the SlockStatusIndicator composable group every frame.
+        val pulseAlpha = pulseAlphaState?.value ?: 1f
+        val fillColor = color.copy(alpha = color.alpha * pulseAlpha)
+        val outlineColor = borderColor.copy(alpha = borderColor.alpha * pulseAlpha)
+        val stroke = borderWidth.toPx()
+        val halfStroke = stroke / 2f
+        when (shape) {
+            SlockStatusIndicatorShape.Circle -> {
+                val radius = (minOf(this.size.width, this.size.height) - stroke).coerceAtLeast(0f) / 2f
+                val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                drawCircle(color = fillColor, radius = radius, center = center, style = Fill)
+                if (stroke > 0f) {
+                    drawCircle(color = outlineColor, radius = radius, center = center, style = Stroke(width = stroke))
+                }
+            }
+            SlockStatusIndicatorShape.Square -> {
+                val fillSize =
+                    Size(
+                        width = (this.size.width - stroke).coerceAtLeast(0f),
+                        height = (this.size.height - stroke).coerceAtLeast(0f)
+                    )
+                drawRect(
+                    color = fillColor,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = fillSize,
+                    style = Fill
                 )
+                if (stroke > 0f) {
+                    drawRect(
+                        color = outlineColor,
+                        topLeft = Offset(halfStroke, halfStroke),
+                        size = fillSize,
+                        style = Stroke(width = stroke)
+                    )
+                }
             }
         }
-    MakeKuiklyComposeNode<SlockNativeStatusIndicatorView>(
-        factory = { SlockNativeStatusIndicatorView() },
-        modifier = modifier.size(size),
-        viewInit = {
-            applyStatusAttrs(
-                fillColor = fillColor,
-                borderColor = outlineColor,
-                size = sizeValue,
-                shape = shape,
-                borderWidth = borderWidthValue,
-                pulsing = pulsing,
-                force = true
-            )
-        },
-        viewUpdate = updateStatusAttrs
-    )
-}
-
-private fun Color.toKuiklyCoreArgb(): Long {
-    val alphaByte = (alpha * 255f).roundToInt().coerceIn(0, 255)
-    val redByte = (red * 255f).roundToInt().coerceIn(0, 255)
-    val greenByte = (green * 255f).roundToInt().coerceIn(0, 255)
-    val blueByte = (blue * 255f).roundToInt().coerceIn(0, 255)
-    return ((alphaByte.toLong() and 0xffL) shl 24) or
-        ((redByte.toLong() and 0xffL) shl 16) or
-        ((greenByte.toLong() and 0xffL) shl 8) or
-        (blueByte.toLong() and 0xffL)
+    }
 }
 
 @Composable

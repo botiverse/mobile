@@ -2,25 +2,28 @@ package ai.slock.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.core.base.Animation
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.core.base.Attr
 import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.Rotate
 import com.tencent.kuikly.core.base.event.Event
+import kotlin.math.roundToInt
 
 private const val SlockIconSpinDurationSeconds = 0.9f
-private const val SlockIconTransformResetDurationSeconds = 0.01f
 
 internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Event>() {
     private var appliedName: String? = null
     private var appliedColor: String? = null
     private var appliedFill: String? = null
     private var appliedStrokeWidth: Float? = null
-    private var appliedSpinning: Boolean? = null
-    private var appliedRotationDegrees: Float? = null
 
     override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
 
@@ -33,61 +36,26 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         color: String,
         fill: String,
         strokeWidth: Float,
-        spinning: Boolean,
-        rotationDegrees: Float,
-        rotationAnimationDurationSeconds: Float,
         force: Boolean = false
     ) {
-        val iconStyleChanged =
-            force ||
-                appliedName != name ||
-                appliedColor != color ||
-                appliedFill != fill ||
-                appliedStrokeWidth != strokeWidth
-        if (iconStyleChanged) {
-            appliedName = name
-            appliedColor = color
-            appliedFill = fill
-            appliedStrokeWidth = strokeWidth
-            getViewAttr().run {
-                name(name)
-                color(color)
-                fill(fill)
-                strokeWidth(strokeWidth)
-            }
+        if (
+            !force &&
+                appliedName == name &&
+                appliedColor == color &&
+                appliedFill == fill &&
+                appliedStrokeWidth == strokeWidth
+        ) {
+            return
         }
-        val previousSpinning = appliedSpinning
-        val previousRotationDegrees = appliedRotationDegrees
-        val transformChanged =
-            force ||
-                previousSpinning != spinning ||
-                (!spinning && previousRotationDegrees != rotationDegrees)
-        if (transformChanged) {
-            appliedSpinning = spinning
-            appliedRotationDegrees = rotationDegrees
-            when {
-                spinning -> {
-                    animateToAttr(
-                        Animation.linear(SlockIconSpinDurationSeconds)
-                            .repeatForever(true)
-                    ) {
-                        transform(Rotate(360f))
-                    }
-                }
-                previousSpinning == true -> {
-                    animateToAttr(Animation.linear(SlockIconTransformResetDurationSeconds)) {
-                        transform(Rotate(rotationDegrees))
-                    }
-                }
-                !force && rotationAnimationDurationSeconds > 0f && previousRotationDegrees != null -> {
-                    animateToAttr(Animation.easeInOut(rotationAnimationDurationSeconds)) {
-                        transform(Rotate(rotationDegrees))
-                    }
-                }
-                else -> {
-                    getViewAttr().transform(Rotate(rotationDegrees))
-                }
-            }
+        appliedName = name
+        appliedColor = color
+        appliedFill = fill
+        appliedStrokeWidth = strokeWidth
+        getViewAttr().run {
+            name(name)
+            color(color)
+            fill(fill)
+            strokeWidth(strokeWidth)
         }
     }
 
@@ -179,32 +147,55 @@ internal fun SlockLucideIconByName(
 ) {
     val resolvedFill = fill ?: ""
     val resolvedStrokeWidth = strokeWidth ?: 0f
+    val appliedRotationDegrees =
+        if (spinning) {
+            val transition = rememberInfiniteTransition(label = "slock-icon-spin")
+            val rotation by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = (SlockIconSpinDurationSeconds * 1000f).roundToInt())
+                    ),
+                label = "slock-icon-spin-rotation"
+            )
+            rotation
+        } else if (rotationAnimationDurationSeconds > 0f) {
+            val rotation by animateFloatAsState(
+                targetValue = rotationDegrees,
+                animationSpec = tween(durationMillis = (rotationAnimationDurationSeconds * 1000f).roundToInt()),
+                label = "slock-icon-rotation"
+            )
+            rotation
+        } else {
+            rotationDegrees
+        }
+    val iconModifier =
+        if (spinning || appliedRotationDegrees != 0f) {
+            modifier.graphicsLayer(rotationZ = appliedRotationDegrees)
+        } else {
+            modifier
+        }
     val updateIconAttrs =
-        remember(name, color, resolvedFill, resolvedStrokeWidth, spinning, rotationDegrees, rotationAnimationDurationSeconds) {
+        remember(name, color, resolvedFill, resolvedStrokeWidth) {
             { view: SlockLucideIconView ->
                 view.applyIconAttrs(
                     name = name,
                     color = color,
                     fill = resolvedFill,
-                    strokeWidth = resolvedStrokeWidth,
-                    spinning = spinning,
-                    rotationDegrees = rotationDegrees,
-                    rotationAnimationDurationSeconds = rotationAnimationDurationSeconds
+                    strokeWidth = resolvedStrokeWidth
                 )
             }
         }
     MakeKuiklyComposeNode<SlockLucideIconView>(
         factory = { SlockLucideIconView() },
-        modifier = modifier,
+        modifier = iconModifier,
         viewInit = {
             applyIconAttrs(
                 name = name,
                 color = color,
                 fill = resolvedFill,
                 strokeWidth = resolvedStrokeWidth,
-                spinning = spinning,
-                rotationDegrees = rotationDegrees,
-                rotationAnimationDurationSeconds = rotationAnimationDurationSeconds,
                 force = true
             )
         },
