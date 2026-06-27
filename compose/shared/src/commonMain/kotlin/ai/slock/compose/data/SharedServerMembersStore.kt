@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberProfile
@@ -295,9 +296,17 @@ class SharedServerMembersStore(
             when (result) {
                 is DataResult.Content -> {
                     val normalizedKey = result.data.server.id.value.trim().ifBlank { key }
+                    val previousMembers =
+                        if (force) emptyList()
+                        else _state.value.entriesByServerId[normalizedKey]?.members
+                            ?: previous?.members
+                            ?: emptyList()
                     val snapshot =
                         result.data.copy(
-                            members = result.data.members.withServerMemberPresenceFacts(_state.value.presenceByMemberId)
+                            members =
+                                result.data.members
+                                    .mergeLoadedServerMembers(previousMembers)
+                                    .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
                         )
                     putEntry(
                         normalizedKey,
@@ -642,6 +651,56 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
             agentStatus = event.agentStatus ?: member.agentStatus
         )
     }
+
+private fun List<MemberProfile>.mergeLoadedServerMembers(
+    previousMembers: List<MemberProfile>
+): List<MemberProfile> {
+    if (previousMembers.isEmpty()) return this
+    val merged = LinkedHashMap<String, MemberProfile>()
+    previousMembers
+        .filter { it.id.value.trim().isNotBlank() }
+        .forEach { member -> merged[member.id.value.trim()] = member }
+    for (member in this) {
+        val key = member.id.value.trim().takeIf { it.isNotBlank() } ?: continue
+        merged[key] = merged[key]?.mergeLoadedServerProfile(member) ?: member
+    }
+    return merged.values.toList()
+}
+
+private fun MemberProfile.mergeLoadedServerProfile(loaded: MemberProfile): MemberProfile =
+    loaded.copy(
+        avatarUrl = loaded.avatarUrl.preferLoadedServerAvatar(avatarUrl, loaded.kind),
+        avatar = loaded.avatar.preferLoadedServerAvatar(avatar, loaded.kind),
+        gravatarHash = loaded.gravatarHash ?: gravatarHash
+    )
+
+private fun String?.preferLoadedServerAvatar(
+    previous: String?,
+    kind: MemberKind
+): String? {
+    val clean = this?.trim()?.takeIf { it.isNotBlank() }
+    return when {
+        clean == null -> previous
+        clean.isServerMembersFallbackAvatar(kind) && !previous.isNullOrBlank() -> previous
+        else -> this
+    }
+}
+
+private fun AvatarReference?.preferLoadedServerAvatar(
+    previous: AvatarReference?,
+    kind: MemberKind
+): AvatarReference? {
+    val clean = this?.wireValue?.trim()?.takeIf { it.isNotBlank() }
+    return when {
+        clean == null -> previous
+        clean.isServerMembersFallbackAvatar(kind) && previous != null -> previous
+        else -> this
+    }
+}
+
+private fun String.isServerMembersFallbackAvatar(kind: MemberKind): Boolean =
+    kind == MemberKind.Agent &&
+        (equals("pixel:robot", ignoreCase = true) || startsWith("random:", ignoreCase = true))
 
 private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile =
     copy(
