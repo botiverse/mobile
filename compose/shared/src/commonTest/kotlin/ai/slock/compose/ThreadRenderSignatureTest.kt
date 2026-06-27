@@ -15,7 +15,7 @@ import kotlin.test.assertNotEquals
  * - members / settings / actions / realtime metadata changes must NOT
  *   change the signature (otherwise non-render axis churn retriggers
  *   render log hot path)
- * - message/task/status/tab/showReplyActions changes that actually
+ * - message/status/tab/showReplyActions changes that actually
  *   affect the visible render axis MUST change the signature
  * - equivalent messages list content (same id sequence, same reply
  *   counts) but different list references MUST produce the same
@@ -85,6 +85,36 @@ class ThreadRenderSignatureTest {
             settingsActions = listOf(
                 KuiklyThreadSettingsAction(id = "leave"),
                 KuiklyThreadSettingsAction(id = "archive")
+            )
+        )
+        assertEquals(a.toRenderSignature(), b.toRenderSignature())
+    }
+
+    @Test
+    fun tasksOnlyChange_keepsSignatureEqual() {
+        val a = payload(
+            messages = listOf(message("m1")),
+            tasks = listOf(
+                KuiklyThreadTaskItem(
+                    id = "task-1",
+                    title = "old",
+                    status = "Todo"
+                )
+            )
+        )
+        val b = payload(
+            messages = listOf(message("m1")),
+            tasks = listOf(
+                KuiklyThreadTaskItem(
+                    id = "task-1",
+                    title = "new",
+                    status = "Done"
+                ),
+                KuiklyThreadTaskItem(
+                    id = "task-2",
+                    title = "other",
+                    status = "Todo"
+                )
             )
         )
         assertEquals(a.toRenderSignature(), b.toRenderSignature())

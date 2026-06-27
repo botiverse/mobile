@@ -65,7 +65,6 @@ import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.PendingMentionActionExecuteResult
-import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.ThreadRealtimeCacheInvalidationSignal
 import ai.slock.compose.data.isAuthSessionBlocker
@@ -73,7 +72,6 @@ import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.runCatchingPreservingCancellation
-import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
@@ -96,7 +94,6 @@ import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskDeleted
-import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
@@ -658,7 +655,7 @@ internal data class WireThreadLaunchPayload(
                 .launchContext(
                     surfaceKind = surfaceKind,
                     parentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
-                )
+            )
                 .title
         val resolvedComposer =
             KuiklyThreadComposerPayload(
@@ -1229,6 +1226,19 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     )
 }
 
+private fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
+    if (taskId == null && taskNumber == null && taskStatus == null && taskAssigneeId == null && taskAssigneeName == null) {
+        this
+    } else {
+        copy(
+            taskId = null,
+            taskNumber = null,
+            taskStatus = null,
+            taskAssigneeId = null,
+            taskAssigneeName = null
+        )
+    }
+
 internal data class ThreadLinkedTasksProjection(
     val authoritative: Boolean,
     val lookup: Map<String, TaskSummary>
@@ -1288,20 +1298,19 @@ internal fun SharedTasksProjectionSlice.threadLinkedTasksProjection(
 
 internal fun threadLinkedTasksLookup(
     scopedProjection: ThreadLinkedTasksProjection,
-    sharedStoreProjection: ThreadLinkedTasksProjection,
-    fallbackLookup: Map<String, TaskSummary>
-): Map<String, TaskSummary> =
+    sharedStoreProjection: ThreadLinkedTasksProjection
+): ThreadLinkedTasksProjection =
     when {
         scopedProjection.authoritative && scopedProjection.lookup.isNotEmpty() ->
-            scopedProjection.lookup
+            scopedProjection
         sharedStoreProjection.authoritative && sharedStoreProjection.lookup.isNotEmpty() ->
-            sharedStoreProjection.lookup
+            sharedStoreProjection
         scopedProjection.authoritative ->
-            scopedProjection.lookup
+            scopedProjection
         sharedStoreProjection.authoritative ->
-            sharedStoreProjection.lookup
+            sharedStoreProjection
         else ->
-            fallbackLookup
+            ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
     }
 
 internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
@@ -1362,54 +1371,33 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: Kuikly
     }
 
 internal fun KuiklyThreadScreenPayload.withThreadLinkedTasksProjection(
-    linkedTasksByMessageLookup: Map<String, TaskSummary>
+    projection: ThreadLinkedTasksProjection
 ): KuiklyThreadScreenPayload {
-    if (linkedTasksByMessageLookup.isEmpty()) return this
+    if (!projection.authoritative && projection.lookup.isEmpty()) return this
+    val linkedTasksByMessageLookup = projection.lookup
     val projectedMessages =
         messages.map { message ->
-            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+            val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
+            when {
+                linkedTask != null -> message.withLinkedTask(linkedTask)
+                projection.authoritative -> message.withoutLinkedTask()
+                else -> message
+            }
         }
     val projectedOriginMessage =
         originMessage?.let { message ->
-            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+            val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
+            when {
+                linkedTask != null -> message.withLinkedTask(linkedTask)
+                projection.authoritative -> message.withoutLinkedTask()
+                else -> message
+            }
         }
-    val projectedTasks =
-        tasks.map { task ->
-            linkedTasksByMessageLookup.threadLinkedTaskForTaskItem(task)?.toKuiklyThreadTaskItem() ?: task
-        }
-    val appendedTasks =
-        linkedTasksByMessageLookup.values
-            .distinctBy { task -> task.id }
-            .filterNot { task -> projectedTasks.any { current -> current.matchesTaskSummary(task) } }
-            .map { task -> task.toKuiklyThreadTaskItem() }
     return copy(
         messages = projectedMessages,
-        originMessage = projectedOriginMessage,
-        tasks = projectedTasks + appendedTasks
+        originMessage = projectedOriginMessage
     )
 }
-
-private fun Map<String, TaskSummary>.threadLinkedTaskForTaskItem(task: KuiklyThreadTaskItem): TaskSummary? =
-    get(task.id)
-        ?: task.messageId?.trim()?.takeIf { it.isNotBlank() }?.let(::get)
-        ?: task.taskNumber?.let { taskNumber -> get(ThreadTaskNumberLookupPrefix + taskNumber) }
-
-private fun KuiklyThreadTaskItem.matchesTaskSummary(task: TaskSummary): Boolean =
-    id == task.id.value ||
-        messageId?.let { it == task.messageId?.value } == true ||
-        (taskNumber != null && taskNumber == task.taskNumber)
-
-private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
-    KuiklyThreadTaskItem(
-        id = id.value,
-        title = title,
-        status = status.name,
-        taskNumber = taskNumber,
-        messageId = messageId?.value,
-        assigneeId = assignee?.id?.value,
-        assigneeName = assignee?.displayName,
-        updatedAtLabel = updatedAtLabel
-    )
 
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
@@ -1863,7 +1851,7 @@ private fun ThreadPageScreen() {
             routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
         }
         if (nextPayload.sourceThreadId?.isNotBlank() == true &&
-            (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty() || nextPayload.tasks.isNotEmpty())
+            (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
         ) {
             dataSource.cachePayload(nextPayload)
             threadPageCoroutineScope.launch {
@@ -2648,8 +2636,7 @@ internal fun SharedThreadRouteContent(
                     mapOf(
                         "status" to payload.status.ifBlank { "unknown" },
                         "source" to payload.threadRenderDiagnosticsSource(),
-                        "messages" to payload.messages.size.toString(),
-                        "tasks" to payload.tasks.size.toString()
+                        "messages" to payload.messages.size.toString()
                     )
             )
             bridge.log(
@@ -2706,12 +2693,6 @@ internal fun SharedThreadRouteContent(
         remember(baseRenderedPayload.originMessage, baseRenderedPayload.messages) {
             baseRenderedPayload.threadLinkedTaskReferences()
         }
-    val fallbackTaskProjectionLookup =
-        remember(baseRenderedPayload.tasks, taskProjectionReferences) {
-            baseRenderedPayload.tasks
-                .map { task -> task.toTaskSummary() }
-                .threadLinkedTasksByMessageLookup(taskProjectionReferences)
-        }
     val sharedTaskProjection by remember(
         tasksDataStore,
         currentServerId,
@@ -2732,8 +2713,7 @@ internal fun SharedThreadRouteContent(
     val taskProjectionLookup =
         threadLinkedTasksLookup(
             scopedProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
-            sharedStoreProjection = sharedTaskProjection,
-            fallbackLookup = fallbackTaskProjectionLookup
+            sharedStoreProjection = sharedTaskProjection
         )
     val renderedPayload =
         remember(baseRenderedPayload, taskProjectionLookup) {
@@ -2884,19 +2864,6 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(realtimeCacheInvalidationSequence, threadInstanceKey) {
         if (realtimeCacheInvalidationSequence <= 0L) return@LaunchedEffect
         threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
-    }
-    LaunchedEffect(threadTimelineKey, payload.tasks) {
-        if (tasksViewModel != null && payload.tasks.isNotEmpty()) {
-            val taskSummaries = payload.tasks.map { it.toTaskSummary() }
-            tasksViewModel.dispatch(
-                SharedTasksRouteIntent.SeedContent(
-                    TaskSnapshot(
-                        tasks = taskSummaries,
-                        summaryCounts = taskSummaries.summaryCounts()
-                    )
-                )
-            )
-        }
     }
     LaunchedEffect(threadTimelineKey, taskChannelId?.value, payload.status) {
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
@@ -3355,7 +3322,6 @@ internal fun SharedThreadRouteContent(
         renderedThread.status,
         renderedThread.selectedTab,
         renderedThread.messages.size,
-        renderedThread.tasks.size,
         renderedThread.showReplyActions
     ) {
         renderedThread.toRenderSignature()
@@ -3363,7 +3329,7 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(renderSignature) {
         bridge.log(
             "thread_render instanceId=${renderSignature.instanceId} status=${renderSignature.status} tab=${renderSignature.selectedTab} " +
-                "messages=${renderSignature.messagesSize} tasks=${renderSignature.tasksSize} " +
+                "messages=${renderSignature.messagesSize} " +
                 "showReplyActions=${renderSignature.showReplyActions} replyRows=${renderSignature.replyRowsSize} " +
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
@@ -3604,9 +3570,8 @@ internal fun SharedThreadRouteContent(
             composerDraftPersistSlice = composerDraftPersistSlice,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
-            tasksDataStore = tasksDataStore,
-            currentServerId = currentSession?.currentServerId,
             taskChannelId = taskChannelId,
+            linkedTasksByMessageLookup = taskProjectionLookup.lookup,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
@@ -5949,9 +5914,8 @@ private fun ThreadPageContent(
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
-    tasksDataStore: SharedTasksDataStore?,
-    currentServerId: String?,
     taskChannelId: ChannelId?,
+    linkedTasksByMessageLookup: Map<String, TaskSummary>,
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
@@ -6078,14 +6042,12 @@ private fun ThreadPageContent(
                 ThreadStateMessage("Loading...", null)
             } else when (tab) {
                 KuiklyThreadTab.Chat ->
-                    ThreadChatTabWithLinkedTasksProjection(
+                    ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
                         payload = payload,
                         activeDraftRecords = activeDraftRecords,
-                        tasksDataStore = tasksDataStore,
-                        currentServerId = currentServerId,
-                        taskChannelId = taskChannelId,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
+                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -6659,87 +6621,6 @@ private fun ThreadPageTabs(
             tabs.firstOrNull { it.toString() == key }?.let(onSelect)
         },
         itemKeyPrefix = "thread-tab"
-    )
-}
-
-@Composable
-private fun ThreadChatTabWithLinkedTasksProjection(
-    threadInstanceKey: String,
-    payload: KuiklyThreadScreenPayload,
-    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
-    tasksDataStore: SharedTasksDataStore?,
-    currentServerId: String?,
-    taskChannelId: ChannelId?,
-    composerKeyboardInsetDp: Float,
-    highlightedMentions: Set<String>,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
-    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
-    currentServerSlug: String? = null,
-    contentExtrasVisible: Boolean = true,
-    knownMarkdownChannelNames: Set<String>? = null,
-    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
-    onOpenMember: (String) -> Unit,
-    onMentionAuthor: (String) -> Unit,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {},
-    onThreadContentReady: () -> Unit = {}
-) {
-    val linkedTaskReferences =
-        remember(payload.originMessage, payload.messages) {
-            payload.threadLinkedTaskReferences()
-        }
-    val fallbackLinkedTasksByMessageLookup =
-        remember(payload.tasks, linkedTaskReferences) {
-            payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageLookup(linkedTaskReferences)
-        }
-    val sharedStoreLinkedTasks by remember(tasksDataStore, currentServerId, taskChannelId?.value, payload.title, linkedTaskReferences) {
-        tasksDataStore
-            ?.channelProjectionFlow(
-                serverId = currentServerId,
-                channelId = taskChannelId?.value,
-                channelName = payload.title
-            )
-            ?.map { slice -> slice.threadLinkedTasksProjection(linkedTaskReferences) }
-            ?.distinctUntilChanged()
-            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    val linkedTasksByMessageLookup =
-        threadLinkedTasksLookup(
-            scopedProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
-            sharedStoreProjection = sharedStoreLinkedTasks,
-            fallbackLookup = fallbackLinkedTasksByMessageLookup
-        )
-
-    ThreadChatTab(
-        threadInstanceKey = threadInstanceKey,
-        payload = payload,
-        activeDraftRecords = activeDraftRecords,
-        composerKeyboardInsetDp = composerKeyboardInsetDp,
-        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
-        highlightedMentions = highlightedMentions,
-        agentStatusResolver = agentStatusResolver,
-        memberAvatarResolver = memberAvatarResolver,
-        pendingActionCardIds = pendingActionCardIds,
-        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-        attachmentOpenStates = attachmentOpenStates,
-        attachmentCommentsEnabled = attachmentCommentsEnabled,
-        currentServerSlug = currentServerSlug,
-        contentExtrasVisible = contentExtrasVisible,
-        knownMarkdownChannelNames = knownMarkdownChannelNames,
-        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-        onThreadEvent = onThreadEvent,
-        onOpenMember = onOpenMember,
-        onMentionAuthor = onMentionAuthor,
-        onOpenMarkdownTag = onOpenMarkdownTag,
-        onOpenMarkdownUrl = onOpenMarkdownUrl,
-        diagnosticsLogger = diagnosticsLogger,
-        onThreadContentReady = onThreadContentReady
     )
 }
 
@@ -11339,24 +11220,6 @@ private fun ThreadTasksTab(
     )
 }
 
-private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
-    TaskSummary(
-        id = TaskId(id),
-        title = title,
-        status = status.toSharedThreadTaskStatus() ?: TaskStatus.Todo,
-        taskNumber = taskNumber,
-        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        assignee =
-            assigneeName?.trim()?.takeIf { it.isNotBlank() }?.let { displayName ->
-                MemberProfile(
-                    id = MemberId("thread-task-assignee-${displayName.threadTaskAssigneeKey()}"),
-                    displayName = displayName,
-                    handle = displayName,
-                    kind = MemberKind.Human
-                )
-            },
-        updatedAtLabel = updatedAtLabel
-    )
 
 private fun String.threadTaskAssigneeKey(): String =
     trim()

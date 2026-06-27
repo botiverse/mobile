@@ -58,6 +58,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
@@ -4072,9 +4073,9 @@ class ThreadPayloadTest {
         val selectedLookup =
             threadLinkedTasksLookup(
                 scopedProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap()),
-                sharedStoreProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = warmSharedLookup),
-                fallbackLookup = listOf(fallbackTask).threadLinkedTasksByMessageLookup()
+                sharedStoreProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = warmSharedLookup)
             )
+        val fallbackLookup = listOf(fallbackTask).threadLinkedTasksByMessageLookup()
         val message =
             KuiklyThreadMessageItem(
                 id = "message-240",
@@ -4085,14 +4086,16 @@ class ThreadPayloadTest {
                 taskNumber = 240,
                 taskStatus = "Todo"
             )
-        val linkedMessage = message.withLinkedTask(selectedLookup.threadLinkedTaskForMessage(message))
+        val linkedMessage = message.withLinkedTask(selectedLookup.lookup.threadLinkedTaskForMessage(message))
 
+        assertEquals(warmSharedLookup, selectedLookup.lookup)
+        assertNotEquals(fallbackLookup, selectedLookup.lookup)
         assertEquals("InReview", linkedMessage.taskStatus)
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
     }
 
     @Test
-    fun threadPayloadProjectsTaskStatusFromLinkedTasksStore() {
+    fun threadPayloadProjectsMessageTaskStatusFromLinkedTasksStoreWithoutRewritingPayloadTasks() {
         val message =
             KuiklyThreadMessageItem(
                 id = "message-240",
@@ -4126,10 +4129,49 @@ class ThreadPayloadTest {
                 tasks = listOf(staleTask)
             )
 
-        val projected = payload.withThreadLinkedTasksProjection(listOf(task).threadLinkedTasksByMessageLookup())
+        val projected =
+            payload.withThreadLinkedTasksProjection(
+                ThreadLinkedTasksProjection(
+                    authoritative = true,
+                    lookup = listOf(task).threadLinkedTasksByMessageLookup()
+                )
+            )
 
         assertEquals("Done", projected.messages.single().taskStatus)
-        assertEquals("Done", projected.tasks.single().status)
+        assertEquals("Todo", projected.tasks.single().status)
+    }
+
+    @Test
+    fun authoritativeEmptyLinkedTaskProjectionClearsStaleMessageTaskFacts() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "message-240",
+                            authorId = "user_artin",
+                            authorName = "Artin",
+                            body = "ship task",
+                            taskId = "task-240",
+                            taskNumber = 240,
+                            taskStatus = "Todo",
+                            taskAssigneeId = "agent-android",
+                            taskAssigneeName = "Android Developer"
+                        )
+                    )
+            )
+
+        val projected =
+            payload.withThreadLinkedTasksProjection(
+                ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap())
+            )
+
+        val message = projected.messages.single()
+        assertEquals(null, message.taskId)
+        assertEquals(null, message.taskNumber)
+        assertEquals(null, message.taskStatus)
+        assertEquals(null, message.taskAssigneeId)
+        assertEquals(null, message.taskAssigneeName)
     }
 
     @Test
