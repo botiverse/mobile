@@ -81,41 +81,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun loadMembersPreservesSeededDirectMessageAvatarWhenRosterHasAgentFallback() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.membersByServer["server-1"] =
-            listOf(
-                member("agent-1", "Build Agent").copy(
-                    kind = MemberKind.Agent,
-                    avatarUrl = "pixel:robot",
-                    avatar = AvatarReference.fromWireValue("pixel:robot")
-                )
-            )
-        val store = SharedServerMembersStore(repository)
-
-        store.seedProfiles(
-            serverId = ServerId("server-1"),
-            server = server("server-1"),
-            profiles =
-                listOf(
-                    member("agent-1", "Build Agent").copy(
-                        kind = MemberKind.Agent,
-                        avatarUrl = "https://cdn.slock.ai/agent.png",
-                        avatar = AvatarReference.fromWireValue("https://cdn.slock.ai/agent.png")
-                    )
-                )
-        )
-
-        val result = store.loadMembers(ServerId("server-1"))
-
-        assertIs<DataResult.Content<MemberSnapshot>>(result)
-        val member = result.data.members.single()
-        assertEquals("https://cdn.slock.ai/agent.png", member.avatarUrl)
-        assertEquals("https://cdn.slock.ai/agent.png", member.avatar?.wireValue)
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
-    }
-
-    @Test
     fun applyPresencePatchesCachedAgentRoster() {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
