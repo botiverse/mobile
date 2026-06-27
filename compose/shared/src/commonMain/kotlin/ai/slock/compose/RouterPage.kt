@@ -106,10 +106,7 @@ private val DeveloperRouteGroups =
                     DeveloperRouteItem("Register", REGISTER_PAGE, "Registration page"),
                     DeveloperRouteItem("Forgot Password", FORGOT_PASSWORD_PAGE, "Password recovery page"),
                     DeveloperRouteItem("Auth Diagnostics", AUTH_DIAGNOSTICS_PAGE, "Auth runtime diagnostic page"),
-                    DeveloperRouteItem("Choose Server", AUTH_CHOOSE_SERVER_PAGE, "Server picker page"),
-                    DeveloperRouteItem("Login Inputs Visual", "compose_auth_login_inputs", "Auth input fixture"),
-                    DeveloperRouteItem("Register Inputs Visual", "compose_auth_register_inputs", "Auth input fixture"),
-                    DeveloperRouteItem("Choose Server Visual", "compose_auth_choose_server_visual", "Server picker fixture")
+                    DeveloperRouteItem("Choose Server", AUTH_CHOOSE_SERVER_PAGE, "Server picker page")
                 )
         ),
         DeveloperRouteGroup(
@@ -135,59 +132,14 @@ private val DeveloperRouteGroups =
                 )
         ),
         DeveloperRouteGroup(
-            title = "Home Visuals",
-            routes =
-                listOf(
-                    DeveloperRouteItem("Home Titlebar Visual", "compose_home_titlebar_visual", "Home titlebar fixture"),
-                    DeveloperRouteItem(
-                        "Home Notification Center Visual",
-                        "compose_home_notification_center_visual",
-                        "Notification center fixture"
-                    ),
-                    DeveloperRouteItem("Home Search Visual", "compose_home_search_visual", "Search surface fixture"),
-                    DeveloperRouteItem(
-                        "Home Search Channel Dropdown",
-                        "compose_home_search_channel_dropdown_visual",
-                        "Search dropdown fixture"
-                    ),
-                    DeveloperRouteItem("Home Saved Visual", "compose_home_saved_visual", "Saved view fixture"),
-                    DeveloperRouteItem("Home Activity Visual", "compose_home_activity_visual", "Activity view fixture"),
-                    DeveloperRouteItem(
-                        "Home Create Channel Dialog",
-                        "compose_home_create_channel_dialog_visual",
-                        "Create-channel dialog fixture"
-                    )
-                )
-        ),
-        DeveloperRouteGroup(
-            title = "Thread Visuals",
-            routes =
-                listOf(
-                    DeveloperRouteItem("Thread Composer Visual", "compose_thread_composer_visual", "Composer fixture"),
-                    DeveloperRouteItem("Thread Message Visual", "compose_thread_message_visual", "Message fixture"),
-                    DeveloperRouteItem("Thread Message Row Visual", "compose_thread_message_row_visual", "Row fixture"),
-                    DeveloperRouteItem("Thread Header Visual", "compose_thread_header_visual", "Header fixture"),
-                    DeveloperRouteItem("Thread Reaction Atlas Visual", "compose_thread_reaction_atlas_visual", "Reaction sprite fixture"),
-                    DeveloperRouteItem("Channel Members Panel", "compose_channel_members_panel_visual", "Panel fixture"),
-                    DeveloperRouteItem("Channel Settings Panel", "compose_channel_settings_panel_visual", "Panel fixture"),
-                    DeveloperRouteItem("Channel Add Member Panel", "compose_channel_add_member_panel_visual", "Panel fixture")
-                )
-        ),
-        DeveloperRouteGroup(
             title = "Component Visuals",
             routes =
                 listOf(
                     DeveloperRouteItem("Lucide Icon Gallery", SLOCK_LUCIDE_ICON_GALLERY_PAGE, "Icon asset parity page"),
                     DeveloperRouteItem("Typography Probe", SLOCK_TYPOGRAPHY_PROBE_PAGE, "React/KMP text-weight proof page"),
-                    DeveloperRouteItem("Token Palette Visual", TOKEN_PALETTE_VISUAL_PAGE, "Design-token palette"),
                     DeveloperRouteItem("Settings TabBar Smoke", SETTINGS_TAB_BAR_SMOKE_PAGE, "Settings tab fixture"),
                     DeveloperRouteItem("Bottom TabBar Smoke", BOTTOM_TAB_BAR_SMOKE_PAGE, "Bottom tab fixture"),
-                    DeveloperRouteItem("Bottom TabBar Visual", BOTTOM_TAB_BAR_VISUAL_PAGE, "Bottom tab visual"),
-                    DeveloperRouteItem("Settings Row Visual", "compose_settings_row_visual", "Settings row fixture"),
-                    DeveloperRouteItem("Settings Page Visual", "compose_settings_page_visual", "Settings page fixture"),
                     DeveloperRouteItem("Members Smoke", MEMBERS_SMOKE_PAGE, "Members smoke fixture"),
-                    DeveloperRouteItem("Members Agent Detail Visual", "compose_members_agent_detail_visual", "Agent detail fixture"),
-                    DeveloperRouteItem("Create Agent Dialog Visual", "compose_create_agent_dialog_visual", "Create-agent dialog fixture"),
                     DeveloperRouteItem("Child Page Host Smoke", SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, "Nested Kuikly child-page host proof")
                 )
         )

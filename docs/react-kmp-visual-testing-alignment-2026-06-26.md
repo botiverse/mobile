@@ -21,7 +21,8 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/KmpVisualScreenshotCaptureTest.kt` (66 capture methods via `am instrument`)
+- `compose/androidApp/src/androidTest/java/ai/slock/android/visual/KmpVisualScreenshotCaptureTest.kt` (connected capture methods via `am instrument`)
+- `compose/shared/src/visualFixtures/kotlin/ai/slock/compose/VisualFixturePages.kt` (KMP visual `@Page` registrations, compiled only with `-PslockVisualFixtures=true` / `SLOCK_VISUAL_FIXTURES=true`)
 - `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt` (Diagnostics 部分)
 - `tools/visual-testing/shared/sharedCases.json` (71 cases)
 - 06-24 publish run `2057eb39-20260624065206`: 52 / 50 different / 2 basic-pass
@@ -39,6 +40,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ### ✅ 已对齐 (06-23 → 06-26)
 - Visual testing capture pipeline (Android connectedTest + React Playwright)
+- Visual fixture page build gating: production debug/release builds omit `compose_*_visual` registrations; Android visual captures must pass `-PslockVisualFixtures=true`
 - 71 cases in sharedCases.json (per 06-23 baseline, 06-24 publish)
 - 52/52 React provider baseline 06-24 (`2057eb39-20260624065206`)
 - 56/61 Android captures 06-24 PUX 跑

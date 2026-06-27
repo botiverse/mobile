@@ -1,5 +1,16 @@
 # Visual Testing Build Gating Spec — 2026-06-26
 
+## Implementation Status — 2026-06-28
+
+Implemented in `ad3/task258-visual-gating`.
+
+- `compose/shared/build.gradle.kts` defines `slockVisualFixtures` / `SLOCK_VISUAL_FIXTURES` and only adds `src/visualFixtures/kotlin` to `commonMain` when the opt-in is true.
+- KMP visual `@Page` registrations now live in `compose/shared/src/visualFixtures/kotlin/ai/slock/compose/VisualFixturePages.kt`.
+- Product `commonMain` keeps reusable visual fixture composables only where they wrap real product components; production builds no longer register the `compose_*_visual` pages.
+- `RouterPage` no longer links visual-only fixture routes from the production developer router.
+- `:shared:verifyNoProductionVisualPages` scans production source sets and is wired into `check`.
+- `tools/visual-testing/README.md` documents that Android connected captures must pass `-PslockVisualFixtures=true`.
+
 ## Problem
 
 KMP visual-testing pages such as `compose_thread_message_visual` are currently declared as ordinary `commonMain` Kuikly pages:
@@ -153,9 +164,9 @@ It should allow production smoke/developer pages only if their route names do no
 - New visual routes must live in `src/visualFixtures/kotlin` and be reachable only when `slockVisualFixtures=true`.
 - If a visual fixture needs a helper that product code also needs, move only that helper to `commonMain`; keep sample data and `@Page` registration gated.
 
-## Current Candidate Files To Split
+## Implemented Split Points
 
-The current repo has visual-only pages in product source files. Candidate split points include:
+The first implementation moved the visual `@Page` registrations for these product source files into `VisualFixturePages.kt`:
 
 - `ThreadPage.kt`: `ComposeThreadMessageVisualPage`, `ComposeThreadMessageRowVisualPage`, `ComposeThreadHeaderVisualPage`, `ComposeThreadReactionAtlasVisualPage`, channel panel visual pages, and related visual fixture screens/payloads.
 - `ThreadComposerPage.kt`: `ComposeThreadComposerVisualPage` and composer fixture payloads.
@@ -164,7 +175,9 @@ The current repo has visual-only pages in product source files. Candidate split 
 - `SettingsHomePage.kt`: bottom-tab, settings-row/page, home-search, saved, activity, create-channel, auth-choose-server, and app-shell visual pages.
 - `SharedCreateAgentDialog.kt`: create-agent dialog visual page and sample payloads.
 - `AuthPages.kt`: auth input visual pages.
-- `TokenPaletteVisualPage.kt`, `SlockLucideIconGalleryPage.kt`, `SlockTypographyProbePage.kt`: visual/developer surfaces; decide whether they are fixture-only or intentionally product-debug tools before moving.
+- `TokenPaletteVisualPage.kt`: token palette visual fixture page registration.
+
+`SlockLucideIconGalleryPage.kt` and `SlockTypographyProbePage.kt` remain ordinary product-debug developer surfaces because their routes do not end in `_visual` and the verifier intentionally allows documented product-debug pages.
 
 ## Expected Outcome
 

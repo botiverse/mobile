@@ -54,11 +54,8 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 
-private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog_visual"
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
 // `Column.fillMaxHeight()` and the LazyColumn uses `weight(1f)` so the
@@ -66,14 +63,6 @@ private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog
 // commented out below for historical reference only; do not reintroduce
 // without also reverting the layout change.
 // private val CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp
-
-@Page(CREATE_AGENT_DIALOG_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeCreateAgentDialogVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { CreateAgentDialogVisualContent() }
-    }
-}
 
 internal data class SharedCreateAgentDialogSubmit(
     val name: String,
@@ -84,7 +73,7 @@ internal data class SharedCreateAgentDialogSubmit(
 )
 
 @Composable
-private fun CreateAgentDialogVisualContent() {
+internal fun CreateAgentDialogVisualContent() {
     val params = (LocalActivity.current.getPager() as Pager).pageData.params
     val runtime = params.optString("runtime").ifBlank { "codex" }
     val providerMode =

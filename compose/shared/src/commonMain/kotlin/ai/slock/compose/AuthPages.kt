@@ -67,8 +67,6 @@ const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
 const val AUTH_DEVELOPER_PAGE = "compose_auth_developer"
-private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
-private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
@@ -130,22 +128,6 @@ internal class ComposeAuthDeveloperPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { AuthDeveloperScreen() }
-    }
-}
-
-@Page(AUTH_LOGIN_INPUTS_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeAuthLoginInputsVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthLoginInputsVisualScreen() }
-    }
-}
-
-@Page(AUTH_REGISTER_INPUTS_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeAuthRegisterInputsVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthRegisterInputsVisualScreen() }
     }
 }
 
@@ -760,7 +742,7 @@ private val AuthDiagnosticsEmailPattern =
     Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
 
 @Composable
-private fun AuthLoginInputsVisualScreen() {
+internal fun AuthLoginInputsVisualScreen() {
     LoginContent(
         email = "artin@slock.test",
         password = "password",
@@ -775,7 +757,7 @@ private fun AuthLoginInputsVisualScreen() {
 }
 
 @Composable
-private fun AuthRegisterInputsVisualScreen() {
+internal fun AuthRegisterInputsVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     RegisterContent(

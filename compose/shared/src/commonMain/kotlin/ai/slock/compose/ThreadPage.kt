@@ -204,13 +204,6 @@ import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
-private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
-private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
-private const val THREAD_HEADER_VISUAL_PAGE = "compose_thread_header_visual"
-private const val THREAD_REACTION_ATLAS_VISUAL_PAGE = "compose_thread_reaction_atlas_visual"
-private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_panel_visual"
-private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
-private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
@@ -405,62 +398,6 @@ internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ThreadPageScreen() }
-    }
-}
-
-@Page(THREAD_MESSAGE_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadMessageVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadMessageVisualScreen() }
-    }
-}
-
-@Page(THREAD_MESSAGE_ROW_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadMessageRowVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadMessageVisualScreen() }
-    }
-}
-
-@Page(THREAD_HEADER_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadHeaderVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadHeaderVisualScreen() }
-    }
-}
-
-@Page(THREAD_REACTION_ATLAS_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadReactionAtlasVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadReactionAtlasVisualScreen() }
-    }
-}
-
-@Page(CHANNEL_MEMBERS_PANEL_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeChannelMembersPanelVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ChannelMembersPanelVisualScreen() }
-    }
-}
-
-@Page(CHANNEL_SETTINGS_PANEL_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeChannelSettingsPanelVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ChannelSettingsPanelVisualScreen() }
-    }
-}
-
-@Page(CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeChannelAddMemberPanelVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ChannelAddMemberPanelVisualScreen() }
     }
 }
 
@@ -1524,7 +1461,7 @@ private fun ThreadPageScreen() {
 }
 
 @Composable
-private fun ThreadMessageVisualScreen() {
+internal fun ThreadMessageVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -1673,7 +1610,7 @@ private fun ThreadMessageVisualScreen() {
 }
 
 @Composable
-private fun ThreadHeaderVisualScreen() {
+internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
         KuiklyThreadScreenPayload(
             instanceId = "visual-thread-header",
@@ -1702,7 +1639,7 @@ private fun ThreadHeaderVisualScreen() {
 }
 
 @Composable
-private fun ThreadReactionAtlasVisualScreen() {
+internal fun ThreadReactionAtlasVisualScreen() {
     Column(
         modifier =
             Modifier
@@ -1790,7 +1727,7 @@ private fun ThreadReactionAtlasImagePreview() {
 }
 
 @Composable
-private fun ChannelMembersPanelVisualScreen() {
+internal fun ChannelMembersPanelVisualScreen() {
     val members = remember { channelPanelVisualMembers() }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadMembersModal(
@@ -1808,7 +1745,7 @@ private fun ChannelMembersPanelVisualScreen() {
 }
 
 @Composable
-private fun ChannelSettingsPanelVisualScreen() {
+internal fun ChannelSettingsPanelVisualScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
@@ -1821,7 +1758,7 @@ private fun ChannelSettingsPanelVisualScreen() {
 }
 
 @Composable
-private fun ChannelAddMemberPanelVisualScreen() {
+internal fun ChannelAddMemberPanelVisualScreen() {
     val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {

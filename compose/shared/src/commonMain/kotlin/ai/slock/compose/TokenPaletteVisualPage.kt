@@ -1,6 +1,5 @@
 package ai.slock.compose
 
-import ai.slock.compose.base.BasePager
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -15,7 +14,6 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -23,20 +21,9 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
-
-const val TOKEN_PALETTE_VISUAL_PAGE = "compose_tokens_palette_visual"
-
-@Page(TOKEN_PALETTE_VISUAL_PAGE, supportInLocal = true)
-internal class TokenPaletteVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { TokenPaletteVisualContent() }
-    }
-}
 
 @Composable
-private fun TokenPaletteVisualContent() {
+internal fun TokenPaletteVisualContent() {
     Column(
         modifier =
             Modifier

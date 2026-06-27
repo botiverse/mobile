@@ -123,4 +123,4 @@ The demo `KRMyModule` and `KRMyView` are removed from OHOS production registrati
 
 - `threadEvent` was removed after full shared Thread stopped using the legacy Android island event path.
 - `filesEvent` was removed with the standalone `compose_thread_files` page. Product Thread renders `ThreadFilesContent` inside `compose_thread` and routes file actions through the shared Thread route/data-source.
-- `composerEvent` was removed after product Thread composer actions moved to typed `ThreadPage` handlers. The remaining standalone composer route is visual-only and logs local visual events instead of calling host compatibility events.
+- `composerEvent` was removed after product Thread composer actions moved to typed `ThreadPage` handlers. The remaining standalone composer visual fixture route is registered only from `compose/shared/src/visualFixtures/kotlin` when `slockVisualFixtures=true`; it logs local visual events instead of calling host compatibility events.

@@ -147,14 +147,32 @@ Each test method launches `SlockKuiklyActivity` with a `compose_*_visual` page
 and deterministic `pageData`, captures the app window, crops/normalizes to dp
 pixels, validates that the image is non-blank, and writes both PNG and metadata.
 
+KMP visual fixture pages are build-gated. Normal debug/release builds do not
+compile or register `compose_*_visual` routes. Any connected visual capture
+Gradle invocation must opt in with either `-PslockVisualFixtures=true` or
+`SLOCK_VISUAL_FIXTURES=true`; prefer the Gradle property in checked-in commands.
+
 Run a focused case from the Android repo:
 
 ```bash
 cd compose
 ANDROID_SERIAL=emulator-5560 ./gradlew --no-daemon --console=plain \
+  -PslockVisualFixtures=true \
   :androidApp:connectedConnectedTestAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=ai.slock.android.visual.KmpVisualScreenshotCaptureTest#captureThreadMessageRow
 ```
+
+Normal product builds intentionally omit the flag:
+
+```bash
+cd compose
+./gradlew :shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin
+./gradlew :androidApp:assembleDebug
+```
+
+The shared Gradle task `:shared:verifyNoProductionVisualPages` enforces this
+boundary by failing if production source sets contain visual `@Page`
+registrations.
 
 Artifacts are mirrored for `adb pull` here:
 

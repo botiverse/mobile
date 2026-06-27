@@ -20,46 +20,38 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
 import kotlinx.serialization.Serializable
 
-private const val THREAD_FILES_VISUAL_PAGE = "compose_thread_files_visual"
 private const val ThreadFilesVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 
-@Page(THREAD_FILES_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadFilesVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent {
-            Box(modifier = Modifier.width(390.dp).height(360.dp)) {
-                ThreadFilesContent(
-                    payload = threadFilesVisualPayload(),
-                    attachmentOpenStates =
-                        mapOf(
-                            "visual-file-pdf" to
-                                ThreadAttachmentOpenUiState(
+@Composable
+internal fun ThreadFilesVisualScreen() {
+    Box(modifier = Modifier.width(390.dp).height(360.dp)) {
+        ThreadFilesContent(
+            payload = threadFilesVisualPayload(),
+            attachmentOpenStates =
+                mapOf(
+                    "visual-file-pdf" to
+                        ThreadAttachmentOpenUiState(
+                            status = "downloading",
+                            progress =
+                                BridgeAttachmentDownloadProgress(
+                                    downloadId = "visual-files-download",
                                     status = "downloading",
-                                    progress =
-                                        BridgeAttachmentDownloadProgress(
-                                            downloadId = "visual-files-download",
-                                            status = "downloading",
-                                            percent = 44,
-                                            downloadedBytes = 192_000,
-                                            totalBytes = 438_272
-                                        )
+                                    percent = 44,
+                                    downloadedBytes = 192_000,
+                                    totalBytes = 438_272
                                 )
-                        ),
-                    onEvent = { _, _ -> }
-                )
-            }
-        }
+                        )
+                ),
+            onEvent = { _, _ -> }
+        )
     }
 }
 

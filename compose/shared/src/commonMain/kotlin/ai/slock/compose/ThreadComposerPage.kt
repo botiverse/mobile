@@ -39,7 +39,6 @@ import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -55,7 +54,6 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -64,7 +62,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
-private const val THREAD_COMPOSER_VISUAL_PAGE = "compose_thread_composer_visual"
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
@@ -112,15 +109,6 @@ private val threadComposerContentPayloadKeys =
         "channelSuggestions",
         "hookLabels"
     )
-
-// Connected visual-test entry only. Product Thread renders ThreadComposerContent inside ThreadPage.
-@Page(THREAD_COMPOSER_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeThreadComposerVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadComposerScreen() }
-    }
-}
 
 @Serializable
 internal data class KuiklyThreadComposerPayload(
@@ -341,7 +329,7 @@ internal sealed class KuiklyComposerSuggestionTrigger {
 }
 
 @Composable
-private fun ThreadComposerScreen() {
+internal fun ThreadComposerScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params

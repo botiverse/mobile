@@ -96,8 +96,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
-private const val HOME_TITLEBAR_VISUAL_PAGE = "compose_home_titlebar_visual"
-private const val HOME_NOTIFICATION_CENTER_VISUAL_PAGE = "compose_home_notification_center_visual"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
@@ -130,22 +128,6 @@ internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockHomePageContent() }
-    }
-}
-
-@Page(HOME_TITLEBAR_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeTitlebarVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeTitlebarVisualScreen() }
-    }
-}
-
-@Page(HOME_NOTIFICATION_CENTER_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeNotificationCenterVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeNotificationCenterVisualScreen() }
     }
 }
 
@@ -476,7 +458,7 @@ internal fun buildHomeConversationThreadLaunchPayload(
 }
 
 @Composable
-private fun HomeTitlebarVisualScreen() {
+internal fun HomeTitlebarVisualScreen() {
     Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
         HomeTitlebar(
             serverName = "Raft Design",
@@ -492,7 +474,7 @@ private fun HomeTitlebarVisualScreen() {
 }
 
 @Composable
-private fun HomeNotificationCenterVisualScreen() {
+internal fun HomeNotificationCenterVisualScreen() {
     Box(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
         HomeNotificationPopover(
             notifications = visualHomeNotifications(),

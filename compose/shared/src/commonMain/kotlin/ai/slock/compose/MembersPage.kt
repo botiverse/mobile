@@ -165,7 +165,6 @@ import kotlin.math.roundToLong
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
-private const val MEMBERS_AGENT_DETAIL_VISUAL_PAGE = "compose_members_agent_detail_visual"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
@@ -363,14 +362,6 @@ internal class ComposeMemberDetailPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { MemberDetailPageContent() }
-    }
-}
-
-@Page(MEMBERS_AGENT_DETAIL_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeMembersAgentDetailVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { MembersAgentDetailVisualContent() }
     }
 }
 
@@ -1558,7 +1549,7 @@ private fun MemberDetailErrorPageShell(
 }
 
 @Composable
-private fun MembersAgentDetailVisualContent() {
+internal fun MembersAgentDetailVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
     MembersDetailContent(

@@ -383,19 +383,10 @@ import kotlinx.serialization.json.contentOrNull
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
-const val BOTTOM_TAB_BAR_VISUAL_PAGE = "compose_bottom_tabbar_visual"
-private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
-private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
 private const val HOME_SEARCH_PAGE = "compose_home_search"
 private const val HOME_SAVED_PAGE = "compose_home_saved"
 private const val HOME_ACTIVITY_PAGE = "compose_home_activity"
-private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
-private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_search_channel_dropdown_visual"
-private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
-private const val HOME_ACTIVITY_VISUAL_PAGE = "compose_home_activity_visual"
-private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
-private const val AUTH_CHOOSE_SERVER_VISUAL_PAGE = "compose_auth_choose_server_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
@@ -598,30 +589,6 @@ internal class ComposeBottomTabBarSmokePage : ai.slock.compose.base.BasePager() 
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarSmokeContent() }
-    }
-}
-
-@Page(BOTTOM_TAB_BAR_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeBottomTabBarVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { BottomTabBarVisualContent() }
-    }
-}
-
-@Page(SETTINGS_ROW_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeSettingsRowVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SettingsRowVisualContent() }
-    }
-}
-
-@Page(SETTINGS_PAGE_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeSettingsPageVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SettingsPageVisualContent() }
     }
 }
 
@@ -970,59 +937,11 @@ private fun rememberHomeSearchSavedViewModel(
     }
 }
 
-@Page(HOME_SEARCH_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeSearchVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeSearchVisualContent() }
-    }
-}
-
-@Page(HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeSearchChannelDropdownVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeSearchVisualContent(initialOpenFilterId = "channel") }
-    }
-}
-
-@Page(HOME_SAVED_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeSavedVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeSavedVisualContent() }
-    }
-}
-
-@Page(HOME_ACTIVITY_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeActivityVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeActivityVisualContent() }
-    }
-}
-
-@Page(HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeCreateChannelDialogVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeCreateChannelDialogVisualContent() }
-    }
-}
-
 @Page(AUTH_CHOOSE_SERVER_PAGE, supportInLocal = true)
 internal class ComposeAuthChooseServerPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { AuthChooseServerPageContent() }
-    }
-}
-
-@Page(AUTH_CHOOSE_SERVER_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeAuthChooseServerVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthChooseServerVisualContent() }
     }
 }
 
@@ -8567,7 +8486,7 @@ private fun AuthChooseServerPageContent() {
 }
 
 @Composable
-private fun AuthChooseServerVisualContent() {
+internal fun AuthChooseServerVisualContent() {
     val session = remember { authChooseServerVisualSession() }
     val store = remember(session) { InMemorySlockAuthSessionStore(session) }
     val authDataSource = remember(store, session) {
@@ -13213,7 +13132,7 @@ private fun BottomTabBarSmokeContent() {
 }
 
 @Composable
-private fun BottomTabBarVisualContent() {
+internal fun BottomTabBarVisualContent() {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Spacer(modifier = Modifier.height(72.dp))
         SlockBottomTabBar(
@@ -13225,7 +13144,7 @@ private fun BottomTabBarVisualContent() {
 }
 
 @Composable
-private fun SettingsRowVisualContent() {
+internal fun SettingsRowVisualContent() {
     Column(
         modifier =
             Modifier
@@ -13243,7 +13162,7 @@ private fun SettingsRowVisualContent() {
 }
 
 @Composable
-private fun SettingsPageVisualContent() {
+internal fun SettingsPageVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val variant =
         remember(pager.pageData.params.toString()) {
@@ -14345,7 +14264,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
 )
 
 @Composable
-private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
+internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
     val openFilterId =
         initialOpenFilterId ?: pager.pageData.params.optString("openFilterId").takeIf { it.isNotBlank() }
@@ -14368,7 +14287,7 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
 }
 
 @Composable
-private fun HomeSavedVisualContent() {
+internal fun HomeSavedVisualContent() {
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSavedPanel(
             state = homeSavedVisualState,
@@ -14382,7 +14301,7 @@ private fun HomeSavedVisualContent() {
 }
 
 @Composable
-private fun HomeActivityVisualContent() {
+internal fun HomeActivityVisualContent() {
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
             snapshot = homeActivityVisualSnapshot,
@@ -14394,7 +14313,7 @@ private fun HomeActivityVisualContent() {
 }
 
 @Composable
-private fun HomeCreateChannelDialogVisualContent() {
+internal fun HomeCreateChannelDialogVisualContent() {
     Box(
         modifier =
             Modifier
