@@ -5791,6 +5791,7 @@ private fun ThreadPageContent(
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
@@ -5805,6 +5806,7 @@ private fun ThreadPageContent(
         selectedShareBounds.clear()
         sharePreviewImage = null
         sharePreviewLoading = false
+        shareCaptureMode = false
         if (activeModal == "sharePreview") {
             activeModal = null
         }
@@ -5933,18 +5935,19 @@ private fun ThreadPageContent(
                         onOpenMarkdownTag = openMarkdownTag,
                         onOpenMarkdownUrl = openMarkdownUrl,
                         diagnosticsLogger = diagnosticsLogger,
-                        shareSelectionActive = shareSelectionActive,
-                    selectedShareMessageIds = selectedShareMessageIds,
-                    onShareSelectionBounds = { messageId, rect ->
-                        if (rect == null) {
-                            selectedShareBounds.remove(messageId)
-                        } else {
-                            selectedShareBounds[messageId] = rect
-                        }
-                    },
-                    onEnterShareSelection = { messageId ->
-                        selectedShareMessageIds = setOf(messageId)
-                        activeModal = null
+                        shareSelectionActive = shareSelectionActive && !shareCaptureMode,
+                        shareSelectionCaptureActive = shareCaptureMode,
+                        selectedShareMessageIds = selectedShareMessageIds,
+                        onShareSelectionBounds = { messageId, rect ->
+                            if (rect == null) {
+                                selectedShareBounds.remove(messageId)
+                            } else {
+                                selectedShareBounds[messageId] = rect
+                            }
+                        },
+                        onEnterShareSelection = { messageId ->
+                            selectedShareMessageIds = setOf(messageId)
+                            activeModal = null
                         },
                         onToggleShareSelection = { messageId ->
                             selectedShareMessageIds =
@@ -6025,9 +6028,25 @@ private fun ThreadPageContent(
                     onShare = {
                         if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                             sharePreviewLoading = true
+                            sharePreviewImage = null
+                            selectedShareBounds.clear()
+                            shareCaptureMode = true
                             shareExportScope.launch {
-                                val result = runCatching { onExportShareImage(selectedShareCaptureRect()) }.getOrNull()
-                                sharePreviewLoading = false
+                                var result: JSONObject? = null
+                                try {
+                                    var attempts = 0
+                                    while (
+                                        attempts < 10 &&
+                                            selectedShareMessageIds.any { selectedShareBounds[it] == null }
+                                    ) {
+                                        delay(32)
+                                        attempts += 1
+                                    }
+                                    result = runCatching { onExportShareImage(selectedShareCaptureRect()) }.getOrNull()
+                                } finally {
+                                    shareCaptureMode = false
+                                    sharePreviewLoading = false
+                                }
                                 if (result?.optString("status") == "ok") {
                                     sharePreviewImage =
                                         ThreadSharePreviewImage(
@@ -6613,6 +6632,7 @@ private fun ThreadChatTab(
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
+    shareSelectionCaptureActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -6670,6 +6690,7 @@ private fun ThreadChatTab(
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
                     shareSelectionActive = shareSelectionActive,
+                    shareSelectionCaptureActive = shareSelectionCaptureActive,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -6714,6 +6735,7 @@ private fun ThreadChatTab(
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
                     shareSelectionActive = shareSelectionActive,
+                    shareSelectionCaptureActive = shareSelectionCaptureActive,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -6752,6 +6774,7 @@ private fun ThreadChatTab(
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                 diagnosticsLogger = diagnosticsLogger,
                 shareSelectionActive = shareSelectionActive,
+                shareSelectionCaptureActive = shareSelectionCaptureActive,
                 selectedShareMessageIds = selectedShareMessageIds,
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
@@ -6815,6 +6838,7 @@ private fun ThreadMessagesList(
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
+    shareSelectionCaptureActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -7448,7 +7472,7 @@ private fun ThreadMessagesList(
                             }
                     }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                val captureShareBounds = shareSelectionActive && message.id in selectedShareMessageIds
+                val captureShareBounds = shareSelectionCaptureActive && message.id in selectedShareMessageIds
                 Box(
                     modifier =
                         Modifier

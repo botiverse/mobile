@@ -14,6 +14,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -1603,9 +1604,16 @@ internal class SlockKuiklyBridgeModule(
                 }.getOrElse {
                     return mapOf("status" to "failed", "message" to "Unable to capture image")
                 }
+        val framedBitmap =
+                runCatching { bitmap.withThreadShareChrome() }
+                        .getOrElse {
+                            bitmap.recycle()
+                            return mapOf("status" to "failed", "message" to "Unable to frame image")
+                        }
+        bitmap.recycle()
         val exportDir = threadShareImageCacheDir()
         if (!exportDir.exists() && !exportDir.mkdirs()) {
-            bitmap.recycle()
+            framedBitmap.recycle()
             return mapOf("status" to "failed", "message" to "Storage unavailable")
         }
         cleanupThreadShareImageCache(exportDir)
@@ -1613,10 +1621,12 @@ internal class SlockKuiklyBridgeModule(
         val saved =
                 runCatching {
                     file.outputStream().use { output ->
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                        framedBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
                     }
                 }.getOrDefault(false)
-        bitmap.recycle()
+        val framedWidth = framedBitmap.width
+        val framedHeight = framedBitmap.height
+        framedBitmap.recycle()
         if (!saved || !file.exists() || file.length() <= 0L) {
             return mapOf("status" to "failed", "message" to "Unable to write image")
         }
@@ -1632,9 +1642,51 @@ internal class SlockKuiklyBridgeModule(
                 "path" to file.absolutePath,
                 "fileName" to file.name,
                 "mimeType" to "image/png",
-                "width" to width,
-                "height" to height
+                "width" to framedWidth,
+                "height" to framedHeight
         )
+    }
+
+    private fun Bitmap.withThreadShareChrome(): Bitmap {
+        val headerHeight = 52
+        val footerHeight = 38
+        val framed =
+                Bitmap.createBitmap(width, height + headerHeight + footerHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(framed)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.WHITE
+        }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            color = Color.BLACK
+        }
+        val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 21f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(82, 82, 82)
+            textSize = 14f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
+        fill.color = Color.rgb(255, 216, 77)
+        canvas.drawRect(0f, 0f, width.toFloat(), headerHeight.toFloat(), fill)
+        canvas.drawText("RAFT", 16f, 34f, title)
+        val site = "raft.build"
+        canvas.drawText(site, width - caption.measureText(site) - 16f, 33f, caption)
+        canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
+        fill.color = Color.WHITE
+        val footerTop = (headerHeight + height).toFloat()
+        canvas.drawRect(0f, footerTop, width.toFloat(), framed.height.toFloat(), fill)
+        canvas.drawText("Shared from Raft", 16f, footerTop + 25f, caption)
+        canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
+        canvas.drawLine(0f, footerTop, width.toFloat(), footerTop, stroke)
+        canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
+        return framed
     }
 
     private fun saveThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
