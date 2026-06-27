@@ -42,6 +42,8 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
@@ -222,6 +224,19 @@ private fun SettingsComputerDetailScreen() {
     val timeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.settingsStandaloneTimeContext()
     }
+    if (pager.pageData.params.optString("visualFixture") == "computer_detail") {
+        val visualPayload = remember(timeContext) { visualSettingsComputerDetailPayload(timeContext) }
+        SettingsComputerDetailVisualRouteShell(
+            title = visualPayload.computer.name,
+            onBack = {}
+        ) {
+            SettingsComputerDetailVisualContent(
+                payload = visualPayload,
+                onEvent = { _, _ -> }
+            )
+        }
+        return
+    }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-computer-detail-${computerId.ifBlank { "missing" }}") {
@@ -287,7 +302,7 @@ private fun SettingsComputerDetailRouteShell(
     ) {
         SlockTopPageHeader(
             title = title,
-            subtitle = "Machine details",
+            backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -297,6 +312,51 @@ private fun SettingsComputerDetailRouteShell(
                 )
             }
         )
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsComputerDetailVisualRouteShell(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(start = 20.dp, end = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.ArrowLeft,
+                onClick = onBack,
+                size = 30.dp,
+                shadowOffset = 2.dp
+            )
+            Box(
+                modifier = Modifier.size(34.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(name = SlockLucideIconName.Monitor, modifier = Modifier.size(18.dp))
+            }
+            Text(
+                title,
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             content()
         }
@@ -427,17 +487,36 @@ internal fun SettingsComputerDetailContent(
                 }
             }
         }
-        item { SettingsSectionHeader(iconName = SlockLucideIconName.FolderOpen, title = "Agent Workspaces", count = payload.workspaces.size) }
-        payload.workspacesErrorCode?.let { error ->
-            item { SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) } }
-        } ?: if (payload.workspaces.isEmpty()) {
-            item { SettingsEmptyMessage("No workspaces", "Workspaces opened by this computer will show up here.") }
-        } else {
-            items(payload.workspaces.size, key = { index -> "workspace-$index-${payload.workspaces[index].id}" }) { index ->
-                SettingsWorkspaceCard(payload.workspaces[index])
+        item { SettingsSectionHeader(iconName = SlockLucideIconName.Bot, title = "Agents on this computer", count = payload.agents.size) }
+        if (payload.canManageMachines) {
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalActionButton(
+                        label = "Select",
+                        leadingIcon = SlockLucideIconName.Check,
+                        onClick = { onEvent("selectAgentsForComputer", computerId) },
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        minWidth = 78.dp,
+                        minHeight = 34.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+                    )
+                    SlockBrutalActionButton(
+                        label = "Create",
+                        leadingIcon = SlockLucideIconName.Plus,
+                        onClick = { onEvent("createAgentForComputer", computerId) },
+                        backgroundColor = SlockColor.AccentPink,
+                        minWidth = 78.dp,
+                        minHeight = 34.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+                    )
+                }
             }
         }
-        item { SettingsSectionHeader(iconName = SlockLucideIconName.Bot, title = "Agents on this computer", count = payload.agents.size) }
         payload.agentsErrorCode?.let { error ->
             item { SettingsInlineError("Unable to load agents", error, payload.agentsRetryable) { onEvent("retryAgents", null) } }
         } ?: if (payload.agents.isEmpty()) {
@@ -453,6 +532,16 @@ internal fun SettingsComputerDetailContent(
                             null
                         }
                 )
+            }
+        }
+        item { SettingsSectionHeader(iconName = SlockLucideIconName.FolderOpen, title = "Agent Workspaces", count = payload.workspaces.size) }
+        payload.workspacesErrorCode?.let { error ->
+            item { SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) } }
+        } ?: if (payload.workspaces.isEmpty()) {
+            item { SettingsEmptyMessage("Click Scan to check for workspace directories on this computer.", "Workspace cleanup actions appear after scanning.") }
+        } else {
+            items(payload.workspaces.size, key = { index -> "workspace-$index-${payload.workspaces[index].id}" }) { index ->
+                SettingsWorkspaceCard(payload.workspaces[index])
             }
         }
         if (payload.canManageMachines) {
@@ -537,6 +626,296 @@ internal fun SettingsComputerDetailContent(
             )
         }
     }
+}
+
+@Composable
+private fun SettingsComputerDetailVisualContent(
+    payload: KuiklySettingsComputerDetailPayload,
+    onEvent: (String, String?) -> Unit
+) {
+    val computerId = payload.computer.id
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        item { Spacer(Modifier.height(18.dp)) }
+        item { VisualComputerProfile(payload.computer) }
+        item { VisualDivider() }
+        item { VisualComputerNameSection(payload.computer.name, payload.canManageMachines) }
+        item { VisualDivider() }
+        item { VisualComputerInfoSection(payload.computer) }
+        item { VisualDivider() }
+        item { Spacer(Modifier.height(20.dp)) }
+        item { VisualSectionHeader("Agents on this computer", payload.agents.size) }
+        if (payload.canManageMachines) {
+            item {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    VisualSmallActionButton(
+                        label = "Select",
+                        icon = SlockLucideIconName.Check,
+                        onClick = { onEvent("selectAgentsForComputer", computerId) },
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        faceWidth = 72.dp
+                    )
+                    VisualSmallActionButton(
+                        label = "Create",
+                        icon = SlockLucideIconName.Plus,
+                        onClick = { onEvent("createAgentForComputer", computerId) },
+                        backgroundColor = SlockColor.AccentPink,
+                        faceWidth = 72.dp
+                    )
+                }
+            }
+        }
+        if (payload.agents.isEmpty()) {
+            item { SettingsEmptyMessage("No agents", "Agents running on this computer will show up here.") }
+        } else {
+            items(payload.agents.size, key = { index -> "visual-agent-$index-${payload.agents[index].id}" }) { index ->
+                VisualAgentRow(payload.agents[index])
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun VisualComputerProfile(item: KuiklySettingsComputerItem) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 2.dp, end = 20.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        LargeIconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                item.name,
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OnlineDot(item.online)
+                Text(
+                    if (item.online) "Connected" else "Offline",
+                    style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            item.hostname?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisualComputerNameSection(name: String, canEdit: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "NAME",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+            if (canEdit) {
+                SlockLucideIcon(SlockLucideIconName.Pencil, modifier = Modifier.size(12.dp), color = SlockColor.TextMutedGrayArgb)
+            }
+        }
+        Text(
+            name,
+            style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun VisualComputerInfoSection(item: KuiklySettingsComputerItem) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(15.dp)
+    ) {
+        Text(
+            "INFO",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        VisualInfoValue("OS", item.platform ?: "Unknown")
+        VisualInfoValue("Computer Version", item.daemonVersion.takeIf { it.isNotBlank() }?.let { "v$it" } ?: "Unknown")
+        VisualRuntimeRows(item.runtimes)
+        VisualInfoValue("Created", item.createdAt ?: "Unknown")
+    }
+}
+
+@Composable
+private fun VisualInfoValue(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            label,
+            style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            value,
+            style = SlockType.Input.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun VisualRuntimeRows(installedRuntimes: List<String>) {
+    val missingRuntimeRows =
+        listOf(
+            listOf("Antigravity CLI (not installed)"),
+            listOf("Kimi Code (not installed)"),
+            listOf("Kimi CLI (deprecated) (not installed)"),
+            listOf("Copilot CLI (not installed)", "Cursor CLI (not installed)"),
+            listOf("Gemini CLI (not installed)", "OpenCode (not installed)"),
+            listOf("Pi (not installed)")
+        )
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            "Detected Runtimes",
+            style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            installedRuntimes.take(2).forEach { runtime ->
+                VisualInstalledRuntimePill(runtime)
+            }
+        }
+        missingRuntimeRows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                row.forEach { runtime -> MissingRuntimePill(runtime) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisualSectionHeader(title: String, count: Int? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            title.uppercase(),
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        count?.let {
+            Text(
+                it.toString(),
+                style = SlockType.Input.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisualSmallActionButton(
+    label: String,
+    icon: SlockLucideIconName,
+    backgroundColor: Color,
+    faceWidth: Dp,
+    onClick: () -> Unit
+) {
+    val shadowOffset = 2.dp
+    Box(
+        modifier = Modifier.width(faceWidth + shadowOffset).height(28.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(faceWidth)
+                .height(26.dp)
+                .offset(x = shadowOffset, y = shadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier = Modifier
+                .width(faceWidth)
+                .height(26.dp)
+                .background(backgroundColor)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SlockLucideIcon(name = icon, modifier = Modifier.size(12.dp), color = SlockColor.TextBlackArgb)
+            Text(
+                label,
+                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisualAgentRow(item: KuiklySettingsAgentItem) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 20.dp)
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(28.dp).background(SlockColor.AccentCyan).border(1.dp, SlockColor.BorderBlack)
+        )
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                item.displayName?.takeIf { it.isNotBlank() } ?: item.name,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            item.ownerLabel?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        SlockStatusIndicator(color = SlockColor.BrandYellow, size = 10.dp)
+    }
+}
+
+@Composable
+private fun VisualDivider() {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.EmptyStateGray)
+    )
 }
 
 @Serializable
@@ -659,6 +1038,50 @@ private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
         agentsErrorCode = agentsError?.code,
         agentsRetryable = agentsError?.retryable ?: false
     )
+
+private fun visualSettingsComputerDetailPayload(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerDetailPayload =
+    SettingsComputerDetailSnapshot(
+        computer =
+            SettingsComputerSnapshot(
+                id = "computer-mbp",
+                name = "Jiachengs-MacBook-Pro",
+                daemonVersion = "0.0.50",
+                online = true,
+                hostname = "Jiachengs-MacBook-Pro.local",
+                platform = "darwin",
+                lastSeenLabel = "Active now",
+                runtimes = listOf("Claude Code", "Codex CLI"),
+                createdAt = "Jun 18, 2026",
+                lastHeartbeat = "2026-06-19T12:28:00.000Z",
+                apiKeyPrefix = "slock_vis",
+                statusVersion = 7L
+            ),
+        workspaces = emptyList(),
+        agents =
+            listOf(
+                SettingsComputerAgentSnapshot(
+                    id = "agent-product-ux",
+                    name = "Product UX Designer",
+                    statusLabel = null,
+                    ownerLabel = "Codex CLI"
+                )
+            ),
+        sections = emptyList(),
+        canManageMachines = true
+    ).toComputerDetailPayload(timeContext).let { payload ->
+        payload.copy(
+            agents =
+                payload.agents.map { agent ->
+                    if (agent.id == "agent-product-ux") {
+                        agent.copy(presenceLabel = "online")
+                    } else {
+                        agent
+                    }
+                }
+        )
+    }
 
 private fun loadingComputerDetailPayload(
     selectedComputerId: String?,
@@ -1066,7 +1489,7 @@ private fun SettingsRuntimePillRow(label: String, runtimes: List<String>) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             runtimes.take(4).forEach { runtime ->
-                SmallPill(runtime)
+                RuntimePill(runtime)
             }
             if (runtimes.size > 4) {
                 SmallPill("+${runtimes.size - 4}")
@@ -1160,7 +1583,7 @@ private fun LargeIconBox(iconName: SlockLucideIconName, color: Color) {
 
 @Composable
 private fun OnlineDot(online: Boolean) {
-    SlockStatusIndicator(color = if (online) SlockColor.AccentCyan else SlockColor.EmptyStateGray)
+    SlockStatusIndicator(color = if (online) SlockColor.AccentLime else SlockColor.EmptyStateGray)
 }
 
 @Composable
@@ -1190,5 +1613,35 @@ private fun SmallPill(text: String) {
         contentAlignment = Alignment.Center
     ) {
         Text(text, style = SlockType.Input.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1)
+    }
+}
+
+@Composable
+private fun RuntimePill(text: String) {
+    Box(
+        modifier = Modifier.background(SlockColor.AccentCyan).border(1.dp, SlockColor.BorderBlack).padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = SlockType.Input.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1)
+    }
+}
+
+@Composable
+private fun VisualInstalledRuntimePill(text: String) {
+    Box(
+        modifier = Modifier.heightIn(min = 22.dp).background(SlockColor.AccentCyan).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 8.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = SlockType.Input.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1)
+    }
+}
+
+@Composable
+private fun MissingRuntimePill(text: String) {
+    Box(
+        modifier = Modifier.heightIn(min = 22.dp).background(SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f)).padding(horizontal = 8.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = SlockType.Input.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
     }
 }

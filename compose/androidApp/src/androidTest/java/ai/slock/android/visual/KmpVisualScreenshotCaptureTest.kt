@@ -609,6 +609,20 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsComputerDetailScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.computer-detail",
+            pageName = "compose_settings_computer_detail",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-settings-computer-detail")
+                    .put("visualFixture", "computer_detail"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureAuthLoginInputsEmpty() {
         captureKmpComponentCase(
             caseId = "auth.login.inputs.empty",

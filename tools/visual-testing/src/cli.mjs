@@ -27,6 +27,7 @@ const defaultManifestPath = path.join(artifactRoot, "visual-testing-cases.json")
 const inventoryPath = path.join(artifactRoot, "react-component-inventory.json");
 const providerSpecPath = path.join(artifactRoot, "provider-spec.json");
 const sharpImageDiffScriptPath = path.join(packageRoot, "src", "sharp-image-diff.mjs");
+const sharpImageOverlayScriptPath = path.join(packageRoot, "src", "sharp-image-overlay.mjs");
 const analysisRoot = path.join(resultRoot, "analysis");
 const defaultAndroidRepoDir = repoRoot;
 const pixelPerfectPassThreshold = 0.99;
@@ -1043,6 +1044,67 @@ function runImageDiff(baselineImage, currentImage, sideBySidePath, metricsPath, 
   );
   if (result.status !== 0) {
     throw new Error(`visual image diff failed for ${path.basename(baselineImage)} with status ${result.status}`);
+  }
+}
+
+function overlay(flags) {
+  const manifest = loadManifest(flags);
+  const baseline = String(flags.baseline || "react");
+  const current = String(flags.current || "android");
+  const alpha = String(flags.alpha || "0.5");
+  const region = flags.region ? String(flags.region) : "none";
+  const regionName = flags["region-name"] ? String(flags["region-name"]) : String(flags.regionName || "region");
+  const cases = selectedCases(manifest, flags);
+  const comparisonDir = path.join(resultRoot, "diff", `${baseline}__${current}`);
+  const outputs = [];
+  for (const visualCase of cases) {
+    const rawBaselineImage = findImage(baseline, visualCase.id);
+    const rawCurrentImage = findImage(current, visualCase.id);
+    const baselineMetadata = readMetadata(baseline, visualCase.id);
+    const currentMetadata = readMetadata(current, visualCase.id);
+    const baselineImage = rawBaselineImage && isCanonicalProviderCapture(baseline, baselineMetadata) ? rawBaselineImage : null;
+    const currentImage = rawCurrentImage && isCanonicalProviderCapture(current, currentMetadata) ? rawCurrentImage : null;
+    if (!baselineImage || !currentImage) {
+      console.warn(`overlay: ${visualCase.id}: missing canonical ${baseline}/${current} image`);
+      continue;
+    }
+    if (path.extname(baselineImage).toLowerCase() !== ".png" || path.extname(currentImage).toLowerCase() !== ".png") {
+      console.warn(`overlay: ${visualCase.id}: PNG inputs required`);
+      continue;
+    }
+    const overlayPath = path.join(comparisonDir, `${visualCase.id}.overlay.png`);
+    const regionFileSegment = anchorId(regionName);
+    const regionOverlayPath = region === "none" ? "none" : path.join(comparisonDir, `${visualCase.id}.${regionFileSegment}.overlay.png`);
+    const regionSideBySidePath = region === "none" ? "none" : path.join(comparisonDir, `${visualCase.id}.${regionFileSegment}.side-by-side.png`);
+    const metricsPath = path.join(comparisonDir, `${visualCase.id}.overlay.metrics.json`);
+    run("node", [
+      sharpImageOverlayScriptPath,
+      baselineImage,
+      currentImage,
+      overlayPath,
+      regionOverlayPath,
+      regionSideBySidePath,
+      metricsPath,
+      alpha,
+      regionName,
+      region,
+    ]);
+    const metrics = readJson(metricsPath);
+    outputs.push({
+      id: visualCase.id,
+      overlay: path.relative(repoRoot, overlayPath),
+      regionOverlay: regionOverlayPath === "none" ? null : path.relative(repoRoot, regionOverlayPath),
+      regionSideBySide: regionSideBySidePath === "none" ? null : path.relative(repoRoot, regionSideBySidePath),
+      metrics: path.relative(repoRoot, metricsPath),
+      region: metrics.region || null,
+    });
+  }
+  console.log(`overlay: ${baseline} vs ${current}, ${outputs.length} cases`);
+  for (const output of outputs) {
+    const regionText = output.region
+      ? ` region ${output.region.name}: RGB ${(output.region.rgbSimilarity * 100).toFixed(2)}%, pixel ${(output.region.pixelPerfectSimilarity * 100).toFixed(2)}%, mismatch ${(output.region.pixelMismatchRatio * 100).toFixed(2)}%`
+      : "";
+    console.log(`overlay: ${output.id}: ${output.overlay}${regionText}`);
   }
 }
 
@@ -2586,6 +2648,7 @@ function usage() {
   slock-visual capture --providers android [--case case.id] --command './capture-provider.sh'
   slock-visual diff [--baseline react] [--current android] [--case case.id] [--category 'app/home/*'] [--include-pending]
   slock-visual diff [--baseline react] [--current android] [--case case.id] [--include-skipped]
+  slock-visual overlay [--baseline react] [--current android] [--case case.id] [--alpha 0.5] [--region x,y,width,height] [--region-name runtime]
   slock-visual analyze [--baseline react] [--current android] [--model MODEL] [--force] [--skip-model]
   slock-visual report [--baseline react] [--current android] [--skip-analysis]
   slock-visual site [--baseline react] [--current android] [--skip-analysis] [--site-dir artifacts/visual-testing-site]
@@ -2619,6 +2682,9 @@ function main() {
       break;
     case "diff":
       diff(flags);
+      break;
+    case "overlay":
+      overlay(flags);
       break;
     case "analyze":
       analyze(flags);
