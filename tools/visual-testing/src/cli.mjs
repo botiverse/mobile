@@ -236,6 +236,60 @@ function localizedTimeScript() {
   </script>`;
 }
 
+function overlayComparisonScript() {
+  return `<script>
+    (() => {
+      const loadImage = (src) => new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Unable to load overlay image: " + src));
+        image.src = src;
+      });
+
+      const drawOverlay = (panel, baselineImage, currentImage) => {
+        const canvas = panel.querySelector("canvas[data-overlay-canvas]");
+        if (!canvas) return;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        const width = Number(panel.dataset.overlayWidth) || baselineImage.naturalWidth || currentImage.naturalWidth;
+        const height = Number(panel.dataset.overlayHeight) || baselineImage.naturalHeight || currentImage.naturalHeight;
+        const mode = panel.querySelector("[data-overlay-mode]")?.value || "blend";
+        const opacity = Number(panel.querySelector("[data-overlay-opacity]")?.value || 50) / 100;
+        canvas.width = width;
+        canvas.height = height;
+        context.clearRect(0, 0, width, height);
+        context.globalAlpha = 1;
+        context.globalCompositeOperation = "source-over";
+        context.drawImage(baselineImage, 0, 0, width, height);
+        context.save();
+        context.globalAlpha = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0.5;
+        context.globalCompositeOperation = mode === "difference" ? "difference" : "source-over";
+        context.drawImage(currentImage, 0, 0, width, height);
+        context.restore();
+        const valueLabel = panel.querySelector("[data-overlay-opacity-value]");
+        if (valueLabel) valueLabel.textContent = Math.round((Number.isFinite(opacity) ? opacity : 0.5) * 100) + "%";
+      };
+
+      for (const panel of document.querySelectorAll("[data-overlay-comparison]")) {
+        const canvas = panel.querySelector("canvas[data-overlay-canvas]");
+        if (!canvas) continue;
+        Promise.all([
+          loadImage(panel.dataset.baselineSrc),
+          loadImage(panel.dataset.currentSrc),
+        ]).then(([baselineImage, currentImage]) => {
+          const redraw = () => drawOverlay(panel, baselineImage, currentImage);
+          panel.querySelector("[data-overlay-mode]")?.addEventListener("change", redraw);
+          panel.querySelector("[data-overlay-opacity]")?.addEventListener("input", redraw);
+          redraw();
+        }).catch((error) => {
+          const status = panel.querySelector("[data-overlay-status]");
+          if (status) status.textContent = error.message;
+        });
+      }
+    })();
+  </script>`;
+}
+
 function normalizeHex(value) {
   const raw = String(value || "").trim().replace(/^0x/i, "").replace(/^#/, "").toUpperCase();
   if (/^[0-9A-F]{8}$/.test(raw)) return `#${raw.slice(2)}`;
@@ -1409,6 +1463,13 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .caseHeader span { display: block; margin-top: 4px; color: #6b625f; font-size: 13px; }
     .case img { width: 100%; display: block; border: 1px solid #141111; background: #fff; }
     .case img.sideBySide { width: 100%; height: auto; object-fit: contain; }
+    .overlayComparison { margin-top: 10px; border: 1px solid #141111; background: #fffaf0; padding: 8px; }
+    .overlayComparison summary { cursor: pointer; font-weight: 800; }
+    .overlayControls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
+    .overlayControls label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+    .overlayControls select, .overlayControls input { accent-color: #FFD440; }
+    .overlayCanvasWrap { overflow: auto; border: 1px solid #cfc7c2; background: #fff; }
+    .overlayCanvasWrap canvas { display: block; width: 100%; height: auto; image-rendering: auto; }
     .rawCaptures { margin-top: 10px; }
     .rawCaptures summary { cursor: pointer; font-weight: 800; }
     .rawGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 8px; }
@@ -1492,6 +1553,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
   </section>
   ${matrixSection}
   ${localizedTimeScript()}
+  ${overlayComparisonScript()}
 </body>
 </html>
 `;
@@ -1526,6 +1588,7 @@ function caseCardHtml(item, latestPrefix) {
       ${acceptance}
       ${cropInfo ? `<p class="cropInfo">${cropInfo}</p>` : ""}
       ${analysisHtml(item.analysis, latestPrefix)}
+      ${overlayComparisonHtml(item, baselineImage, currentImage)}
       ${rawCapturesHtml(item, baselineImage, currentImage, baselineRaw, currentRaw)}
       <div class="caseLinks">
         ${baselineImage ? `<a href="${xmlEscape(baselineImage)}">${xmlEscape(providerLabel(item.baseline))} PNG</a>` : ""}
@@ -1533,6 +1596,34 @@ function caseCardHtml(item, latestPrefix) {
         ${sideBySide ? `<a href="${xmlEscape(sideBySide)}">Side-by-side PNG</a>` : ""}
       </div>
     </article>`;
+}
+
+function overlayComparisonHtml(item, baselineImage, currentImage) {
+  if (!baselineImage || !currentImage) return "";
+  const width = Number(item.metrics?.comparisonWidth || item.metrics?.baselineWidth || item.metrics?.currentWidth || 0);
+  const height = Number(item.metrics?.comparisonHeight || item.metrics?.baselineHeight || item.metrics?.currentHeight || 0);
+  const dimensions = width > 0 && height > 0 ? `data-overlay-width="${width}" data-overlay-height="${height}"` : "";
+  const baselineLabel = providerLabel(item.baseline);
+  const currentLabel = providerLabel(item.current);
+  return `<details class="overlayComparison" open data-overlay-comparison data-baseline-src="${xmlEscape(baselineImage)}" data-current-src="${xmlEscape(currentImage)}" ${dimensions}>
+    <summary>Overlay comparison · ${xmlEscape(baselineLabel)} under ${xmlEscape(currentLabel)}</summary>
+    <div class="overlayControls">
+      <label>Mode
+        <select data-overlay-mode>
+          <option value="blend">Blend</option>
+          <option value="difference">Difference</option>
+        </select>
+      </label>
+      <label>${xmlEscape(currentLabel)} opacity
+        <input data-overlay-opacity type="range" min="0" max="100" value="50" />
+      </label>
+      <code data-overlay-opacity-value>50%</code>
+      <span class="cropInfo" data-overlay-status>${width > 0 && height > 0 ? `Canvas ${width}x${height}` : "Canvas auto"}</span>
+    </div>
+    <div class="overlayCanvasWrap">
+      <canvas data-overlay-canvas aria-label="${xmlEscape(item.id)} overlay comparison"></canvas>
+    </div>
+  </details>`;
 }
 
 function providerCapturedHtml(metadata) {
