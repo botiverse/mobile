@@ -467,6 +467,7 @@ internal data class KuiklyThreadScreenPayload(
     val showModeTabs: Boolean = true,
     val showReplyActions: Boolean = true,
     val alignOwnMessagesRight: Boolean = false,
+    val compactConsecutiveMessages: Boolean = false,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
@@ -7251,11 +7252,17 @@ private fun ThreadMessagesList(
             items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
                 val message = renderPayload.messages[index]
                 val absoluteMessageIndex = index
+                val previousMessage = renderPayload.messages.getOrNull(index - 1)
                 SideEffect {
                     firstViewportProbe.recordComposedMessage(message.id, absoluteMessageIndex)
                 }
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val suppressRepeatedAuthor =
+                    remember(renderPayload.compactConsecutiveMessages, message, previousMessage) {
+                        renderPayload.compactConsecutiveMessages &&
+                            previousMessage?.isSameVisibleThreadAuthorAs(message) == true
+                    }
                 val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
                     if (isRichContentEnabled) {
@@ -7346,6 +7353,8 @@ private fun ThreadMessagesList(
                             onToggleShareSelection = { onToggleShareSelection(message.id) },
                             isMessageListScrolling = listState.isScrollInProgress,
                             alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                            compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
+                            suppressRepeatedAuthor = suppressRepeatedAuthor,
                             showReplyAction = renderPayload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
@@ -8290,6 +8299,8 @@ private fun ThreadMessageCard(
     highlightedMentions: Set<String> = emptySet(),
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     alignOwnMessageRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
+    suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -8347,6 +8358,9 @@ private fun ThreadMessageCard(
         label = "thread-message-focus-highlight"
     )
     var pressed by remember(message.id) { mutableStateOf(false) }
+    val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
+    val showTimestampInHeader = !compactConsecutiveMessages
+    val showTimestampInAvatarSlot = compactConsecutiveMessages && pressed && timestampLabel.isNotBlank()
     Box(
         modifier =
             Modifier
@@ -8382,7 +8396,10 @@ private fun ThreadMessageCard(
                     )
                 }
                 if (!alignOwnMessageRight) {
-                    ThreadMessageAvatar(
+                    ThreadMessageAvatarSlot(
+                        showAvatar = showAuthorChrome,
+                        showTimestamp = showTimestampInAvatarSlot,
+                        timestampLabel = timestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -8417,51 +8434,45 @@ private fun ThreadMessageCard(
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
-                        Button(
-                            modifier =
-                                Modifier
-                                    .threadMessageContentWidth(messageMaxWidthFraction)
-                                    .padding(end = if (showSaveAction && richContentEnabled) 30.dp else 0.dp)
-                                    .background(Color.Transparent),
-                            pressFeedback = false
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement =
-                                    if (alignOwnMessageRight) {
-                                        Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
-                                    } else {
-                                        Arrangement.spacedBy(SlockSpacing.Sm)
-                                    }
+                        if (showAuthorChrome) {
+                            Button(
+                                modifier =
+                                    Modifier
+                                        .threadMessageContentWidth(messageMaxWidthFraction)
+                                        .padding(end = if (showSaveAction && richContentEnabled) 30.dp else 0.dp)
+                                        .background(Color.Transparent),
+                                pressFeedback = false
                             ) {
-                                Text(
-                                    text = message.authorName,
-                                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                                    color = SlockColor.TextBlack,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier =
-                                        Modifier
-                                            .widthIn(max = 220.dp)
-                                            .clickable {
-                                                if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId)
-                                            }
-                                )
-                                authorBadgeLabel?.let { label ->
-                                    ThreadMessageAuthorBadge(label)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement =
+                                        if (alignOwnMessageRight) {
+                                            Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                                        } else {
+                                            Arrangement.spacedBy(SlockSpacing.Sm)
+                                        }
+                                ) {
+                                    Text(
+                                        text = message.authorName,
+                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                                        color = SlockColor.TextBlack,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier =
+                                            Modifier
+                                                .widthIn(max = 220.dp)
+                                                .clickable {
+                                                    if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId)
+                                                }
+                                    )
+                                    authorBadgeLabel?.let { label ->
+                                        ThreadMessageAuthorBadge(label)
+                                    }
+                                    if (showTimestampInHeader) {
+                                        ThreadMessageTimestampLabel(timestampLabel)
+                                    }
                                 }
-                                Text(
-                                    text = timestampLabel,
-                                    style =
-                                        SlockType.Caption.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                            color = SlockColor.TextBlack.copy(alpha = 0.4f)
-                                        ),
-                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
                         }
                         if (richContentEnabled && actionCard != null) {
@@ -8569,7 +8580,10 @@ private fun ThreadMessageCard(
                     }
                 }
                 if (alignOwnMessageRight) {
-                    ThreadMessageAvatar(
+                    ThreadMessageAvatarSlot(
+                        showAvatar = showAuthorChrome,
+                        showTimestamp = showTimestampInAvatarSlot,
+                        timestampLabel = timestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -9199,6 +9213,20 @@ private fun KuiklyThreadMessageItem.isRemovedThreadHuman(): Boolean =
 
 private fun KuiklyThreadMessageItem.isThreadAgentAuthor(): Boolean =
     authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
+
+private fun KuiklyThreadMessageItem.isSameVisibleThreadAuthorAs(
+    other: KuiklyThreadMessageItem
+): Boolean =
+    !isSystemMessage() &&
+        !other.isSystemMessage() &&
+        authorIdentityKey().isNotBlank() &&
+        authorIdentityKey() == other.authorIdentityKey()
+
+private fun KuiklyThreadMessageItem.authorIdentityKey(): String =
+    authorId.takeIf { it.isNotBlank() }
+        ?: authorHandle.takeIf { it.isNotBlank() }
+        ?: authorName.takeIf { it.isNotBlank() }
+        ?: ""
 
 @Composable
 private fun ThreadMessageFooterMeta(
@@ -10302,6 +10330,74 @@ private fun ThreadOriginCard(
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
+}
+
+@Composable
+private fun ThreadMessageTimestampLabel(timestampLabel: String) {
+    Text(
+        text = timestampLabel,
+        style =
+            SlockType.Caption.copy(
+                fontFamily = FontFamily.Monospace,
+                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+            ),
+        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun ThreadMessageAvatarSlot(
+    showAvatar: Boolean,
+    showTimestamp: Boolean,
+    timestampLabel: String,
+    avatarLabel: String,
+    avatarWireValue: String?,
+    status: SlockAgentStatusIndicatorState?,
+    statusPulsing: Boolean = true,
+    muted: Boolean = false,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit = {}
+) {
+    val slotHeight = if (showAvatar && showTimestamp) 56.dp else 44.dp
+    Box(
+        modifier = Modifier.size(width = 40.dp, height = slotHeight),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        if (showAvatar) {
+            ThreadMessageAvatar(
+                avatarLabel = avatarLabel,
+                avatarWireValue = avatarWireValue,
+                status = status,
+                statusPulsing = statusPulsing,
+                muted = muted,
+                onClick = onClick,
+                onLongPress = onLongPress
+            )
+        }
+        if (showTimestamp) {
+            Text(
+                text = timestampLabel,
+                style =
+                    SlockType.Caption.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = SlockColor.TextBlack.copy(alpha = 0.38f)
+                    ),
+                color = SlockColor.TextBlack.copy(alpha = 0.38f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    if (showAvatar) {
+                        Modifier.align(Alignment.BottomCenter)
+                    } else {
+                        Modifier.padding(top = 23.dp)
+                    }
+            )
+        }
     }
 }
 

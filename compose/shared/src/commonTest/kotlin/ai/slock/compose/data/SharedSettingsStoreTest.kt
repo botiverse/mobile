@@ -700,14 +700,18 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetNotificationPreference(true))
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
+        store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
         assertEquals(AppLocale.SimplifiedChinese, localeRepository.current)
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
+        assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
+        assertEquals(true, mobile.compactConsecutiveMessages.enabled)
+        assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
         scope.cancel()
     }
@@ -2687,22 +2691,41 @@ class SharedSettingsStoreTest {
     }
 
     private class FakeChatLayoutPreferenceRepository(
-        var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left
+        var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
+        var compactConsecutiveMessages: Boolean = false
     ) : ChatLayoutPreferenceRepository {
         override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
-            ChatLayoutPreferenceSnapshot(myMessageAlignment = alignment)
+            ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages
+            )
 
         override suspend fun selectMyMessageAlignment(
             alignment: MyMessageAlignmentPreference
         ): ChatLayoutPreferenceSnapshot {
             this.alignment = alignment
-            return ChatLayoutPreferenceSnapshot(myMessageAlignment = this.alignment)
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = this.alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages
+            )
         }
 
         override suspend fun selectLargeScreenNavigation(
             navigation: LargeScreenNavigationPreference
         ): ChatLayoutPreferenceSnapshot =
-            ChatLayoutPreferenceSnapshot(myMessageAlignment = alignment, largeScreenNavigation = navigation)
+            ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                largeScreenNavigation = navigation,
+                compactConsecutiveMessages = compactConsecutiveMessages
+            )
+
+        override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            compactConsecutiveMessages = enabled
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages
+            )
+        }
     }
 
     private class FakeRecompositionProfilerPreferenceRepository(

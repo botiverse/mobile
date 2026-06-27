@@ -29,6 +29,7 @@ import ai.slock.compose.data.KuiklyHostNetworkEvents
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
+import ai.slock.compose.data.MOBILE_ACTION_COMPACT_MESSAGES
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -660,6 +661,7 @@ private data class HomeSecondaryRouteEnvironment(
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
+    val compactConsecutiveMessages: Boolean,
     val shellScope: SlockAppShellScope
 )
 
@@ -685,9 +687,11 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    var compactConsecutiveMessages by remember { mutableStateOf(false) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
-        myMessageAlignment =
-            chatLayoutPreferenceRepository.getChatLayoutPreference().myMessageAlignment
+        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
+        myMessageAlignment = chatLayout.myMessageAlignment
+        compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
     }
     val timeContext =
         remember(pager.pageData.params.toString()) {
@@ -706,6 +710,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         sharedStores.homeSavedStateCache,
         timeContext,
         myMessageAlignment,
+        compactConsecutiveMessages,
         shellScope
     ) {
         HomeSecondaryRouteEnvironment(
@@ -720,6 +725,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+            compactConsecutiveMessages = compactConsecutiveMessages,
             shellScope = shellScope
         )
     }
@@ -756,7 +762,8 @@ private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment
                 request = request,
                 source = "home_activity",
                 timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight
+                alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                compactConsecutiveMessages = environment.compactConsecutiveMessages
             )
         },
         onClose = { environment.pager.closeHomeSecondaryPage() },
@@ -831,7 +838,8 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
                 request = item.toHomeMessageOpenRequest(),
                 source = "home_search",
                 timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight
+                alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                compactConsecutiveMessages = environment.compactConsecutiveMessages
             )
         },
         onOpenEntity = { entity ->
@@ -839,7 +847,8 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
                 bridge = environment.bridge,
                 entity = entity,
                 timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight
+                alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                compactConsecutiveMessages = environment.compactConsecutiveMessages
             )
         },
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
@@ -885,7 +894,8 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
                 request = item.toHomeMessageOpenRequest(),
                 source = "home_saved",
                 timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight
+                alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                compactConsecutiveMessages = environment.compactConsecutiveMessages
             )
         },
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
@@ -1708,6 +1718,7 @@ private fun SlockAppShellContent() {
         }
     var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     var createChannelError by remember { mutableStateOf<String?>(null) }
@@ -1890,8 +1901,9 @@ private fun SlockAppShellContent() {
             notificationPreferenceRepository.getNotificationPreference()
     }
     LaunchedEffect(chatLayoutPreferenceRepository) {
-        myMessageAlignment =
-            chatLayoutPreferenceRepository.getChatLayoutPreference().myMessageAlignment
+        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
+        myMessageAlignment = chatLayout.myMessageAlignment
+        compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
     }
     DisposableEffect(notificationPreferenceEvents) {
         val callbackRef =
@@ -2020,6 +2032,7 @@ private fun SlockAppShellContent() {
         val runtimeLaunchPayload =
             launchPayload.copy(
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                compactConsecutiveMessages = compactConsecutiveMessages,
                 localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: launchPayload.localOffsetMinutes,
                 todayEpochDay = threadTimeContext?.todayEpochDay ?: launchPayload.todayEpochDay,
                 nowEpochMillis = threadTimeContext?.nowEpochMillis ?: launchPayload.nowEpochMillis,
@@ -2127,7 +2140,8 @@ private fun SlockAppShellContent() {
                         buildStandaloneConversationThreadLaunchPayload(
                             conversation = conversation,
                             timeContext = threadTimeContext,
-                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                            compactConsecutiveMessages = compactConsecutiveMessages
                         ).withDiagnosticsFeedbackDraft(
                             draft = draft
                         )
@@ -2178,6 +2192,7 @@ private fun SlockAppShellContent() {
                 conversation = conversation,
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                compactConsecutiveMessages = compactConsecutiveMessages,
                 anchorMessageId = anchorMessageId
             )
         bridge.log(
@@ -2645,7 +2660,8 @@ private fun SlockAppShellContent() {
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
                                     timeContext = threadTimeContext,
-                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                    compactConsecutiveMessages = compactConsecutiveMessages
                                 )
                             }
                         )
@@ -2734,6 +2750,9 @@ private fun SlockAppShellContent() {
                             onOpenRouter = { jumpPage(pager, "router") },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
+                            },
+                            onCompactConsecutiveMessagesSelected = {
+                                compactConsecutiveMessages = it
                             },
                             onSettingsAction = { action, itemId ->
                                 bridge.settingsEvent("shared-shell-settings", action, itemId)
@@ -2853,6 +2872,7 @@ private fun SettingsAppShellContent(
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
+    onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
     diagnosticsFeedbackDraft: SettingsDiagnosticsFeedbackDraft?,
@@ -3185,7 +3205,7 @@ private fun SettingsAppShellContent(
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),
                         timeContext = timeContext
                     ),
-                    bottomContentPadding = bottomContentPadding
+                    bottomContentPadding = bottomContentPadding,
                 ) { action, itemId ->
                     when (action) {
                         "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
@@ -3564,11 +3584,16 @@ private fun SettingsAppShellContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
                     refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile),
-                    bottomContentPadding = bottomContentPadding
-                ) { itemId ->
-                    onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
-                    onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
-                }
+                    bottomContentPadding = bottomContentPadding,
+                    onAlignmentChange = { itemId ->
+                        onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
+                        onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
+                    },
+                    onCompactConsecutiveMessagesChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
+                        onCompactConsecutiveMessagesSelected(enabled)
+                    }
+                )
             SettingsDestinationAbout ->
                 SharedSettingsAboutContent(
                     state = settingsState.about,
@@ -4342,7 +4367,8 @@ private fun SettingsMobileContent(
     actionState: SharedSettingsActionState?,
     refreshing: Boolean,
     bottomContentPadding: Dp,
-    onAlignmentChange: (String?) -> Unit
+    onAlignmentChange: (String?) -> Unit,
+    onCompactConsecutiveMessagesChange: (Boolean) -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -4359,6 +4385,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onAlignmentChange = onAlignmentChange
+                )
+            }
+            item {
+                SettingsCompactMessagesCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
                 )
             }
         }
@@ -4387,6 +4420,54 @@ private fun SettingsMessageAlignmentCard(
             enabled = snapshot.messageAlignmentPreference.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsCompactMessagesCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onCompactConsecutiveMessagesChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
+    val preference = snapshot.compactConsecutiveMessages
+    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = "Compact consecutive messages") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onCompactConsecutiveMessagesChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Repeated avatars hidden" else "Show every message avatar",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -12470,6 +12551,7 @@ internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ): KuiklyThreadScreenPayload =
@@ -12477,6 +12559,7 @@ internal fun buildAppShellThreadPayload(
         conversation = conversation.toThreadLaunchConversationIdentity(),
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         anchorMessageId = anchorMessageId,
         originFallback = originFallback
     )
@@ -12485,6 +12568,7 @@ internal fun buildAppShellThreadPayload(
     conversation: ThreadLaunchConversationIdentity,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ): KuiklyThreadScreenPayload {
@@ -12573,6 +12657,7 @@ internal fun buildAppShellThreadPayload(
         showModeTabs = !isReplyThread,
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
         joined = conversation.joined,
         canSend = canSend,
@@ -12602,13 +12687,15 @@ internal fun buildAppShellThreadPayload(
 private fun Pager.openStandaloneTaskThreadPage(
     task: TaskSummary,
     timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean
+    alignOwnMessagesRight: Boolean,
+    compactConsecutiveMessages: Boolean
 ) {
     openStandaloneThreadLaunchPayload(
         buildStandaloneTaskThreadLaunchPayload(
             task = task,
             timeContext = timeContext,
-            alignOwnMessagesRight = alignOwnMessagesRight
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages
         )
     )
 }
@@ -12647,7 +12734,8 @@ private fun Pager.openStandaloneHomeMessageRequest(
     request: HomeMessageOpenRequest,
     source: String,
     timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean
+    alignOwnMessagesRight: Boolean,
+    compactConsecutiveMessages: Boolean
 ) {
     openStandaloneHomeConversation(
         bridge = bridge,
@@ -12655,6 +12743,7 @@ private fun Pager.openStandaloneHomeMessageRequest(
         source = source,
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         anchorMessageId = request.anchorMessageId
     )
 }
@@ -12665,6 +12754,7 @@ private fun Pager.openStandaloneHomeConversation(
     source: String,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
+    compactConsecutiveMessages: Boolean,
     anchorMessageId: String? = null
 ) {
     openStandaloneHomeConversation(
@@ -12673,6 +12763,7 @@ private fun Pager.openStandaloneHomeConversation(
         source = source,
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         anchorMessageId = anchorMessageId
     )
 }
@@ -12683,6 +12774,7 @@ private fun Pager.openStandaloneHomeConversation(
     source: String,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
+    compactConsecutiveMessages: Boolean,
     anchorMessageId: String? = null
 ) {
     bridge.log(
@@ -12706,6 +12798,7 @@ private fun Pager.openStandaloneHomeConversation(
             conversation = conversation,
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages,
             anchorMessageId = anchorMessageId
         )
     bridge.log(
@@ -12721,7 +12814,8 @@ private fun Pager.openHomeSearchEntity(
     bridge: ai.slock.compose.base.BridgeModule,
     entity: SearchEntityResult,
     timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean
+    alignOwnMessagesRight: Boolean,
+    compactConsecutiveMessages: Boolean
 ) {
     val conversation = entity.conversation
     if (conversation != null) {
@@ -12730,7 +12824,8 @@ private fun Pager.openHomeSearchEntity(
             conversation = conversation,
             source = "home_search_entity",
             timeContext = timeContext,
-            alignOwnMessagesRight = alignOwnMessagesRight
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages
         )
         return
     }
@@ -12758,12 +12853,14 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload =
     buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation.toThreadLaunchConversationIdentity(),
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         anchorMessageId = anchorMessageId
     )
 
@@ -12771,6 +12868,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     conversation: ThreadLaunchConversationIdentity,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload {
     val summary = conversation.toConversationSummary()
@@ -12805,6 +12903,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         selectedTab = "chat",
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
@@ -12815,7 +12914,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
 internal fun buildStandaloneTaskThreadLaunchPayload(
     task: TaskSummary,
     timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean = false
+    alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false
 ): WireThreadLaunchPayload {
     val streamThreadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val parentMessageId =
@@ -12835,6 +12935,7 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         selectedTab = "chat",
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,

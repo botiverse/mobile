@@ -321,6 +321,7 @@ sealed interface SharedSettingsIntent {
     ) : SharedSettingsIntent
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
+    data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -735,6 +736,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setCompactConsecutiveMessages(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_compact_messages_unavailable", retryable = false))
+        repository.setCompactConsecutiveMessages(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
 
@@ -918,6 +927,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Message alignment preference is not available on this platform."
+                    ),
+            compactConsecutiveMessages =
+                chatLayout?.toSettingsMobileCompactMessagesSnapshot()
+                    ?: compactConsecutiveMessages.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Compact message layout preference is not available on this platform."
                     )
         )
     }
@@ -1494,6 +1510,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setMessageAlignment(intent.alignment)
                     .applyMobileActionResult(MOBILE_ACTION_MESSAGE_ALIGNMENT)
+            }
+            is SharedSettingsIntent.SetCompactConsecutiveMessages -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_COMPACT_MESSAGES, inProgress = true)
+                    )
+                dataSource.setCompactConsecutiveMessages(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_COMPACT_MESSAGES)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -2240,6 +2264,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
+            is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -2395,6 +2420,7 @@ internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
+internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
@@ -2490,6 +2516,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSelectionSnapshot(): Se
                     label = it.mobileLabel()
                 )
             }
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = compactConsecutiveMessages,
+        available = true,
+        statusLabel = if (compactConsecutiveMessages) "Enabled" else "Off",
+        detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
     )
 
 private fun AppLocale.mobileLabel(): String =

@@ -40,6 +40,7 @@ class LocalPreferencesTest {
 
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
+        assertEquals(false, snapshot.compactConsecutiveMessages)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
             snapshot.supportedLargeScreenNavigation.contains(
@@ -58,12 +59,15 @@ class LocalPreferencesTest {
         val alignment = repository.selectMyMessageAlignment(MyMessageAlignmentPreference.Right)
         val navigation =
             repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
+        val compact = repository.setCompactConsecutiveMessages(true)
         val restored = repository.getChatLayoutPreference()
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, navigation.largeScreenNavigation)
+        assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
+        assertEquals(true, restored.compactConsecutiveMessages)
     }
 
     @Test

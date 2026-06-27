@@ -123,7 +123,8 @@ data class ChatLayoutPreferenceSnapshot(
     val largeScreenNavigation: LargeScreenNavigationPreference =
         LargeScreenNavigationPreference.Default,
     val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
-        LargeScreenNavigationPreference.entries
+        LargeScreenNavigationPreference.entries,
+    val compactConsecutiveMessages: Boolean = false
 )
 
 interface ChatLayoutPreferenceStore {
@@ -133,6 +134,9 @@ interface ChatLayoutPreferenceStore {
     fun readLargeScreenNavigationSync(): LargeScreenNavigationPreference
     suspend fun readLargeScreenNavigation(): LargeScreenNavigationPreference
     suspend fun saveLargeScreenNavigation(navigation: LargeScreenNavigationPreference)
+    fun readCompactConsecutiveMessagesSync(): Boolean
+    suspend fun readCompactConsecutiveMessages(): Boolean
+    suspend fun saveCompactConsecutiveMessages(enabled: Boolean)
 }
 
 class KeyValueChatLayoutPreferenceStore(
@@ -162,9 +166,20 @@ class KeyValueChatLayoutPreferenceStore(
         store.putString(KEY_LARGE_SCREEN_NAVIGATION, navigation.storageKey)
     }
 
+    override fun readCompactConsecutiveMessagesSync(): Boolean =
+        store.getBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, false)
+
+    override suspend fun readCompactConsecutiveMessages(): Boolean =
+        readCompactConsecutiveMessagesSync()
+
+    override suspend fun saveCompactConsecutiveMessages(enabled: Boolean) {
+        store.putBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, enabled)
+    }
+
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
+        const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
     }
 }
 
@@ -176,6 +191,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun selectLargeScreenNavigation(
         navigation: LargeScreenNavigationPreference
     ): ChatLayoutPreferenceSnapshot
+    suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
 }
 
 class PersistentChatLayoutPreferenceRepository(
@@ -184,7 +200,8 @@ class PersistentChatLayoutPreferenceRepository(
     override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
         ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation()
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
         )
 
     override suspend fun selectMyMessageAlignment(
@@ -193,7 +210,8 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveMyMessageAlignment(alignment)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = alignment,
-            largeScreenNavigation = store.readLargeScreenNavigation()
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
         )
     }
 
@@ -203,7 +221,17 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveLargeScreenNavigation(navigation)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = navigation
+            largeScreenNavigation = navigation,
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
+        )
+    }
+
+    override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveCompactConsecutiveMessages(enabled)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = enabled
         )
     }
 }

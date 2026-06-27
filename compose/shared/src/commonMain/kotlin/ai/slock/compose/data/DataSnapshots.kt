@@ -866,6 +866,13 @@ data class SettingsMobileSnapshot(
                         label = it.name
                     )
                 }
+        ),
+    val compactConsecutiveMessages: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
         )
 )
 
