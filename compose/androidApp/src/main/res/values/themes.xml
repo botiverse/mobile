@@ -8,6 +8,7 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">@color/slock_accent_pink</item>
         <item name="android:textColorHighlight">@color/slock_accent_pink</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <style name="Theme.Slock.Starting" parent="Theme.SplashScreen">
