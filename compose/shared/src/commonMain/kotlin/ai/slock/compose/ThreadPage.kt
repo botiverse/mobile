@@ -5376,8 +5376,8 @@ internal fun threadVisualFixture(
                             displayName = "Designer",
                             handle = "designer",
                             kind = "human",
-                            avatarLabel = "DE",
-                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue
+                            avatarUrl = AvatarReference.Random("visual-human-designer").wireValue,
+                            avatarLabel = "DE"
                         )
                     ),
                 showComposer = false,
