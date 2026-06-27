@@ -700,6 +700,7 @@ internal fun SlockStructuralHomeShell(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
             initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
         )
+    val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listState) {
         onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
@@ -835,6 +836,7 @@ internal fun SlockStructuralHomeShell(
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
                                             interactionState = rowInteractionState,
+                                            captureLongPressAnchor = captureRowAnchors,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
                                             onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
                                             onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
@@ -849,6 +851,7 @@ internal fun SlockStructuralHomeShell(
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             interactionState = rowInteractionState,
+                                            captureLongPressAnchor = captureRowAnchors,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
                                             onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
                                             onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
@@ -895,6 +898,7 @@ internal fun SlockStructuralHomeShell(
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = channelInteractionState,
+                                    captureLongPressAnchor = captureRowAnchors,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                         onChannelLongPress(channel.id, anchor)
@@ -935,6 +939,7 @@ internal fun SlockStructuralHomeShell(
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = jointInteractionState,
+                                        captureLongPressAnchor = captureRowAnchors,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
                                         onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                             onChannelLongPress(channel.id, anchor)
@@ -991,6 +996,7 @@ internal fun SlockStructuralHomeShell(
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
                                     interactionState = dmInteractionState,
+                                    captureLongPressAnchor = captureRowAnchors,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                         onChannelLongPress(dm.id, anchor)
@@ -1886,8 +1892,33 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
     }
 }
 
+private fun Modifier.homeRowAnchorCapture(
+    enabled: Boolean,
+    anchorRef: SlockMutableOffsetRef
+): Modifier =
+    if (enabled) {
+        onGloballyPositioned { coordinates ->
+            val pos = coordinates.positionInRoot()
+            anchorRef.update(Offset(x = pos.x, y = pos.y))
+        }
+    } else {
+        this
+    }
+
+private fun homeRowLongPressAnchor(
+    rowTopLeft: SlockMutableOffsetRef,
+    pressOffset: Offset,
+    rowHeightPx: Int
+): Offset {
+    val base = rowTopLeft.value.takeIf { rowTopLeft.hasValue } ?: Offset.Zero
+    return Offset(
+        x = base.x + pressOffset.x,
+        y = base.y + rowHeightPx.toFloat()
+    )
+}
+
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -1931,12 +1962,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
-                        val rowTopLeftValue = rowTopLeft.value
-                        val longPressAnchor = Offset(
-                            x = rowTopLeftValue.x + pressOffset.x,
-                            y = rowTopLeftValue.y + rowHeightPx
-                        )
-                        onLongPress.invoke(longPressAnchor)
+                        onLongPress.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
                     }
                 )
             }
@@ -1948,7 +1974,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                         tryAwaitRelease()
                         onPressEnd?.invoke()
                     },
-                    onTap = { onClick?.invoke() }
+                    onTap = { onClick.invoke() }
                 )
             }
         } else {
@@ -1957,16 +1983,13 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     }
     traceMarkdownSection(SlockHomeTraceNames.CHANNEL_ROW_RENDER, name.length) {
         Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    val pos = coordinates.positionInRoot()
-                    rowTopLeft.update(Offset(x = pos.x, y = pos.y))
-                }
-                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
-                .then(clickModifier)
-                .then(hoverableModifier)
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .homeRowAnchorCapture(captureLongPressAnchor, rowTopLeft)
+                    .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                    .then(clickModifier)
+                    .then(hoverableModifier)
         ) {
         if (selected || pressed) {
             Box(
@@ -2039,7 +2062,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -2080,12 +2103,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
-                        val rowTopLeftValue = rowTopLeft.value
-                        val longPressAnchor = Offset(
-                            x = rowTopLeftValue.x + pressOffset.x,
-                            y = rowTopLeftValue.y + rowHeightPx
-                        )
-                        onLongPress.invoke(longPressAnchor)
+                        onLongPress.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
                     }
                 )
             }
@@ -2097,7 +2115,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         tryAwaitRelease()
                         onPressEnd?.invoke()
                     },
-                    onTap = { onClick?.invoke() }
+                    onTap = { onClick.invoke() }
                 )
             }
         } else {
@@ -2106,15 +2124,12 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     }
     traceMarkdownSection(SlockHomeTraceNames.DIRECT_MESSAGE_ROW_RENDER, name.length) {
         Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    val pos = coordinates.positionInRoot()
-                    rowTopLeft.update(Offset(x = pos.x, y = pos.y))
-                }
-                .then(clickModifier)
-                .then(hoverableModifier)
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .homeRowAnchorCapture(captureLongPressAnchor, rowTopLeft)
+                    .then(clickModifier)
+                    .then(hoverableModifier)
         ) {
         if (selected || pressed) {
             Box(
