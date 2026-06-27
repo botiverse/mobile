@@ -119,6 +119,9 @@ kotlin {
 //            iosArm64Test.dependsOn(this)
 //            iosSimulatorArm64Test.dependsOn(this)
 //        }
+        findByName("iosMain")?.dependencies {
+            implementation("app.cash.sqldelight:native-driver:2.1.0")
+        }
     }
 }
 
