@@ -18,6 +18,9 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.fonts.Font
+import android.graphics.fonts.FontFamily
+import android.graphics.fonts.FontStyle
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -1034,8 +1037,14 @@ private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter 
 }
 
 internal object SlockKuiklyFontAdapter : IKRFontAdapter {
+    private data class SlockFontSpec(
+            val fontRes: Int,
+            val weight: Int
+    )
+
     private var context: Context? = null
     private var inputTypeface: Typeface? = null
+    private val typefaceCache = mutableMapOf<Int, Typeface>()
 
     fun init(context: Context) {
         this.context = context.applicationContext
@@ -1043,24 +1052,54 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     fun inputTypeface(context: Context): Typeface? {
         inputTypeface?.let { return it }
-        return ResourcesCompat.getFont(context.applicationContext, R.font.space_grotesk_regular)
+        return resolveTypeface("space_grotesk_regular", context)
                 ?.also { inputTypeface = it }
     }
 
     fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
         val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
-        val fontRes = when (fontName) {
-            "space_grotesk_variable" -> R.font.space_grotesk_variable
-            "space_grotesk_bold" -> R.font.space_grotesk_bold
-            "space_grotesk_semibold" -> R.font.space_grotesk_semibold
-            "space_grotesk_medium" -> R.font.space_grotesk_medium
-            "space_grotesk_regular" -> R.font.space_grotesk_regular
-            "space_grotesk_light" -> R.font.space_grotesk_light
-            "space_grotesk" -> R.font.space_grotesk
+        val fontSpec = when (fontName) {
+            "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
+            "space_grotesk_bold" -> SlockFontSpec(R.font.space_grotesk_bold, FontStyle.FONT_WEIGHT_BOLD)
+            "space_grotesk_semibold" -> SlockFontSpec(R.font.space_grotesk_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
+            "space_grotesk_medium" -> SlockFontSpec(R.font.space_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
+            "space_grotesk_regular" -> SlockFontSpec(R.font.space_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
+            "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
+            "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
             else -> null
         }
-        return fontRes?.let { ResourcesCompat.getFont(context.applicationContext, it) }
-            ?: inputTypeface(context)
+        return if (fontSpec != null) {
+            cachedTypeface(context.applicationContext, fontSpec)
+        } else {
+            inputTypeface(context)
+        }
+    }
+
+    private fun cachedTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? =
+            synchronized(typefaceCache) {
+                typefaceCache[fontSpec.fontRes]?.let { return@synchronized it }
+                val typeface = buildTypeface(context, fontSpec) ?: return@synchronized null
+                typefaceCache[fontSpec.fontRes] = typeface
+                typeface
+            }
+
+    private fun buildTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return ResourcesCompat.getFont(context, fontSpec.fontRes)
+        }
+        return try {
+            val font = Font.Builder(context.resources, fontSpec.fontRes)
+                    .setWeight(fontSpec.weight)
+                    .setSlant(FontStyle.FONT_SLANT_UPRIGHT)
+                    .build()
+            val family = FontFamily.Builder(font).build()
+            Typeface.CustomFallbackBuilder(family)
+                    .setStyle(FontStyle(fontSpec.weight, FontStyle.FONT_SLANT_UPRIGHT))
+                    .setSystemFallback("sans-serif")
+                    .build()
+        } catch (_: Exception) {
+            ResourcesCompat.getFont(context, fontSpec.fontRes)
+        }
     }
 
     override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
