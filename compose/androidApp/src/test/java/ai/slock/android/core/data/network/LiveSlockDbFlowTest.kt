@@ -11,10 +11,10 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
-import ai.slock.android.core.model.ChannelId
-import ai.slock.android.core.model.MessageId
-import ai.slock.android.core.model.ServerId
-import ai.slock.android.core.model.ThreadId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.parentChannelIdOrNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser

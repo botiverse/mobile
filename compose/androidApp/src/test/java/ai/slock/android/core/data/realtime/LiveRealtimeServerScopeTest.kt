@@ -12,8 +12,8 @@ import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
-import ai.slock.android.core.model.MessageNew
-import ai.slock.android.core.model.ServerId
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.ServerId
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit

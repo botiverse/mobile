@@ -8,9 +8,9 @@ import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.android.core.model.ChannelId
-import ai.slock.android.core.model.RealtimeEvent
-import ai.slock.android.core.model.ServerId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.runBlocking
 
 class SessionRealtimeRepository(

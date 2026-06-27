@@ -66,9 +66,9 @@ import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.realtime.SlockRealtimeNotifyContract
-import ai.slock.android.core.model.MemberKind
-import ai.slock.android.core.model.Presence
-import ai.slock.android.core.model.ServerId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext

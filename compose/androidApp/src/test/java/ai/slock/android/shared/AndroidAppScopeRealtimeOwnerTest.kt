@@ -1,12 +1,12 @@
 package ai.slock.android.shared
 
-import ai.slock.android.core.model.ChannelId
-import ai.slock.android.core.model.MemberId
-import ai.slock.android.core.model.MemberKind
-import ai.slock.android.core.model.MemberProfile
-import ai.slock.android.core.model.Message
-import ai.slock.android.core.model.MessageId
-import ai.slock.android.core.model.ThreadId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ConversationKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

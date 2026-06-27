@@ -1,16 +1,16 @@
 package ai.slock.android.core.data.diagnostics
 
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.model.ChannelId
-import ai.slock.android.core.model.Heartbeat
-import ai.slock.android.core.model.MemberId
-import ai.slock.android.core.model.MemberKind
-import ai.slock.android.core.model.MemberProfile
-import ai.slock.android.core.model.Message
-import ai.slock.android.core.model.MessageId
-import ai.slock.android.core.model.MessageNew
-import ai.slock.android.core.model.ServerId
-import ai.slock.android.core.model.ThreadId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.Heartbeat
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ThreadId
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.network.model.BackfillScope
 import ai.slock.compose.network.model.NetworkStatus

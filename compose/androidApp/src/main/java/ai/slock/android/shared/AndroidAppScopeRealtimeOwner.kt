@@ -8,8 +8,8 @@ import android.net.NetworkCapabilities
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
-import ai.slock.android.core.model.Message
-import ai.slock.android.core.model.ServerId
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SlockHostNetworkNotifyContract
 import ai.slock.compose.data.realtime.RealtimeConnectionState
