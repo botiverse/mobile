@@ -292,7 +292,9 @@ internal class BridgeModule : Module() {
         x: Float?,
         y: Float?,
         width: Float?,
-        height: Float?
+        height: Float?,
+        fragments: String? = null,
+        frame: Boolean = true
     ): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
@@ -300,6 +302,8 @@ internal class BridgeModule : Module() {
             methodArgs.put("y", y ?: 0f)
             methodArgs.put("width", width ?: 0f)
             methodArgs.put("height", height ?: 0f)
+            fragments?.takeIf { it.isNotBlank() }?.let { methodArgs.put("fragments", it) }
+            methodArgs.put("frame", frame)
             callNativeMethod("exportThreadShareImage", methodArgs) {
                 continuation.resume(it)
             }

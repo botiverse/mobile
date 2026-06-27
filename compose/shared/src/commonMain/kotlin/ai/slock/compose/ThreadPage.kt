@@ -224,7 +224,9 @@ private data class ThreadShareCaptureRect(
     val x: Float,
     val y: Float,
     val width: Float,
-    val height: Float
+    val height: Float,
+    val path: String = "",
+    val frame: Boolean = true
 )
 
 private data class ThreadSharePreviewImage(
@@ -3272,7 +3274,9 @@ internal fun SharedThreadRouteContent(
                     x = rect?.x,
                     y = rect?.y,
                     width = rect?.width,
-                    height = rect?.height
+                    height = rect?.height,
+                    fragments = rect?.path,
+                    frame = rect?.frame ?: true
                 )
             },
             onSaveShareImage = { path ->
@@ -5792,6 +5796,7 @@ private fun ThreadPageContent(
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
@@ -5807,6 +5812,7 @@ private fun ThreadPageContent(
         sharePreviewImage = null
         sharePreviewLoading = false
         shareCaptureMode = false
+        shareCaptureTargetMessageId = null
         if (activeModal == "sharePreview") {
             activeModal = null
         }
@@ -5829,6 +5835,34 @@ private fun ThreadPageContent(
             y = top,
             width = (right - left).coerceAtLeast(1f),
             height = (bottom - top).coerceAtLeast(1f)
+        )
+    }
+    suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
+        val fragments = mutableListOf<String>()
+        selectedShareMessages.forEach { message ->
+            selectedShareBounds.remove(message.id)
+            val targetIndex = timelineSlice.threadMessageListItemIndex(message.id)
+            if (targetIndex < 0) return@forEach
+            shareCaptureTargetMessageId = message.id
+            var attempts = 0
+            while (attempts < 24 && selectedShareBounds[message.id] == null) {
+                delay(32)
+                attempts += 1
+            }
+            val rect = selectedShareBounds[message.id] ?: return@forEach
+            val result = runCatching { onExportShareImage(rect.copy(frame = false)) }.getOrNull()
+            val path = result?.optString("path").orEmpty()
+            if (result?.optString("status") == "ok" && path.isNotBlank()) {
+                fragments += path
+            }
+        }
+        if (fragments.isEmpty()) return null
+        return ThreadShareCaptureRect(
+            x = 0f,
+            y = 0f,
+            width = 0f,
+            height = 0f,
+            path = fragments.joinToString(separator = "\n")
         )
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -5937,7 +5971,8 @@ private fun ThreadPageContent(
                         diagnosticsLogger = diagnosticsLogger,
                         shareSelectionActive = shareSelectionActive && !shareCaptureMode,
                         shareSelectionCaptureActive = shareCaptureMode,
-                        shareSelectionCaptureAnchorMessageId = selectedShareMessages.firstOrNull()?.id,
+                        shareSelectionCaptureAnchorMessageId =
+                            shareCaptureTargetMessageId ?: selectedShareMessages.firstOrNull()?.id,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onShareSelectionBounds = { messageId, rect ->
                             if (rect == null) {
@@ -6035,17 +6070,24 @@ private fun ThreadPageContent(
                             shareExportScope.launch {
                                 var result: JSONObject? = null
                                 try {
-                                    var attempts = 0
-                                    while (
-                                        attempts < 24 &&
-                                            selectedShareMessageIds.any { selectedShareBounds[it] == null }
-                                    ) {
-                                        delay(32)
-                                        attempts += 1
-                                    }
-                                    result = runCatching { onExportShareImage(selectedShareCaptureRect()) }.getOrNull()
+                                    val captureRect =
+                                        if (selectedShareMessages.size > 1) {
+                                            captureSelectedShareFragments()
+                                        } else {
+                                            var attempts = 0
+                                            while (
+                                                attempts < 24 &&
+                                                    selectedShareMessageIds.any { selectedShareBounds[it] == null }
+                                            ) {
+                                                delay(32)
+                                                attempts += 1
+                                            }
+                                            selectedShareCaptureRect()
+                                        }
+                                    result = runCatching { onExportShareImage(captureRect) }.getOrNull()
                                 } finally {
                                     shareCaptureMode = false
+                                    shareCaptureTargetMessageId = null
                                     sharePreviewLoading = false
                                 }
                                 if (result?.optString("status") == "ok") {
@@ -7623,7 +7665,7 @@ private fun ThreadMessagesList(
                 }
             }
         }
-        if (shouldShowThreadBackToBottomButton(
+        if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
@@ -11733,7 +11775,7 @@ private fun ThreadSharePreviewModal(
                             .padding(8.dp)
                 ) {
                     SlockCachedImage(
-                        source = image?.uri,
+                        source = image.uri,
                         contentDescription = "Selected messages image preview",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
@@ -11741,11 +11783,6 @@ private fun ThreadSharePreviewModal(
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockModalActionButton(
-                    label = "Cancel",
-                    icon = SlockLucideIconName.X,
-                    onClick = onDismiss
-                )
                 Spacer(modifier = Modifier.weight(1f))
                 SlockModalActionButton(
                     label = "Copy MD",

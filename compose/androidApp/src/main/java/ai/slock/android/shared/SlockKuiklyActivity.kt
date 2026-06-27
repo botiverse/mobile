@@ -1577,6 +1577,15 @@ internal class SlockKuiklyBridgeModule(
         if (container.width <= 0 || container.height <= 0) {
             return mapOf("status" to "failed", "message" to "Thread view is not ready")
         }
+        val fragmentPaths =
+                request.optString("fragments")
+                        .lineSequence()
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .toList()
+        if (fragmentPaths.isNotEmpty()) {
+            return stitchThreadShareFragments(fragmentPaths)
+        }
         val requestedX = request.optDouble("x", 0.0).roundToInt()
         val requestedY = request.optDouble("y", 0.0).roundToInt()
         val requestedWidth = request.optDouble("width", 0.0).roundToInt()
@@ -1606,29 +1615,71 @@ internal class SlockKuiklyBridgeModule(
                 }.getOrElse {
                     return mapOf("status" to "failed", "message" to "Unable to capture image")
                 }
-        val framedBitmap =
-                runCatching { bitmap.withThreadShareChrome() }
+        return saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true))
+    }
+
+    private fun stitchThreadShareFragments(fragmentPaths: List<String>): Map<String, Any> {
+        val fragments =
+                fragmentPaths.mapNotNull { path ->
+                    runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                }
+        if (fragments.isEmpty()) {
+            return mapOf("status" to "failed", "message" to "Unable to capture image")
+        }
+        val width = fragments.maxOf { it.width }.coerceAtLeast(1)
+        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
+        val stitched =
+                runCatching {
+                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
+                        val canvas = Canvas(output)
+                        canvas.drawColor(Color.WHITE)
+                        var top = 0f
+                        fragments.forEach { fragment ->
+                            val left = ((width - fragment.width) / 2f).coerceAtLeast(0f)
+                            canvas.drawBitmap(fragment, left, top, null)
+                            top += fragment.height
+                        }
+                    }
+                }.getOrElse {
+                    fragments.forEach { it.recycle() }
+                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                }
+        fragments.forEach { it.recycle() }
+        return saveThreadShareBitmap(stitched, frame = true)
+    }
+
+    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> {
+        val exportBitmap =
+                if (frame) {
+                    runCatching { bitmap.withThreadShareChrome() }
                         .getOrElse {
                             bitmap.recycle()
                             return mapOf("status" to "failed", "message" to "Unable to frame image")
                         }
-        bitmap.recycle()
+                } else {
+                    bitmap
+                }
+        if (frame) {
+            bitmap.recycle()
+        }
         val exportDir = threadShareImageCacheDir()
         if (!exportDir.exists() && !exportDir.mkdirs()) {
-            framedBitmap.recycle()
+            exportBitmap.recycle()
             return mapOf("status" to "failed", "message" to "Storage unavailable")
         }
-        cleanupThreadShareImageCache(exportDir)
-        val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}.png")
+        if (frame) {
+            cleanupThreadShareImageCache(exportDir)
+        }
+        val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}-${System.nanoTime()}.png")
         val saved =
                 runCatching {
                     file.outputStream().use { output ->
-                        framedBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                        exportBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
                     }
                 }.getOrDefault(false)
-        val framedWidth = framedBitmap.width
-        val framedHeight = framedBitmap.height
-        framedBitmap.recycle()
+        val exportWidth = exportBitmap.width
+        val exportHeight = exportBitmap.height
+        exportBitmap.recycle()
         if (!saved || !file.exists() || file.length() <= 0L) {
             return mapOf("status" to "failed", "message" to "Unable to write image")
         }
@@ -1644,8 +1695,8 @@ internal class SlockKuiklyBridgeModule(
                 "path" to file.absolutePath,
                 "fileName" to file.name,
                 "mimeType" to "image/png",
-                "width" to framedWidth,
-                "height" to framedHeight
+                "width" to exportWidth,
+                "height" to exportHeight
         )
     }
 
