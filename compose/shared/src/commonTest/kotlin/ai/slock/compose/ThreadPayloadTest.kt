@@ -2803,6 +2803,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneThreadRoutePageDataPayloadIsIdentityOnly() {
+        val launch =
+            WireThreadLaunchPayload(
+                instanceId = "shared-shell-thread-channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                selectedTab = "chat"
+            )
+
+        val encodedPayload = threadLaunchPageData(launch).optString("payload")
+
+        listOf(
+            "\"messages\"",
+            "\"tasks\"",
+            "\"members\"",
+            "\"memberCandidates\"",
+            "\"filesPayload\"",
+            "\"settingsActions\""
+        ).forEach { forbidden ->
+            assertFalse(encodedPayload.contains(forbidden), "$forbidden must stay outside compose_thread pageData")
+        }
+    }
+
+    @Test
     fun standaloneActivityThreadLaunchShowsOpenInConversationAction() {
         val request =
             InboxItem(
