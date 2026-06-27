@@ -598,6 +598,47 @@ internal fun slockMarkdownAnnotator(
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
     val inlineCodeByStart = content.threadInlineCodeMatches().associateBy { it.range.first }
+    val inlineContentById =
+        if (inlineTagById.isEmpty()) {
+            null
+        } else {
+            buildMap<String, InlineTextContent> {
+                inlineTagById.forEach { (id, token) ->
+                    val tag = token.tag ?: return@forEach
+                    val label =
+                        resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
+                            ?: threadMarkdownTagDisplayLabel(tag.label)
+                    put(
+                        id,
+                        InlineTextContent(
+                            Placeholder(
+                                width = slockMarkdownInlineTagWidthSp(
+                                    label,
+                                    tag.kind,
+                                    highlightedMentionById.containsKey(token.id)
+                                ),
+                                height = SlockMarkdownInlineChipHeight
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize().clickable { onOpenTag(tag) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val isHighlightedMention = highlightedMentionById.containsKey(token.id)
+                                if (tag.kind == ThreadMarkdownTagKind.UserMention &&
+                                    !isHighlightedMention
+                                ) {
+                                    SlockMarkdownMentionText(label)
+                                } else {
+                                    val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
+                                    SlockMarkdownInlineChip(label, chipColor)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             inlineTagTokens.size,
@@ -649,44 +690,7 @@ internal fun slockMarkdownAnnotator(
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
-        inlineContent = {
-            buildMap {
-                inlineTagById.forEach { (id, token) ->
-                    val tag = token.tag ?: return@forEach
-                    val label =
-                        resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
-                            ?: threadMarkdownTagDisplayLabel(tag.label)
-                    put(
-                        id,
-                        InlineTextContent(
-                            Placeholder(
-                                width = slockMarkdownInlineTagWidthSp(
-                                    label,
-                                    tag.kind,
-                                    highlightedMentionById.containsKey(token.id)
-                                ),
-                                height = SlockMarkdownInlineChipHeight
-                            )
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().clickable { onOpenTag(tag) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                val isHighlightedMention = highlightedMentionById.containsKey(token.id)
-                                if (tag.kind == ThreadMarkdownTagKind.UserMention &&
-                                    !isHighlightedMention
-                                ) {
-                                    SlockMarkdownMentionText(label)
-                                } else {
-                                    val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
-                                    SlockMarkdownInlineChip(label, chipColor)
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-        },
+        inlineContent = inlineContentById?.let { contentMap -> { contentMap } },
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
 }
