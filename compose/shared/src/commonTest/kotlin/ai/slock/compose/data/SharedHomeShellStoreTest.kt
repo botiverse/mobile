@@ -31,7 +31,7 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun primarySurfaceVisibilityPreloadsBadgeSummariesThroughShellStore() {
+    fun primarySurfaceVisibilityOnlyForwardsVisibilityThroughShellStore() {
         val fixture = fixture()
         val store = fixture.store
 
@@ -41,13 +41,12 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedHomeIntent>(
                 SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.Start,
                 SharedHomeIntent.SetSurfaceVisible(false)
             ),
             fixture.homeIntents
         )
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.LoadInitial), fixture.activityIntents)
-        assertEquals(listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.OpenSaved), fixture.searchSavedIntents)
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeSearchSavedIntent>(), fixture.searchSavedIntents)
         assertEquals(false, store.state.value.primarySurfaceVisible)
         fixture.cancel()
     }
@@ -171,7 +170,6 @@ class SharedHomeShellStoreTest {
             listOf<SharedHomeIntent>(
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.Start,
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(false),
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
@@ -181,7 +179,6 @@ class SharedHomeShellStoreTest {
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.LoadInitial,
                 SharedActivityIntent.ApplyRealtimeEvent(event),
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.ApplyRealtimeEvent(event)

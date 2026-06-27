@@ -9480,8 +9480,10 @@ private fun SharedHomeScreen(
                 remember(serverMembersStore, snapshot.server.id.value) {
                     slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
                 }
-            LaunchedEffect(serverMembersStore, snapshot.server.id) {
-                serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
+            LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing) {
+                if (!current.contentRefreshing) {
+                    serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
+                }
             }
             LaunchedEffect(conversationDirectoryStore, snapshot.server.id, snapshot.channels, snapshot.directMessages) {
                 val store = conversationDirectoryStore ?: return@LaunchedEffect

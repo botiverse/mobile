@@ -130,10 +130,6 @@ class SharedHomeShellStore(
     private fun setSurfaceVisible(visible: Boolean) {
         _state.value = _state.value.copy(primarySurfaceVisible = visible)
         dispatchHome(SharedHomeIntent.SetSurfaceVisible(visible))
-        if (visible) {
-            dispatchHome(SharedHomeIntent.Start)
-            preloadBadgeSummaries()
-        }
     }
 
     private fun openDestination(destination: String) {
@@ -167,11 +163,6 @@ class SharedHomeShellStore(
         if (current.primarySurfaceVisible || current.destination == SharedHomeShellDestinationActivity) {
             dispatchActivity(SharedActivityIntent.ApplyRealtimeEvent(event))
         }
-    }
-
-    private fun preloadBadgeSummaries() {
-        dispatchActivity(SharedActivityIntent.LoadInitial)
-        dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
     }
 
     private fun refreshBadgeSummaries(clearBeforeRefresh: Boolean = false) {
