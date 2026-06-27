@@ -8402,6 +8402,11 @@ private fun ThreadMessageCard(
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
+    val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
+    val hasFooterMeta =
+        richContentEnabled &&
+            !message.hasLocalSendState() &&
+            message.hasThreadFooterMeta(hasReplyDraft)
     Box(
         modifier =
             Modifier
@@ -8563,7 +8568,7 @@ private fun ThreadMessageCard(
                                 }
                             }
                         }
-                        if (richContentEnabled) {
+                        if (hasThreadAttachments) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                 ThreadMessageAttachments(
                                     attachments = message.attachments,
@@ -8584,24 +8589,22 @@ private fun ThreadMessageCard(
                                 )
                             }
                         }
-                        if (richContentEnabled) {
+                        if (hasFooterMeta) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                                if (!message.hasLocalSendState()) {
-                                    ThreadMessageFooterMeta(
-                                        message = message,
-                                        hasReplyDraft = hasReplyDraft,
-                                        showReplyAction = showReplyAction,
-                                        taskOpenEnabled = taskOpenEnabled,
-                                        taskStatusActionsEnabled = taskStatusActionsEnabled,
-                                        resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                                        alignEnd = alignOwnMessageRight,
-                                        onOpenThread = { onOpenThread(message.id) },
-                                        onOpenTask = onOpenTask,
-                                        onShowActions = onShowActions,
-                                        onOpenTaskStatusMenu = onOpenTaskStatusMenu,
-                                        onToggleReaction = onToggleReaction
-                                    )
-                                }
+                                ThreadMessageFooterMeta(
+                                    message = message,
+                                    hasReplyDraft = hasReplyDraft,
+                                    showReplyAction = showReplyAction,
+                                    taskOpenEnabled = taskOpenEnabled,
+                                    taskStatusActionsEnabled = taskStatusActionsEnabled,
+                                    resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                    alignEnd = alignOwnMessageRight,
+                                    onOpenThread = { onOpenThread(message.id) },
+                                    onOpenTask = onOpenTask,
+                                    onShowActions = onShowActions,
+                                    onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                    onToggleReaction = onToggleReaction
+                                )
                             }
                         }
                     }
@@ -9318,11 +9321,7 @@ private fun ThreadMessageFooterMeta(
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: ((String) -> Unit)? = null
 ) {
-    val hasTask =
-        !message.taskId.isNullOrBlank() ||
-            message.taskNumber != null ||
-            !message.taskStatus.isNullOrBlank() ||
-            !message.taskAssigneeName.isNullOrBlank()
+    val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = message.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
@@ -9378,6 +9377,18 @@ private fun ThreadMessageFooterMeta(
         }
     }
 }
+
+internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(hasReplyDraft: Boolean = false): Boolean =
+    hasThreadTaskFooterMeta() ||
+        replyCount > 0 ||
+        hasReplyDraft ||
+        reactions.any { it.count > 0 }
+
+private fun KuiklyThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
+    !taskId.isNullOrBlank() ||
+        taskNumber != null ||
+        !taskStatus.isNullOrBlank() ||
+        !taskAssigneeName.isNullOrBlank()
 
 internal fun threadMessageTaskMetaLabel(
     message: KuiklyThreadMessageItem,
@@ -10436,8 +10447,14 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
+    val slotHeight =
+        when {
+            showAvatar -> 44.dp
+            showTimestamp -> 18.dp
+            else -> 0.dp
+        }
     Box(
-        modifier = Modifier.size(width = 40.dp, height = 44.dp),
+        modifier = Modifier.width(40.dp).height(slotHeight),
         contentAlignment = Alignment.TopCenter
     ) {
         when {
@@ -10464,7 +10481,7 @@ private fun ThreadMessageAvatarSlot(
                     color = SlockColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 23.dp)
+                    modifier = Modifier.align(Alignment.TopCenter)
                 )
         }
     }
