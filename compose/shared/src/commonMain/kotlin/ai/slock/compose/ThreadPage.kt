@@ -217,7 +217,7 @@ private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
-private const val ThreadInitialMarkdownPreparseMessageCount = 20
+internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
@@ -1005,7 +1005,7 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     )
 }
 
-private fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
+internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
     if (taskId == null && taskNumber == null && taskStatus == null && taskAssigneeId == null && taskAssigneeName == null) {
         this
     } else {
@@ -2175,6 +2175,9 @@ internal fun SharedThreadRouteContent(
     val payload by remember(threadViewModel) {
         threadViewModel.payloadFlow()
     }.collectAsState(threadViewModel.currentPayload)
+    val timelineSlice by remember(threadViewModel) {
+        threadViewModel.timelineSliceFlow()
+    }.collectAsState(threadViewModel.currentTimelineSlice)
     val highlightedMentions by remember(threadViewModel) {
         threadViewModel.highlightedMentionsFlow()
     }.collectAsState(threadViewModel.currentHighlightedMentions)
@@ -2468,8 +2471,8 @@ internal fun SharedThreadRouteContent(
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     val taskProjectionReferences =
-        remember(baseRenderedPayload.originMessage, baseRenderedPayload.messages) {
-            baseRenderedPayload.threadLinkedTaskReferences()
+        remember(timelineSlice) {
+            timelineSlice.threadLinkedTaskReferences()
         }
     val sharedTaskProjection by remember(
         tasksDataStore,
@@ -2496,6 +2499,10 @@ internal fun SharedThreadRouteContent(
     val renderedPayload =
         remember(baseRenderedPayload, taskProjectionLookup) {
             baseRenderedPayload.withThreadLinkedTasksProjection(taskProjectionLookup)
+        }
+    val renderedTimelineSlice =
+        remember(timelineSlice, taskProjectionLookup) {
+            timelineSlice.withThreadLinkedTasksProjection(taskProjectionLookup)
         }
     val memberSuggestionsFlow =
         remember(
@@ -3334,6 +3341,7 @@ internal fun SharedThreadRouteContent(
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
+            timelineSlice = renderedTimelineSlice,
             headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
@@ -5713,6 +5721,7 @@ private fun ThreadTasksJoinResultLogger(
 private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
+    timelineSlice: ThreadTimelineSlice,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
@@ -5851,6 +5860,7 @@ private fun ThreadPageContent(
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
                         payload = payload,
+                        timelineSlice = timelineSlice,
                         activeDraftRecords = activeDraftRecords,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6434,6 +6444,7 @@ private fun ThreadPageTabs(
 private fun ThreadChatTab(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
+    timelineSlice: ThreadTimelineSlice,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
@@ -6457,34 +6468,35 @@ private fun ThreadChatTab(
     onThreadContentReady: () -> Unit = {}
 ) {
     val chatRenderBranch =
-        when (payload.status) {
-            "loading" -> if (payload.originStatus != "none") "loading_with_origin" else "loading_empty"
+        when (timelineSlice.status) {
+            "loading" -> if (timelineSlice.originStatus != "none") "loading_with_origin" else "loading_empty"
             "error" -> "error"
             "no_permission" -> "no_permission"
-            "empty" -> if (payload.originStatus != "none") "empty_with_origin" else "empty_state"
+            "empty" -> if (timelineSlice.originStatus != "none") "empty_with_origin" else "empty_state"
             else -> "messages_list"
         }
     LaunchedEffect(
         threadInstanceKey,
-        payload.status,
-        payload.messages.size,
+        timelineSlice.status,
+        timelineSlice.messages.size,
         payload.backgroundRefreshing,
-        payload.originStatus,
+        timelineSlice.originStatus,
         chatRenderBranch
     ) {
         diagnosticsLogger(
             "thread_chat_visible_state instance=$threadInstanceKey " +
-                "status=${payload.status} messages=${payload.messages.size} " +
+                "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
                 "backgroundRefreshing=${payload.backgroundRefreshing} " +
-                "originStatus=${payload.originStatus} branch=$chatRenderBranch"
+                "originStatus=${timelineSlice.originStatus} branch=$chatRenderBranch"
         )
     }
-    when (payload.status) {
+    when (timelineSlice.status) {
         "loading" ->
-            if (payload.originStatus != "none") {
+            if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
                     payload = payload,
+                    timelineSlice = timelineSlice,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6519,10 +6531,11 @@ private fun ThreadChatTab(
             )
         "no_permission" -> ThreadStateMessage("No permission", payload.errorCode ?: "missing capability")
         "empty" ->
-            if (payload.originStatus != "none") {
+            if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
                     payload = payload,
+                    timelineSlice = timelineSlice,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6546,15 +6559,16 @@ private fun ThreadChatTab(
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
-                LaunchedEffect(threadInstanceKey, payload.status) {
+                LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
-                ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
+                ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
             }
         else ->
             ThreadMessagesList(
                 threadInstanceKey = threadInstanceKey,
                 payload = payload,
+                timelineSlice = timelineSlice,
                 activeDraftRecords = activeDraftRecords,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6585,7 +6599,7 @@ private data class ThreadMarkdownPreparsePlan(
     val bodies: List<String>
 )
 
-private fun KuiklyThreadScreenPayload.threadInitialMarkdownPreparsePlan(
+private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     contentExtrasVisible: Boolean
 ): ThreadMarkdownPreparsePlan {
     if (!contentExtrasVisible || messages.isEmpty()) {
@@ -6612,6 +6626,7 @@ private fun KuiklyThreadScreenPayload.threadInitialMarkdownPreparsePlan(
 private fun ThreadMessagesList(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
+    timelineSlice: ThreadTimelineSlice,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
@@ -6634,21 +6649,22 @@ private fun ThreadMessagesList(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadContentReady: () -> Unit = {}
 ) {
-    if (payload.messages.isEmpty() && payload.originStatus == "none") {
-        LaunchedEffect(threadInstanceKey, payload.status) {
+    if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
+        LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
-        ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
+        ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
         return
     }
-    val focusedMessageIndex =
-        remember(payload.focusedMessageId, payload.messages) {
-            payload.focusedMessageId
-                ?.takeIf { it.isNotBlank() }
-                ?.let { focusedMessageId -> payload.messages.indexOfFirst { it.id == focusedMessageId } }
-                ?: -1
+    val messageIndexSignature =
+        remember(timelineSlice.messages) {
+            timelineSlice.messageIndexSignature()
         }
-    val renderPayload = payload
+    val focusedMessageIndex =
+        remember(timelineSlice.focusedMessageId, messageIndexSignature) {
+            timelineSlice.focusedMessageIndex()
+        }
+    val renderPayload = timelineSlice
     // Bottom-anchor signature: only the fields the anchor logic actually
     // reads. The previous remember keys listed `payload.messages` (the
     // list reference) which invalidated the cache on any list
@@ -6728,7 +6744,7 @@ private fun ThreadMessagesList(
             messageCount = renderPayload.messages.size
         )
     val initialMarkdownPreparsePlan =
-        remember(renderPayload.messages, contentExtrasVisible) {
+        remember(timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible), contentExtrasVisible) {
             renderPayload.threadInitialMarkdownPreparsePlan(contentExtrasVisible)
         }
     var readyMarkdownPreparseKeys by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
@@ -6771,8 +6787,8 @@ private fun ThreadMessagesList(
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
     LaunchedEffect(
         threadInstanceKey,
-        payload.status,
-        payload.messages.size,
+        renderPayload.status,
+        renderPayload.messages.size,
         payload.backgroundRefreshing,
         initialBottomAnchorReady,
         latestItemIndex,
@@ -6782,9 +6798,9 @@ private fun ThreadMessagesList(
         if (initialBottomAnchorPending) {
             diagnosticsLogger(
                 "thread_messages_visible_state instance=$threadInstanceKey " +
-                    "status=${payload.status} messages=${payload.messages.size} " +
+                    "status=${renderPayload.status} messages=${renderPayload.messages.size} " +
                     "backgroundRefreshing=${payload.backgroundRefreshing} " +
-                    "originStatus=${payload.originStatus} latestItemIndex=$latestItemIndex " +
+                    "originStatus=${renderPayload.originStatus} latestItemIndex=$latestItemIndex " +
                     "initialBottomAnchorReady=$initialBottomAnchorReady " +
                     "revealLatestLocalSendBeforeInitialAnchor=$revealLatestLocalSendBeforeInitialAnchor " +
                     "branch=initial_bottom_anchor_pending"
@@ -6815,7 +6831,7 @@ private fun ThreadMessagesList(
             ) + if (showReplyEmptyState) 1 else 0
         }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
-    var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(payload.olderMessagesStatus) }
+    var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     LaunchedEffect(threadInstanceKey, renderPayload.messages.size, lazyItemCount) {
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
@@ -6826,7 +6842,7 @@ private fun ThreadMessagesList(
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
                             result = "laid_out",
-                            payload = renderPayload,
+                            payload = payload,
                             lazyItemCount = lazyItemCount,
                             stats = stats
                         )
@@ -6841,7 +6857,7 @@ private fun ThreadMessagesList(
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
                             result = "missing_layout",
-                            payload = renderPayload,
+                            payload = payload,
                             lazyItemCount = lazyItemCount,
                             stats = stats
                         )
@@ -6912,26 +6928,26 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(
         threadInstanceKey,
-        payload.olderMessagesStatus,
-        payload.messages.size,
-        payload.messages.firstOrNull()?.id
+        renderPayload.olderMessagesStatus,
+        renderPayload.messages.size,
+        renderPayload.messages.firstOrNull()?.id
     ) {
         val previousStatus = previousOlderMessagesStatus
-        if (payload.olderMessagesStatus == "loading" && previousStatus != "loading") {
-            pendingOlderPageAnchor = listState.threadFirstVisibleMessageAnchor(payload)
+        if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
+            pendingOlderPageAnchor = listState.threadFirstVisibleMessageAnchor(renderPayload)
             allowBottomAutoAnchor = false
-        } else if (previousStatus == "loading" && payload.olderMessagesStatus != "loading") {
+        } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
             val anchor = pendingOlderPageAnchor
             pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
             if (anchor != null) {
-                val targetIndex = payload.threadMessageListItemIndex(anchor.messageId)
+                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
                 if (targetIndex >= 0) {
                     listState.scrollToItem(targetIndex, -anchor.offset)
                 }
             }
         }
-        previousOlderMessagesStatus = payload.olderMessagesStatus
+        previousOlderMessagesStatus = renderPayload.olderMessagesStatus
     }
     LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorKey, latestItemIndex) {
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
@@ -7169,7 +7185,7 @@ private fun ThreadMessagesList(
             }
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
-                    ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
+                    ThreadStateMessage(renderPayload.emptyTitle, renderPayload.emptyDetail)
                 }
             }
             items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
@@ -7211,16 +7227,16 @@ private fun ThreadMessagesList(
                 // per Thread sessionMarker; does not re-fire on scroll.
                 if (DEBUG_THREAD_VIRTUAL_RENDER_LOG) {
                     androidx.compose.runtime.LaunchedEffect(message.id, threadRowProbeSessionMarker) {
-                        diagnosticsLogger(
-                            "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
-                                "index=$absoluteMessageIndex id=${message.id} messageType=${message.messageType} " +
-                                "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
-                                "hasActionCard=${actionCard != null} " +
-                                "attachmentCount=${message.attachments.size} " +
-                                "threadId=${payload.sourceThreadId.orEmpty()} " +
-                                "messagesTotal=${payload.messages.size} richContentEnabled=$isRichContentEnabled " +
-                                "renderMessages=${renderPayload.messages.size}"
-                        )
+                                diagnosticsLogger(
+                                    "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
+                                        "index=$absoluteMessageIndex id=${message.id} messageType=${message.messageType} " +
+                                        "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
+                                        "hasActionCard=${actionCard != null} " +
+                                        "attachmentCount=${message.attachments.size} " +
+                                        "threadId=${renderPayload.sourceThreadId.orEmpty()} " +
+                                        "messagesTotal=${renderPayload.messages.size} richContentEnabled=$isRichContentEnabled " +
+                                        "renderMessages=${renderPayload.messages.size}"
+                                )
                     }
                 }
                 val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
@@ -7266,12 +7282,12 @@ private fun ThreadMessagesList(
                             memberAvatarResolver = memberAvatarResolver,
                             focused = activeFocusedMessageId == message.id,
                             isMessageListScrolling = listState.isScrollInProgress,
-                            alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
-                            showReplyAction = payload.showReplyActions,
+                            alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                            showReplyAction = renderPayload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions && isRichContentEnabled,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions && isRichContentEnabled,
+                            taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
+                            taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
                             captureLongPressAnchor = captureMessageAnchors,
                             knownMarkdownChannelNames = knownMarkdownChannelNames,
                             onShowActions = { anchor ->
@@ -7361,11 +7377,11 @@ private fun ThreadMessagesList(
                 ThreadMessageActionMenu(
                     message = message,
                     anchor = actionMenuAnchor,
-                    showReplyAction = payload.showReplyActions && !message.hasLocalSendState(),
-                    showSaveAction = payload.showMessageSaveAction && !message.hasLocalSendState(),
-                    showTaskStatusAction = payload.showTaskStatusActions && !message.hasLocalSendState(),
+                    showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
+                    showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
+                    showTaskStatusAction = renderPayload.showTaskStatusActions && !message.hasLocalSendState(),
                     showConvertToTaskAction =
-                        payload.canConvertMessagesToTasks() && !message.hasLocalSendState() &&
+                        renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
                             message.id !in pendingTaskConvertMessageIds,
                     showReactionActions = !message.hasLocalSendState(),
                     showDeleteAction = isFailedLocalSend,
@@ -7464,6 +7480,12 @@ internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): 
         secondaryLabel = payload.threadBeginningReplyCountLabel()
     )
 
+internal fun threadOlderMessagesStatusSpec(payload: ThreadTimelineSlice): ThreadHistoryStatusSpec =
+    threadOlderMessagesStatusSpec(
+        canLoadMoreBefore = payload.canLoadMoreBefore,
+        secondaryLabel = payload.beginningReplyCountLabel
+    )
+
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
     secondaryLabel: String? = null
@@ -7512,7 +7534,7 @@ private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
     "message:$index:${messageId.take(8)}"
 
 private fun LazyListState.threadLazyWindowStats(
-    payload: KuiklyThreadScreenPayload,
+    payload: ThreadTimelineSlice,
     lazyItemCount: Int
 ): ThreadLazyWindowStats {
     val visibleItems = layoutInfo.visibleItemsInfo
@@ -7770,7 +7792,7 @@ internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String?
     }
 }
 
-private fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
+internal fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
     reactions
         .filter { reaction -> reaction.count > 0 }
         .joinToString(separator = "|") { reaction ->
@@ -7807,7 +7829,7 @@ private data class ThreadVisibleMessageAnchor(
 )
 
 private fun LazyListState.threadFirstVisibleMessageAnchor(
-    payload: KuiklyThreadScreenPayload
+    payload: ThreadTimelineSlice
 ): ThreadVisibleMessageAnchor? {
     val firstMessageListItemIndex = payload.firstMessageListItemIndex()
     val messageCount = payload.messages.size

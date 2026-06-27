@@ -4562,6 +4562,70 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun timelineSelectorDoesNotEmitForMembersOnlyPayloadChanges() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val timelineEvents = CopyOnWriteArrayList<ThreadTimelineSlice>()
+        val job = launch(Dispatchers.Unconfined) {
+            store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
+        }
+        assertEquals(listOf("cached body"), timelineEvents.single().messages.map { it.body })
+        timelineEvents.clear()
+
+        store.accept(
+            SharedThreadIntent.ApplyMembersPatch(
+                membersCount = 1,
+                members = listOf(KuiklyThreadMemberItem(id = "u2", displayName = "Member 2")),
+                memberCandidates = listOf(KuiklyThreadMemberItem(id = "u3", displayName = "Candidate 3")),
+                canAddMembers = true
+            )
+        )
+
+        assertEquals(1, store.state.value.payload.membersCount)
+        assertEquals(listOf("u2"), store.state.value.payload.members.map { it.id })
+        assertEquals(emptyList(), timelineEvents.toList())
+        job.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun timelineSelectorEmitsForMessageChanges() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val timelineEvents = CopyOnWriteArrayList<ThreadTimelineSlice>()
+        val job = launch(Dispatchers.Unconfined) {
+            store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
+        }
+        timelineEvents.clear()
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                contentPayload("local send", id = "local-1").messages.single()
+            )
+        )
+
+        assertEquals(listOf("cached body", "local send"), timelineEvents.single().messages.map { it.body })
+        job.cancel()
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
@@ -6657,8 +6721,8 @@ class SharedThreadStoreTest {
             showReplyActions = false
         )
 
-    private fun contentPayload(body: String): KuiklyThreadScreenPayload =
-        contentPayloadForRoute(basePayload(), body)
+    private fun contentPayload(body: String, id: String = "m1"): KuiklyThreadScreenPayload =
+        contentPayloadForRoute(basePayload(), body, id = id)
 
     private fun contentPayloadForRoute(
         base: KuiklyThreadScreenPayload,

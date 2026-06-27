@@ -74,6 +74,9 @@ class ThreadBottomAnchorSignatureTest {
     private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKeyPublic(): String? =
         latestLocalSendBottomAnchorKey()
 
+    private fun KuiklyThreadScreenPayload.timelineSlice(): ThreadTimelineSlice =
+        toThreadTimelineSlice()
+
     @Test
     fun latestMessageLayoutKey_equivalentListReferenceSameContent_keepsKeyEqual() {
         val sharedContent = listOf(
@@ -160,6 +163,43 @@ class ThreadBottomAnchorSignatureTest {
         val a = payload(messages = sharedContent, originStatus = "content")
         val b = payload(messages = sharedContent.toList(), originStatus = "content")
         assertEquals(a.latestMessageListItemIndexPublic(), b.latestMessageListItemIndexPublic())
+    }
+
+    @Test
+    fun focusedMessageIndex_usesMessageIdSignatureNotListReference() {
+        val sharedContent = listOf(message("m1"), message("m2"), message("m3"))
+        val a = payload(messages = sharedContent).copy(focusedMessageId = "m2")
+        val b = payload(messages = sharedContent.toList()).copy(
+            focusedMessageId = "m2",
+            members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1"))
+        )
+
+        assertEquals(a.timelineSlice().messageIndexSignature(), b.timelineSlice().messageIndexSignature())
+        assertEquals(1, a.timelineSlice().focusedMessageIndex())
+        assertEquals(a.timelineSlice().focusedMessageIndex(), b.timelineSlice().focusedMessageIndex())
+    }
+
+    @Test
+    fun markdownPreparseSignature_ignoresMemberOnlyChanges() {
+        val fullRendererBody = "```kotlin\nprintln(\"hi\")\n```"
+        val a = payload(messages = listOf(message("m1", body = fullRendererBody)))
+        val b = a.copy(members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1")))
+
+        assertEquals(
+            a.timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true),
+            b.timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun markdownPreparseSignature_changesWhenLatestBodyChanges() {
+        val a = payload(messages = listOf(message("m1", body = "```kotlin\nprintln(\"old\")\n```")))
+        val b = payload(messages = listOf(message("m1", body = "```kotlin\nprintln(\"new\")\n```")))
+
+        assertNotEquals(
+            a.timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true),
+            b.timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true)
+        )
     }
 
     @Test
