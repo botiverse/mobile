@@ -93,6 +93,9 @@ class SharedHomeStore(
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
+            if (debounceInFlightHomeLoad(intent)) {
+                return
+            }
             loadJob?.cancel()
             agentDirectMessageStatusJob?.cancel()
             agentDirectMessageStatusJob = null
@@ -108,6 +111,18 @@ class SharedHomeStore(
                 accept(intent)
             }
         }
+    }
+
+    private fun debounceInFlightHomeLoad(intent: SharedHomeIntent): Boolean {
+        if (!intent.debouncesInFlightHomeLoad) return false
+        val activeLoad = loadJob?.isActive == true
+        val activeRefresh = refreshJob?.isActive == true
+        if (!activeLoad && !activeRefresh) return false
+        diagnosticsLogger(
+            "home_load_debounce intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                "reason=${if (activeLoad) "in_flight_load" else "in_flight_refresh"}"
+        )
+        return true
     }
 
     fun clear() {
@@ -1402,6 +1417,29 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             SharedHomeIntent.Refresh,
             SharedHomeIntent.ForegroundRefresh,
             is SharedHomeIntent.SelectServer -> true
+            SharedHomeIntent.ToggleServerSwitcher,
+            SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.SelectConversation,
+            is SharedHomeIntent.SelectTopAction,
+            is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.DismissNotification,
+            is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.SetSurfaceVisible,
+            is SharedHomeIntent.TogglePinned,
+            is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.MarkRead,
+            is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ArchiveChannel -> false
+        }
+
+private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
+    get() =
+        when (this) {
+            SharedHomeIntent.Start,
+            SharedHomeIntent.ForegroundRefresh -> true
+            SharedHomeIntent.Refresh,
+            is SharedHomeIntent.SelectServer,
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
             is SharedHomeIntent.SelectConversation,

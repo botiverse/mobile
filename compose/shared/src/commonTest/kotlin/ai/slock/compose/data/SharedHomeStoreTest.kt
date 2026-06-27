@@ -1378,7 +1378,44 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun dispatchStartDoesNotCancelInFlightHomeBackgroundRefresh() = runBlocking {
+    fun dispatchStartDebouncesInFlightHomeLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val api = RecordingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        val blockedLoad = api.blockNextChannels()
+
+        store.dispatch(SharedHomeIntent.Start)
+        blockedLoad.awaitStarted()
+        logs.clear()
+
+        store.dispatch(SharedHomeIntent.Start)
+        yield()
+
+        assertEquals(3, api.calls.size)
+        assertEquals(setOf("dms:server-1", "unread:server-1", "summary:server-1"), api.calls.toSet())
+        assertEquals(
+            1,
+            logs.count {
+                it.contains("home_load_debounce") &&
+                    it.contains("intent=Start") &&
+                    it.contains("reason=in_flight_load")
+            }
+        )
+
+        blockedLoad.release()
+        awaitCondition { api.calls.size >= 4 }
+        assertEquals(4, api.calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun dispatchStartDebouncesInFlightHomeBackgroundRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
@@ -1410,7 +1447,14 @@ class SharedHomeStoreTest {
 
         store.dispatch(SharedHomeIntent.Start)
 
-        assertEquals(1, logs.count { it.contains("home_refresh_skip") && it.contains("reason=in_flight") })
+        assertEquals(
+            1,
+            logs.count {
+                it.contains("home_load_debounce") &&
+                    it.contains("intent=Start") &&
+                    it.contains("reason=in_flight_refresh")
+            }
+        )
         blockedRefresh.release()
         awaitCondition {
             val refreshedContent = store.state.value.content
