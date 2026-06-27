@@ -12656,7 +12656,7 @@ internal fun buildAppShellThreadPayload(
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
         joined = conversation.joined,
         canSend = canSend,
-        membersCount = conversation.memberCount ?: 0,
+        membersCount = 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,

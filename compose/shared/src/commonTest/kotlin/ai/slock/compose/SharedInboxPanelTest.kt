@@ -5,9 +5,12 @@ import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.ThreadId
@@ -372,6 +375,35 @@ class SharedInboxPanelTest {
         assertEquals(base.toHomeMessageOpenRequest().conversation, updated.toHomeMessageOpenRequest().conversation)
         assertEquals("first-unread-1", base.toHomeMessageOpenRequest().anchorMessageId)
         assertEquals("first-unread-2", updated.toHomeMessageOpenRequest().anchorMessageId)
+    }
+
+    @Test
+    fun threadLaunchIdentityIgnoresDirectoryPresentationAndStatusFields() {
+        val base =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "general",
+                presenceMemberId = MemberId("member-1"),
+                memberCount = 12,
+                jointPeerServerId = ServerId("server-1"),
+                jointPeerServerName = "Server One",
+                jointPeerServerSlug = "server-one",
+                jointPeerStatus = "online"
+            )
+        val updated =
+            base.copy(
+                presenceMemberId = MemberId("member-2"),
+                memberCount = 42,
+                jointPeerServerId = ServerId("server-2"),
+                jointPeerServerName = "Server Two",
+                jointPeerServerSlug = "server-two",
+                jointPeerStatus = "offline"
+            )
+
+        assertNotEquals(base, updated)
+        assertEquals(base.toThreadLaunchConversationIdentity(), updated.toThreadLaunchConversationIdentity())
     }
 
     @Test
