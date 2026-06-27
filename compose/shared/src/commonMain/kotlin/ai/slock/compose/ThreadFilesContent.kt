@@ -29,7 +29,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 private const val THREAD_FILES_VISUAL_PAGE = "compose_thread_files_visual"
 private const val ThreadFilesVisualPreviewUri =
@@ -143,29 +142,6 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentStatusLabel(): String?
         "storage_failed" -> "Storage unavailable"
         "failed" -> "Download failed"
         else -> null
-    }
-
-internal fun parseThreadFilesPayload(
-    payload: String,
-    instanceId: String
-): KuiklyThreadFilesPayload =
-    runCatching {
-        Json {
-            ignoreUnknownKeys = true
-        }.decodeFromString(KuiklyThreadFilesPayload.serializer(), payload)
-            .let { decoded ->
-                if (decoded.instanceId.isBlank() && instanceId.isNotBlank()) {
-                    decoded.copy(instanceId = instanceId)
-                } else {
-                    decoded
-                }
-            }
-    }.getOrElse {
-        KuiklyThreadFilesPayload(
-            instanceId = instanceId,
-            status = "error",
-            errorCode = "payload_parse_failed"
-        )
     }
 
 @Composable

@@ -19,10 +19,7 @@ internal data class SharedThreadFilesState(
 )
 
 internal sealed interface SharedThreadFilesIntent {
-    data class Start(
-        val basePayload: KuiklyThreadScreenPayload,
-        val initialPayload: KuiklyThreadFilesPayload? = null
-    ) : SharedThreadFilesIntent
+    data class Start(val basePayload: KuiklyThreadScreenPayload) : SharedThreadFilesIntent
 
     data class Refresh(val reason: String = "refresh") : SharedThreadFilesIntent
     data class LoadMore(val reason: String = "load_more") : SharedThreadFilesIntent
@@ -39,7 +36,7 @@ internal class SharedThreadFilesStore(
 
     fun dispatch(intent: SharedThreadFilesIntent) {
         when (intent) {
-            is SharedThreadFilesIntent.Start -> start(intent.basePayload, intent.initialPayload)
+            is SharedThreadFilesIntent.Start -> start(intent.basePayload)
             is SharedThreadFilesIntent.Refresh -> {
                 requestJob?.cancel()
                 requestJob = null
@@ -63,7 +60,7 @@ internal class SharedThreadFilesStore(
         resetInFlightFlag()
     }
 
-    private fun start(basePayload: KuiklyThreadScreenPayload, initialPayload: KuiklyThreadFilesPayload?) {
+    private fun start(basePayload: KuiklyThreadScreenPayload) {
         val current = _state.value
         val nextRouteKey = basePayload.threadFilesRouteKey()
         val currentRouteKey = current.basePayload.threadFilesRouteKey()
@@ -74,8 +71,7 @@ internal class SharedThreadFilesStore(
         }
         val nextPayload =
             when {
-                initialPayload != null -> initialPayload
-                routeChanged -> KuiklyThreadFilesPayload(instanceId = basePayload.instanceId)
+                routeChanged -> basePayload.initialThreadFilesRoutePayload()
                 else -> current.payload.copy(instanceId = current.payload.instanceId.ifBlank { basePayload.instanceId })
             }
         reduce(
@@ -198,3 +194,6 @@ private fun KuiklyThreadScreenPayload.threadFilesRouteKey(): String =
     sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() }
         ?: instanceId
+
+internal fun KuiklyThreadScreenPayload.initialThreadFilesRoutePayload(): KuiklyThreadFilesPayload =
+    KuiklyThreadFilesPayload(instanceId = instanceId)

@@ -882,6 +882,34 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadFilesRouteStartPayloadIgnoresLegacyFilesPayloadSeed() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-launch-1",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                filesPayload =
+                    """
+                    {
+                      "instanceId": "seed-instance",
+                      "status": "content",
+                      "items": [
+                        {"attachmentId": "seed-file", "name": "must-not-seed.pdf"}
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val filesPayload = payload.initialThreadFilesRoutePayload()
+
+        assertEquals("thread-launch-1", filesPayload.instanceId)
+        assertEquals("loading", filesPayload.status)
+        assertEquals(emptyList(), filesPayload.items)
+        assertEquals(false, filesPayload.hasMore)
+        assertEquals(null, filesPayload.nextCursor)
+    }
+
+    @Test
     @OptIn(ExperimentalSerializationApi::class)
     fun launchWireSchemaExcludesBigThreadStateFields() {
         val descriptor = WireThreadLaunchPayload.serializer().descriptor

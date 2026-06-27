@@ -4426,7 +4426,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         olderMessagesStatus = patch.olderMessagesStatus,
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
-        filesPayload = patch.filesPayload,
+        filesPayload = "{}",
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         dmPeerName = dmPeerName,

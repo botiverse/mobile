@@ -2677,24 +2677,15 @@ internal fun SharedThreadRouteContent(
         log = { message -> bridge.log(message) }
     )
 
-    val routeFilesPayload =
-        remember(payload.filesPayload, threadInstanceKey) {
-            payload.filesPayload
-                .trim()
-                .takeIf { it.isNotBlank() && it != "{}" }
-                ?.let { parseThreadFilesPayload(it, payload.instanceId) }
-        }
     LaunchedEffect(
         threadInstanceKey,
         threadTimelineKey,
-        renderedPayload.filesPayload,
         resolvedAuxiliaryThreadId
     ) {
         if (resolvedAuxiliaryThreadId == null) return@LaunchedEffect
         filesViewModel.dispatch(
             SharedThreadFilesIntent.Start(
-                basePayload = renderedPayload,
-                initialPayload = routeFilesPayload
+                basePayload = renderedPayload
             )
         )
     }
