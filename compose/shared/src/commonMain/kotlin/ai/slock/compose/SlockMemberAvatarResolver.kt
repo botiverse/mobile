@@ -1,8 +1,11 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.SharedServerMembersStore
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
+import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,9 +29,23 @@ internal fun slockMemberAvatarResolver(
         } else {
             serverMembersStore
                 .memberProfileFlow(cleanServerId, memberId)
-                .map { profile -> profile?.avatarWireValueForAvatarSlot() }
+                .map { profile -> profile?.avatarWireValueForMemberAvatarResolver() }
         }
     }
+}
+
+internal fun MemberProfile.avatarWireValueForMemberAvatarResolver(): String? {
+    val explicitAvatarWireValue =
+        avatar?.wireValue?.takeIf { it.isNotBlank() }
+            ?: avatarUrl?.takeIf { it.isNotBlank() }
+    if (explicitAvatarWireValue != null) {
+        return explicitAvatarWireValue
+    }
+    if (kind == MemberKind.Agent) {
+        return gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+            ?: avatarWireValueForAvatarSlot()
+    }
+    return avatarWireValueForAvatarSlot()
 }
 
 @Composable
