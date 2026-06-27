@@ -281,6 +281,9 @@ private const val HomePullToRefreshEnabled = true
 internal fun homePullToRefreshEnabled(contentRefreshEnabled: Boolean): Boolean =
     contentRefreshEnabled && HomePullToRefreshEnabled
 
+internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
+    contentRefreshing && !pullRefreshing
+
 @Composable
 private fun SlockHomePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -707,8 +710,19 @@ internal fun SlockStructuralHomeShell(
         onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
     }
     val listScope = rememberCoroutineScope()
+    var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }
     val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
-    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing && pullToRefreshEnabled)
+    LaunchedEffect(contentRefreshing, pullToRefreshEnabled) {
+        if (!contentRefreshing || !pullToRefreshEnabled) {
+            pullRefreshActive = false
+        }
+    }
+    val pullRefreshing = contentRefreshing && pullToRefreshEnabled && pullRefreshActive
+    val headerRefreshing = homeHeaderRefreshIndicatorVisible(
+        contentRefreshing = contentRefreshing,
+        pullRefreshing = pullRefreshing
+    )
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -729,7 +743,7 @@ internal fun SlockStructuralHomeShell(
                         serverName = currentServerName,
                         serverUnreadCount = serverUnreadCount,
                         notifications = notifications,
-                        refreshing = contentRefreshing,
+                        refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClick,
                         onView = onNotificationView,
@@ -755,7 +769,10 @@ internal fun SlockStructuralHomeShell(
                                 pullToRefreshItem(
                                     state = pullToRefreshState,
                                     scrollState = listState,
-                                    onRefresh = onRefresh,
+                                    onRefresh = {
+                                        pullRefreshActive = true
+                                        onRefresh()
+                                    },
                                     content = { pullProgress, isRefreshing, _ ->
                                         SlockRaftPullRefreshIndicator(
                                             pullProgress = pullProgress,

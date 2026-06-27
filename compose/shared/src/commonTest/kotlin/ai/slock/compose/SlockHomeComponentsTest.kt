@@ -411,6 +411,13 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeHeaderRefreshIndicatorHidesDuringPullRefresh() {
+        assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = false))
+        assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
+        assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = false))
+    }
+
+    @Test
     fun sharedHomeHeaderRefreshingTracksLoadedContentRefreshState() {
         val refreshing =
             SharedHomeState(
