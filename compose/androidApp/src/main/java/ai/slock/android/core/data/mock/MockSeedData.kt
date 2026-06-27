@@ -162,7 +162,6 @@ object MockSeedData {
             kind = ConversationKind.DirectMessage,
             name = "Android-Developer",
             subtitle = "Component/state integration",
-            avatarUrl = "pixel:diamond",
             lastMessageId = MessageId("message-dm-latest"),
             lastMessagePreview = "Shared thread sample provider is ready.",
             lastMessageAt = "Now",
