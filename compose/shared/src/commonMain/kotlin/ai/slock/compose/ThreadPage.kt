@@ -95,7 +95,9 @@ import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
+import ai.slock.compose.model.formatSlockTimestampEpochMillis
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
@@ -1022,6 +1024,19 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
 
 internal fun ThreadTimelineRenderConfig.formatTimestampLabel(value: String): String =
     formatSlockTimestampLabel(value, timeContext)
+
+internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: String): String {
+    val epochMillis =
+        parseSlockTimestampEpochMillisOrNull(value, timeContext.localOffsetMinutes)
+            ?: return formatTimestampLabel(value)
+    val localEpochDay = threadLocalEpochDay(epochMillis, timeContext.localOffsetMinutes)
+    return formatSlockTimestampEpochMillis(
+        epochMillis = epochMillis,
+        localOffsetMinutes = timeContext.localOffsetMinutes,
+        todayEpochDay = localEpochDay,
+        timeFormat = timeContext.timeFormat
+    )
+}
 
 internal fun ThreadTimelineRenderConfig.resolveTaskAssigneeDisplayName(
     value: String?,
@@ -7273,9 +7288,18 @@ private fun ThreadMessagesList(
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val suppressRepeatedAuthor =
-                    remember(renderPayload.compactConsecutiveMessages, message, previousMessage) {
+                    remember(
+                        renderPayload.compactConsecutiveMessages,
+                        renderConfig.timeContext.localOffsetMinutes,
+                        message,
+                        previousMessage
+                    ) {
                         renderPayload.compactConsecutiveMessages &&
-                            previousMessage?.isSameVisibleThreadAuthorAs(message) == true
+                            shouldSuppressCompactThreadAuthor(
+                                previous = previousMessage,
+                                next = message,
+                                localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
+                            )
                     }
                 val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
@@ -7396,6 +7420,7 @@ private fun ThreadMessagesList(
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                             timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
+                            compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
@@ -8323,6 +8348,7 @@ private fun ThreadMessageCard(
     showSaveAction: Boolean = true,
     knownMarkdownChannelNames: Set<String>? = null,
     timestampLabel: String = message.timestampLabel,
+    compactTimestampLabel: String = timestampLabel,
     onShowActions: (Offset) -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
@@ -8375,7 +8401,7 @@ private fun ThreadMessageCard(
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
-        compactConsecutiveMessages && !showAuthorChrome && pressed && timestampLabel.isNotBlank()
+        compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     Box(
         modifier =
             Modifier
@@ -8414,7 +8440,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatarSlot(
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = timestampLabel,
+                        timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -8598,7 +8624,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatarSlot(
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = timestampLabel,
+                        timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -9229,19 +9255,53 @@ private fun KuiklyThreadMessageItem.isRemovedThreadHuman(): Boolean =
 private fun KuiklyThreadMessageItem.isThreadAgentAuthor(): Boolean =
     authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
 
-private fun KuiklyThreadMessageItem.isSameVisibleThreadAuthorAs(
-    other: KuiklyThreadMessageItem
+internal fun shouldSuppressCompactThreadAuthor(
+    previous: KuiklyThreadMessageItem?,
+    next: KuiklyThreadMessageItem,
+    localOffsetMinutes: Int
 ): Boolean =
-    !isSystemMessage() &&
-        !other.isSystemMessage() &&
-        authorIdentityKey().isNotBlank() &&
-        authorIdentityKey() == other.authorIdentityKey()
+    previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
+
+private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
+    next: KuiklyThreadMessageItem,
+    localOffsetMinutes: Int
+): Boolean {
+    if (isSystemMessage() || next.isSystemMessage()) return false
+    val identityKey = authorIdentityKey()
+    if (identityKey.isBlank() || identityKey != next.authorIdentityKey()) return false
+
+    val currentEpochMillis = parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
+    val nextEpochMillis = next.parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
+    if (currentEpochMillis == null || nextEpochMillis == null) return true
+
+    val elapsedMillis = nextEpochMillis - currentEpochMillis
+    if (elapsedMillis !in 0..ThreadCompactContinuationWindowMillis) return false
+
+    return threadLocalEpochDay(currentEpochMillis, localOffsetMinutes) ==
+        threadLocalEpochDay(nextEpochMillis, localOffsetMinutes)
+}
+
+private fun KuiklyThreadMessageItem.parseThreadMessageEpochMillisOrNull(localOffsetMinutes: Int): Long? =
+    parseSlockTimestampEpochMillisOrNull(timestampLabel, localOffsetMinutes)
 
 private fun KuiklyThreadMessageItem.authorIdentityKey(): String =
     authorId.takeIf { it.isNotBlank() }
         ?: authorHandle.takeIf { it.isNotBlank() }
         ?: authorName.takeIf { it.isNotBlank() }
         ?: ""
+
+private fun threadLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): Long =
+    threadFloorDiv(epochMillis + localOffsetMinutes.toLong() * ThreadMillisPerMinute, ThreadMillisPerDay)
+
+private fun threadFloorDiv(value: Long, divisor: Long): Long {
+    val quotient = value / divisor
+    val remainder = value % divisor
+    return if (remainder != 0L && ((remainder < 0) != (divisor < 0))) quotient - 1 else quotient
+}
+
+private const val ThreadMillisPerMinute = 60_000L
+private const val ThreadMillisPerDay = 86_400_000L
+private const val ThreadCompactContinuationWindowMillis = 30L * ThreadMillisPerMinute
 
 @Composable
 private fun ThreadMessageFooterMeta(

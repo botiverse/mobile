@@ -4407,7 +4407,7 @@ private fun SettingsMessageAlignmentCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
-    SettingsFormSectionCard(iconName = SlockLucideIconName.AlignHorizontalSpaceAround, title = "My message alignment") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = "My message alignment") {
         SettingsFormDetailText(snapshot.messageAlignmentPreference.detail)
         SegmentedControl(
             selectedValue = selectedKey.ifBlank { "left" },

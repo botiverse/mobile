@@ -18,6 +18,7 @@ import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockTimeFormat12Hour
+import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -183,6 +184,61 @@ class ThreadPayloadTest {
         assertEquals("thread-1", row.threadChannelId)
         assertEquals(4, row.replyCount)
         assertTrue(row.isThreadFollowed)
+    }
+
+    @Test
+    fun compactThreadAuthorSuppressionResetsAfterWindowDayOrAuthorChanges() {
+        val base =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "u-artin",
+                authorName = "Artin",
+                timestampLabel = "2026-06-27T01:00:00Z"
+            )
+
+        assertTrue(
+            shouldSuppressCompactThreadAuthor(
+                previous = base,
+                next = base.copy(id = "m2", timestampLabel = "2026-06-27T01:30:00Z"),
+                localOffsetMinutes = 0
+            )
+        )
+        assertFalse(
+            shouldSuppressCompactThreadAuthor(
+                previous = base,
+                next = base.copy(id = "m3", timestampLabel = "2026-06-27T01:30:01Z"),
+                localOffsetMinutes = 0
+            )
+        )
+        assertFalse(
+            shouldSuppressCompactThreadAuthor(
+                previous = base.copy(timestampLabel = "2026-06-27T23:50:00Z"),
+                next = base.copy(id = "m4", timestampLabel = "2026-06-28T00:05:00Z"),
+                localOffsetMinutes = 0
+            )
+        )
+        assertFalse(
+            shouldSuppressCompactThreadAuthor(
+                previous = base,
+                next = base.copy(id = "m5", authorId = "u-cindy", authorName = "Cindy", timestampLabel = "2026-06-27T01:05:00Z"),
+                localOffsetMinutes = 0
+            )
+        )
+        assertEquals(
+            "23:50",
+            ThreadTimelineRenderConfig(
+                backgroundRefreshing = false,
+                errorCode = null,
+                originPreview = null,
+                originErrorCode = null,
+                timeContext =
+                    SlockTimeContext(
+                        localOffsetMinutes = 0,
+                        todayEpochDay = slockEpochDayForDate(2026, 6, 28)
+                    ),
+                members = emptyList()
+            ).formatCompactTimestampLabel("2026-06-27T23:50:00Z")
+        )
     }
 
     @Test
