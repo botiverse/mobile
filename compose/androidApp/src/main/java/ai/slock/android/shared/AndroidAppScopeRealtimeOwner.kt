@@ -4,23 +4,27 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
+import ai.slock.compose.data.SlockHostNetworkNotifyContract
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
 import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ConversationKind
+import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
@@ -33,6 +37,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
+    private var hostNetworkOnline: Boolean? = null
 
     fun install(context: Context) {
         val appContext = context.applicationContext
@@ -49,12 +54,20 @@ internal object AndroidAppScopeRealtimeOwner {
                             onNetworkAvailable(appContext)
                         }
 
+                        override fun onCapabilitiesChanged(
+                            network: Network,
+                            _networkCapabilities: NetworkCapabilities
+                        ) {
+                            onNetworkCapabilitiesChanged(appContext)
+                        }
+
                         override fun onLost(network: Network) {
-                            onNetworkLost()
+                            onNetworkLost(appContext)
                         }
                     }
                 )
                 networkCallbackInstalled = true
+                publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
                 SlockDiagnosticsLogger.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
             }.onFailure { error ->
                 SlockDiagnosticsLogger.w(
@@ -104,6 +117,19 @@ internal object AndroidAppScopeRealtimeOwner {
             context = context.applicationContext,
             allowBackground = true,
             reason = "background_keep_alive"
+        )
+    }
+
+    fun publishCurrentNetworkStatus(
+        context: Context,
+        source: String = "unknown"
+    ) {
+        val appContext = context.applicationContext
+        emitHostNetworkStatus(
+            context = appContext,
+            online = appContext.isHostNetworkOnline(),
+            source = source,
+            force = true
         )
     }
 
@@ -219,17 +245,38 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
+        val appContext = context.applicationContext
+        emitHostNetworkStatus(
+            context = appContext,
+            online = appContext.isHostNetworkOnline(),
+            source = "network_available"
+        )
         healthCheckRealtimeConnection(
-            context = context.applicationContext,
+            context = appContext,
             allowBackground = backgroundKeepAliveEnabled,
             reason = "network_available"
         )
     }
 
-    fun onNetworkLost() {
+    fun onNetworkCapabilitiesChanged(context: Context) {
+        val appContext = context.applicationContext
+        emitHostNetworkStatus(
+            context = appContext,
+            online = appContext.isHostNetworkOnline(),
+            source = "network_capabilities_changed"
+        )
+    }
+
+    fun onNetworkLost(context: Context) {
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "app_scope_lifecycle event=network_lost visibility=$appVisibility"
+        )
+        val appContext = context.applicationContext
+        emitHostNetworkStatus(
+            context = appContext,
+            online = appContext.isHostNetworkOnline(),
+            source = "network_lost"
         )
     }
 
@@ -336,6 +383,45 @@ internal object AndroidAppScopeRealtimeOwner {
                     realtimeConnectJob = null
                 }
             }
+    }
+
+    private fun emitHostNetworkStatus(
+        context: Context,
+        online: Boolean,
+        source: String,
+        force: Boolean = false
+    ) {
+        if (!force && hostNetworkOnline == online) return
+        hostNetworkOnline = online
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "app_scope_lifecycle event=host_network_status online=$online source=$source"
+        )
+        scope.launch {
+            context.applicationContext.sendKuiklyEvent(
+                SlockHostNetworkNotifyContract.EventName,
+                JSONObject()
+                    .put(
+                        SlockHostNetworkNotifyContract.KeyStatus,
+                        if (online) {
+                            SlockHostNetworkNotifyContract.StatusOnline
+                        } else {
+                            SlockHostNetworkNotifyContract.StatusOffline
+                        }
+                    )
+                    .put(SlockHostNetworkNotifyContract.KeyOnline, online)
+                    .put(SlockHostNetworkNotifyContract.KeySource, source)
+            )
+        }
+    }
+
+    private fun Context.isHostNetworkOnline(): Boolean {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     internal fun shouldPostBackgroundUnreadNotification(

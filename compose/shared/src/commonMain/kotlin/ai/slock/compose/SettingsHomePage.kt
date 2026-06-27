@@ -25,6 +25,7 @@ import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
+import ai.slock.compose.data.KuiklyHostNetworkEvents
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.KuiklyThreadCacheInvalidationEvents
@@ -1484,6 +1485,7 @@ private fun SlockAppShellContent() {
     var homeListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
+    var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val childTabEntry = remember(childTabShellId) { AppShellChildTabEntry() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -1608,6 +1610,7 @@ private fun SlockAppShellContent() {
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
     val threadCacheInvalidationEvents = remember(pager) { KuiklyThreadCacheInvalidationEvents(pager) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
+    val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
@@ -2501,6 +2504,19 @@ private fun SlockAppShellContent() {
         onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
     }
 
+    DisposableEffect(hostNetworkEvents) {
+        val callbackRef =
+            hostNetworkEvents.addListener { signal ->
+                hostNetworkStatus =
+                    if (signal.online) {
+                        SlockAppShellNetworkStatus.Online
+                    } else {
+                        SlockAppShellNetworkStatus.Offline
+                    }
+            }
+        onDispose { hostNetworkEvents.removeListener(callbackRef) }
+    }
+
     DisposableEffect(
         realtimeEvents,
         homeViewModel,
@@ -2619,6 +2635,7 @@ private fun SlockAppShellContent() {
                     pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                 }
             },
+            networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs
         ) {
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
