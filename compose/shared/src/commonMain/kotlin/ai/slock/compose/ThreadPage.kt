@@ -5937,6 +5937,7 @@ private fun ThreadPageContent(
                         diagnosticsLogger = diagnosticsLogger,
                         shareSelectionActive = shareSelectionActive && !shareCaptureMode,
                         shareSelectionCaptureActive = shareCaptureMode,
+                        shareSelectionCaptureAnchorMessageId = selectedShareMessages.firstOrNull()?.id,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onShareSelectionBounds = { messageId, rect ->
                             if (rect == null) {
@@ -6036,7 +6037,7 @@ private fun ThreadPageContent(
                                 try {
                                     var attempts = 0
                                     while (
-                                        attempts < 10 &&
+                                        attempts < 24 &&
                                             selectedShareMessageIds.any { selectedShareBounds[it] == null }
                                     ) {
                                         delay(32)
@@ -6633,6 +6634,7 @@ private fun ThreadChatTab(
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
+    shareSelectionCaptureAnchorMessageId: String? = null,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -6691,6 +6693,7 @@ private fun ThreadChatTab(
                     diagnosticsLogger = diagnosticsLogger,
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
+                    shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -6736,6 +6739,7 @@ private fun ThreadChatTab(
                     diagnosticsLogger = diagnosticsLogger,
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
+                    shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -6775,6 +6779,7 @@ private fun ThreadChatTab(
                 diagnosticsLogger = diagnosticsLogger,
                 shareSelectionActive = shareSelectionActive,
                 shareSelectionCaptureActive = shareSelectionCaptureActive,
+                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
                 selectedShareMessageIds = selectedShareMessageIds,
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
@@ -6839,6 +6844,7 @@ private fun ThreadMessagesList(
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
+    shareSelectionCaptureAnchorMessageId: String? = null,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -7026,6 +7032,28 @@ private fun ThreadMessagesList(
                 canLoadMoreAfter = renderPayload.canLoadMoreAfter
             ) + if (showReplyEmptyState) 1 else 0
         }
+    LaunchedEffect(
+        threadInstanceKey,
+        shareSelectionCaptureActive,
+        shareSelectionCaptureAnchorMessageId,
+        messageIndexSignature,
+        lazyItemCount
+    ) {
+        val anchorMessageId =
+            shareSelectionCaptureAnchorMessageId
+                ?.takeIf { shareSelectionCaptureActive && it.isNotBlank() }
+                ?: return@LaunchedEffect
+        val targetIndex = renderPayload.threadMessageListItemIndex(anchorMessageId)
+        if (!listState.canScrollToThreadItem(targetIndex)) {
+            return@LaunchedEffect
+        }
+        selectedShareMessageIds.forEach { messageId ->
+            onShareSelectionBounds(messageId, null)
+        }
+        listState.scrollToItem(targetIndex, ThreadShareCaptureTopScrollOffsetPx)
+        listState.awaitThreadMessagesLayoutFrame()
+        delay(ThreadShareCaptureScrollSettleMs)
+    }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     LaunchedEffect(threadInstanceKey, renderPayload.messages.size, lazyItemCount) {
@@ -8359,6 +8387,8 @@ private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
+private const val ThreadShareCaptureTopScrollOffsetPx = -12
+private const val ThreadShareCaptureScrollSettleMs = 96L
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
