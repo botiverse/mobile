@@ -290,7 +290,6 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
-import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.SlockTimeFormat24Hour
@@ -12193,7 +12192,7 @@ private fun homeSearchEntityResults(
                 threadId = conversation.threadId.value,
                 memberId = conversation.presenceMemberId?.value,
                 conversation = conversation,
-                avatarWireValue = conversation.avatar?.wireValue ?: conversation.avatarUrl,
+                avatarWireValue = null,
                 showPresence = conversation.isAgentDirectMessage()
             )
         }
@@ -12214,7 +12213,7 @@ private fun homeSearchEntityResults(
                 threadId = conversation?.threadId?.value,
                 memberId = sender.id,
                 conversation = conversation,
-                avatarWireValue = conversation?.avatar?.wireValue ?: conversation?.avatarUrl ?: sender.avatarWireValue ?: "random:${sender.id}",
+                avatarWireValue = sender.avatarWireValue ?: "random:${sender.id}",
                 showPresence = sender.kind == MemberKind.Agent
             )
         }
@@ -12345,14 +12344,11 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
         kind = kind.name.lowercase(),
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
-        avatarUrl = avatarUrl,
-        gravatarUrl = gravatarUrl,
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         fallbackPresenceMemberId = presenceMemberId?.value,
         fallbackName = name,
         fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
-        fallbackAvatarWireValue = avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl,
         fallbackJoined = joined && permissions.canRead,
         fallbackArchived = archived
     )
@@ -13888,7 +13884,6 @@ private val homeSearchVisualDirectMessages = listOf(
         lastMessagePreview = "Search visual case needs visual review.",
         lastMessageAt = "09:42",
         lastMessageSenderName = "Product UX Designer",
-        avatar = AvatarReference.Random("product-ux-designer"),
         presenceMemberId = MemberId("agent_product")
     )
 )

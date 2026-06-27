@@ -584,9 +584,7 @@ class SharedThreadStoreTest {
                         threadId = ThreadId("dm-1"),
                         channelId = ChannelId("dm-1"),
                         kind = ConversationKind.DirectMessage,
-                        name = "artin",
-                        avatar = AvatarReference.Pixel("crown"),
-                        gravatarUrl = "https://www.gravatar.com/avatar/artin"
+                        name = "artin"
                     )
                 )
         )
@@ -597,7 +595,7 @@ class SharedThreadStoreTest {
         assertEquals("AR", payload.dmPeerAvatarLabel)
         assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
         assertEquals("artin", headerDisplay.title)
-        assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
         assertEquals("network body", payload.messages.single().body)
     }
@@ -2323,10 +2321,7 @@ class SharedThreadStoreTest {
                         kind = ConversationKind.DirectMessage,
                         name = "Product-UX-Designer",
                         directMessagePeerType = "agent",
-                        presenceMemberId = MemberId("agent-1"),
-                        avatar = AvatarReference.fromWireValue("pixel:tree"),
-                        avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                        gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
+                        presenceMemberId = MemberId("agent-1")
                     ),
                 messages =
                     listOf(
@@ -2373,7 +2368,7 @@ class SharedThreadStoreTest {
         assertEquals("content", payload.status)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
-        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerAvatarUrl)
         assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("pixel:robot", payload.messages.single().avatarWireValue)
         assertEquals(null, payload.messages.single().gravatarHash)
@@ -2440,7 +2435,6 @@ class SharedThreadStoreTest {
                             channelId = ChannelId("dm-agent-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Product-UX-Designer",
-                            avatar = AvatarReference.fromWireValue("pixel:tree"),
                             presenceMemberId = MemberId("agent-1")
                         )
                     ),
@@ -2456,10 +2450,10 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
-        assertEquals("pixel:tree", payload.messages.single().avatarWireValue)
+        assertEquals(null, payload.messages.single().avatarWireValue)
         assertEquals(null, payload.messages.single().gravatarHash)
         val cachedAuthor = localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author
-        assertEquals("pixel:tree", cachedAuthor?.avatar?.wireValue)
+        assertEquals(null, cachedAuthor?.avatar?.wireValue)
         assertEquals(null, cachedAuthor?.gravatarHash)
     }
 
@@ -2882,7 +2876,6 @@ class SharedThreadStoreTest {
                             channelId = ChannelId("dm-agent-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Product-UX-Designer",
-                            avatar = AvatarReference.fromWireValue("pixel:tree"),
                             presenceMemberId = MemberId("agent-1")
                         )
                     ),
@@ -3026,16 +3019,15 @@ class SharedThreadStoreTest {
                     ConversationSummary(
                         threadId = ThreadId("dm-1"),
                         channelId = ChannelId("dm-1"),
-                        kind = ConversationKind.DirectMessage,
-                        name = "Cindy",
-                        avatar = AvatarReference.Pixel("cindy")
-                    )
+                            kind = ConversationKind.DirectMessage,
+                            name = "Cindy"
+                        )
                 )
             )
 
         assertEquals("Thread", payload.title)
         assertEquals("Cindy", headerDisplay.title)
-        assertEquals("pixel:cindy", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals(null, payload.subtitle)
         assertEquals("Thread", payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
@@ -4437,7 +4429,6 @@ class SharedThreadStoreTest {
                             channelId = ChannelId("dm-agent-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Product-UX-Designer",
-                            avatar = AvatarReference.fromWireValue("pixel:tree"),
                             presenceMemberId = MemberId("agent-1")
                         )
                     ),
@@ -4477,7 +4468,7 @@ class SharedThreadStoreTest {
         )
 
         val message = store.state.value.payload.messages.single { it.id == "m2" }
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
         val cachedAuthor =
             localStore
@@ -4485,7 +4476,7 @@ class SharedThreadStoreTest {
                 ?.messages
                 ?.single { it.id == MessageId("m2") }
                 ?.author
-        assertEquals("pixel:tree", cachedAuthor?.avatar?.wireValue)
+        assertEquals(null, cachedAuthor?.avatar?.wireValue)
         assertEquals(null, cachedAuthor?.gravatarHash)
         scope.cancel()
     }

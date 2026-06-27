@@ -191,6 +191,34 @@ class SharedServerMembersStore(
         )
     }
 
+    fun seedProfiles(
+        serverId: ServerId,
+        profiles: List<MemberProfile>,
+        server: ServerSummary? = null
+    ) {
+        val key = serverId.value.trim()
+        if (key.isBlank() || profiles.isEmpty()) return
+        val current = _state.value
+        val previous = current.entriesByServerId[key]
+        val merged = LinkedHashMap<String, MemberProfile>()
+        previous?.members.orEmpty().forEach { member ->
+            merged[member.id.value.trim()] = member
+        }
+        profiles
+            .filter { it.id.value.trim().isNotBlank() }
+            .forEach { profile ->
+                val profileKey = profile.id.value.trim()
+                merged[profileKey] = merged[profileKey]?.mergeSeedProfile(profile) ?: profile
+            }
+        putEntry(
+            key,
+            (previous ?: SharedServerMembersEntry(serverId = key)).copy(
+                server = previous?.server ?: server,
+                members = merged.values.toList().withServerMemberPresenceFacts(current.presenceByMemberId)
+            )
+        )
+    }
+
     fun applyPresence(event: MemberPresenceUpdated) {
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
@@ -614,6 +642,22 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
             agentStatus = event.agentStatus ?: member.agentStatus
         )
     }
+
+private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile =
+    copy(
+        displayName = displayName.takeIf { it.isNotBlank() } ?: seed.displayName,
+        handle = handle.takeIf { it.isNotBlank() } ?: seed.handle,
+        description = description ?: seed.description,
+        roleDescription = roleDescription ?: seed.roleDescription,
+        email = email ?: seed.email,
+        avatarUrl = avatarUrl ?: seed.avatarUrl,
+        gravatarHash = gravatarHash ?: seed.gravatarHash,
+        avatar = avatar ?: seed.avatar,
+        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
+        serverId = serverId ?: seed.serverId,
+        serverName = serverName ?: seed.serverName,
+        serverSlug = serverSlug ?: seed.serverSlug
+    )
 
 private fun List<MemberProfile>.toServerMembersMemberSuggestions(
     localServerId: String? = null

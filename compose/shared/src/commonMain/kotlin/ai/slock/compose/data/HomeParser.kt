@@ -5,11 +5,12 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
-import ai.slock.compose.model.toGravatarAvatarUrl
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -233,10 +234,7 @@ private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> U
         peerDisplayName?.takeIf { it.isNotBlank() }
             ?: peerName.takeIf { it.isNotBlank() }
             ?: id
-    val directUrl = peerAvatarUrl?.takeIf { it.isNotBlank() }
-    val gravatarUrl = peerGravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
-    val effectiveAvatarUrl = directUrl ?: gravatarUrl
-    if (effectiveAvatarUrl == null) {
+    if (peerAvatarUrl.isNullOrBlank() && peerGravatarHash.isNullOrBlank()) {
         warningLogger("dm_avatar_missing source=home_direct_messages peerId=$peerId peerName=$displayName")
     }
     return ConversationSummary(
@@ -248,15 +246,33 @@ private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> U
             peerDescription?.takeIf { it.isNotBlank() }
                 ?: description?.takeIf { it.isNotBlank() },
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
-        avatarUrl = effectiveAvatarUrl,
-        avatar = effectiveAvatarUrl?.let { AvatarReference.fromWireValue(it) },
-        // #225 fix: surface the Gravatar URL alongside the primary avatar so
-        // the renderer can fall back when the primary HTTP avatar fails
-        // (mirrors React AvatarSlot hash fallback). Only kept when the
-        // primary is not itself a Gravatar URL (avoids duplicate).
-        gravatarUrl = if (effectiveAvatarUrl != gravatarUrl && peerType.equals("user", ignoreCase = true)) gravatarUrl else null,
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt
+    )
+}
+
+internal fun HomeNetworkPayload.directMessagePeerProfiles(serverId: ServerId): List<MemberProfile> =
+    directMessages.mapNotNull { it.toPeerMemberProfile(serverId) }
+
+private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): MemberProfile? {
+    val cleanPeerId = peerId.trim().takeIf { it.isNotBlank() } ?: return null
+    val displayName =
+        peerDisplayName?.takeIf { it.isNotBlank() }
+            ?: peerName.takeIf { it.isNotBlank() }
+            ?: cleanPeerId
+    val directAvatarUrl = peerAvatarUrl?.takeIf { it.isNotBlank() }
+    val gravatarHash = peerGravatarHash?.takeIf { it.isNotBlank() }
+    return MemberProfile(
+        id = MemberId(cleanPeerId),
+        displayName = displayName,
+        handle = peerName.takeIf { it.isNotBlank() } ?: displayName,
+        kind = if (peerType.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
+        description = peerDescription?.takeIf { it.isNotBlank() },
+        avatarUrl = directAvatarUrl,
+        gravatarHash = gravatarHash,
+        avatar = directAvatarUrl?.let { AvatarReference.fromWireValue(it) },
+        avatarLabel = displayName.take(1).uppercase(),
+        serverId = serverId
     )
 }
 

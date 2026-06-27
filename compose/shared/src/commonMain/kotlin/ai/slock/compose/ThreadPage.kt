@@ -5785,6 +5785,7 @@ private fun ThreadPageContent(
             ThreadPageHeader(
                 payload = payload,
                 headerDisplay = headerDisplay,
+                memberAvatarResolver = memberAvatarResolver,
                 onBack = onBack,
                 onOpenInChannel = {
                     onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
@@ -5919,6 +5920,7 @@ private fun ThreadPageContent(
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (String) -> Unit,
@@ -5926,6 +5928,11 @@ private fun ThreadPageHeader(
     onShowSettings: () -> Unit
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
+    val resolvedDmPeerAvatarWireValue =
+        rememberSlockMemberAvatarWireValue(
+            memberAvatarResolver,
+            headerDisplay.dmPeerMemberId?.takeIf { it.isNotBlank() }
+        )
     Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -5942,7 +5949,7 @@ private fun ThreadPageHeader(
             ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
             if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
-                    avatarWireValue = headerDisplay.dmPeerAvatarWireValue,
+                    avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     avatarLabel = headerDisplay.dmPeerAvatarLabel,
                     gravatarUrl = headerDisplay.dmPeerGravatarUrl,
                     onClick =

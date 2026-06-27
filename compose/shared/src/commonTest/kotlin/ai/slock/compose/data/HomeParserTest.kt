@@ -18,39 +18,40 @@ class HomeParserTest {
 
     @Test
     fun parsesTypedChannelsDmsAndUnreadCounts() {
+        val payload =
+            homePayload(
+                channels =
+                    listOf(
+                        HomeChannelWireDto(
+                            id = "channel-1",
+                            name = "native",
+                            type = "channel",
+                            description = "Native client work",
+                            joined = true,
+                            archivedAt = null,
+                            lastMessageAt = "2024-09-01T00:00:00.000Z"
+                        )
+                    ),
+                directMessages =
+                    listOf(
+                        HomeDirectMessageWireDto(
+                            id = "dm-1",
+                            name = "agent-one",
+                            type = "dm",
+                            description = null,
+                            peerType = "agent",
+                            peerId = "agent-1",
+                            peerName = "agent-one",
+                            peerDisplayName = "Agent One",
+                            peerGravatarHash = "abc123",
+                            peerAvatarUrl = null
+                        )
+                    ),
+                unreadCounts = mapOf(ChannelId("channel-1") to 4, ChannelId("dm-1") to 2)
+            )
         val result =
             parseSlockHome(
-                payload =
-                    homePayload(
-                        channels =
-                            listOf(
-                                HomeChannelWireDto(
-                                    id = "channel-1",
-                                    name = "native",
-                                    type = "channel",
-                                    description = "Native client work",
-                                    joined = true,
-                                    archivedAt = null,
-                                    lastMessageAt = "2024-09-01T00:00:00.000Z"
-                                )
-                            ),
-                        directMessages =
-                            listOf(
-                                HomeDirectMessageWireDto(
-                                    id = "dm-1",
-                                    name = "agent-one",
-                                    type = "dm",
-                                    description = null,
-                                    peerType = "agent",
-                                    peerId = "agent-1",
-                                    peerName = "agent-one",
-                                    peerDisplayName = "Agent One",
-                                    peerGravatarHash = "abc123",
-                                    peerAvatarUrl = null
-                                )
-                            ),
-                        unreadCounts = mapOf(ChannelId("channel-1") to 4, ChannelId("dm-1") to 2)
-                    ),
+                payload = payload,
                 session = sampleSession()
             )
 
@@ -68,8 +69,11 @@ class HomeParserTest {
         assertEquals("Agent One", dm.name)
         assertEquals("agent", dm.directMessagePeerType)
         assertEquals("agent-1", dm.presenceMemberId?.value)
-        assertEquals("https://www.gravatar.com/avatar/abc123?s=52&d=404", dm.avatarUrl)
         assertEquals(2, dm.unreadCount)
+        val peerProfile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
+        assertEquals("agent-1", peerProfile.id.value)
+        assertNull(peerProfile.avatarUrl)
+        assertEquals("abc123", peerProfile.gravatarHash)
         assertEquals(6, snapshot.unreadTotal)
     }
 
@@ -221,30 +225,34 @@ class HomeParserTest {
 
     @Test
     fun directMessagePrefersPeerAvatarUrlOverGravatarHash() {
+        val payload =
+            homePayload(
+                directMessages =
+                    listOf(
+                        HomeDirectMessageWireDto(
+                            id = "dm-1",
+                            name = "agent-one",
+                            type = "dm",
+                            peerType = "agent",
+                            peerId = "agent-1",
+                            peerName = "agent-one",
+                            peerDisplayName = "Agent One",
+                            peerAvatarUrl = "https://cdn.slock.ai/a.png",
+                            peerGravatarHash = "abc"
+                        )
+                    )
+            )
         val result =
             parseSlockHome(
-                payload =
-                    homePayload(
-                        directMessages =
-                            listOf(
-                                HomeDirectMessageWireDto(
-                                    id = "dm-1",
-                                    name = "agent-one",
-                                    type = "dm",
-                                    peerType = "agent",
-                                    peerId = "agent-1",
-                                    peerName = "agent-one",
-                                    peerDisplayName = "Agent One",
-                                    peerAvatarUrl = "https://cdn.slock.ai/a.png",
-                                    peerGravatarHash = "abc"
-                                )
-                            )
-                    ),
+                payload = payload,
                 session = sampleSession()
             )
 
         assertTrue(result is DataResult.Content)
-        assertEquals("https://cdn.slock.ai/a.png", result.data.directMessages.single().avatarUrl)
+        val profile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
+        assertEquals("agent-1", profile.id.value)
+        assertEquals("https://cdn.slock.ai/a.png", profile.avatarUrl)
+        assertEquals("abc", profile.gravatarHash)
     }
 
     @Test
@@ -294,28 +302,29 @@ class HomeParserTest {
     @Test
     fun logsDirectMessageAvatarMissingWhenBothUrlAndGravatarAreMissing() {
         val warnings = mutableListOf<String>()
+        val payload =
+            homePayload(
+                directMessages =
+                    listOf(
+                        HomeDirectMessageWireDto(
+                            id = "dm-1",
+                            name = "agent-one",
+                            type = "dm",
+                            peerType = "agent",
+                            peerId = "agent-1",
+                            peerName = "agent-one"
+                        )
+                    )
+            )
         val result =
             parseSlockHome(
-                payload =
-                    homePayload(
-                        directMessages =
-                            listOf(
-                                HomeDirectMessageWireDto(
-                                    id = "dm-1",
-                                    name = "agent-one",
-                                    type = "dm",
-                                    peerType = "agent",
-                                    peerId = "agent-1",
-                                    peerName = "agent-one"
-                                )
-                            )
-                    ),
+                payload = payload,
                 session = sampleSession(),
                 warningLogger = warnings::add
             )
 
         assertTrue(result is DataResult.Content)
-        assertNull(result.data.directMessages.single().avatarUrl)
+        assertNull(payload.directMessagePeerProfiles(ServerId("server-1")).single().avatarUrl)
         assertTrue(warnings.any { it.contains("dm_avatar_missing") && it.contains("peerId=agent-1") })
     }
 

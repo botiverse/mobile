@@ -3,10 +3,8 @@ package ai.slock.compose
 import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
-import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.isGenericDisplayName
 import ai.slock.compose.model.safeDisplayNameOrNull
-import ai.slock.compose.model.toGravatarAvatarUrl
 
 internal data class SharedConversationHeaderEntry(
     val ids: Set<String>,
@@ -416,23 +414,16 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
         ).filter { it.isNotBlank() }.toSet()
     if (ids.isEmpty()) return null
     val displayName = safeDisplayNameOrNull()?.takeUnless { isGenericDisplayName(it) } ?: return null
-    val avatar = avatarSlotResolution()
-    val acceptedGravatarUrl =
-        gravatarUrl
-            ?.takeUnless {
-                surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
-                    directMessagePeerType.equals("agent", ignoreCase = true)
-            }
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,
         channelKind = resolveThreadRouteIdentity().channelKind ?: channelType?.takeIf { it.isNotBlank() } ?: kind.name.lowercase(),
         title = displayName,
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
-        avatarWireValue = avatar.effectiveAvatarWireValue,
+        avatarWireValue = null,
         avatarLabel = displayName.take(2).uppercase(),
         dmPeerMemberId = presenceMemberId?.value,
-        gravatarUrl = acceptedGravatarUrl ?: avatar.gravatarHash?.toGravatarAvatarUrl()
+        gravatarUrl = null
     )
 }
 

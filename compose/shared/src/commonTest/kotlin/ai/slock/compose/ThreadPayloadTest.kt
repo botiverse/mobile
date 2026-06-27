@@ -1088,9 +1088,6 @@ class ThreadPayloadTest {
                 channelId = ChannelId("dm-artin"),
                 kind = ConversationKind.DirectMessage,
                 name = "artin",
-                avatar = AvatarReference.Pixel("crown"),
-                avatarUrl = "https://cdn.slock.ai/avatars/artin.webp",
-                gravatarUrl = "https://www.gravatar.com/avatar/artin",
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload =
@@ -1102,9 +1099,9 @@ class ThreadPayloadTest {
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals("artin", headerDisplay.title)
-        assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", headerDisplay.dmPeerGravatarUrl)
+        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
     }
@@ -1118,15 +1115,13 @@ class ThreadPayloadTest {
                 kind = ConversationKind.DirectMessage,
                 name = "Product-UX-Designer",
                 directMessagePeerType = "agent",
-                avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
 
         assertEquals("Product-UX-Designer", headerDisplay.title)
-        assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
         assertEquals(null, headerDisplay.dmPeerGravatarUrl)
         assertEquals(null, payload.dmPeerAvatarUrl)
@@ -1142,7 +1137,6 @@ class ThreadPayloadTest {
                 kind = ConversationKind.Channel,
                 name = "首页专修",
                 subtitle = "Home repair",
-                avatar = AvatarReference.Pixel("ignored"),
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
@@ -2641,7 +2635,6 @@ class ThreadPayloadTest {
                     subtitle = "Product state must not be in PagerData",
                     joined = false,
                     memberCount = 12,
-                    avatar = AvatarReference.Pixel("display-seed"),
                     permissions =
                         ConversationPermissions(
                             canRead = true,

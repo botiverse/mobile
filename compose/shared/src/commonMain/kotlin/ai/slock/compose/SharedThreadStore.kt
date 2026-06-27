@@ -61,7 +61,6 @@ import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
-import ai.slock.compose.model.AvatarSlotResolution
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
@@ -89,7 +88,6 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
-import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.messageStreamChannelId
@@ -4863,9 +4861,6 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
             parentMessageId = parentId
     )
-    val dmPeerAvatar = conversation.avatarSlotResolution()
-    val isAgentDirectMessage =
-        isDirectMessage && conversation.directMessagePeerType.equals("agent", ignoreCase = true)
     val resolvedComposer =
         if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
             base.composer.copy(
@@ -4922,20 +4917,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
         dmPeerName = safeDirectMessagePeerName,
-        dmPeerAvatarUrl =
-            resolveDirectMessagePeerAvatar(
-                baseAvatarWireValue = null,
-                conversationAvatar = dmPeerAvatar,
-                isDirectMessage = isDirectMessage,
-                isAgentDirectMessage = isAgentDirectMessage
-            ),
+        dmPeerAvatarUrl = null,
         dmPeerAvatarLabel = safeDirectMessagePeerName?.take(2)?.uppercase(),
-        dmPeerGravatarUrl =
-            if (isAgentDirectMessage) {
-                null
-            } else {
-                conversation.gravatarUrl.takeIf { isDirectMessage }
-            }
+        dmPeerGravatarUrl = null
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
@@ -4947,24 +4931,6 @@ private fun String?.withRouteChannelKindFallback(routeKind: String?): String? {
     } else {
         normalized ?: route
     }
-}
-
-private fun resolveDirectMessagePeerAvatar(
-    baseAvatarWireValue: String?,
-    conversationAvatar: AvatarSlotResolution,
-    isDirectMessage: Boolean,
-    isAgentDirectMessage: Boolean
-): String? {
-    if (!isDirectMessage) return null
-    val baseAvatar = baseAvatarWireValue?.takeIf { it.isNotBlank() }
-    val resolvedAvatar = conversationAvatar.effectiveAvatarWireValue
-    if (!isAgentDirectMessage) return baseAvatar ?: resolvedAvatar
-    return resolveMergedAvatarSlot(
-        kind = MemberKind.Agent,
-        id = "dm-peer",
-        currentAvatarWireValue = baseAvatar,
-        incomingAvatarWireValue = resolvedAvatar
-    ).effectiveAvatarWireValue
 }
 
 private fun ThreadSnapshot.matchesFocusedThreadRoute(

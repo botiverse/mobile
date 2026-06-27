@@ -7,7 +7,6 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.isGenericDisplayName
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.safeDisplayNameOrNull
@@ -253,7 +252,7 @@ internal class SharedConversationDirectoryStore(
             description = incomingDraft.description ?: existing.description,
             parentChannelId = incomingDraft.parentChannelId ?: existing.parentChannelId,
             parentMessageId = incomingDraft.parentMessageId ?: existing.parentMessageId,
-            avatarUrl = incomingDraft.avatarUrl ?: existing.avatarUrl,
+            avatarUrl = null,
             presenceMemberId = incomingDraft.presenceMemberId ?: existing.presenceMemberId,
             joined = if (incoming.joined) existing.joined else incomingDraft.joined,
             archived = if (incoming.archived) incomingDraft.archived else existing.archived,
@@ -322,7 +321,7 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
         description = subtitle?.takeIf { it.isNotBlank() },
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
-        avatarUrl = conversationDirectoryAvatarWireValue(),
+        avatarUrl = null,
         presenceMemberId = presenceMemberId?.value,
         joined = joined.toLongFlag(),
         archived = archived.toLongFlag(),
@@ -393,7 +392,7 @@ private fun ChannelEntity.toProjection(
         channelKind = type,
         title = title,
         subtitle = description?.takeIf { it.isNotBlank() },
-        avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() },
+        avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
         peerMemberId = presenceMemberId?.takeIf { it.isNotBlank() },
         parentChannelId = parentChannelId,
@@ -412,9 +411,6 @@ private fun ConversationSummary.toDirectoryChannelType(): String =
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
     }
-
-internal fun ConversationSummary.conversationDirectoryAvatarWireValue(): String? =
-    avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl
 
 private fun String.toDirectoryConversationKind(): ConversationKind =
     when (lowercase()) {

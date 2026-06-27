@@ -54,6 +54,33 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun seedProfilesCachesHomeDirectMessageAvatarsWithoutMarkingRosterLoaded() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+
+        store.seedProfiles(
+            serverId = ServerId("server-1"),
+            server = server("server-1"),
+            profiles =
+                listOf(
+                    member("agent-1", "Build Agent").copy(
+                        kind = MemberKind.Agent,
+                        avatarUrl = "https://cdn.slock.ai/agent.png",
+                        gravatarHash = "agent-hash"
+                    )
+                )
+        )
+
+        val entry = store.state.value.entryFor(ServerId("server-1"))
+        assertEquals(SharedServerMembersLoadStatus.Idle, entry?.status)
+        val member = entry?.members?.single()
+        assertEquals("agent-1", member?.id?.value)
+        assertEquals("https://cdn.slock.ai/agent.png", member?.avatarUrl)
+        assertEquals("agent-hash", member?.gravatarHash)
+        assertEquals(0, repository.getMembersCalls)
+    }
+
+    @Test
     fun applyPresencePatchesCachedAgentRoster() {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)

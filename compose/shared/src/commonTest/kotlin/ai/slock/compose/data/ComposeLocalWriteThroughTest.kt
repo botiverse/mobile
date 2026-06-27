@@ -1,6 +1,5 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -32,27 +31,6 @@ import kotlin.test.assertTrue
 
 class ComposeLocalWriteThroughTest {
     @Test
-    fun conversationDirectoryUsesAgentDmAvatarFallbackWhenAvatarMissing() {
-        val missingAvatar =
-            ConversationSummary(
-                threadId = ThreadId("dm-agent-1"),
-                channelId = ChannelId("dm-agent-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "KMP-Expert",
-                directMessagePeerType = "agent",
-                presenceMemberId = MemberId("agent-1")
-            )
-        val gravatarCandidate =
-            missingAvatar.copy(
-                avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
-            )
-
-        assertEquals("pixel:robot", missingAvatar.conversationDirectoryAvatarWireValue())
-        assertEquals("pixel:robot", gravatarCandidate.conversationDirectoryAvatarWireValue())
-    }
-
-    @Test
     fun writeHomeResultPreservesStoredDirectMessageMetadata() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
@@ -62,7 +40,6 @@ class ComposeLocalWriteThroughTest {
             kind = ConversationKind.DirectMessage,
             name = "Cindy",
             subtitle = "Onboarding Assistant",
-            avatar = AvatarReference.Pixel("heart"),
             presenceMemberId = MemberId("agent-1")
         )
         store.writeHome(home(directMessages = listOf(dm)))
@@ -75,7 +52,6 @@ class ComposeLocalWriteThroughTest {
                             dm.copy(
                                 name = "dm-1",
                                 subtitle = null,
-                                avatar = null,
                                 presenceMemberId = null,
                                 lastMessagePreview = "new"
                             )
@@ -88,7 +64,6 @@ class ComposeLocalWriteThroughTest {
         val cached = store.readHome(serverId)?.directMessages?.single()
         assertEquals("Cindy", cached?.name)
         assertEquals("Onboarding Assistant", cached?.subtitle)
-        assertEquals("pixel:heart", cached?.avatar?.wireValue)
         assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
         assertEquals("new", cached?.lastMessagePreview)
     }

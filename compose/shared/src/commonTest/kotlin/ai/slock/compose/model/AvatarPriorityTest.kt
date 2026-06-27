@@ -136,37 +136,4 @@ class AvatarPriorityTest {
         assertEquals("human-hash", mergedHuman.gravatarHash)
     }
 
-    @Test
-    fun directMessageConversationUsesAgentAvatarRules() {
-        val agentDm =
-            ConversationSummary(
-                threadId = ThreadId("dm-agent"),
-                kind = ConversationKind.DirectMessage,
-                name = "Build Agent",
-                directMessagePeerType = "agent",
-                avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
-            )
-
-        val resolvedAgent = agentDm.avatarSlotResolution()
-
-        assertNull(resolvedAgent.displayAvatarWireValue)
-        assertNull(resolvedAgent.gravatarHash)
-        assertEquals("pixel:robot", resolvedAgent.fallbackAvatarWireValue)
-        assertEquals("pixel:robot", resolvedAgent.effectiveAvatarWireValue)
-
-        val humanDm =
-            ConversationSummary(
-                threadId = ThreadId("dm-human"),
-                kind = ConversationKind.DirectMessage,
-                name = "Artin",
-                directMessagePeerType = "human",
-                gravatarUrl = "https://www.gravatar.com/avatar/artin?s=52&d=404"
-            )
-
-        assertEquals(
-            "https://www.gravatar.com/avatar/artin?s=52&d=404",
-            humanDm.avatarSlotResolution().effectiveAvatarWireValue
-        )
-    }
 }

@@ -4,7 +4,6 @@ import ai.slock.compose.resolveThreadRouteIdentity
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
-import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
@@ -329,8 +328,6 @@ internal class SqlDelightComposeLocalDataStore(
             kind = kind,
             name = name,
             subtitle = description,
-            avatarUrl = avatarUrl,
-            avatar = AvatarReference.fromWireValue(avatarUrl),
             unreadCount = unreadCount.toInt(),
             unreadCountKnown = true,
             mentionCount = mentionCount.toInt(),
@@ -395,7 +392,6 @@ internal class SqlDelightComposeLocalDataStore(
         val existing = selectChannel(serverId, canonicalChannelId).executeAsOneOrNull()
         val incomingType = channel.toChannelType()
         val incomingName = channel.name.ifBlank { canonicalChannelId }
-        val incomingAvatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl
         val incomingPresenceMemberId = channel.presenceMemberId?.value
         val existingDirectMessage =
             existing?.takeIf { incomingType == "dm" && it.type == "dm" }
@@ -410,8 +406,6 @@ internal class SqlDelightComposeLocalDataStore(
                 channel.nameIsBlankOrIdentity(additionalIdentityIds = setOf(canonicalChannelId)) &&
                 existingNameLooksConcrete
         val storedName = if (nameLooksSparse) existingDirectMessage.name else incomingName
-        val storedAvatarUrl =
-            if (shouldPreserveDmMetadata) incomingAvatarUrl ?: existingDirectMessage.avatarUrl else incomingAvatarUrl
         val storedDescription =
             if (shouldPreserveDmMetadata) channel.subtitle ?: existingDirectMessage.description else channel.subtitle
         val storedPresenceMemberId =
@@ -424,7 +418,7 @@ internal class SqlDelightComposeLocalDataStore(
             description = storedDescription,
             parentChannelId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentChannelId?.value else null,
             parentMessageId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentMessageId?.value else null,
-            avatarUrl = storedAvatarUrl,
+            avatarUrl = null,
             presenceMemberId = storedPresenceMemberId,
             joined = channel.joined.toLongFlag(),
             archived = channel.archived.toLongFlag(),

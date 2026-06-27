@@ -750,9 +750,6 @@ private fun ConversationSummary.withStoredConversationMetadata(stored: Conversat
         name = if (nameLooksSparse && storedDisplayName != null) stored.name else name,
         subtitle = subtitle ?: stored.subtitle,
         directMessagePeerType = directMessagePeerType ?: stored.directMessagePeerType,
-        avatarUrl = avatarUrl ?: stored.avatarUrl,
-        avatar = avatar ?: stored.avatar,
-        gravatarUrl = gravatarUrl ?: stored.gravatarUrl,
         presenceMemberId = presenceMemberId ?: stored.presenceMemberId,
         memberCount = memberCount ?: stored.memberCount,
         jointChannelId = jointChannelId ?: stored.jointChannelId,
@@ -799,9 +796,6 @@ private fun HomeSnapshot.withStoredDirectMessageMetadata(previous: HomeSnapshot?
                                 conversation.name
                             },
                         subtitle = conversation.subtitle ?: previousConversation.subtitle,
-                        avatarUrl = conversation.avatarUrl ?: previousConversation.avatarUrl,
-                        avatar = conversation.avatar ?: previousConversation.avatar,
-                        gravatarUrl = conversation.gravatarUrl ?: previousConversation.gravatarUrl,
                         directMessagePeerType =
                             conversation.directMessagePeerType ?: previousConversation.directMessagePeerType,
                         presenceMemberId =

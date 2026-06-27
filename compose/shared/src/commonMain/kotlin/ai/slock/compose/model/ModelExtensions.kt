@@ -223,23 +223,6 @@ fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
 fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
     avatarSlotResolution().effectiveAvatarWireValue
 
-fun ConversationSummary.avatarSlotResolution(): AvatarSlotResolution =
-    resolveAvatarSlot(
-        kind =
-            if (kind == ConversationKind.DirectMessage && directMessagePeerType.equals("agent", ignoreCase = true)) {
-                MemberKind.Agent
-            } else {
-                MemberKind.Human
-            },
-        id =
-            presenceMemberId?.value
-                ?: channelId?.value
-                ?: threadId.value,
-        avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl ?: gravatarUrl,
-        gravatarHash = null
-    )
-
 fun avatarWireValueForAvatarSlot(
     kind: MemberKind,
     id: String,

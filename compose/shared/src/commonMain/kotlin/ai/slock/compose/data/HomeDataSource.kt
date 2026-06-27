@@ -113,6 +113,13 @@ class SharedHomeDataSource(
                 return DataResult.Error(ScreenError(code = "home_network", retryable = true))
             }
         val result = parseHome(payload, session)
+        if (result is DataResult.Content) {
+            serverMembersStore?.seedProfiles(
+                serverId = result.data.server.id,
+                profiles = payload.directMessagePeerProfiles(result.data.server.id),
+                server = result.data.server
+            )
+        }
         diagnosticsLogger("home_bootstrap_result ${result.homeDiagnosticsSummary()} stage=parse")
         localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
