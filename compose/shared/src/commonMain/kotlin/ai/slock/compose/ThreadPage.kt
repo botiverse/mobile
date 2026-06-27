@@ -8359,8 +8359,9 @@ private fun ThreadMessageCard(
     )
     var pressed by remember(message.id) { mutableStateOf(false) }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
-    val showTimestampInHeader = !compactConsecutiveMessages
-    val showTimestampInAvatarSlot = compactConsecutiveMessages && pressed && timestampLabel.isNotBlank()
+    val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
+    val showTimestampInAvatarSlot =
+        compactConsecutiveMessages && !showAuthorChrome && pressed && timestampLabel.isNotBlank()
     Box(
         modifier =
             Modifier
@@ -10361,42 +10362,36 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    val slotHeight = if (showAvatar && showTimestamp) 56.dp else 44.dp
     Box(
-        modifier = Modifier.size(width = 40.dp, height = slotHeight),
+        modifier = Modifier.size(width = 40.dp, height = 44.dp),
         contentAlignment = Alignment.TopCenter
     ) {
-        if (showAvatar) {
-            ThreadMessageAvatar(
-                avatarLabel = avatarLabel,
-                avatarWireValue = avatarWireValue,
-                status = status,
-                statusPulsing = statusPulsing,
-                muted = muted,
-                onClick = onClick,
-                onLongPress = onLongPress
-            )
-        }
-        if (showTimestamp) {
-            Text(
-                text = timestampLabel,
-                style =
-                    SlockType.Caption.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = SlockColor.TextBlack.copy(alpha = 0.38f)
-                    ),
-                color = SlockColor.TextBlack.copy(alpha = 0.38f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    if (showAvatar) {
-                        Modifier.align(Alignment.BottomCenter)
-                    } else {
-                        Modifier.padding(top = 23.dp)
-                    }
-            )
+        when {
+            showAvatar ->
+                ThreadMessageAvatar(
+                    avatarLabel = avatarLabel,
+                    avatarWireValue = avatarWireValue,
+                    status = status,
+                    statusPulsing = statusPulsing,
+                    muted = muted,
+                    onClick = onClick,
+                    onLongPress = onLongPress
+                )
+            showTimestamp ->
+                Text(
+                    text = timestampLabel,
+                    style =
+                        SlockType.Caption.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            color = SlockColor.TextBlack.copy(alpha = 0.38f)
+                        ),
+                    color = SlockColor.TextBlack.copy(alpha = 0.38f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 23.dp)
+                )
         }
     }
 }
