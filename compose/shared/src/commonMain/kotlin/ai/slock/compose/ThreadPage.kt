@@ -991,6 +991,47 @@ internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
         ?: normalizedValue?.takeIf { it.isDisplaySafeTaskAssigneeName(normalizedId) }
 }
 
+internal data class ThreadTimelineRenderConfig(
+    val backgroundRefreshing: Boolean,
+    val errorCode: String?,
+    val originPreview: String?,
+    val originErrorCode: String?,
+    val timeContext: SlockTimeContext,
+    val members: List<KuiklyThreadMemberItem>
+)
+
+internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTimelineRenderConfig =
+    ThreadTimelineRenderConfig(
+        backgroundRefreshing = backgroundRefreshing,
+        errorCode = errorCode,
+        originPreview = originPreview,
+        originErrorCode = originErrorCode,
+        timeContext = toSlockTimeContext(),
+        members = members
+    )
+
+internal fun ThreadTimelineRenderConfig.formatTimestampLabel(value: String): String =
+    formatSlockTimestampLabel(value, timeContext)
+
+internal fun ThreadTimelineRenderConfig.resolveTaskAssigneeDisplayName(
+    value: String?,
+    id: String? = null
+): String? {
+    val normalizedId = id?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+    val normalizedValue = value?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+    val member =
+        listOfNotNull(normalizedId, normalizedValue)
+            .firstNotNullOfOrNull { candidate ->
+                members.firstOrNull { member ->
+                    member.id.equals(candidate, ignoreCase = true) ||
+                        member.handle.removePrefix("@").equals(candidate, ignoreCase = true) ||
+                        member.displayName.equals(candidate, ignoreCase = true)
+                }
+            }
+    return member?.displayName?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        ?: normalizedValue?.takeIf { it.isDisplaySafeTaskAssigneeName(normalizedId) }
+}
+
 internal fun TaskSummary.threadLinkedTaskAssigneeDisplayName(): String? {
     val assignee = assignee ?: return null
     val assigneeId = assignee.id.value.trim().removePrefix("@").takeIf { it.isNotBlank() }
@@ -5659,6 +5700,20 @@ private fun ThreadPageContent(
         remember(payload.members) {
             { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
         }
+    val timelineRenderConfig =
+        remember(
+            payload.backgroundRefreshing,
+            payload.errorCode,
+            payload.originPreview,
+            payload.originErrorCode,
+            payload.localOffsetMinutes,
+            payload.todayEpochDay,
+            payload.nowEpochMillis,
+            payload.timeFormat,
+            payload.members
+        ) {
+            payload.toThreadTimelineRenderConfig()
+        }
     val selectThreadTab: (KuiklyThreadTab) -> Unit = { tab ->
         selectedTab = tab
         onThreadEvent("selectTab", null, null, tab.wireValue)
@@ -5675,7 +5730,7 @@ private fun ThreadPageContent(
                 KuiklyThreadTab.Chat ->
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
-                        payload = payload,
+                        renderConfig = timelineRenderConfig,
                         timelineSlice = timelineSlice,
                         activeDraftRecords = activeDraftRecords,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6261,7 +6316,7 @@ private fun ThreadPageTabs(
 @Composable
 private fun ThreadChatTab(
     threadInstanceKey: String,
-    payload: KuiklyThreadScreenPayload,
+    renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
@@ -6297,14 +6352,14 @@ private fun ThreadChatTab(
         threadInstanceKey,
         timelineSlice.status,
         timelineSlice.messages.size,
-        payload.backgroundRefreshing,
+        renderConfig.backgroundRefreshing,
         timelineSlice.originStatus,
         chatRenderBranch
     ) {
         diagnosticsLogger(
             "thread_chat_visible_state instance=$threadInstanceKey " +
                 "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
-                "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                "backgroundRefreshing=${renderConfig.backgroundRefreshing} " +
                 "originStatus=${timelineSlice.originStatus} branch=$chatRenderBranch"
         )
     }
@@ -6313,7 +6368,7 @@ private fun ThreadChatTab(
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
-                    payload = payload,
+                    renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6343,16 +6398,16 @@ private fun ThreadChatTab(
         "error" ->
             ThreadStateActionMessage(
                 title = "Failed to load thread",
-                detail = payload.errorCode ?: "unknown_error",
+                detail = renderConfig.errorCode ?: "unknown_error",
                 actionLabel = "Retry",
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
             )
-        "no_permission" -> ThreadStateMessage("No permission", payload.errorCode ?: "missing capability")
+        "no_permission" -> ThreadStateMessage("No permission", renderConfig.errorCode ?: "missing capability")
         "empty" ->
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
-                    payload = payload,
+                    renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
                     activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6385,7 +6440,7 @@ private fun ThreadChatTab(
         else ->
             ThreadMessagesList(
                 threadInstanceKey = threadInstanceKey,
-                payload = payload,
+                renderConfig = renderConfig,
                 timelineSlice = timelineSlice,
                 activeDraftRecords = activeDraftRecords,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
@@ -6443,7 +6498,7 @@ private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
 @Composable
 private fun ThreadMessagesList(
     threadInstanceKey: String,
-    payload: KuiklyThreadScreenPayload,
+    renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
@@ -6607,7 +6662,7 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         renderPayload.status,
         renderPayload.messages.size,
-        payload.backgroundRefreshing,
+        renderConfig.backgroundRefreshing,
         initialBottomAnchorReady,
         latestItemIndex,
         revealLatestLocalSendBeforeInitialAnchor,
@@ -6617,7 +6672,7 @@ private fun ThreadMessagesList(
             diagnosticsLogger(
                 "thread_messages_visible_state instance=$threadInstanceKey " +
                     "status=${renderPayload.status} messages=${renderPayload.messages.size} " +
-                    "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                    "backgroundRefreshing=${renderConfig.backgroundRefreshing} " +
                     "originStatus=${renderPayload.originStatus} latestItemIndex=$latestItemIndex " +
                     "initialBottomAnchorReady=$initialBottomAnchorReady " +
                     "revealLatestLocalSendBeforeInitialAnchor=$revealLatestLocalSendBeforeInitialAnchor " +
@@ -6956,7 +7011,7 @@ private fun ThreadMessagesList(
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
-                        payload = payload,
+                        renderConfig = renderConfig,
                         timelineSlice = renderPayload,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
@@ -7089,7 +7144,7 @@ private fun ThreadMessagesList(
                     if (isSystemMessage && actionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayMessage,
-                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel)
+                            timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
                         )
                     } else {
                         ThreadMessageCard(
@@ -7130,7 +7185,7 @@ private fun ThreadMessagesList(
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                            timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
@@ -9850,7 +9905,7 @@ private fun ThreadMessageMenuDivider() {
 
 @Composable
 private fun ThreadOriginCard(
-    payload: KuiklyThreadScreenPayload,
+    renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap(),
     highlightedMentions: Set<String>,
@@ -9891,12 +9946,12 @@ private fun ThreadOriginCard(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
                     Text(
-                        text = payload.originPreview?.ifBlank { "Original message is unavailable." }
+                        text = renderConfig.originPreview?.ifBlank { "Original message is unavailable." }
                             ?: "Original message is unavailable.",
                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack
                     )
-                    payload.originErrorCode?.takeIf { it.isNotBlank() }?.let {
+                    renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = "Refresh failed: $it",
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
@@ -9914,7 +9969,7 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel)
+                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel)
                         )
                     } else {
                         ThreadMessageCard(
@@ -9927,14 +9982,14 @@ private fun ThreadOriginCard(
                             showReplyAction = false,
                             resolvedTaskAssigneeName =
                                 linkedTaskAssigneeName
-                                    ?: payload.resolveTaskAssigneeDisplayName(
+                                    ?: renderConfig.resolveTaskAssigneeDisplayName(
                                         value = displayOrigin.taskAssigneeName,
                                         id = displayOrigin.taskAssigneeId
                                     ),
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
-                            showSaveAction = payload.showMessageSaveAction,
+                            taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
+                            taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
+                            showSaveAction = timelineSlice.showMessageSaveAction,
                             knownMarkdownChannelNames = knownMarkdownChannelNames,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,
@@ -9944,7 +9999,7 @@ private fun ThreadOriginCard(
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
-                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
+                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
@@ -9958,7 +10013,7 @@ private fun ThreadOriginCard(
                             richContentEnabled = contentExtrasVisible
                         )
                     }
-                } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
+                } ?: renderConfig.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
