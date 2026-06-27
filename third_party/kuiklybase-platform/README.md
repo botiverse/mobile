@@ -20,8 +20,8 @@ Useful dependencies for Slock:
 | Component | KBA version | Upstream baseline | Why it matters |
 | --- | --- | --- | --- |
 | `kotlinx.serialization` | `1.7.1-KBA-003` | `Kotlin/kotlinx.serialization` commit `d2f7316e` | JSON serialization on OHOS. Current compose OHOS build already resolves this version. |
-| `kotlinx.coroutines` | `1.8.0-KBA-001` | `Kotlin/kotlinx.coroutines` tag `1.8.0` | Ktor OHOS fork expects this version. |
-| `kotlinx.atomicfu` | `0.23.2-KBA-001` | `Kotlin/kotlinx.atomicfu` tag `0.23.2` | Ktor OHOS fork expects this version. |
+| `kotlinx.coroutines` | `1.8.0-KBA-001` | `Kotlin/kotlinx.coroutines` tag `1.8.0` | Candidate train for a Ktor `3.0.x` OHOS rebuild on Kotlin `2.0.21-KBA-010`. |
+| `kotlinx.atomicfu` | `0.23.2-KBA-001` | `Kotlin/kotlinx.atomicfu` tag `0.23.2` | Candidate train for a Ktor `3.0.x` OHOS rebuild on Kotlin `2.0.21-KBA-010`. |
 | `okio` | `3.9.10-KBA-001` | `square/okio` commit `c43c9a61` | Useful for future shared file/stream code on OHOS. |
 | `kotlinx.datetime` | `0.6.0-RC.2-KBA-003` | `Kotlin/kotlinx-datetime` tag `v0.6.0-RC.2` | Date/time support if Settings or message metadata move deeper into shared. |
 
@@ -38,14 +38,18 @@ compose OHOS build, for example:
 - `org.jetbrains.kotlinx:kotlinx-serialization-core-ohosarm64:1.7.1-KBA-003`
 - `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-001`
 
-The Ktor OHOS fork still has two unresolved dependency gaps on this machine:
+The Ktor `3.0.x` KBA rebuild path still has two unresolved dependency gaps on
+this machine:
 
 - `org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3-KBA-001`
 - `org.jetbrains.kotlinx:kotlinx-io-core:0.5.4-KBA-001`
 
 `KuiklyBase-platform` helps with the base stack, but it does not provide a
-`kotlinx-io` patch and its serialization patch is `1.7.1-KBA-003`, not Ktor's
-requested `1.7.3-KBA-001`.
+`kotlinx-io` patch and its serialization patch is `1.7.1-KBA-003`, not Ktor
+`3.0.x`'s requested `1.7.3-KBA-001`. The newer `main-3.3.3-OH` reference fork
+is a Kotlin `2.2.21-0.3.0` train (`kotlinx-io 0.9.0-0.3.0`, serialization
+`1.9.1-0.3.0`) and is not directly consumable by Slock's
+`2.0.21-KBA-010` OHOS build.
 
 ## Prepare A Dependency Fork
 

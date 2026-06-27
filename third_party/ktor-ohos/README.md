@@ -19,6 +19,60 @@ The reference fork is based on Ktor `3.3.3` and publishes as
 app builds. Prepare and publish a Slock-owned version, then consume the Slock
 coordinate from `mavenLocal` or an internal Maven repository.
 
+## KBA Retarget Status
+
+The `main-3.3.3-OH` reference fork cannot be retargeted to Slock's current
+OHOS Kotlin family by only overriding Gradle versions.
+
+Validated KBA publish attempt:
+
+```bash
+./gradlew --no-daemon --refresh-dependencies --no-configuration-cache \
+  -PreleaseVersion=3.3.3-slock-ohos-001 \
+  -Pkotlin_version=2.0.21-KBA-010 \
+  -Pbuild_snapshot_train=true \
+  -Patomicfu_version=0.23.2-KBA-001 \
+  -Pcoroutines_version=1.8.0-KBA-002 \
+  -Pserialization_version=1.7.1-KBA-003 \
+  :ktor-io:publishKotlinMultiplatformPublicationToMavenLocal \
+  :ktor-io:publishOhosArm64PublicationToMavenLocal
+```
+
+Findings:
+
+- The fork's Gradle wrapper is `9.2.1`; KGP `2.0.21-KBA-010` needs the build
+  to run on the Slock-compatible Gradle `8.13` line.
+- The build must add Tencent Maven
+  `https://mirrors.tencent.com/nexus/repository/maven-tencent/` before the
+  eazytec repositories for KBA Kotlin compiler plugin and serialization
+  artifacts. Without this, Gradle resolves some metadata from eazytec and then
+  misses files that exist in Tencent Maven.
+- After those repository/tooling fixes, `build-logic` still fails because Ktor
+  `3.3.3` build code itself uses Kotlin/KGP `2.2` APIs:
+  `ExperimentalAbiValidation` / `abiValidation`, Kotlin JS/Wasm env APIs,
+  Kotlin hierarchy APIs such as `withOhosX64`, and Kotlin context parameters.
+  This is a build-source compatibility issue before Ktor module compilation
+  even starts.
+- Ktor `3.0.3` is the upstream Ktor line that matches Kotlin `2.0.21`, but it
+  does not include the OHOS fork deltas. Its dependency train also introduces
+  a required missing artifact family for Slock: `kotlinx-io` with OHOS/KBA
+  variants. Tencent/eazytec do not currently publish
+  `org.jetbrains.kotlinx:kotlinx-io-core(-ohosarm64):0.5.4-KBA-001` or
+  `0.9.0-KBA-001`.
+
+Practical path forward:
+
+1. Do not enable `SLOCK_ENABLE_KTOR_OHOS_FORK=1` for the current `3.3.3`
+   reference artifacts in Slock's OHOS build; their KLIB ABI is produced by
+   Kotlin `2.2.21-0.3.0`, while Slock consumes Kotlin `2.0.21-KBA-010`.
+2. Rebase the OHOS deltas onto a Ktor `3.0.x` base, or backport the `3.3.3`
+   build logic/source to KGP `2.0.21`; the former is the smaller build-system
+   move.
+3. Before either Ktor rebuild can succeed on OHOS, fork/publish
+   `kotlinx-io` for the same KBA/OHOS target family, then pin Ktor's
+   `kotlinx-io`, coroutines, atomicfu, and serialization versions as one
+   train.
+
 ## What The Fork Adds
 
 The useful part is Ktor itself, not Ktorfit or generated API clients.
