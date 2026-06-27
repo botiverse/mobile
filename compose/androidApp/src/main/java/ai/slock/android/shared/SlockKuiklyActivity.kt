@@ -1650,7 +1650,7 @@ internal class SlockKuiklyBridgeModule(
     private fun Bitmap.withThreadShareChrome(): Bitmap {
         val headerHeight = (width * 0.18f).roundToInt().coerceIn(96, 132)
         val footerHeight = (width * 0.12f).roundToInt().coerceIn(68, 92)
-        val horizontalInset = (width * 0.035f).roundToInt().coerceIn(18, 28).toFloat()
+        val horizontalInset = (width * 0.048f).roundToInt().coerceIn(26, 38).toFloat()
         val framed =
                 Bitmap.createBitmap(width, height + headerHeight + footerHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(framed)
@@ -1664,17 +1664,19 @@ internal class SlockKuiklyBridgeModule(
             color = Color.BLACK
         }
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(82, 82, 82)
-            textSize = (width * 0.045f).coerceIn(22f, 30f)
+            color = Color.rgb(24, 24, 24)
+            textSize = (width * 0.052f).coerceIn(26f, 34f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            letterSpacing = 0.045f
+            isFakeBoldText = true
         }
         canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
         fill.color = Color.rgb(255, 216, 77)
         canvas.drawRect(0f, 0f, width.toFloat(), headerHeight.toFloat(), fill)
         val logo =
                 loadThreadShareLogoBitmap(
-                        maxWidth = (width * 0.48f).roundToInt().coerceIn(220, 380),
-                        maxHeight = (headerHeight - 24).coerceAtLeast(48)
+                        maxWidth = (width * 0.36f).roundToInt().coerceIn(190, 300),
+                        maxHeight = (headerHeight - 34).coerceAtLeast(48)
                 )
         if (logo != null) {
             val logoTop = ((headerHeight - logo.height) / 2f).coerceAtLeast(0f)
