@@ -25,6 +25,9 @@ Implemented pieces now exist in common/shared code:
   instead of making every visible Thread page independently own durable socket
   writes.
 
+For the current Android ingress-to-consumer code path, including the remaining
+raw Thread route path, see `docs/android-realtime-code-path-2026-06-27.md`.
+
 Do not treat the phase list below as unstarted work. Treat it as migration
 history and a checklist for any remaining platform/page path that still handles
 raw realtime payloads directly.

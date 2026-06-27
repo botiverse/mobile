@@ -8,7 +8,9 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
@@ -133,6 +135,32 @@ class SharedRealtimeDomainEventOwnerTest {
         assertEquals(0, homeEvents)
         assertEquals(0, settingsEvents)
         assertEquals(emptyList(), invalidations)
+    }
+
+    @Test
+    fun presenceDoesNotInvalidateThreadCache() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val invalidations = mutableListOf<ThreadRealtimeCacheInvalidationSignal>()
+        val logs = mutableListOf<String>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                emitThreadCacheInvalidation = invalidations::add,
+                log = logs::add
+            )
+        )
+
+        owner.accept(
+            "server-1",
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent
+            ),
+            source = "app_shell"
+        )
+
+        assertEquals(emptyList(), invalidations)
+        assertEquals(true, logs.any { it.contains("threadCache=none") })
     }
 
     @Test

@@ -3,7 +3,6 @@ package ai.slock.compose.data
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.SharedThreadComposerDraftPersistSlice
 import ai.slock.compose.SharedThreadComposerDraftPersistence
-import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
@@ -289,10 +288,6 @@ internal class SharedRealtimeDomainEventOwner(
         source: String,
         activeSinks: RealtimeDomainEventSinks?
     ) {
-        if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) {
-            activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$serverId threadCache=none")
-            return
-        }
         val threadIds = event.threadCacheInvalidationThreadIds()
         val broadcast = event.broadcastsThreadCacheInvalidation()
         if (threadIds.isEmpty() && !broadcast) {
