@@ -139,26 +139,12 @@ internal fun SlockTopPageHeader(
 internal fun SlockHeaderRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.widthIn(min = 0.dp, max = 136.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        SlockLucideIcon(
-            SlockLucideIconName.LoaderCircle,
-            modifier = Modifier.size(LoadingSpinnerSize),
-            color = SlockColor.TextBlackArgb,
-            spinning = true
-        )
-        Text(
-            text = "Refreshing...",
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 110.dp)
-        )
-    }
+    SlockLucideIcon(
+        SlockLucideIconName.LoaderCircle,
+        modifier = modifier.size(LoadingSpinnerSize),
+        color = SlockColor.TextBlackArgb,
+        spinning = true
+    )
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -173,25 +159,12 @@ internal fun SlockRaftPullRefreshIndicator(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            SlockLucideIcon(
-                SlockLucideIconName.LoaderCircle,
-                modifier = Modifier.size(LoadingSpinnerSize),
-                color = SlockColor.TextBlackArgb,
-                spinning = true
-            )
-            Text(
-                text = "Refreshing...",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 118.dp)
-            )
-        }
+        SlockLucideIcon(
+            SlockLucideIconName.LoaderCircle,
+            modifier = Modifier.size(LoadingSpinnerSize),
+            color = SlockColor.TextBlackArgb,
+            spinning = true
+        )
     }
 }
 
