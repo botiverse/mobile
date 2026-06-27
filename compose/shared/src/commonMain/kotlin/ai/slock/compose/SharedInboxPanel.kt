@@ -28,7 +28,6 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ThreadConversation
-import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.topLevelThreadId
 import androidx.compose.runtime.Composable
@@ -1043,23 +1042,6 @@ private fun InboxItem.senderDisplayName(
                 ?.let(senderProfiles::get)
                 ?.displayName
             ?: latestActivitySenderName
-    }
-
-private fun InboxItem.senderAvatarWireValue(): String? =
-    when {
-        latestActivitySenderKind != null && latestActivitySenderId != null ->
-            avatarWireValueForAvatarSlot(
-                kind = latestActivitySenderKind,
-                id = latestActivitySenderId,
-                avatarWireValue = latestActivitySenderAvatarWireValue
-            )
-        lastMessageSenderKind != null && lastMessageSenderId != null ->
-            avatarWireValueForAvatarSlot(
-                kind = lastMessageSenderKind,
-                id = lastMessageSenderId,
-                avatarWireValue = lastMessageSenderAvatarWireValue
-            )
-        else -> latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
     }
 
 internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String =

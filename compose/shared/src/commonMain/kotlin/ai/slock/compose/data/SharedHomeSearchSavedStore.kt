@@ -242,7 +242,6 @@ class SharedHomeSearchSavedStore(
                                 )
                         }
                     }
-                    val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val result =
                         if (refresh) {
                             savedRepository.loadInitial(serverId, HomeSavedPageSize)
@@ -252,7 +251,6 @@ class SharedHomeSearchSavedStore(
                     applySavedResult(
                         result = result,
                         append = !refresh,
-                        senderProfiles = senderProfiles,
                         serverId = serverId,
                         userId = session.user.id
                     )
@@ -320,7 +318,6 @@ class SharedHomeSearchSavedStore(
                         ?: return@launch setSearchErrorIfActive(requestToken, "unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId)
                         ?: return@launch setSearchErrorIfActive(requestToken, "server_missing")
-                    val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val bounds = timeRangeBoundsProvider(previous.timeRange)
                     val senderIds =
                         when {
@@ -344,7 +341,7 @@ class SharedHomeSearchSavedStore(
                                 )
                         )
                     if (isActiveSearchRequest(requestToken)) {
-                        applySearchResult(result, append = !refresh, senderProfiles = senderProfiles)
+                        applySearchResult(result, append = !refresh)
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -414,55 +411,6 @@ class SharedHomeSearchSavedStore(
 
     private suspend fun currentServerId(): ServerId? = authStore.readSession()?.currentServerId?.let(::ServerId)
 
-    private suspend fun loadSenderAvatarProfiles(
-        session: StoredAuthSession,
-        serverId: ServerId
-    ): Map<String, SenderAvatarProfile> {
-        val cached =
-            _state.value.search.senderFilters.associateBy(
-                keySelector = { it.id },
-                valueTransform = {
-                    SenderAvatarProfile(
-                        kind = it.kind,
-                        avatarWireValue = it.avatarWireValue,
-                        presence = it.presence,
-                        agentStatus = it.agentStatus
-                    )
-                }
-        )
-        if (cached.isNotEmpty()) return cached
-        return try {
-            when (val result = loadServerMembers(serverId, DataRequestPriority.Visible)) {
-                is DataResult.Content -> {
-                    val filters = result.data.members.toSearchSenderFilters(session.user.id)
-                    _state.value =
-                        _state.value.copy(
-                            search =
-                                _state.value.search.copy(
-                                    senderFilters = filters,
-                                    senderFiltersLoading = false,
-                                    senderFiltersErrorCode = null
-                                )
-                        )
-                    filters.associateBy(
-                        keySelector = { it.id },
-                        valueTransform = {
-                            SenderAvatarProfile(
-                                kind = it.kind,
-                                avatarWireValue = it.avatarWireValue,
-                                presence = it.presence,
-                                agentStatus = it.agentStatus
-                            )
-                        }
-                    )
-                }
-                else -> emptyMap()
-            }
-        } catch (_: Throwable) {
-            emptyMap()
-        }
-    }
-
     private suspend fun loadServerMembers(
         serverId: ServerId,
         priority: DataRequestPriority
@@ -474,7 +422,6 @@ class SharedHomeSearchSavedStore(
     private fun applySavedResult(
         result: DataResult<SavedSnapshot>,
         append: Boolean,
-        senderProfiles: Map<String, SenderAvatarProfile>,
         serverId: ServerId,
         userId: String
     ) {
@@ -484,7 +431,7 @@ class SharedHomeSearchSavedStore(
                 saved =
                     when (result) {
                         is DataResult.Content -> {
-                            val pageItems: List<InboxItem> = result.data.items.withSenderAvatarProfiles(senderProfiles)
+                            val pageItems: List<InboxItem> = result.data.items
                             val items =
                                 if (append) {
                                     (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
@@ -551,8 +498,7 @@ class SharedHomeSearchSavedStore(
 
     private fun applySearchResult(
         result: DataResult<SearchSnapshot>,
-        append: Boolean,
-        senderProfiles: Map<String, SenderAvatarProfile>
+        append: Boolean
     ) {
         val current = _state.value.search
         _state.value =
@@ -560,7 +506,7 @@ class SharedHomeSearchSavedStore(
                 search =
                     when (result) {
                         is DataResult.Content -> {
-                            val pageItems: List<InboxItem> = result.data.items.withSenderAvatarProfiles(senderProfiles)
+                            val pageItems: List<InboxItem> = result.data.items
                             val items =
                                 if (append) {
                                     (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
@@ -844,27 +790,6 @@ data class SearchSenderFilterItem(
     val presence: Presence? = null,
     val agentStatus: ai.slock.compose.model.AgentStatus? = null
 )
-
-private data class SenderAvatarProfile(
-    val kind: MemberKind,
-    val avatarWireValue: String? = null,
-    val presence: Presence? = null,
-    val agentStatus: ai.slock.compose.model.AgentStatus? = null
-)
-
-private fun List<InboxItem>.withSenderAvatarProfiles(
-    senderProfiles: Map<String, SenderAvatarProfile>
-): List<InboxItem> =
-    map { item ->
-        val lastSender = item.lastMessageSenderId?.let(senderProfiles::get)
-        val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
-        item.copy(
-            lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
-            lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
-            latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
-            latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
-        )
-    }
 
 private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): List<SearchSenderFilterItem> =
     map { member ->

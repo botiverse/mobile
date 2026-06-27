@@ -198,9 +198,7 @@ class SharedInboxPanelTest {
                 mapOf(
                     "agent-1" to
                         SharedActivitySenderProfile(
-                            kind = MemberKind.Agent,
-                            displayName = "Agent One",
-                            avatarWireValue = null
+                            displayName = "Agent One"
                         )
                 )
             )

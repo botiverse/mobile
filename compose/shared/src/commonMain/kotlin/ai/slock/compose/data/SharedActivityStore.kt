@@ -2,7 +2,6 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.InboxItemKind
-import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.DirectMessageCreated
@@ -18,7 +17,6 @@ import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
-import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -198,7 +196,6 @@ class SharedActivityStore(
                 is DataResult.Content -> {
                     val pageItems =
                         result.data.items
-                            .withSenderAvatarProfiles(senderProfiles)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                     val items =
                         if (append) {
@@ -484,9 +481,7 @@ class SharedActivityStore(
                         keySelector = { it.id.value },
                         valueTransform = {
                             SharedActivitySenderProfile(
-                                kind = it.kind,
-                                displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } },
-                                avatarWireValue = it.avatarWireValueForActivity()
+                                displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } }
                             )
                         }
                     )
@@ -673,35 +668,8 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
     }
 
 data class SharedActivitySenderProfile(
-    val kind: MemberKind,
-    val displayName: String,
-    val avatarWireValue: String?
+    val displayName: String
 )
-
-private fun MemberProfile.avatarWireValueForActivity(): String? =
-    avatarWireValueForAvatarSlot(
-        kind = kind,
-        id = id.value,
-        avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
-    )
-
-private fun List<InboxItem>.withSenderAvatarProfiles(
-    senderProfiles: Map<String, SharedActivitySenderProfile>
-): List<InboxItem> {
-    if (senderProfiles.isEmpty()) return this
-    return map { item ->
-        val lastSender = item.lastMessageSenderId?.let(senderProfiles::get)
-        val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
-        item.copy(
-            lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
-            lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
-            latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
-            latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
-        )
-    }
-}
 
 private fun InboxItem.activityActionChannelId(): ChannelId? =
     if (kind == InboxItemKind.Thread) threadChannelId else channelId
