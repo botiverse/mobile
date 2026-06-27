@@ -66,12 +66,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         repository.disconnect()
     }
 
-    override fun emitJoinChannel(channelId: ChannelId) {
-        repository.joinChannel(channelId)
-    }
-
-    override fun emitLeaveChannel(channelId: ChannelId) {
-        repository.leaveChannel(channelId)
+    override fun emitRoomCommand(eventName: String, payload: String) {
+        client.emitRoomCommand(eventName = eventName, payload = payload)
     }
 
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =

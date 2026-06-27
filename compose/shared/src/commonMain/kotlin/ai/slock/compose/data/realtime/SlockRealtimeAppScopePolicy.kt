@@ -20,6 +20,12 @@ object SlockRealtimeNotifyContract {
     const val KeyRawPayload = GeneratedRealtimeContract.PayloadKey.RawPayload
 }
 
+object SlockRealtimeRoomJoinedChannelAction {
+    const val None = "none"
+    const val Join = "join"
+    const val Leave = "leave"
+}
+
 data class SlockRealtimeOwnedSession(
     val serverId: ServerId,
     val accessToken: String,

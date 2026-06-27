@@ -7,9 +7,12 @@ export interface SlockRealtimeConnectDecision {
   logMessage: string | null;
 }
 
-export interface SlockRealtimeJoinDecision {
-  shouldJoin: boolean;
+export interface SlockRealtimeRoomCommandDecision {
+  shouldEmit: boolean;
+  eventName: string | null;
+  payload: string | null;
   channelId: string | null;
+  joinedChannelAction: 'none' | 'join' | 'leave' | string;
   logMessage: string;
 }
 
@@ -34,13 +37,13 @@ export const slockRealtimeDisconnectForSessionEnd: (reason: string) => boolean;
 export const slockRealtimeJoinChannelDecision: (
   channelId: string,
   reason: string
-) => SlockRealtimeJoinDecision;
+) => SlockRealtimeRoomCommandDecision;
 
 export const slockRealtimeRoomCommandDecision: (
   action: string,
   channelId: string,
   reason: string
-) => SlockRealtimeJoinDecision;
+) => SlockRealtimeRoomCommandDecision;
 
 export const slockRealtimeRawDecision: (
   eventName: string,

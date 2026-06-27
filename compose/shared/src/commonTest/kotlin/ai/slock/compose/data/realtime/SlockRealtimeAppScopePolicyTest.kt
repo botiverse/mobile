@@ -127,7 +127,7 @@ class SlockRealtimeAppScopePolicyTest {
         coordinator.onRawEvent(RealtimeSocketEvents.Heartbeat, """{"seq":43}""")
         coordinator.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
 
-        assertEquals(listOf(ChannelId("dm-1")), connection.joinedChannels)
+        assertEquals(listOf(RealtimeSocketEvents.JoinChannel to "dm-1"), connection.roomCommands)
         assertEquals(listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
     }
 
@@ -167,8 +167,13 @@ class SlockRealtimeAppScopePolicyTest {
             )
         )
 
-        assertEquals(listOf(ChannelId("channel-1")), connection.joinedChannels)
-        assertEquals(listOf(ChannelId("channel-1")), connection.leftChannels)
+        assertEquals(
+            listOf(
+                RealtimeSocketEvents.JoinChannel to "channel-1",
+                RealtimeSocketEvents.LeaveChannel to "channel-1"
+            ),
+            connection.roomCommands
+        )
     }
 
     @Test
@@ -246,14 +251,21 @@ class SlockRealtimeAppScopePolicyTest {
         val heartbeat = engine.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
         val message = engine.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
 
-        assertTrue(join.shouldJoin)
+        assertTrue(join.shouldEmit)
+        assertEquals(RealtimeSocketEvents.JoinChannel, join.eventName)
+        assertEquals("channel-1", join.payload)
+        assertEquals(SlockRealtimeRoomJoinedChannelAction.Join, join.joinedChannelAction)
         assertEquals(ChannelId("channel-1"), join.channelId)
-        assertFalse(duplicateJoin.shouldJoin)
-        assertTrue(leave.shouldLeave)
+        assertFalse(duplicateJoin.shouldEmit)
+        assertTrue(leave.shouldEmit)
+        assertEquals(RealtimeSocketEvents.LeaveChannel, leave.eventName)
+        assertEquals("channel-1", leave.payload)
+        assertEquals(SlockRealtimeRoomJoinedChannelAction.Leave, leave.joinedChannelAction)
         assertEquals(ChannelId("channel-1"), leave.channelId)
-        assertFalse(duplicateLeave.shouldLeave)
-        assertFalse(blankJoin.shouldJoin)
-        assertFalse(unsupportedJoin.shouldJoin)
+        assertFalse(duplicateLeave.shouldEmit)
+        assertEquals(SlockRealtimeRoomJoinedChannelAction.None, duplicateLeave.joinedChannelAction)
+        assertFalse(blankJoin.shouldEmit)
+        assertFalse(unsupportedJoin.shouldEmit)
         assertTrue(heartbeat.shouldFanOut)
         assertEquals(ServerId("server-1"), heartbeat.serverId)
         assertTrue(message.shouldFanOut)
@@ -319,8 +331,7 @@ class SlockRealtimeAppScopePolicyTest {
     private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
         override var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         val connectedLastSeqs = mutableListOf<Long>()
-        val joinedChannels = mutableListOf<ChannelId>()
-        val leftChannels = mutableListOf<ChannelId>()
+        val roomCommands = mutableListOf<Pair<String, String>>()
 
         override suspend fun connect(
             serverId: ServerId,
@@ -336,12 +347,8 @@ class SlockRealtimeAppScopePolicyTest {
             state = RealtimeConnectionState.Disconnected
         }
 
-        override fun emitJoinChannel(channelId: ChannelId) {
-            joinedChannels += channelId
-        }
-
-        override fun emitLeaveChannel(channelId: ChannelId) {
-            leftChannels += channelId
+        override fun emitRoomCommand(eventName: String, payload: String) {
+            roomCommands += eventName to payload
         }
 
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =

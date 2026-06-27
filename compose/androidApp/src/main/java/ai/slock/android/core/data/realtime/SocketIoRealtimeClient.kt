@@ -122,14 +122,34 @@ class SocketIoRealtimeClient(
         val added = joinedChannels.add(channelId)
         logger("join_room channelId=${channelId.value} replay=false added=$added")
         if (!added) return
-        emitJoinChannel(channelId)
+        emitRoomPayload(RealtimeSocketEvents.JoinChannel, channelId.value)
     }
 
     fun leaveChannel(channelId: ChannelId) {
         val removed = joinedChannels.remove(channelId)
         logger("leave_room channelId=${channelId.value} removed=$removed")
         if (!removed) return
-        emitLeaveChannel(channelId)
+        emitRoomPayload(RealtimeSocketEvents.LeaveChannel, channelId.value)
+    }
+
+    fun emitRoomCommand(eventName: String, payload: String) {
+        when (eventName) {
+            RealtimeSocketEvents.JoinChannel -> {
+                val channelId = ChannelId(payload)
+                val added = joinedChannels.add(channelId)
+                logger("join_room channelId=${channelId.value} replay=false added=$added")
+                if (!added) return
+                emitRoomPayload(eventName, channelId.value)
+            }
+            RealtimeSocketEvents.LeaveChannel -> {
+                val channelId = ChannelId(payload)
+                val removed = joinedChannels.remove(channelId)
+                logger("leave_room channelId=${channelId.value} removed=$removed")
+                if (!removed) return
+                emitRoomPayload(eventName, channelId.value)
+            }
+            else -> emitRoomPayload(eventName, payload)
+        }
     }
 
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
@@ -246,18 +266,14 @@ class SocketIoRealtimeClient(
     private fun shouldFanOutRawEvent(eventName: String, serverAhead: Boolean): Boolean =
         eventName != RealtimeSocketEvents.Heartbeat || serverAhead
 
-    private fun emitJoinChannel(channelId: ChannelId) {
-        transport.emit(RealtimeSocketEvents.JoinChannel, mapOf("channelId" to channelId.value))
-    }
-
-    private fun emitLeaveChannel(channelId: ChannelId) {
-        transport.emit(RealtimeSocketEvents.LeaveChannel, mapOf("channelId" to channelId.value))
+    private fun emitRoomPayload(eventName: String, payload: String) {
+        transport.emit(eventName, mapOf("channelId" to payload))
     }
 
     private fun rejoinChannels(reason: String) {
         joinedChannels.forEach { channelId ->
             logger("join_room channelId=${channelId.value} replay=true reason=$reason")
-            emitJoinChannel(channelId)
+            emitRoomPayload(RealtimeSocketEvents.JoinChannel, channelId.value)
         }
     }
 

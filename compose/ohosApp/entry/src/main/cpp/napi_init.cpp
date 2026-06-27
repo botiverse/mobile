@@ -261,14 +261,17 @@ static napi_value SlockRealtimeJoinChannelDecision(napi_env env, napi_callback_i
     auto decision =
         api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
             .joinChannelDecisionForHost(engine, channelId.c_str(), reason.c_str());
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeJoinDecision;
+    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
     auto modelApi = api->kotlin.root.ai.slock.compose.model;
     auto decidedChannel = decisionApi.get_channelId(decision);
     const char *decidedChannelValue =
         decidedChannel.pinned != nullptr ? modelApi.ChannelId.get_value(decidedChannel) : nullptr;
 
-    SetBoolProperty(env, result, "shouldJoin", decisionApi.get_shouldJoin(decision));
+    SetBoolProperty(env, result, "shouldEmit", decisionApi.get_shouldEmit(decision));
+    SetOptionalStringProperty(env, result, "eventName", decisionApi.get_eventName(decision));
+    SetOptionalStringProperty(env, result, "payload", decisionApi.get_payload(decision));
     SetOptionalStringProperty(env, result, "channelId", decidedChannelValue);
+    SetStringProperty(env, result, "joinedChannelAction", decisionApi.get_joinedChannelAction(decision));
     SetStringProperty(env, result, "logMessage", decisionApi.get_logMessage(decision));
     return result;
 }
@@ -289,14 +292,17 @@ static napi_value SlockRealtimeRoomCommandDecision(napi_env env, napi_callback_i
     auto decision =
         api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
             .roomCommandDecisionForHost(engine, action.c_str(), channelId.c_str(), reason.c_str());
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeJoinDecision;
+    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
     auto modelApi = api->kotlin.root.ai.slock.compose.model;
     auto decidedChannel = decisionApi.get_channelId(decision);
     const char *decidedChannelValue =
         decidedChannel.pinned != nullptr ? modelApi.ChannelId.get_value(decidedChannel) : nullptr;
 
-    SetBoolProperty(env, result, "shouldJoin", decisionApi.get_shouldJoin(decision));
+    SetBoolProperty(env, result, "shouldEmit", decisionApi.get_shouldEmit(decision));
+    SetOptionalStringProperty(env, result, "eventName", decisionApi.get_eventName(decision));
+    SetOptionalStringProperty(env, result, "payload", decisionApi.get_payload(decision));
     SetOptionalStringProperty(env, result, "channelId", decidedChannelValue);
+    SetStringProperty(env, result, "joinedChannelAction", decisionApi.get_joinedChannelAction(decision));
     SetStringProperty(env, result, "logMessage", decisionApi.get_logMessage(decision));
     return result;
 }

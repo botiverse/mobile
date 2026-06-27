@@ -16,8 +16,7 @@ interface SlockRealtimeAppScopeConnection {
 
     suspend fun connect(serverId: ServerId, accessToken: String, lastSeq: Long): DataResult<Unit>
     fun disconnect()
-    fun emitJoinChannel(channelId: ChannelId)
-    fun emitLeaveChannel(channelId: ChannelId)
+    fun emitRoomCommand(eventName: String, payload: String)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
     fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription
 }
@@ -49,11 +48,13 @@ data class SlockRealtimeAppScopeConnectDecision(
     val logMessage: String?
 )
 
-data class SlockRealtimeAppScopeJoinDecision(
-    val shouldJoin: Boolean,
+data class SlockRealtimeAppScopeRoomCommandDecision(
+    val shouldEmit: Boolean,
+    val eventName: String?,
+    val payload: String?,
     val channelId: ChannelId?,
-    val logMessage: String,
-    val shouldLeave: Boolean = false
+    val joinedChannelAction: String,
+    val logMessage: String
 )
 
 data class SlockRealtimeAppScopeRawDecision(
@@ -68,7 +69,7 @@ data class SlockRealtimeAppScopeMappedDecision(
     val serverId: ServerId?,
     val eventName: String,
     val logMessage: String,
-    val joinDecision: SlockRealtimeAppScopeJoinDecision?,
+    val roomCommandDecision: SlockRealtimeAppScopeRoomCommandDecision?,
     val shouldPostBackgroundUnreadNotification: Boolean,
     val isAppInForeground: Boolean
 )
@@ -197,25 +198,28 @@ class SlockRealtimeAppScopeEngine {
         return true
     }
 
-    fun joinChannelDecisionForHost(channelIdValue: String, reason: String): SlockRealtimeAppScopeJoinDecision =
+    fun joinChannelDecisionForHost(channelIdValue: String, reason: String): SlockRealtimeAppScopeRoomCommandDecision =
         joinChannelDecision(ChannelId(channelIdValue), reason)
 
     fun roomCommandDecisionForHost(
         action: String,
         channelIdValue: String,
         reason: String
-    ): SlockRealtimeAppScopeJoinDecision =
+    ): SlockRealtimeAppScopeRoomCommandDecision =
         roomCommandDecision(action = action, channelId = ChannelId(channelIdValue), reason = reason)
 
     fun roomCommandDecision(
         action: String,
         channelId: ChannelId,
         reason: String = "notify"
-    ): SlockRealtimeAppScopeJoinDecision {
+    ): SlockRealtimeAppScopeRoomCommandDecision {
         if (channelId.value.isBlank()) {
-            return SlockRealtimeAppScopeJoinDecision(
-                shouldJoin = false,
+            return SlockRealtimeAppScopeRoomCommandDecision(
+                shouldEmit = false,
+                eventName = null,
+                payload = null,
                 channelId = null,
+                joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                 logMessage = "room_command_skip reason=missing_channel_id action=$action"
             )
         }
@@ -223,56 +227,76 @@ class SlockRealtimeAppScopeEngine {
             SlockRealtimeNotifyContract.ActionJoinChannel -> joinChannelDecision(channelId, reason)
             SlockRealtimeNotifyContract.ActionLeaveChannel -> leaveChannelDecision(channelId, reason)
             else ->
-                SlockRealtimeAppScopeJoinDecision(
-                    shouldJoin = false,
+                SlockRealtimeAppScopeRoomCommandDecision(
+                    shouldEmit = false,
+                    eventName = null,
+                    payload = null,
                     channelId = null,
+                    joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                     logMessage = "room_command_skip reason=unsupported_action action=$action"
                 )
         }
     }
 
-    fun joinChannelDecision(channelId: ChannelId, reason: String = "direct"): SlockRealtimeAppScopeJoinDecision {
+    fun joinChannelDecision(channelId: ChannelId, reason: String = "direct"): SlockRealtimeAppScopeRoomCommandDecision {
         if (channelId.value.isBlank()) {
-            return SlockRealtimeAppScopeJoinDecision(
-                shouldJoin = false,
+            return SlockRealtimeAppScopeRoomCommandDecision(
+                shouldEmit = false,
+                eventName = null,
+                payload = null,
                 channelId = null,
+                joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                 logMessage = "room_join_skip reason=missing_channel_id"
             )
         }
         if (!state.markChannelJoined(channelId)) {
-            return SlockRealtimeAppScopeJoinDecision(
-                shouldJoin = false,
+            return SlockRealtimeAppScopeRoomCommandDecision(
+                shouldEmit = false,
+                eventName = null,
+                payload = null,
                 channelId = null,
+                joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                 logMessage = "room_join_skip reason=already_joined channelId=${channelId.value}"
             )
         }
-        return SlockRealtimeAppScopeJoinDecision(
-            shouldJoin = true,
+        return SlockRealtimeAppScopeRoomCommandDecision(
+            shouldEmit = true,
+            eventName = RealtimeSocketEvents.JoinChannel,
+            payload = channelId.value,
             channelId = channelId,
+            joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.Join,
             logMessage = "room_join_emit reason=$reason channelId=${channelId.value}"
         )
     }
 
-    fun leaveChannelDecision(channelId: ChannelId, reason: String = "direct"): SlockRealtimeAppScopeJoinDecision {
+    fun leaveChannelDecision(channelId: ChannelId, reason: String = "direct"): SlockRealtimeAppScopeRoomCommandDecision {
         if (channelId.value.isBlank()) {
-            return SlockRealtimeAppScopeJoinDecision(
-                shouldJoin = false,
+            return SlockRealtimeAppScopeRoomCommandDecision(
+                shouldEmit = false,
+                eventName = null,
+                payload = null,
                 channelId = null,
+                joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                 logMessage = "room_leave_skip reason=missing_channel_id"
             )
         }
         if (!state.markChannelLeft(channelId)) {
-            return SlockRealtimeAppScopeJoinDecision(
-                shouldJoin = false,
+            return SlockRealtimeAppScopeRoomCommandDecision(
+                shouldEmit = false,
+                eventName = null,
+                payload = null,
                 channelId = null,
+                joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.None,
                 logMessage = "room_leave_skip reason=not_joined channelId=${channelId.value}"
             )
         }
-        return SlockRealtimeAppScopeJoinDecision(
-            shouldJoin = false,
+        return SlockRealtimeAppScopeRoomCommandDecision(
+            shouldEmit = true,
+            eventName = RealtimeSocketEvents.LeaveChannel,
+            payload = channelId.value,
             channelId = channelId,
-            logMessage = "room_leave_emit reason=$reason channelId=${channelId.value}",
-            shouldLeave = true
+            joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.Leave,
+            logMessage = "room_leave_emit reason=$reason channelId=${channelId.value}"
         )
     }
 
@@ -284,7 +308,7 @@ class SlockRealtimeAppScopeEngine {
                     serverId = null,
                     eventName = eventName,
                     logMessage = "native_event_skip reason=missing_server event=$eventName",
-                    joinDecision = null,
+                    roomCommandDecision = null,
                     shouldPostBackgroundUnreadNotification = false,
                     isAppInForeground = isAppInForeground
                 )
@@ -292,7 +316,7 @@ class SlockRealtimeAppScopeEngine {
             "native_event_received event=$eventName serverId=${currentServerId.value} " +
                 "joined_rooms=${state.joinedChannelCount}"
         state.updateFromEvent(event)
-        val joinDecision =
+        val roomCommandDecision =
             if (event is DirectMessageCreated) {
                 joinChannelDecision(event.channelId, reason = "direct_message_created")
             } else {
@@ -302,7 +326,7 @@ class SlockRealtimeAppScopeEngine {
             serverId = currentServerId,
             eventName = eventName,
             logMessage = receivedLog,
-            joinDecision = joinDecision,
+            roomCommandDecision = roomCommandDecision,
             shouldPostBackgroundUnreadNotification = event is MessageNew,
             isAppInForeground = isAppInForeground
         )
@@ -430,18 +454,11 @@ class SlockRealtimeAppScopeCoordinator(
     ): Boolean {
         val decision = engine.roomCommandDecision(action = action, channelId = channelId, reason = reason)
         sink.log(decision.logMessage)
-        val roomChannel = decision.channelId ?: return false
-        return when {
-            decision.shouldJoin -> {
-                connection.emitJoinChannel(roomChannel)
-                true
-            }
-            decision.shouldLeave -> {
-                connection.emitLeaveChannel(roomChannel)
-                true
-            }
-            else -> false
-        }
+        val eventName = decision.eventName ?: return false
+        val payload = decision.payload ?: return false
+        if (!decision.shouldEmit) return false
+        connection.emitRoomCommand(eventName = eventName, payload = payload)
+        return true
     }
 
     fun onRoomCommand(
@@ -469,10 +486,14 @@ class SlockRealtimeAppScopeCoordinator(
     suspend fun onMappedEvent(event: RealtimeEvent) {
         val decision = engine.onMappedEvent(event)
         sink.log(decision.logMessage)
-        val joinDecision = decision.joinDecision
-        if (joinDecision != null) {
-            sink.log(joinDecision.logMessage)
-            joinDecision.channelId?.let(connection::emitJoinChannel)
+        val roomCommandDecision = decision.roomCommandDecision
+        if (roomCommandDecision != null) {
+            sink.log(roomCommandDecision.logMessage)
+            val eventName = roomCommandDecision.eventName
+            val payload = roomCommandDecision.payload
+            if (roomCommandDecision.shouldEmit && eventName != null && payload != null) {
+                connection.emitRoomCommand(eventName = eventName, payload = payload)
+            }
         }
         val currentServerId = decision.serverId ?: return
         if (decision.shouldPostBackgroundUnreadNotification && event is MessageNew) {

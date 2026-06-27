@@ -225,33 +225,29 @@ export class SlockOhosRealtimeHostContext {
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
-    if (!decision.shouldJoin || decision.channelId === null || decision.channelId.length === 0) {
-      if (decision.shouldLeave && decision.channelId !== null && decision.channelId.length > 0) {
+    if (decision.channelId !== null && decision.channelId.length > 0) {
+      if (decision.joinedChannelAction === 'join') {
+        this.joinedChannels.add(decision.channelId);
+      } else if (decision.joinedChannelAction === 'leave') {
         this.joinedChannels.delete(decision.channelId);
-        this.emitLeaveChannel(decision.channelId);
       }
+    }
+    if (!decision.shouldEmit || decision.eventName === null || decision.payload === null) {
       return;
     }
-    this.joinedChannels.add(decision.channelId);
-    this.emitJoinChannel(decision.channelId);
+    this.emitRoomCommand(decision.eventName, decision.payload);
   }
 
-  private emitJoinChannel(channelId: string): void {
-    if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId)) {
-      console.info('[SlockOhosRealtime] join_channel_deferred');
-    }
-  }
-
-  private emitLeaveChannel(channelId: string): void {
-    if (!this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.LeaveChannel, channelId)) {
-      console.info('[SlockOhosRealtime] leave_channel_deferred');
+  private emitRoomCommand(eventName: string, payload: string): void {
+    if (!this.socketIo.emit(eventName, payload)) {
+      console.info(`[SlockOhosRealtime] room_command_deferred eventName=${eventName}`);
     }
   }
 
   private rejoinChannels(reason: string): void {
     this.joinedChannels.forEach((channelId) => {
       console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
-      this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
+      this.emitRoomCommand(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
     });
   }
 

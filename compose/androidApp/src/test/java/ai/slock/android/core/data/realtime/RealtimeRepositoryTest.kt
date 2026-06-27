@@ -355,6 +355,41 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientRoomCommandEmitOwnsJoinedRoomStateForReconnect() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.emitRoomCommand(RealtimeSocketEvents.JoinChannel, "channel-1")
+        client.emitRoomCommand(RealtimeSocketEvents.JoinChannel, "channel-1")
+        client.emitRoomCommand(RealtimeSocketEvents.JoinChannel, "channel-2")
+        client.emitRoomCommand(RealtimeSocketEvents.LeaveChannel, "channel-1")
+
+        assertEquals(
+            listOf(
+                RealtimeSocketEvents.JoinChannel,
+                RealtimeSocketEvents.JoinChannel,
+                RealtimeSocketEvents.LeaveChannel
+            ),
+            transport.emitted.map { it.first }
+        )
+
+        transport.emitted.clear()
+        transport.receive(RealtimeSocketEvents.Reconnect)
+
+        assertEquals(
+            listOf("channel-2"),
+            transport.emitted
+                .filter { it.first == RealtimeSocketEvents.JoinChannel }
+                .map { it.second["channelId"] }
+        )
+    }
+
+    @Test
     fun androidTransportUsesRawChannelIdForRoomCommands() {
         val joinPayload =
             realtimeSocketIoWirePayload(
