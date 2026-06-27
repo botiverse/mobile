@@ -6858,6 +6858,7 @@ private fun ThreadMessagesList(
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
+    val captureMessageAnchors = !listState.isScrollInProgress
     val coroutineScope = rememberCoroutineScope()
     // Phase 1 (#172) instrumentation: per-Thread session marker that
     // uniquely identifies this Thread entry. Combined with the row-level
@@ -6870,6 +6871,7 @@ private fun ThreadMessagesList(
     val firstViewportProbe = remember(threadInstanceKey) {
         ThreadFirstViewportProbe(threadRowProbeSessionMarker)
     }
+    var firstViewportProbeActive by remember(threadInstanceKey) { mutableStateOf(true) }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -7023,6 +7025,7 @@ private fun ThreadMessagesList(
                             stats = stats
                         )
                     )
+                    firstViewportProbeActive = false
                 }
                 return@LaunchedEffect
             }
@@ -7037,6 +7040,7 @@ private fun ThreadMessagesList(
                             stats = stats
                         )
                     )
+                    firstViewportProbeActive = false
                 }
             }
             delay(ThreadLayoutStabilityFrameDelayMs)
@@ -7431,10 +7435,13 @@ private fun ThreadMessagesList(
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                 Box(
                     modifier =
-                        Modifier
-                            .onGloballyPositioned {
+                        if (firstViewportProbeActive) {
+                            Modifier.onGloballyPositioned {
                                 firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
                             }
+                        } else {
+                            Modifier
+                        }
                 ) {
                     if (isSystemMessage && actionCard == null) {
                         ThreadSystemMessageRow(
@@ -7458,6 +7465,7 @@ private fun ThreadMessagesList(
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && isRichContentEnabled,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && isRichContentEnabled,
+                            captureLongPressAnchor = captureMessageAnchors,
                             knownMarkdownChannelNames = knownMarkdownChannelNames,
                             onShowActions = { anchor ->
                                 if (!message.hasLocalSendState() || message.isFailedLocalSend()) {
@@ -8416,6 +8424,7 @@ private fun ThreadMessageCard(
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    captureLongPressAnchor: Boolean = true,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -8479,6 +8488,7 @@ private fun ThreadMessageCard(
                             .weight(1f)
                             .threadMessageLongPressActions(
                                 messageId = message.id,
+                                captureLongPressAnchor = captureLongPressAnchor,
                                 onShowActions = onShowActions,
                                 onPressChanged = { pressed = it }
                             )
@@ -9055,14 +9065,21 @@ private fun Modifier.threadMessagePressOutline(pressed: Boolean): Modifier =
 @Composable
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
+    captureLongPressAnchor: Boolean = true,
     onShowActions: (Offset) -> Unit,
     onPressChanged: (Boolean) -> Unit = {}
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
-    var rootPos by remember { mutableStateOf(Offset.Zero) }
+    val rootPos = remember { SlockMutableOffsetRef() }
     return this
-        .onGloballyPositioned { rootPos = it.positionInRoot() }
+        .then(
+            if (captureLongPressAnchor) {
+                Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+            } else {
+                Modifier
+            }
+        )
         .pointerInput(messageId) {
             detectTapGestures(
                 onPress = {
@@ -9074,7 +9091,8 @@ private fun Modifier.threadMessageLongPressActions(
                     }
                 },
                 onLongPress = { localOffset ->
-                    currentOnShowActions(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
+                    val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                    currentOnShowActions(Offset(base.x + localOffset.x, base.y + localOffset.y))
                 }
             )
         }

@@ -1949,15 +1949,21 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
     val rowTopLeft = remember { SlockMutableOffsetRef() }
+    var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
+                        captureAnchorForPress = true
                         onPress?.invoke()
-                        tryAwaitRelease()
-                        onPressEnd?.invoke()
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            captureAnchorForPress = false
+                            onPressEnd?.invoke()
+                        }
                     },
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
@@ -1986,7 +1992,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier =
                 modifier
                     .fillMaxWidth()
-                    .homeRowAnchorCapture(captureLongPressAnchor, rowTopLeft)
+                    .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
                     .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
                     .then(hoverableModifier)
@@ -2090,15 +2096,21 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
     val rowTopLeft = remember { SlockMutableOffsetRef() }
+    var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
+                        captureAnchorForPress = true
                         onPress?.invoke()
-                        tryAwaitRelease()
-                        onPressEnd?.invoke()
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            captureAnchorForPress = false
+                            onPressEnd?.invoke()
+                        }
                     },
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
@@ -2127,7 +2139,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier =
                 modifier
                     .fillMaxWidth()
-                    .homeRowAnchorCapture(captureLongPressAnchor, rowTopLeft)
+                    .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
                     .then(clickModifier)
                     .then(hoverableModifier)
         ) {

@@ -487,7 +487,7 @@ fun Modifier.dragEnable(enable: Boolean): Modifier {
 @Composable
 internal fun Button(
     onClick: () -> Unit = {},
-    onClick2: (Offset) -> Unit = {},
+    onClick2: ((Offset) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     pressFeedback: Boolean = true,
@@ -501,9 +501,15 @@ internal fun Button(
     val enabledUpdate = rememberUpdatedState(enabled)
     Box(
         modifier = Modifier
-            .onGloballyPositioned {
-                rootPosition.update(it.positionInRoot())
-            }
+            .then(
+                if (onClick2 != null) {
+                    Modifier.onGloballyPositioned {
+                        rootPosition.update(it.positionInRoot())
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .pointerInput(enabled, pressFeedback) {
                 detectTapGestures(
                     onPress = {
@@ -518,13 +524,13 @@ internal fun Button(
                     },
                     onTap = { offset ->
                         if (enabledUpdate.value) {
-                            val clickedPositionInRoot =
+                            onClickUpdate.value.invoke()
+                            onClick2Update.value?.invoke(
                                 Offset(
                                     offset.x + rootPosition.value.x,
                                     offset.y + rootPosition.value.y
                                 )
-                            onClickUpdate.value.invoke()
-                            onClick2Update.value.invoke(clickedPositionInRoot)
+                            )
                         }
                     }
                 )

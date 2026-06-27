@@ -619,6 +619,7 @@ private fun SharedTasksLoadedBodyContent(
                                             SharedTaskCard(
                                                 task = task,
                                                 updating = state.statusUpdatingTaskId == task.id.value,
+                                                captureLongPressAnchor = !listModeListState.isScrollInProgress,
                                                 onClick = { onOpenTask?.invoke(task) },
                                                 onStatusBadgeClick = { anchor ->
                                                     statusMenuTask = task
@@ -1015,6 +1016,7 @@ private fun SharedTasksBoardColumn(
                         SharedTaskCard(
                             task = task,
                             updating = updatingTaskId == task.id.value,
+                            captureLongPressAnchor = !columnListState.isScrollInProgress,
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, taskMenuAnchor(anchor)) },
                             onLongPress = { anchor -> onLongPressTask(task, taskMenuAnchor(anchor)) }
@@ -1060,19 +1062,26 @@ private fun BoardSectionHeader(
 private fun SharedTaskCard(
     task: TaskSummary,
     updating: Boolean,
+    captureLongPressAnchor: Boolean = true,
     onClick: () -> Unit,
     onStatusBadgeClick: (Offset) -> Unit,
     onLongPress: (Offset) -> Unit
 ) {
     // Capture the card root so a long-press offset reported in card-local coords can be
     // converted to root coords for the overlay menu anchor.
-    var rootPos by remember { mutableStateOf(Offset.Zero) }
+    val rootPos = remember { SlockMutableOffsetRef() }
     val description: String? = null // TaskSummary doesn't carry a description today; placeholder for forward-compat.
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(end = 3.dp, bottom = 3.dp)
-            .onGloballyPositioned { rootPos = it.positionInRoot() }
+            .then(
+                if (captureLongPressAnchor) {
+                    Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Box(
             modifier = Modifier
@@ -1092,7 +1101,10 @@ private fun SharedTaskCard(
                     detectTapGestures(
                         onTap = { if (!updating) onClick() },
                         onLongPress = { localOffset ->
-                            if (!updating) onLongPress(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
+                            if (!updating) {
+                                val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                                onLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                            }
                         }
                     )
                 }

@@ -548,6 +548,7 @@ private fun SharedActivityList(
                     selected = selectedItemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
+                    captureMenuAnchor = !listState.isScrollInProgress,
                     onOpen = {
                         selectedItemKey = item.key
                         if (item.unreadCount > 0) {
@@ -663,6 +664,7 @@ private fun SharedActivityRow(
     selected: Boolean,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
+    captureMenuAnchor: Boolean = true,
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
@@ -673,7 +675,7 @@ private fun SharedActivityRow(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, onOpen, onOpenMenu)) {
+            Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, captureMenuAnchor, onOpen, onOpenMenu)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -738,17 +740,25 @@ private fun SharedActivityRow(
 @Composable
 private fun Modifier.activityRowGestures(
     itemKey: String,
+    captureMenuAnchor: Boolean,
     onClick: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ): Modifier {
-    var rootPos by remember { mutableStateOf(Offset.Zero) }
+    val rootPos = remember { SlockMutableOffsetRef() }
     return this
-        .onGloballyPositioned { rootPos = it.positionInRoot() }
+        .then(
+            if (captureMenuAnchor) {
+                Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+            } else {
+                Modifier
+            }
+        )
         .pointerInput(itemKey) {
             detectTapGestures(
                 onTap = { onClick() },
                 onLongPress = { localOffset ->
-                    onOpenMenu(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
+                    val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                    onOpenMenu(Offset(base.x + localOffset.x, base.y + localOffset.y))
                 }
             )
         }
