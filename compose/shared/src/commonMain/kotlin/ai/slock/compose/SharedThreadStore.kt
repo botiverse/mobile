@@ -1959,6 +1959,7 @@ private const val ThreadReadAllCoalesceWindowMillis = 2_000L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
+    val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
     val highlightedMentions: Set<String> = emptySet(),
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
     /**
@@ -1975,6 +1976,11 @@ internal data class SharedThreadState(
  * re-using the previous thread's "Loaded" status.
  */
 internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
+
+private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState {
+    val nextTimelineSlice = payload.toThreadTimelineSlice()
+    return if (timelineSlice == nextTimelineSlice) this else copy(timelineSlice = nextTimelineSlice)
+}
 
 private data class ThreadReadAllMarker(
     val channelId: String,
@@ -2067,7 +2073,7 @@ internal class SharedThreadStore(
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> =
         state
-            .map { threadState -> threadState.payload.toThreadTimelineSlice() }
+            .map { threadState -> threadState.timelineSlice }
             .distinctUntilChanged()
 
     fun highlightedMentionsFlow(): Flow<Set<String>> =
@@ -3317,8 +3323,9 @@ internal class SharedThreadStore(
     }
 
     private fun reduceState(nextState: SharedThreadState): Boolean {
-        if (nextState == _state.value) return false
-        _state.value = nextState
+        val normalizedState = nextState.withSynchronizedTimelineSlice()
+        if (normalizedState == _state.value) return false
+        _state.value = normalizedState
         return true
     }
 
@@ -3384,7 +3391,7 @@ internal class SharedThreadViewModel(
     val currentPayload: KuiklyThreadScreenPayload
         get() = store.state.value.payload
     val currentTimelineSlice: ThreadTimelineSlice
-        get() = store.state.value.payload.toThreadTimelineSlice()
+        get() = store.state.value.timelineSlice
     val currentHighlightedMentions: Set<String>
         get() = store.state.value.highlightedMentions
 
