@@ -811,7 +811,7 @@
           },
           {
             "type": "click",
-            "target": "[data-visual-case='components.home.search.channel-dropdown'] [data-search-filter='channel']"
+            "target": "[data-visual-case='components.home.search.channel-dropdown'] button[aria-label='Open channel filter']"
           },
           {
             "type": "wait",
