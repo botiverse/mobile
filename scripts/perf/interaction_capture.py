@@ -48,6 +48,15 @@ def adb_shell_rc(device: str, command: str, *, timeout: float = 30.0):
     )
 
 
+def get_pid(device: str, package: str) -> str | None:
+    out = adb_shell(device, f"pidof {package}", timeout=5.0)
+    return out.strip() or None
+    return subprocess.run(
+        ["adb", "-s", device, "shell", command],
+        capture_output=True, text=True, timeout=timeout,
+    )
+
+
 def get_app_state(device: str, package: str, out_dir: Path, label: str) -> dict:
     """Capture screenshot + uiautomator XML using the existing adb helper."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,8 +192,18 @@ def main() -> int:
         timeout=10.0,
     )
 
+    # 2a. pre-flight: top -H for CPU-per-thread baseline + pid for /proc reads.
+    pre_top = adb_shell(args.device, "top -H -n 1 -b", timeout=10.0)
+    (out_root / "00_top_pre.txt").write_text(pre_top or "", encoding="utf-8")
+    pid = get_pid(args.device, args.package)
+    if pid:
+        (out_root / "00_pid.txt").write_text(pid + "\n", encoding="utf-8")
+
     # 3. run each stage.
     t0 = time.time()
+    # Top -H midpoint sample (CPU during scenario work) — scheduled at the
+    # middle of the atrace window.
+    midpoint_at = t0 + args.atrace_window / 2.0
     for idx, stage in enumerate(args.stage):
         # Stagger slightly so the atrace has interesting transitions to record.
         time.sleep(0.3)
@@ -192,8 +211,17 @@ def main() -> int:
         result = run_stage(args.device, args.package, stage, out_root, idx)
         result["elapsed_s"] = round(time.time() - t0, 3)
         summary["results"].append(result)
+        # Capture top -H around the midpoint of the atrace window so the
+        # sample reflects work, not setup/teardown.
+        if pid and time.time() < midpoint_at:
+            time_to_mid = max(0.0, midpoint_at - time.time())
+            time.sleep(time_to_mid)
+            (out_root / "01_top_mid.txt").write_text(
+                adb_shell(args.device, "top -H -n 1 -b", timeout=10.0) or "",
+                encoding="utf-8",
+            )
 
-    # 4. final logcat tail.
+    # 4. final logcat tail + top -H post-flight.
     elapsed = time.time() - t0
     if elapsed < args.atrace_window:
         time.sleep(args.atrace_window - elapsed)
@@ -211,6 +239,18 @@ def main() -> int:
             "\n".join(line for line in (logcat_rc.stdout or "").splitlines() if pat.search(line)),
             encoding="utf-8",
         )
+
+    # 4a. post-flight: top -H + /proc/<pid>/task/<tid>/stat for delta.
+    post_top = adb_shell(args.device, "top -H -n 1 -b", timeout=10.0)
+    (out_root / "02_top_post.txt").write_text(post_top or "", encoding="utf-8")
+    if pid:
+        (out_root / "proc_task_stat_post").mkdir(exist_ok=True)
+        for tid in adb_shell(args.device, f"ls /proc/{pid}/task/", timeout=5.0).split():
+            name = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/comm", timeout=5.0).strip()
+            stat = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/stat", timeout=5.0)
+            (out_root / "proc_task_stat_post" / f"{tid}_{name}.stat").write_text(
+                stat or "", encoding="utf-8",
+            )
 
     try:
         subprocess.run(
