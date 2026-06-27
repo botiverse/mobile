@@ -147,6 +147,7 @@ data class ChannelFileItem(
     val uploaderName: String? = null,
     val uploaderDisplayName: String? = null,
     val sourceType: String? = null,
+    val sourceChannelId: ChannelId? = null,
     val sourceParentMessageId: MessageId? = null,
     val sourceParentMessageShortId: String? = null
 )

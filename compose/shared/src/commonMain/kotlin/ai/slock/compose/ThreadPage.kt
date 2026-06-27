@@ -3258,6 +3258,36 @@ internal fun SharedThreadRouteContent(
                                 ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                         openAttachmentExternally(attachment)
                     }
+                    action == "openFileSource" && !itemId.isNullOrBlank() -> {
+                        val fileItem =
+                            filesViewModel.state.value.payload.items.firstOrNull { it.attachmentId == itemId }
+                        val sourceMessageId = fileItem?.messageId?.takeIf { it.isNotBlank() }
+                        val loadingPayload = fileItem?.let { item -> renderedThread.fileSourceLoadingPayload(item) }
+                        if (sourceMessageId == null || loadingPayload == null) {
+                            bridge.toast("File source unavailable")
+                            return@ThreadPageContent
+                        }
+                        onOpenThreadPayload(loadingPayload)
+                        coroutineScope.launch {
+                            when (val result = dataSource.openMessageContext(sourceMessageId, loadingPayload)) {
+                                is DataResult.Content -> onReplaceThreadPayload(result.data)
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_file_source_open_failed")
+                                    )
+                                    bridge.toast("Unable to open file source")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_file_source_open_failed")
+                                    )
+                                    bridge.toast("Unable to open file source")
+                                }
+                            }
+                        }
+                    }
                     action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
                         openAttachmentComments(attachmentId)
                     }
@@ -4627,6 +4657,90 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
     ).withLaunchHeaderContext()
 }
 
+private fun KuiklyThreadScreenPayload.fileSourceLoadingPayload(
+    item: KuiklyThreadFileItem
+): KuiklyThreadScreenPayload? {
+    val messageId = item.messageId.takeIf { it.isNotBlank() } ?: return null
+    val sourceChannelId =
+        item.sourceChannelId.takeIf { it.isNotBlank() }
+            ?: item.channelId.takeIf { it.isNotBlank() }
+            ?: streamChannelId?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: return null
+    if (item.sourceType.equals("thread", ignoreCase = true)) {
+        val parentMessageId = item.sourceParentMessageId.takeIf { it.isNotBlank() } ?: return null
+        return copy(
+            instanceId = "shared-shell-thread-pending-$parentMessageId",
+            title = ThreadReplyPageTitle,
+            subtitle = replyThreadHeaderSubtitle(),
+            status = "loading",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = null,
+            streamChannelId = null,
+            parentChannelId = sourceChannelId,
+            parentMessageId = parentMessageId,
+            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            navigationLabel = "Close",
+            selectedTab = KuiklyThreadTab.Chat.wireValue,
+            showModeTabs = false,
+            showReplyActions = false,
+            showOpenInChannelAction = true,
+            originMessage = null,
+            originPreview = null,
+            originParentMessageId = parentMessageId,
+            focusedMessageId = messageId,
+            originStatus = "loading",
+            originErrorCode = null,
+            messages = emptyList(),
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+            errorCode = null,
+            composer =
+                buildThreadSurfaceComposerPayload(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    displayName = ThreadReplyPageTitle,
+                    fallbackId = parentMessageId,
+                    enabled = canSend,
+                    mentionChannelId = sourceChannelId,
+                    parentMessageId = parentMessageId,
+                    streamChannelId = null
+                )
+        )
+    }
+    val nextSurfaceKind =
+        if (this.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            KuiklyThreadSurfaceKind.DirectMessage
+        } else {
+            KuiklyThreadSurfaceKind.Channel
+        }
+    return copy(
+        instanceId = "shared-shell-thread-$sourceChannelId",
+        title = SharedThreadHeaderContextStore.launchContext(nextSurfaceKind, null).title,
+        subtitle = null,
+        status = "loading",
+        surfaceKind = nextSurfaceKind,
+        sourceThreadId = sourceChannelId,
+        streamChannelId = sourceChannelId,
+        parentChannelId = null,
+        parentMessageId = null,
+        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        messages = emptyList(),
+        originMessage = null,
+        originPreview = null,
+        originParentMessageId = null,
+        focusedMessageId = messageId,
+        originStatus = "none",
+        originErrorCode = null,
+        errorCode = null,
+        composer =
+            KuiklyThreadComposerPayload(
+                surfaceKind = nextSurfaceKind,
+                enabled = canSend,
+                streamChannelId = sourceChannelId
+            )
+    ).withLaunchHeaderContext()
+}
+
 private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
     messageCandidates.forEach { message ->
@@ -5767,7 +5881,8 @@ private fun ThreadPageContent(
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
-                        onDownloadAttachment = onDownloadFilesAttachment
+                        onDownloadAttachment = onDownloadFilesAttachment,
+                        onOpenFileSource = { fileItem -> onThreadEvent("openFileSource", fileItem.attachmentId, null, null) }
                     )
             }
         }
@@ -10891,7 +11006,8 @@ private fun ThreadFilesTab(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
     onOpenAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
-    onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit
+    onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    onOpenFileSource: (KuiklyThreadFileItem) -> Unit
 ) {
     val filesState by filesViewModel.state.collectAsState()
     val payload = filesState.payload
@@ -10916,6 +11032,11 @@ private fun ThreadFilesTab(
                 val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
                 val attachment = payload.findThreadAttachment(cleanAttachmentId) ?: return@ThreadFilesContent
                 onDownloadAttachment(attachment)
+            }
+            "source" -> {
+                val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
+                val fileItem = payload.items.firstOrNull { it.attachmentId == cleanAttachmentId } ?: return@ThreadFilesContent
+                onOpenFileSource(fileItem)
             }
             "loadMore" -> filesViewModel.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
             "retry" -> filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("retry"))

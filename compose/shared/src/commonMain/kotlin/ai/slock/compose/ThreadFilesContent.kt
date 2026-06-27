@@ -80,10 +80,16 @@ internal data class KuiklyThreadFilesPayload(
 @Serializable
 internal data class KuiklyThreadFileItem(
     val attachmentId: String,
+    val messageId: String = "",
+    val channelId: String = "",
     val name: String,
     val sizeLabel: String = "",
     val createdAtLabel: String = "",
     val sourceLabel: String = "",
+    val sourceType: String = "",
+    val sourceChannelId: String = "",
+    val sourceParentMessageId: String = "",
+    val sourceParentMessageShortId: String = "",
     val mimeType: String = "",
     val thumbnailUrl: String? = null
 )
@@ -98,27 +104,41 @@ private fun threadFilesVisualPayload(): KuiklyThreadFilesPayload =
             listOf(
                 KuiklyThreadFileItem(
                     attachmentId = "visual-file-image",
+                    messageId = "msg-files-image",
+                    channelId = "visual-thread-composer",
                     name = "composer-preview.png",
                     sizeLabel = "128 KB",
                     createdAtLabel = "Jun 25, 10:24",
-                    sourceLabel = "#design",
+                    sourceLabel = "Channel",
+                    sourceType = "channel",
+                    sourceChannelId = "visual-thread-composer",
                     mimeType = "image/png",
                     thumbnailUrl = ThreadFilesVisualPreviewUri
                 ),
                 KuiklyThreadFileItem(
                     attachmentId = "visual-file-pdf",
+                    messageId = "msg-files-pdf",
+                    channelId = "visual-thread-composer",
                     name = "release-notes.pdf",
                     sizeLabel = "428 KB",
                     createdAtLabel = "Jun 25, 10:17",
-                    sourceLabel = "#design:f8e569cb",
+                    sourceLabel = "Thread #f8e569cb",
+                    sourceType = "thread",
+                    sourceChannelId = "visual-thread-composer",
+                    sourceParentMessageId = "parent-files",
+                    sourceParentMessageShortId = "f8e569cb",
                     mimeType = "application/pdf"
                 ),
                 KuiklyThreadFileItem(
                     attachmentId = "visual-file-zip",
+                    messageId = "msg-files-zip",
+                    channelId = "visual-thread-composer",
                     name = "android-smoke-log.zip",
                     sizeLabel = "1.8 MB",
                     createdAtLabel = "Jun 25, 10:08",
-                    sourceLabel = "#android-artifacts",
+                    sourceLabel = "Channel",
+                    sourceType = "channel",
+                    sourceChannelId = "visual-thread-composer",
                     mimeType = "application/zip"
                 )
             )
@@ -183,7 +203,8 @@ private fun ThreadFilesList(
                 item = payload.items[index],
                 openState = attachmentOpenStates[payload.items[index].attachmentId],
                 onOpen = { onEvent("open", payload.items[index].attachmentId) },
-                onDownload = { onEvent("download", payload.items[index].attachmentId) }
+                onDownload = { onEvent("download", payload.items[index].attachmentId) },
+                onOpenSource = { onEvent("source", payload.items[index].attachmentId) }
             )
         }
         if (payload.hasMore) {
@@ -202,11 +223,14 @@ private fun ThreadFileRow(
     item: KuiklyThreadFileItem,
     openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onOpenSource: () -> Unit
 ) {
     val isOpening = openState.threadAttachmentIsOpening()
+    val canOpenSource = item.threadFileHasSourceTarget()
     val openIfIdle = if (isOpening) ({}) else onOpen
     val downloadIfIdle = if (isOpening) ({}) else onDownload
+    val openSourceIfIdle = if (isOpening || !canOpenSource) ({}) else onOpenSource
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -237,7 +261,12 @@ private fun ThreadFileRow(
             )
             ThreadFileMetaLine(item)
             if (item.sourceLabel.isNotBlank()) {
-                ThreadFileSourcePill(item.sourceLabel)
+                ThreadFileSourcePill(
+                    text = item.sourceLabel,
+                    sourceType = item.sourceType,
+                    enabled = canOpenSource && !isOpening,
+                    onClick = openSourceIfIdle
+                )
             }
             openState.threadAttachmentStatusLabel()?.let { statusLabel ->
                 Text(
@@ -260,8 +289,8 @@ private fun ThreadFileRow(
         ) {
             ThreadFileIconActionButton(
                 iconName = SlockLucideIconName.ExternalLink,
-                enabled = !isOpening,
-                onClick = openIfIdle
+                enabled = !isOpening && canOpenSource,
+                onClick = openSourceIfIdle
             )
             ThreadFileIconActionButton(
                 iconName = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
@@ -346,7 +375,24 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
 }
 
 @Composable
-private fun ThreadFileSourcePill(text: String) {
+private fun ThreadFileSourcePill(
+    text: String,
+    sourceType: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val background =
+        if (sourceType.equals("thread", ignoreCase = true)) {
+            SlockColor.AccentCyan.copy(alpha = 0.3f)
+        } else {
+            SlockColor.AccentPink.copy(alpha = 0.3f)
+        }
+    val clickModifier =
+        if (enabled) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        }
     Text(
         text = text,
         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
@@ -354,12 +400,19 @@ private fun ThreadFileSourcePill(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier =
-            Modifier
+            clickModifier
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceCream)
+                .background(background)
                 .padding(horizontal = 4.dp, vertical = 2.dp)
     )
 }
+
+internal fun KuiklyThreadFileItem.threadFileHasSourceTarget(): Boolean =
+    messageId.isNotBlank() &&
+        (
+            sourceType.equals("thread", ignoreCase = true).not() ||
+                sourceParentMessageId.isNotBlank()
+        )
 
 @Composable
 private fun ThreadFileIconActionButton(

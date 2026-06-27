@@ -3747,10 +3747,16 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
         val attachment = item.attachment
         KuiklyThreadFileItem(
             attachmentId = attachment.id.value,
+            messageId = item.messageId?.value.orEmpty(),
+            channelId = item.channelId?.value.orEmpty(),
             name = attachment.name,
             sizeLabel = attachment.sizeLabel,
             createdAtLabel = basePayload.formatFilesTimestampLabel(item.createdAt.orEmpty()),
             sourceLabel = item.filesSourceLabel(),
+            sourceType = item.sourceType.orEmpty(),
+            sourceChannelId = item.sourceChannelId?.value.orEmpty(),
+            sourceParentMessageId = item.sourceParentMessageId?.value.orEmpty(),
+            sourceParentMessageShortId = item.sourceParentMessageShortId.orEmpty(),
             mimeType = attachment.mimeType,
             thumbnailUrl = attachment.thumbnailUrl
         )

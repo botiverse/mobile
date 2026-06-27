@@ -49,6 +49,7 @@ private data class WireAttachmentUploadResponseDto(
 @Serializable
 private data class WireChannelFileSourceDto(
     val type: String? = null,
+    val channelId: String? = null,
     val parentMessageId: String? = null,
     val parentMessageShortId: String? = null,
 )
@@ -168,6 +169,7 @@ private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
         uploaderName = uploader?.name,
         uploaderDisplayName = uploader?.displayName,
         sourceType = source?.type,
+        sourceChannelId = source?.channelId?.let(::ChannelId),
         sourceParentMessageId = source?.parentMessageId?.let(::MessageId),
         sourceParentMessageShortId = source?.parentMessageShortId,
     )
