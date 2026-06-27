@@ -279,8 +279,14 @@ internal fun AuthTextField(
         AuthFieldLabel(label = label, required = required, optional = optional)
         val focused = enabled && (isFocused || forceFocused)
         val shadowOffset = if (focused) 4.dp else 2.dp
+        val reservedShadowOffset = 4.dp
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
-        Box(modifier = Modifier.fillMaxWidth().height(44.dp + 4.dp).padding(end = shadowOffset, bottom = shadowOffset)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp + reservedShadowOffset)
+                .padding(end = reservedShadowOffset, bottom = reservedShadowOffset)
+        ) {
             Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
             Box(
                 modifier = Modifier
