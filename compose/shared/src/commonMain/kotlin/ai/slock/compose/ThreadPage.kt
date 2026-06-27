@@ -194,6 +194,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -2401,6 +2402,13 @@ internal fun SharedThreadRouteContent(
                     mentionChannelId = memberSuggestionScopeChannelId,
                     memberScopedMentions = memberSuggestionScopedMentions
                 )
+                    .onStart {
+                        serverMembersStore.ensureMemberSuggestionsForServer(
+                            serverId = serverId,
+                            mentionChannelId = memberSuggestionScopeChannelId,
+                            memberScopedMentions = memberSuggestionScopedMentions
+                        )
+                    }
                     .map { slice -> slice.suggestions }
                     .distinctUntilChanged()
             } else {
@@ -2410,6 +2418,9 @@ internal fun SharedThreadRouteContent(
     val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
     val channelSuggestionsFlow = remember(membersStore) {
         membersStore?.channelSuggestionSliceFlow()
+            ?.onStart {
+                membersStore.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
+            }
             ?.map { slice -> slice.suggestions }
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
@@ -2480,17 +2491,6 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    LaunchedEffect(serverMembersStore, currentServerId, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
-        val serverId = currentServerId ?: return@LaunchedEffect
-        serverMembersStore?.ensureMemberSuggestionsForServer(
-            serverId = ServerId(serverId),
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions
-        )
-    }
-    LaunchedEffect(membersStore) {
-        membersStore?.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
-    }
     val latestThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
             if (event is Heartbeat) {
@@ -2576,18 +2576,6 @@ internal fun SharedThreadRouteContent(
         log = { message -> bridge.log(message) }
     )
 
-    LaunchedEffect(
-        threadInstanceKey,
-        threadTimelineKey,
-        resolvedAuxiliaryThreadId
-    ) {
-        if (resolvedAuxiliaryThreadId == null) return@LaunchedEffect
-        filesViewModel.dispatch(
-            SharedThreadFilesIntent.Start(
-                basePayload = renderedPayload
-            )
-        )
-    }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     val baseComposerState =
@@ -5742,13 +5730,7 @@ private fun ThreadPageContent(
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
     val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell(timelineSlice)
-    val composerDraftState by composerDraftViewModel.state.collectAsState()
     val shareExportScope = rememberCoroutineScope()
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
-    val activeReplyDraftParentMessageIds =
-        remember(activeDraftRecords) {
-            activeDraftRecords.toReplyComposerDraftParentMessageIds()
-        }
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -5945,7 +5927,7 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         renderConfig = timelineRenderConfig,
                         timelineSlice = timelineSlice,
-                        activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                        composerDraftPersistSlice = composerDraftPersistSlice,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
@@ -6006,6 +5988,8 @@ private fun ThreadPageContent(
                 KuiklyThreadTab.Files ->
                     ThreadFilesTab(
                         threadInstanceKey = threadInstanceKey,
+                        basePayload = payload,
+                        filesStartKey = resolvedAuxiliaryThreadId,
                         filesViewModel = filesViewModel,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
@@ -6654,7 +6638,7 @@ private fun ThreadChatTab(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
-    activeReplyDraftParentMessageIds: Set<String>,
+    composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
@@ -6683,6 +6667,11 @@ private fun ThreadChatTab(
     onToggleShareSelection: (String) -> Unit = {},
     onThreadContentReady: () -> Unit = {}
 ) {
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeReplyDraftParentMessageIds =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toReplyComposerDraftParentMessageIds()
+        }
     val chatRenderBranch =
         when (timelineSlice.status) {
             "loading" -> if (timelineSlice.originStatus != "none") "loading_with_origin" else "loading_empty"
@@ -11553,6 +11542,8 @@ private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
 @Composable
 private fun ThreadFilesTab(
     threadInstanceKey: String,
+    basePayload: KuiklyThreadScreenPayload,
+    filesStartKey: String?,
     filesViewModel: SharedThreadFilesViewModel,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
@@ -11560,13 +11551,25 @@ private fun ThreadFilesTab(
     onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenFileSource: (KuiklyThreadFileItem) -> Unit
 ) {
-    val filesState by filesViewModel.state.collectAsState()
-    val payload = filesState.payload
-    LaunchedEffect(threadInstanceKey) {
-        if (payload.shouldFetchInitialFiles()) {
+    LaunchedEffect(
+        threadInstanceKey,
+        filesStartKey,
+        basePayload.sourceThreadId,
+        basePayload.streamChannelId,
+        basePayload.instanceId
+    ) {
+        if (filesStartKey == null) return@LaunchedEffect
+        filesViewModel.dispatch(
+            SharedThreadFilesIntent.Start(
+                basePayload = basePayload
+            )
+        )
+        if (filesViewModel.state.value.payload.shouldFetchInitialFiles()) {
             filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
         }
     }
+    val filesState by filesViewModel.state.collectAsState()
+    val payload = filesState.payload
     LaunchedEffect(payload.status, payload.errorCode) {
         if (payload.status == "no_permission" || payload.status == "error") {
             onAuthRequired(payload.errorCode)
