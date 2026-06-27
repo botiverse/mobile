@@ -160,32 +160,3 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: Kuikly
     } ?: message.taskNumber?.let { taskNumber ->
         get(ThreadTaskNumberLookupPrefix + taskNumber)
     }
-
-internal fun KuiklyThreadScreenPayload.withThreadLinkedTasksProjection(
-    projection: ThreadLinkedTasksProjection
-): KuiklyThreadScreenPayload {
-    if (!projection.authoritative && projection.lookup.isEmpty()) return this
-    val linkedTasksByMessageLookup = projection.lookup
-    val projectedMessages =
-        messages.map { message ->
-            val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
-            when {
-                linkedTask != null -> message.withLinkedTask(linkedTask)
-                projection.authoritative -> message.withoutLinkedTask()
-                else -> message
-            }
-        }
-    val projectedOriginMessage =
-        originMessage?.let { message ->
-            val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
-            when {
-                linkedTask != null -> message.withLinkedTask(linkedTask)
-                projection.authoritative -> message.withoutLinkedTask()
-                else -> message
-            }
-        }
-    return copy(
-        messages = projectedMessages,
-        originMessage = projectedOriginMessage
-    )
-}

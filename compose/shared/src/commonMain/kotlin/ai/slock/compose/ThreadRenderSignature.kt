@@ -38,7 +38,18 @@ internal data class ThreadRenderSignature(
  * The function is pure and side-effect free; it is safe to call from
  * any Composable and is covered by `ThreadRenderSignatureTest`.
  */
-internal fun KuiklyThreadScreenPayload.toRenderSignature(): ThreadRenderSignature {
+internal fun KuiklyThreadScreenPayload.toRenderSignature(): ThreadRenderSignature =
+    toThreadTimelineSlice().toRenderSignature(
+        instanceId = instanceId,
+        sourceThreadId = sourceThreadId,
+        selectedTab = selectedTab
+    )
+
+internal fun ThreadTimelineSlice.toRenderSignature(
+    instanceId: String,
+    sourceThreadId: String?,
+    selectedTab: String
+): ThreadRenderSignature {
     val firstReply: KuiklyThreadMessageItem? = messages.firstOrNull { it.replyCount > 0 }
     return ThreadRenderSignature(
         instanceId = instanceId,

@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.TaskSummary
+
 internal data class ThreadTimelineSlice(
     val status: String,
     val originStatus: String,
@@ -126,6 +128,32 @@ internal fun ThreadTimelineSlice.hasSendingLocalSendAnchor(anchorKey: String?): 
             message.pendingSendContext != null
     }
 }
+
+internal fun ThreadTimelineSlice.visibleReadAllMarkerKey(sourceThreadId: String?): String? {
+    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
+    if (status != "content") return null
+    val latest = messages.lastOrNull() ?: return null
+    return buildString {
+        append(threadId)
+        append(':')
+        append(latest.seq?.toString() ?: "no-seq")
+        append(':')
+        append(latest.id)
+    }
+}
+
+internal fun ThreadTimelineSlice.threadMessageById(messageId: String): KuiklyThreadMessageItem? =
+    messages.firstOrNull { it.id == messageId }
+        ?: originMessage?.takeIf { originStatus != "none" && it.id == messageId }
+
+internal fun ThreadTimelineSlice.threadActionMessage(
+    messageId: String,
+    linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap()
+): KuiklyThreadMessageItem? =
+    threadMessageById(messageId)
+        ?.let { message ->
+            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+        }
 
 internal fun ThreadTimelineSlice.messageIndexSignature(): String =
     messages.joinToString(separator = "|") { message -> message.id }
