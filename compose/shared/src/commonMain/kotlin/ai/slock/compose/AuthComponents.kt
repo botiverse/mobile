@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockLinkButton
+import ai.slock.compose.components.SlockBrutalInputField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,7 +33,6 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
-import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.semantics.Role
@@ -271,58 +271,32 @@ internal fun AuthTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
-    var isFocused by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
         AuthFieldLabel(label = label, required = required, optional = optional)
-        val focused = enabled && (isFocused || forceFocused)
-        val shadowOffset = if (focused) 4.dp else 2.dp
-        val reservedShadowOffset = 4.dp
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp + reservedShadowOffset)
-                .padding(end = reservedShadowOffset, bottom = reservedShadowOffset)
-        ) {
-            Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)
-                    .border(SlockStroke.Default, borderColor)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                if (value.isEmpty() && placeholder.isNotBlank()) {
-                    Text(
-                        text = placeholder,
-                        style = AuthInputTextStyle.copy(color = AuthInputPlaceholderColor),
-                        color = AuthInputPlaceholderColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.authStaticTextFocus()
-                    )
-                }
-                TextField(
-                    value = value,
-                    placeholder = "",
-                    autoFocus = false,
-                    onFocus = { isFocused = true },
-                    onBlur = { isFocused = false },
-                    onValueChange = onValueChange,
-                    textStyle = AuthInputTextStyle,
-                    cursorBrush = SolidColor(SlockColor.TextBlack),
-                    maxLines = 1,
-                    keyboardOptions = keyboardOptions,
-                    keyboardActions = keyboardActions,
-                    modifier = Modifier.fillMaxWidth(),
-                    focusRequester = focusRequester ?: remember { FocusRequester() }
-                )
-            }
-        }
+        SlockBrutalInputField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            enabled = enabled,
+            autoFocus = false,
+            maxLines = 1,
+            textStyle = AuthInputTextStyle,
+            fieldMinHeight = 44.dp,
+            horizontalPadding = 8.dp,
+            verticalPadding = 8.dp,
+            forceFocused = forceFocused,
+            borderColor = borderColor,
+            enabledBackgroundColor = SlockColor.SurfaceWhite,
+            disabledBackgroundColor = SlockColor.EmptyStateGray,
+            placeholderColor = AuthInputPlaceholderColor,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            focusRequester = focusRequester ?: remember { FocusRequester() }
+        )
         if (isError && !errorText.isNullOrBlank()) {
             Text(
                 text = errorText,

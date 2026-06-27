@@ -43,6 +43,7 @@ import com.tencent.kuikly.compose.material3.Button
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -403,9 +404,15 @@ internal fun SlockBrutalInputField(
     horizontalPadding: Dp = 10.dp,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
+    forceFocused: Boolean = false,
+    borderColor: Color = SlockColor.BorderBlack,
+    enabledBackgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream,
+    placeholderColor: Color = SlockColor.TextMutedGray,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
     onClear: (() -> Unit)? = null
 ) {
@@ -414,7 +421,7 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
-        if (focused && enabled) 4.dp else 3.dp
+        if ((focused || forceFocused) && enabled) 4.dp else 3.dp
     } else {
         0.dp
     }
@@ -440,8 +447,8 @@ internal fun SlockBrutalInputField(
                 Modifier
                     .fillMaxWidth()
                     .height(fieldMinHeight)
-                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
+                    .border(SlockStroke.Default, borderColor)
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = fieldContentAlignment
         ) {
@@ -454,7 +461,7 @@ internal fun SlockBrutalInputField(
                     value = value,
                     onValueChange = { if (enabled) onValueChange(it) },
                     placeholder = placeholder,
-                    placeholderColor = SlockColor.TextMutedGray,
+                    placeholderColor = placeholderColor,
                     autoFocus = autoFocus,
                     onFocus = { focused = true },
                     onBlur = { focused = false },
@@ -464,7 +471,8 @@ internal fun SlockBrutalInputField(
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
                     contentAlignment = fieldContentAlignment,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    focusRequester = focusRequester
                 )
                 if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
                     SlockBrutalIconButton(
