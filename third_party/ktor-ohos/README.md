@@ -89,9 +89,10 @@ third_party/ktor-ohos/patches/*.patch
 ```
 
 `scripts/prepare_ktor_ohos_fork.sh` checks out the reference branch, rewrites
-the publication version to `SLOCK_KTOR_OHOS_VERSION`, and then applies patches
-from that directory. This lets us keep the Slock repo small while still owning
-the fork deltas in version control.
+the local checkout version metadata to `SLOCK_KTOR_OHOS_VERSION`, passes the
+same value as Ktor's `releaseVersion` Gradle property during publish, and then
+applies patches from that directory. This lets us keep the Slock repo small
+while still owning the fork deltas in version control.
 
 When the fork stabilizes, mirror those patches into the real Slock remote fork
 and point `SLOCK_KTOR_OHOS_SOURCE_URL` at that repo.
