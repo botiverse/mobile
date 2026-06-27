@@ -145,11 +145,20 @@ internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateSignature(conte
         }
 }
 
-internal fun ThreadTimelineSlice.threadLinkedTaskReferences(): Set<String> =
-    buildSet {
-        messages.mapNotNullTo(this) { it.taskId?.takeIf { taskId -> taskId.isNotBlank() } }
-        originMessage?.taskId?.takeIf { it.isNotBlank() }?.let { add(it) }
+internal fun ThreadTimelineSlice.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
+    val timelineMessages = buildList {
+        originMessage?.let(::add)
+        addAll(messages)
     }
+    return ThreadLinkedTaskReferences(
+        messageIds = timelineMessages.mapTo(mutableSetOf()) { it.id },
+        taskIds =
+            timelineMessages.mapNotNullTo(mutableSetOf()) { message ->
+                message.taskId?.trim()?.takeIf { it.isNotBlank() }
+            },
+        taskNumbers = timelineMessages.mapNotNullTo(mutableSetOf()) { it.taskNumber }
+    )
+}
 
 internal fun ThreadTimelineSlice.withThreadLinkedTasksProjection(
     projection: ThreadLinkedTasksProjection

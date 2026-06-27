@@ -126,9 +126,6 @@ private fun resolveThreadRouteIdentity(
     }
 }
 
-private fun String?.nonBlank(): String? =
-    this?.takeIf { it.isNotBlank() }
-
 private fun ConversationSummary.conversationThreadChannelKind(): String? =
     when (kind) {
         ConversationKind.Joint -> "joint"

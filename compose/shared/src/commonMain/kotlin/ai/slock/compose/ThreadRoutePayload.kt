@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.SlockTimeFormat24Hour
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
