@@ -34,6 +34,13 @@ pluginManagement {
 
     val sqldelightVersion = "2.1.0-KBA-001"
     val sqliterVersion = "1.3.3-KBA-001"
+    val ktorOhosVersion =
+        System.getenv("SLOCK_KTOR_OHOS_VERSION")
+            ?.takeIf { it.isNotBlank() }
+            ?: "3.3.3-slock-ohos-001"
+    val enableKtorOhosFork =
+        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK") == "1" ||
+            providers.gradleProperty("slock.enableKtorOhosFork").orNull.toBoolean()
     val needsStately =
         !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
@@ -51,6 +58,31 @@ pluginManagement {
             !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
+    val ktorOhosModules =
+        listOf(
+            "ktor-io",
+            "ktor-utils",
+            "ktor-http",
+            "ktor-http-cio",
+            "ktor-events",
+            "ktor-sse",
+            "ktor-websockets",
+            "ktor-websocket-serialization",
+            "ktor-serialization",
+            "ktor-serialization-kotlinx",
+            "ktor-serialization-kotlinx-json",
+            "ktor-client-core",
+            "ktor-client-content-negotiation",
+            "ktor-client-cio",
+            "ktor-client-json",
+            "ktor-client-logging"
+        )
+    val needsKtorOhos =
+        enableKtorOhosFork &&
+            ktorOhosModules.any { module ->
+                !mavenArtifactExists("io/ktor", module, ktorOhosVersion) ||
+                    !mavenArtifactExists("io/ktor", "${module}-ohosarm64", ktorOhosVersion)
+            }
 
     if (needsStately) {
         ensureSubmodule("third_party/stately")
@@ -98,11 +130,21 @@ pluginManagement {
         )
     }
 
+    if (needsKtorOhos) {
+        runChecked(
+            slockRoot,
+            "scripts/prepare_ktor_ohos_fork.sh",
+            "--publish"
+        )
+    }
+
     repositories {
         google()
         gradlePluginPortal()
         mavenCentral()
         mavenLocal()
+        maven("https://maven.eazytec-cloud.com/nexus/repository/maven-releases/")
+        maven("https://maven.eazytec-cloud.com/nexus/repository/maven-public/")
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
         }
@@ -114,6 +156,8 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         mavenLocal()
+        maven("https://maven.eazytec-cloud.com/nexus/repository/maven-releases/")
+        maven("https://maven.eazytec-cloud.com/nexus/repository/maven-public/")
         maven {
             url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
         }

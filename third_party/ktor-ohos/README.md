@@ -1,44 +1,46 @@
 # Ktor OHOS Fork
 
-This folder documents Slock's reproducible path for enabling shared network
-code on HarmonyOS/OHOS.
+This folder documents Slock's reproducible path for owning the Ktor OHOS fork
+used by shared network code. The checkout itself lives under
+`third_party/.workdirs/ktor-slock-ohos` and is prepared by script so the main
+Slock tree does not vendor the full Ktor source.
 
 ## Baseline
 
-- Reference fork: `https://github.com/blackbbc/ktor.git`
-- Reference branch: `3.0.3-ohos`
-- Reference commit checked during investigation: `a8ef69a123932ca891237920e9ca4995596d30ac`
-- Default Slock local version: `3.0.3-slock-ohos-001`
+- Reference fork: `https://gitcode.com/CPF-KMP-CMP/ktor.git`
+- Reference branch: `main-3.3.3-OH`
+- Reference tag checked during investigation: `v3.3.3-0.3.0`
+- Reference commit checked during investigation:
+  `a1863eb981cf353b2f048bc85e47f6f9e78fb72b`
+- Default Slock local version: `3.3.3-slock-ohos-001`
 
-The reference fork is based on Ktor `3.0.3` and publishes as
-`3.0.3-KBA-001`. It is not the same baseline as the current Android app, which
-still uses Ktor `2.3.7`.
+The reference fork is based on Ktor `3.3.3` and publishes as
+`3.3.3-0.3.0`. Slock should not depend on that external artifact directly in
+app builds. Prepare and publish a Slock-owned version, then consume the Slock
+coordinate from `mavenLocal` or an internal Maven repository.
 
 ## What The Fork Adds
 
-The useful part is Ktor itself, not Ktorfit.
+The useful part is Ktor itself, not Ktorfit or generated API clients.
 
-The Ktor fork adds:
+The `main-3.3.3-OH` fork adds OHOS support across the Ktor multiplatform stack:
 
-- `ktor-client:ktor-client-ohos`
-- an `io.ktor.client.engine.ohos.Ohos` engine
-- `ohosArm64` source sets and publications across the client stack
-- OHOS cinterop definitions for libcurl and Harmony RCP
-- `ktor-io`, `ktor-network`, and `ktor-utils` OHOS support
-- Tencent Maven repositories and KBA Kotlin/coroutines/serialization versions
+- `ohosArm64` and `ohosX64` targets in Ktor's target hierarchy.
+- OHOS KLIB publications such as `ktor-client-core-ohosarm64` and
+  `ktor-client-cio-ohosarm64`.
+- iOS/Darwin variants in the same Ktor artifact family.
+- OHOS cinterop/linker handling for native tests and curl/OpenSSL where needed.
+- OHOS reuse of existing POSIX/Linux implementations where practical, such as
+  `ktor-io` charset/encoding support.
 
-The OHOS engine exposes `OhosClientEngineConfig.useRcp`. In the reference fork
-the property is documented as preferring Harmony RCP, but the default value in
-code is currently `false`, so the engine uses curl unless configured otherwise.
-
-The Ktorfit branch at
-`https://github.com/Foso/Ktorfit/compare/master...blackbbc:Ktorfit:ohos-2.2.0`
-is a much broader generator/plugin diff. Slock currently uses handwritten
-`SlockApiClient`, so Ktorfit is not required for the next network milestone.
-Keep it as a later option only if we decide to return to annotation-generated
-API clients.
+This is a full Ktor native target fork. It is not a Kuikly host
+`NetworkModule`; Slock's migration target is a shared KMP Ktor transport, with
+host modules only keeping platform-owned concerns such as file refs,
+environment URL rewrite, diagnostics, and lifecycle.
 
 ## Prepare Locally
+
+Dry-run prepare:
 
 ```bash
 scripts/prepare_ktor_ohos_fork.sh
@@ -50,11 +52,11 @@ By default this checks out the reference fork under:
 third_party/.workdirs/ktor-slock-ohos
 ```
 
-Override the source repository after Slock creates its own fork:
+Override the source repository after Slock creates its own remote fork:
 
 ```bash
 SLOCK_KTOR_OHOS_SOURCE_URL=https://github.com/<slock-org>/ktor.git \
-SLOCK_KTOR_OHOS_SOURCE_REF=slock-3.0.3-ohos \
+SLOCK_KTOR_OHOS_SOURCE_REF=slock-3.3.3-ohos \
 scripts/prepare_ktor_ohos_fork.sh
 ```
 
@@ -64,90 +66,58 @@ Publish the minimal artifacts needed by shared network code:
 scripts/prepare_ktor_ohos_fork.sh --publish
 ```
 
-The script publishes:
+The script publishes Kotlin Multiplatform metadata and `ohosArm64`
+publications for the Ktor modules used by Slock's first network target:
 
 - `io.ktor:ktor-client-core`
-- `io.ktor:ktor-client-ohos`
+- `io.ktor:ktor-client-cio`
 - `io.ktor:ktor-client-content-negotiation`
 - `io.ktor:ktor-serialization-kotlinx-json`
-- `io.ktor:ktor-client-mock`
+- `io.ktor:ktor-client-json`
+- `io.ktor:ktor-client-logging`
 - transitive Ktor modules used by those artifacts
 
-## Current Build Status
+Use `SLOCK_KTOR_OHOS_MODULES` to override the module list when narrowing a
+local experiment.
 
-The prepare script has been verified to clone the reference fork and rewrite
-the local version.
+## Patch Model
 
-Direct compile currently reaches OHOS dependency resolution but is blocked by
-missing KBA kotlinx artifacts:
+Slock-owned changes should live as git patches under:
 
-```bash
-cd third_party/.workdirs/ktor-slock-ohos
-./gradlew :ktor-client:ktor-client-ohos:compileKotlinOhosArm64
+```text
+third_party/ktor-ohos/patches/*.patch
 ```
 
-Observed blockers:
+`scripts/prepare_ktor_ohos_fork.sh` checks out the reference branch, rewrites
+the publication version to `SLOCK_KTOR_OHOS_VERSION`, and then applies patches
+from that directory. This lets us keep the Slock repo small while still owning
+the fork deltas in version control.
 
-- `org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3-KBA-001`
-- `org.jetbrains.kotlinx:kotlinx-io-core:0.5.4-KBA-001`
-
-Gradle searched Maven Central, Tencent `maven-tencent`, Tencent
-`maven-public`, and `mavenLocal`; none contained these coordinates on this
-machine. That means the Ktor OHOS fork has the engine source and Gradle target,
-but Slock still needs either:
-
-- the private/internal Maven that contains the KBA kotlinx artifacts, or
-- additional local forks/publications for the missing KBA kotlinx dependencies.
-
-`Tencent-TDS/KuiklyBase-platform` is the right upstream dependency catalog for
-this stack, but it does not close every Ktor gap by itself:
-
-- it provides `kotlinx.serialization` `1.7.1-KBA-003`, which our compose OHOS
-  build already resolves from Tencent Maven;
-- it provides `kotlinx.coroutines` `1.8.0-KBA-001` and `atomicfu`
-  `0.23.2-KBA-001`, matching Ktor fork expectations;
-- it does not include a `kotlinx-io` patch;
-- it does not include the exact `kotlinx.serialization` `1.7.3-KBA-001`
-  version requested by `blackbbc/ktor 3.0.3-ohos`.
-
-See `third_party/kuiklybase-platform/README.md` and
-`scripts/prepare_kuiklybase_dependency.sh` for the reproducible patch workflow.
-The remaining Ktor decision is whether to port KuiklyBase serialization forward
-to `1.7.3-KBA-001` or adjust the Ktor fork to the available
-`1.7.1-KBA-003`, plus how to provide `kotlinx-io:0.5.4-KBA-001`.
+When the fork stabilizes, mirror those patches into the real Slock remote fork
+and point `SLOCK_KTOR_OHOS_SOURCE_URL` at that repo.
 
 ## Slock Integration Plan
 
 Current state:
 
-- `compose/shared/build.gradle.kts` uses Ktor `2.3.7`.
-- `compose/shared/build.ohos.gradle.kts` excludes `**/network/**`, so OHOS
-  does not compile the shared network package yet.
-- Android uses `ktor-client-okhttp`.
+- Android main build uses Ktor `2.3.7`.
+- OHOS build currently does not depend on Ktor.
+- Android Kuikly networking already calls Ktor internally from the host module.
+- OHOS Kuikly networking currently uses ArkTS `@kit.NetworkKit`.
+- iOS has no completed network host module yet.
 
 Recommended sequence:
 
-1. Publish the Ktor OHOS fork to `mavenLocal` or an internal Maven repository.
-2. Add `mavenLocal()` and the internal repository to the OHOS compose build if
-   needed.
-3. Upgrade the `compose/shared` network dependencies to a single Ktor `3.0.3`
-   fork version for both Android and OHOS, or isolate the upgrade behind a new
-   network module before touching the Android app.
-4. Remove the OHOS `kotlin.exclude("**/network/**")` only after
-   `ktor-client-ohos` resolves.
-5. Add an `ohosArm64Main` client factory that creates:
-
-   ```kotlin
-   HttpClient(Ohos) {
-       engine {
-           useRcp = true
-       }
-   }
-   ```
-
-6. Run a small shared `SlockApiClient` smoke request before moving repository
-   implementations.
+1. Prepare and publish the Slock Ktor OHOS fork to `mavenLocal` using the
+   script above.
+2. Enable the Slock OHOS Gradle hook with
+   `SLOCK_ENABLE_KTOR_OHOS_FORK=1` only for Ktor spike builds.
+3. Add a small shared KMP `KtorSlockNetworkTransport` and verify JSON
+   GET/POST/PATCH/DELETE, timeout, cancellation, and auth refresh.
+4. Add multipart/fileRef support after JSON traffic is stable.
+5. Migrate Android and OHOS from per-host HTTP implementations to the shared
+   Ktor transport only after focused smoke tests pass.
 
 Do not switch Android release builds to the Ktor 3 fork in the same commit as
-the OHOS smoke. Android should keep using OkHttp and existing request tests must
-stay green.
+the OHOS smoke. Android should keep its current OkHttp path until the shared
+transport is validated.
