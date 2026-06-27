@@ -80,7 +80,6 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
-import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
@@ -1197,7 +1196,8 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertEquals("general", payload.title)
         assertEquals(listOf("cached body", "sent body"), payload.messages.map { it.body })
-        assertEquals("sent body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        assertEquals("sent body", dataSource.cachedPayload("channel-1")?.messages?.last()?.body)
         scope.cancel()
     }
 
@@ -1223,7 +1223,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendSuccessPersistsCanonicalMessageWithoutTempSendingBubble() = runBlocking {
+    fun localSendSuccessCachesCanonicalMessageWithoutTempSendingBubble() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -1238,10 +1238,11 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
         store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
 
-        val persistedMessages = localStore.readThread(ThreadId("channel-1"))?.messages.orEmpty()
-        assertFalse(persistedMessages.any { it.id.value == "local-1" })
-        assertFalse(persistedMessages.any { it.deliveryState == MessageDeliveryState.Sending })
-        assertEquals(MessageDeliveryState.Sent, persistedMessages.first { it.id.value == "server-1" }.deliveryState)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
+        assertFalse(cachedMessages.any { it.id == "local-1" })
+        assertFalse(cachedMessages.any { it.deliveryState == ThreadMessageDeliverySending })
+        assertEquals(ThreadMessageDeliverySent, cachedMessages.first { it.id == "server-1" }.deliveryState)
         scope.cancel()
     }
 
@@ -1289,38 +1290,29 @@ class SharedThreadStoreTest {
         assertEquals(listOf("server-1"), payload.messages.map { it.id })
         assertFalse(payload.messages.any { it.id == "local-1" })
         assertEquals(ThreadMessageDeliverySent, payload.messages.single().deliveryState)
-        assertEquals("sent body", localStore.readThread(ThreadId("thread-m1"))?.messages?.single()?.body)
+        assertNull(localStore.readThread(ThreadId("thread-m1")))
+        assertEquals("sent body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
         scope.cancel()
     }
 
     @Test
-    fun readCachedPayloadDropsTransientLocalSendingBubble() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeThread(
-            threadSnapshot(
-                messages =
-                    listOf(
-                        message(
-                            id = "local-send-channel-1-1",
-                            seq = 11,
-                            body = "sent body"
-                        ).copy(deliveryState = MessageDeliveryState.Sending),
-                        message(
-                            id = "server-1",
-                            seq = 12,
-                            body = "sent body"
-                        )
-                    )
-            )
-        )
+    fun cachePayloadDropsTransientLocalSendingBubble() = runBlocking {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val payload =
+            contentPayload("sent body", id = "server-1").copy(
+                messages =
+                    listOf(
+                        localPendingMessage("local-send-channel-1-1", "sent body"),
+                        contentPayload("sent body", id = "server-1").messages.single()
+                    )
             )
 
-        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        dataSource.cachePayload(payload)
+        val cachedPayload = dataSource.cachedPayload("channel-1")
 
         assertNotNull(cachedPayload)
         assertFalse(cachedPayload.messages.any { it.id == "local-send-channel-1-1" })
@@ -1346,15 +1338,15 @@ class SharedThreadStoreTest {
             )
         val payload = contentPayloadForRoute(route, "body", channelId = "joint-1")
 
-        dataSource.writeCachedPayload(payload)
+        dataSource.cachePayload(payload)
 
         val cached = localStore.readThread(ThreadId("joint-1"))
-        assertEquals("joint-1", cached?.conversation?.name)
-        assertEquals(ConversationKind.Channel, cached?.conversation?.kind)
+        assertNull(cached)
+        assertEquals(listOf("body"), dataSource.cachedPayload("joint-1")?.messages?.map { it.body })
     }
 
     @Test
-    fun canonicalPayloadWriteKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runBlocking {
+    fun canonicalPayloadCacheKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(threadSnapshot(body = "stale db body"))
         val dataSource =
@@ -1366,11 +1358,7 @@ class SharedThreadStoreTest {
         val freshPayload = contentPayload("fresh memory body")
 
         val selected =
-            dataSource.writeCanonicalPayloadAndRead(
-                basePayload = basePayload(),
-                payload = freshPayload,
-                trimToLatestThreadWindow = false
-            )
+            dataSource.cacheCanonicalPayload(freshPayload)
 
         assertEquals(listOf("fresh memory body"), selected.messages.map { it.body })
         assertEquals(listOf("fresh memory body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
@@ -1450,12 +1438,12 @@ class SharedThreadStoreTest {
                         )
                 )
 
-        dataSource.writeCachedPayload(payload)
+        dataSource.cachePayload(payload)
 
-        val cached = localStore.readThread(ThreadId("channel-1:parent-1"))
-        assertEquals(ConversationKind.Thread, cached?.conversation?.kind)
-        assertEquals("thread-parent-1", cached?.conversation?.name)
-        assertNull(cached?.conversation?.subtitle)
+        assertNull(localStore.readThread(ThreadId("thread-parent-1")))
+        val cached = dataSource.cachedPayload("thread-parent-1")
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, cached?.surfaceKind)
+        assertEquals("#general", cached?.subtitle)
     }
 
     @Test
@@ -1484,10 +1472,8 @@ class SharedThreadStoreTest {
         )
         store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
 
-        val persistedMessage = localStore.readThread(ThreadId("channel-1"))?.messages?.first { it.id.value == localMessageId }
-        assertNotNull(persistedMessage)
-        assertEquals(MessageDeliveryState.Failed, persistedMessage.deliveryState)
-        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        val cachedPayload = dataSource.cachedPayload("channel-1")
         assertNotNull(cachedPayload)
         val cachedFailed = cachedPayload.messages.first { it.id == localMessageId }
         assertEquals(ThreadMessageDeliveryFailed, cachedFailed.deliveryState)
@@ -1523,7 +1509,7 @@ class SharedThreadStoreTest {
         val failed = store.state.value.payload.messages.first { it.id == localMessageId }
         assertEquals("body_too_large", failed.pendingSendErrorCode)
         assertEquals("Body is too large", failed.pendingSendErrorMessage)
-        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        val cachedPayload = dataSource.cachedPayload("channel-1")
         assertNotNull(cachedPayload)
         val cachedFailed = cachedPayload.messages.first { it.id == localMessageId }
         assertEquals("body_too_large", cachedFailed.pendingSendErrorCode)
@@ -1550,11 +1536,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.DismissLocalFailedSend(localMessageId))
 
         assertEquals(null, store.state.value.payload.messages.firstOrNull { it.id == localMessageId })
-        val persistedMessages = localStore.readThread(ThreadId("channel-1"))?.messages.orEmpty()
-        assertEquals(null, persistedMessages.firstOrNull { it.id.value == localMessageId })
-        val cachedPayload = dataSource.readCachedPayload(basePayload())
-        assertNotNull(cachedPayload)
-        assertEquals(null, cachedPayload.messages.firstOrNull { it.id == localMessageId })
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        val cachedPayload = dataSource.cachedPayload("channel-1")
+        assertEquals(null, cachedPayload?.messages?.firstOrNull { it.id == localMessageId })
         scope.cancel()
     }
 
@@ -2171,7 +2155,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun persistentCachedThreadSnapshotRendersBeforeVisibleFetchAndSurvivesFailure() = runBlocking {
+    fun persistentCachedThreadSnapshotIsIgnoredOnVisibleFetchFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -2208,15 +2192,15 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payload = store.state.value.payload
-        assertEquals("content", payload.status)
-        assertEquals("persistent cached body", payload.messages.single().body)
+        assertEquals("error", payload.status)
+        assertEquals(emptyList(), payload.messages.map { it.body })
         assertEquals("thread_network", payload.errorCode)
         assertEquals(1, api.channelMessageCalls)
         scope.cancel()
     }
 
     @Test
-    fun channelPersistentCachedSnapshotIsVisibleBeforeLoadingFrame() = runBlocking {
+    fun channelPersistentCachedSnapshotIsNotReadBeforeLoadingFrame() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -2252,15 +2236,14 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        assertTrue(logs.any { it.contains("reason=before_visible") && it.contains("hit=true") })
-        assertTrue(logs.any { it.contains("thread_visible_payload") && it.contains("status=content") })
-        assertFalse(logs.any { it.contains("thread_visible_payload") && it.contains("status=loading") })
-        assertEquals("first visible cached body", store.state.value.payload.messages.single().body)
+        assertFalse(logs.any { it.contains("thread_persistent_cache_result") })
+        assertTrue(logs.any { it.contains("thread_visible_payload") && it.contains("status=loading") })
+        assertEquals(emptyList(), store.state.value.payload.messages.map { it.body })
         scope.cancel()
     }
 
     @Test
-    fun directMessageCachedSnapshotDoesNotCopyLaunchPeerHeader() = runBlocking {
+    fun directMessagePersistentSnapshotIsIgnored() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -2297,19 +2280,19 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         val headerDisplay = payload.threadHeaderDisplayModel(null)
-        assertEquals("content", payload.status)
-        assertEquals("Direct Message", payload.title)
+        assertEquals("error", payload.status)
+        assertEquals("artin", payload.title)
         assertEquals("Direct Message", headerDisplay.title)
-        assertEquals(null, payload.dmPeerName)
-        assertEquals(null, payload.dmPeerAvatarUrl)
-        assertEquals(null, payload.dmPeerAvatarLabel)
-        assertEquals(null, payload.dmPeerGravatarUrl)
-        assertEquals("cached dm body", payload.messages.single().body)
+        assertEquals("artin", payload.dmPeerName)
+        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
+        assertEquals("AR", payload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals(emptyList(), payload.messages.map { it.body })
         scope.cancel()
     }
 
     @Test
-    fun agentDirectMessageCachedSnapshotRejectsLaunchGravatarHeader() = runBlocking {
+    fun agentDirectMessagePersistentSnapshotIsIgnored() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -2365,18 +2348,17 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(gravatarSeed))
 
         val payload = store.state.value.payload
-        assertEquals("content", payload.status)
+        assertEquals("error", payload.status)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
-        assertEquals(null, payload.dmPeerAvatarUrl)
-        assertEquals(null, payload.dmPeerGravatarUrl)
-        assertEquals("pixel:robot", payload.messages.single().avatarWireValue)
-        assertEquals(null, payload.messages.single().gravatarHash)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerGravatarUrl)
+        assertEquals(emptyList(), payload.messages.map { it.body })
         scope.cancel()
     }
 
     @Test
-    fun persistentCachedThreadSnapshotUsesConfiguredInitialWindow() = runBlocking {
+    fun persistentCachedThreadSnapshotWindowIsIgnored() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
@@ -2396,13 +2378,14 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payload = store.state.value.payload
-        assertEquals((6..35).map { "cached $it" }, payload.messages.map { it.body })
-        assertEquals(true, payload.canLoadMoreBefore)
+        assertEquals(emptyList(), payload.messages.map { it.body })
+        assertEquals(false, payload.canLoadMoreBefore)
+        assertEquals("thread_network", payload.errorCode)
         scope.cancel()
     }
 
     @Test
-    fun successfulFetchWritesPersistentThreadSnapshotForColdRestart() = runBlocking {
+    fun successfulFetchCachesThreadTimelineInMemoryWithoutPersistentSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
@@ -2415,13 +2398,13 @@ class SharedThreadStoreTest {
         dataSource.fetchThreadPayload(basePayload())
 
         val cached = localStore.readThread(ThreadId("channel-1"))
-        assertEquals("general", cached?.conversation?.name)
-        assertEquals("network body", cached?.messages?.single()?.body)
-        assertEquals("Artin", cached?.messages?.single()?.author?.displayName)
+        assertNull(cached)
+        assertEquals("network body", dataSource.cachedPayload("channel-1")?.messages?.single()?.body)
+        assertEquals("Artin", dataSource.cachedPayload("channel-1")?.messages?.single()?.authorName)
     }
 
     @Test
-    fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforePersistentCacheWrite() = runBlocking {
+    fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforeMemoryCacheWrite() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -2453,8 +2436,10 @@ class SharedThreadStoreTest {
         assertEquals(null, payload.messages.single().avatarWireValue)
         assertEquals(null, payload.messages.single().gravatarHash)
         val cachedAuthor = localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author
-        assertEquals(null, cachedAuthor?.avatar?.wireValue)
-        assertEquals(null, cachedAuthor?.gravatarHash)
+        assertNull(cachedAuthor)
+        val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single()
+        assertEquals(null, cachedMessage?.avatarWireValue)
+        assertEquals(null, cachedMessage?.gravatarHash)
     }
 
     @Test
@@ -2522,10 +2507,8 @@ class SharedThreadStoreTest {
         val message = store.state.value.payload.messages.single()
         assertEquals("Product-UX-Designer", message.authorName)
         assertEquals("pixel:tree", message.avatarWireValue)
-        assertEquals(
-            "pixel:tree",
-            localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author?.avatar?.wireValue
-        )
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        assertEquals("pixel:tree", dataSource.cachedPayload("channel-1")?.messages?.single()?.avatarWireValue)
         scope.cancel()
     }
 
@@ -2684,40 +2667,18 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedThreadPayloadNormalizesAgentGravatarBeforeFirstRender() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeThread(
-            ThreadSnapshot(
-                conversation = conversationSummary(),
-                messages =
-                    listOf(
-                        message(id = "m1", seq = 1, body = "agent body", authorKind = MemberKind.Agent)
-                            .copy(
-                                author =
-                                    MemberProfile(
-                                        id = MemberId("agent-1"),
-                                        displayName = "Product UX",
-                                        handle = "product-ux",
-                                        kind = MemberKind.Agent,
-                                        avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                                        gravatarHash = "agent-hash"
-                                    )
-                            )
-                    )
-            )
-        )
+    fun fetchedThreadPayloadNormalizesAgentAvatarBeforeFirstRender() = runBlocking {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
 
-        val payload = dataSource.readCachedPayload(basePayload())
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
-        val message = payload?.messages?.single()
-        assertEquals("pixel:robot", message?.avatarWireValue)
-        assertEquals(null, message?.gravatarHash)
+        val message = payload.messages.single()
+        assertEquals(null, message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
     }
 
     @Test
@@ -4244,7 +4205,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewMergesIntoVisiblePayloadAndPersistentSnapshot() = runBlocking {
+    fun realtimeMessageNewMergesIntoVisiblePayloadAndMemoryCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -4276,26 +4237,14 @@ class SharedThreadStoreTest {
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
         assertEquals(
             "realtime body",
-            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
+            dataSource.cachedPayload("channel-1")?.messages?.firstOrNull { it.id == "m2" }?.body
         )
-        val freshDataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        val freshStore = SharedThreadStore(dataSource = freshDataSource, scope = scope)
-        freshStore.accept(SharedThreadIntent.Start(basePayload()))
-
-        assertEquals(
-            listOf("cached body", "realtime body"),
-            freshStore.state.value.payload.messages.map { it.body }
-        )
+        assertNull(localStore.readThread(ThreadId("channel-1")))
         scope.cancel()
     }
 
     @Test
-    fun realtimeMessageNewMergesVisiblePayloadWhenPersistentCacheMissesEvent() = runBlocking {
+    fun realtimeMessageNewMergesVisiblePayloadWhenMemoryCacheMissesEvent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
@@ -4385,7 +4334,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeCacheSnapshotReadsPersistentThreadStateWithoutEventProjection() = runBlocking {
+    fun realtimeCacheSnapshotReadsMemoryThreadStateWithoutEventProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -4398,7 +4347,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        dataSource.writeCachedPayload(
+        dataSource.cachePayload(
             contentPayloadForRoute(
                 base = basePayload(),
                 body = "cache body",
@@ -4409,7 +4358,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
 
         assertEquals(listOf("cache body"), store.state.value.payload.messages.map { it.body })
-        assertEquals("cache body", localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.body)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
         scope.cancel()
     }
 
@@ -4468,16 +4417,12 @@ class SharedThreadStoreTest {
         )
 
         val message = store.state.value.payload.messages.single { it.id == "m2" }
-        assertEquals(null, message.avatarWireValue)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
-        val cachedAuthor =
-            localStore
-                .readThread(ThreadId("channel-1"))
-                ?.messages
-                ?.single { it.id == MessageId("m2") }
-                ?.author
-        assertEquals(null, cachedAuthor?.avatar?.wireValue)
-        assertEquals(null, cachedAuthor?.gravatarHash)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single { it.id == "m2" }
+        assertEquals("pixel:robot", cachedMessage?.avatarWireValue)
+        assertEquals(null, cachedMessage?.gravatarHash)
         scope.cancel()
     }
 
@@ -4565,7 +4510,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimePersistenceFailureDoesNotRollbackVisiblePayload() = runBlocking {
+    fun realtimeLocalWriteFailureDoesNotRollbackVisiblePayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val backingStore = InMemoryComposeLocalDataStore()
         backingStore.writeThread(threadSnapshot(body = "cached body"))
@@ -4596,7 +4541,9 @@ class SharedThreadStoreTest {
         )
 
         assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
-        assertTrue(logs.any { it.startsWith("thread_realtime_persist_failed") })
+        assertEquals(listOf("cached body"), backingStore.readThread(ThreadId("channel-1"))?.messages?.map { it.body })
+        assertEquals(listOf("cached body", "realtime body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
+        assertFalse(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
 
@@ -4614,7 +4561,7 @@ class SharedThreadStoreTest {
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        dataSource.writeCachedPayload(store.state.value.payload)
+        dataSource.cachePayload(store.state.value.payload)
         val before = store.state.value
         logs.clear()
 
@@ -5368,7 +5315,7 @@ class SharedThreadStoreTest {
         assertTrue(store.state.value.payload.messages.single().isSaved)
         assertTrue(dataSource.cachedPayload("channel-1")?.messages?.single()?.isSaved == true)
         val cached = localStore.readThread(ThreadId("channel-1"))
-        assertEquals("m1", cached?.messages?.single()?.id?.value)
+        assertNull(cached)
         scope.cancel()
     }
 
@@ -5418,7 +5365,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageMutationWritesCanonicalPayloadAndProjectsReadback() = runBlocking {
+    fun applyMessageMutationCachesCanonicalPayloadAndProjectsReadback() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -5452,15 +5399,15 @@ class SharedThreadStoreTest {
         assertEquals(true, reaction.selected)
         assertEquals(listOf("u1"), reaction.reactorIds)
         assertEquals(listOf("Artin"), reaction.reactorNames)
-        val cachedMessage = localStore.readThread(ThreadId("channel-1"))?.messages?.single()
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single()
         assertEquals("reactable body", cachedMessage?.body)
         val cachedReaction = cachedMessage?.reactions?.single()
         assertEquals("🔥", cachedReaction?.emoji)
         assertEquals(1, cachedReaction?.count)
         assertEquals(listOf("u1"), cachedReaction?.reactorIds)
         assertEquals(listOf("Artin"), cachedReaction?.reactorNames)
-        val readback = dataSource.readCachedPayload(basePayload(), trimToLatestThreadWindow = false)
-        assertEquals(true, readback?.messages?.single()?.reactions?.single()?.selected)
+        assertEquals(true, cachedReaction?.selected)
         scope.cancel()
     }
 
@@ -5490,7 +5437,7 @@ class SharedThreadStoreTest {
 
         assertEquals(emptyList(), store.state.value.payload.messages.single().reactions)
         assertEquals(emptyList(), dataSource.cachedPayload("channel-1")?.messages?.single()?.reactions)
-        assertEquals(emptyList(), localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.reactions)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
         scope.cancel()
     }
 
@@ -5873,7 +5820,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndPersistentSnapshot() = runBlocking {
+    fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndMemoryCache() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val repository = FakeConversationRepository(
             threadResult =
@@ -5918,23 +5865,25 @@ class SharedThreadStoreTest {
         val parent = base.messages.single()
 
         val payload = (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data
-        dataSource.writeCachedPayload(payload)
+        dataSource.cachePayload(payload)
 
         val cached = localStore.readThread(ThreadId("thread-m1"))
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
         assertEquals(emptyList(), repository.getThreadRequests)
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests.takeLast(1))
         assertEquals(0, api.channelMessageCalls)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("", payload.title)
         assertEquals("#general", payload.subtitle)
         assertEquals(4, payload.originMessage?.replyCount)
         assertEquals("thread-m1", payload.originMessage?.threadChannelId)
-        assertEquals(4, cached?.parentMessage?.replyCount)
-        assertEquals(ChannelId("thread-m1"), cached?.parentMessage?.threadChannelId)
+        assertNull(cached)
+        val cachedPayload = dataSource.cachedPayload("thread-m1")
+        assertEquals(4, cachedPayload?.originMessage?.replyCount)
+        assertEquals("thread-m1", cachedPayload?.originMessage?.threadChannelId)
     }
 
     @Test
-    fun loadOlderMessagesMergesBeforeVisiblePayloadAndWritesCache() = runBlocking {
+    fun loadOlderMessagesMergesBeforeVisiblePayloadAndCachesInMemory() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val api =
@@ -5958,7 +5907,8 @@ class SharedThreadStoreTest {
         assertEquals(listOf(10L), api.beforeSeqs)
         assertEquals(false, payload.canLoadMoreBefore)
         assertEquals("idle", payload.olderMessagesStatus)
-        assertEquals("older body", localStore.readThread(ThreadId("channel-1"))?.messages?.first()?.body)
+        assertNull(localStore.readThread(ThreadId("channel-1")))
+        assertEquals("older body", dataSource.cachedPayload("channel-1")?.messages?.first()?.body)
         scope.cancel()
     }
 
@@ -6095,13 +6045,10 @@ class SharedThreadStoreTest {
         assertEquals(listOf(10L), api.syncSinceSeqs)
         assertEquals(false, payload.canLoadMoreAfter)
         assertEquals("idle", payload.newerMessagesStatus)
+        assertNull(localStore.readThread(ThreadId("thread-m1")))
         assertEquals(
             listOf("current body", "recovered body"),
-            localStore.readThread(ThreadId("thread-m1"))?.messages?.map { it.body }
-        )
-        assertEquals(
-            listOf("current body", "recovered body"),
-            dataSource.readCachedPayload(route, trimToLatestThreadWindow = false)?.messages?.map { it.body }
+            dataSource.cachedPayload("thread-m1")?.messages?.map { it.body }
         )
         scope.cancel()
     }

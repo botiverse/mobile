@@ -1505,17 +1505,7 @@ private fun ThreadPageScreen() {
             (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
         ) {
             dataSource.cachePayload(nextPayload)
-            threadPageCoroutineScope.launch {
-                runCatchingPreservingCancellation {
-                    dataSource.writeCachedPayload(nextPayload)
-                }.onFailure { throwable ->
-                    bridge.logWarn(
-                        "thread_open_candidate_cache_failed threadId=${nextPayload.sourceThreadId.orEmpty()} " +
-                            "type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
-                    )
-                }
-                openPage()
-            }
+            openPage()
             return
         }
         routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
