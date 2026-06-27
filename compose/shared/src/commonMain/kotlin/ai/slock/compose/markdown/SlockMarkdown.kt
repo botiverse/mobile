@@ -123,10 +123,13 @@ internal data class MarkdownInlineToken(
 
 internal data class MarkdownInlineTokenPlan(
     val content: String,
-    val tokens: List<MarkdownInlineToken>
+    val tokens: List<MarkdownInlineToken>,
+    private val inlineCodeMatches: List<ThreadInlineCodeMatch> = emptyList()
 ) {
     private val tagTokensByStart: List<MarkdownInlineToken> =
         tokens.filter { it.tag != null }.sortedBy { it.range.first }
+    private val inlineCodeMatchesByStart: Map<Int, ThreadInlineCodeMatch> =
+        inlineCodeMatches.associateBy { it.range.first }
 
     val signature: String =
         tokens.joinToString(separator = "|") { token ->
@@ -165,6 +168,13 @@ internal data class MarkdownInlineTokenPlan(
 
     fun inlineCodeTokens(): List<MarkdownInlineToken> =
         tokens.filter { it.kind == MarkdownInlineTokenKind.InlineCode }
+
+    fun inlineCodeMatchForNode(start: Int): ThreadInlineCodeMatch? =
+        inlineCodeMatchesByStart[start]
+            ?: inlineCodeMatches.firstOrNull { start in it.range }
+
+    fun inlineCodeMatchCount(): Int =
+        inlineCodeMatches.size
 }
 
 internal object SlockMarkdownInlineTokenRegistry {
@@ -176,8 +186,9 @@ internal object SlockMarkdownInlineTokenRegistry {
         val highlightedMentionKeys =
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
         val knownChannelKeys = knownChannelNames?.mapTo(mutableSetOf()) { it.trim().lowercase() }
+        val inlineScan = content.threadMarkdownInlineScan()
         val tagTokens =
-            content.threadInlineTagMatches()
+            inlineScan.tagMatches
                 .filter { match -> match.tag.matchesKnownMarkdownChannelNames(knownChannelKeys) }
                 .map { match ->
                     MarkdownInlineToken(
@@ -193,7 +204,8 @@ internal object SlockMarkdownInlineTokenRegistry {
                 }
         return MarkdownInlineTokenPlan(
             content = content,
-            tokens = tagTokens.sortedBy { it.range.first }
+            tokens = tagTokens.sortedBy { it.range.first },
+            inlineCodeMatches = inlineScan.inlineCodeMatches
         )
     }
 }
@@ -294,10 +306,36 @@ fun String.escapeThreadMarkdownHtmlTagsForThread(): String {
     return builder.toString()
 }
 
-private fun String.threadMarkdownCodeProtectionRanges(): List<IntRange> =
+private data class ThreadMarkdownInlineScan(
+    val inlineCodeMatches: List<ThreadInlineCodeMatch>,
+    val tagMatches: List<ThreadInlineTagMatch>
+)
+
+private fun String.threadMarkdownInlineScan(baseOffset: Int = 0): ThreadMarkdownInlineScan {
+    val inlineCodeMatches = scanThreadInlineCodeMatches(baseOffset)
+    val protectedRanges = threadMarkdownCodeProtectionRanges(inlineCodeMatches)
+    val tagMatches =
+        threadInlineTagRanges(protectedRanges).mapNotNull { range ->
+            substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
+                ThreadInlineTagMatch(
+                    id = "slock:${baseOffset + range.first}",
+                    tag = tag,
+                    range = range
+                )
+            }
+        }
+    return ThreadMarkdownInlineScan(
+        inlineCodeMatches = inlineCodeMatches,
+        tagMatches = tagMatches
+    )
+}
+
+private fun String.threadMarkdownCodeProtectionRanges(
+    inlineCodeMatches: List<ThreadInlineCodeMatch> = scanThreadInlineCodeMatches()
+): List<IntRange> =
     buildList {
         addAll(threadMarkdownFenceRanges())
-        addAll(threadInlineCodeMatches().map { it.range })
+        addAll(inlineCodeMatches.map { it.range })
         addAll(threadMarkdownAutolinkRanges())
     }
 
@@ -442,18 +480,9 @@ private fun String.isThreadChannelReference(): Boolean {
 }
 
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-    threadInlineTagRanges().mapNotNull { range ->
-        substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
-            ThreadInlineTagMatch(
-                id = "slock:${baseOffset + range.first}",
-                tag = tag,
-                range = range
-            )
-        }
-    }
+    threadMarkdownInlineScan(baseOffset).tagMatches
 
-private fun String.threadInlineTagRanges(): List<IntRange> {
-    val protectedRanges = threadMarkdownCodeProtectionRanges()
+private fun String.threadInlineTagRanges(protectedRanges: List<IntRange>): List<IntRange> {
     val ranges = mutableListOf<IntRange>()
     var index = 0
     while (index < length) {
@@ -547,6 +576,10 @@ private fun String.isThreadInlineTagBoundary(index: Int): Boolean =
     index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
 
 fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
+    return scanThreadInlineCodeMatches(baseOffset)
+}
+
+private fun String.scanThreadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
     val matches = mutableListOf<ThreadInlineCodeMatch>()
     var cursor = 0
     while (cursor < length) {
@@ -597,7 +630,6 @@ internal fun slockMarkdownAnnotator(
     val inlineTagTokens = tokenPlan.tagTokens()
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
-    val inlineCodeByStart = content.threadInlineCodeMatches().associateBy { it.range.first }
     val inlineContentById =
         if (inlineTagById.isEmpty()) {
             null
@@ -642,7 +674,7 @@ internal fun slockMarkdownAnnotator(
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             inlineTagTokens.size,
-            inlineCodeByStart.size,
+            tokenPlan.inlineCodeMatchCount(),
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
@@ -650,8 +682,7 @@ internal fun slockMarkdownAnnotator(
         annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeToken =
-                    inlineCodeByStart[child.startOffset]
-                        ?: inlineCodeByStart.values.firstOrNull { child.startOffset in it.range }
+                    tokenPlan.inlineCodeMatchForNode(child.startOffset)
                 val code =
                     codeToken?.code
                         ?: child.getTextInNode(markdownContent).toString().markdownInlineCodeText()
