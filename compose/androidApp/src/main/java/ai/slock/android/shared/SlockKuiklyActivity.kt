@@ -1648,8 +1648,8 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun Bitmap.withThreadShareChrome(): Bitmap {
-        val headerHeight = 58
-        val footerHeight = 38
+        val headerHeight = 92
+        val footerHeight = 62
         val framed =
                 Bitmap.createBitmap(width, height + headerHeight + footerHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(framed)
@@ -1664,7 +1664,7 @@ internal class SlockKuiklyBridgeModule(
         }
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(82, 82, 82)
-            textSize = 14f
+            textSize = 18f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
         canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
@@ -1678,18 +1678,18 @@ internal class SlockKuiklyBridgeModule(
         } else {
             val fallbackTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.BLACK
-                textSize = 21f
+                textSize = 34f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("RAFT", 16f, 37f, fallbackTitle)
+            canvas.drawText("RAFT", 18f, 57f, fallbackTitle)
         }
         val site = "raft.build"
-        canvas.drawText(site, width - caption.measureText(site) - 16f, 36f, caption)
+        canvas.drawText(site, width - caption.measureText(site) - 18f, 55f, caption)
         canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
         fill.color = Color.WHITE
         val footerTop = (headerHeight + height).toFloat()
         canvas.drawRect(0f, footerTop, width.toFloat(), framed.height.toFloat(), fill)
-        canvas.drawText("Shared from Raft", 16f, footerTop + 25f, caption)
+        canvas.drawText("Shared from Raft", 18f, footerTop + 38f, caption)
         canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
         canvas.drawLine(0f, footerTop, width.toFloat(), footerTop, stroke)
         canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
@@ -1700,7 +1700,7 @@ internal class SlockKuiklyBridgeModule(
             runCatching {
                 appContext.assets.open("lucide/raft-logo.svg").use { input ->
                     val svg = SVG.getFromInputStream(input)
-                    val logoWidth = 92
+                    val logoWidth = 190
                     val logoHeight =
                             ((logoWidth / svg.documentWidth) * svg.documentHeight)
                                     .roundToInt()
