@@ -2526,7 +2526,6 @@
       "captureType": "real-screen",
       "surface": "settings",
       "category": "app/settings",
-      "baselineStatus": "pending",
       "fixture": "fixtures/screens.settings.computers.json",
       "viewport": {
         "width": 390,
@@ -2547,14 +2546,14 @@
         "crop": "element",
         "contract": "screen-route"
       },
-      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/machine/MobileComputersPanel.tsx",
+      "androidCaseHint": "compose_settings_computers",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Pending: needs React Settings Computers route/provider plus Android Settings Computers route capture with seeded computer list; do not activate through the generic settings visual page."
+      "notes": "Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list."
     },
     {
       "id": "screens.settings.computer-detail",
@@ -2583,13 +2582,13 @@
         "contract": "screen-route"
       },
       "reactPathHint": "packages/web/src/components/machine/MachineDetailPanel.tsx",
-      "androidCaseHint": "KmpVisualScreenshotCaptureTest.captureSettingsComputerDetailScreen",
+      "androidCaseHint": "compose_settings_computer_detail",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real React MainLayout /computer/:machineId MachineDetailPanel route with seeded machine, workspace, and agent state vs Android/KMP compose_settings_computer_detail real detail page seeded through its visual fixture path."
+      "notes": "Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state."
     },
     {
       "id": "screens.settings.storage",
@@ -5603,22 +5602,30 @@
       "surface": "settings",
       "category": "app/settings",
       "group": "screens-settings",
-      "status": "pending",
-      "notes": "Pending: needs React Settings Computers route/provider plus Android Settings Computers route capture with seeded computer list; do not activate through the generic settings visual page.",
+      "status": "baseline",
+      "notes": "Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/machine/MobileComputersPanel.tsx",
           "fixture": "fixtures/screens.settings.computers.json",
-          "reason": "Needs real React Settings Computers route/provider and seeded computer list; SettingsPanel has no Computers screen provider yet."
+          "components": [
+            "MobileComputersPanel",
+            "MachineStore"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
-          "source": "android-real-screen",
+          "status": "ready",
+          "source": "kmp-shared",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
-          "reason": "Needs real Android Settings Computers route capture with seeded computer list, not the generic settings visual page."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsComputersScreen",
+          "route": "compose_settings_computers",
+          "components": [
+            "SettingsComputersScreen",
+            "SettingsComputersContent"
+          ]
         },
         {
           "id": "harmony",
@@ -5636,8 +5643,8 @@
       "surface": "settings",
       "category": "app/settings",
       "group": "screens-settings",
-      "status": "active",
-      "notes": "Real React MainLayout /computer/:machineId MachineDetailPanel route with seeded machine, workspace, and agent state vs Android/KMP compose_settings_computer_detail real detail page seeded through its visual fixture path.",
+      "status": "baseline",
+      "notes": "Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state.",
       "providers": [
         {
           "id": "react",
@@ -5645,8 +5652,8 @@
           "path": "packages/web/src/components/machine/MachineDetailPanel.tsx",
           "fixture": "fixtures/screens.settings.computer-detail.json",
           "components": [
-            "MainLayout",
-            "MachineDetailPanel"
+            "MachineDetailPanel",
+            "MachineStore"
           ]
         },
         {
@@ -5657,7 +5664,7 @@
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsComputerDetailScreen",
           "route": "compose_settings_computer_detail",
           "components": [
-            "ComposeSettingsComputerDetailPage",
+            "SettingsComputerDetailScreen",
             "SettingsComputerDetailContent"
           ]
         },

@@ -193,11 +193,25 @@ def main() -> int:
     )
 
     # 2a. pre-flight: top -H for CPU-per-thread baseline + pid for /proc reads.
-    pre_top = adb_shell(args.device, "top -H -n 1 -b", timeout=10.0)
+    # Note: `top -n 1 -b -o %CPU` only outputs the first 15-20 threads by default,
+    # but `-n 999` exceeds the emulator's stream-buffer (1932+ threads) and
+    # makes adb hang. We ask for `-n 200` which is plenty for the per-app
+    # threads we care about (top 200 is way more than any app's working set).
+    pre_top = adb_shell(args.device, "top -H -n 1 -b -o %CPU", timeout=20.0)
     (out_root / "00_top_pre.txt").write_text(pre_top or "", encoding="utf-8")
     pid = get_pid(args.device, args.package)
     if pid:
         (out_root / "00_pid.txt").write_text(pid + "\n", encoding="utf-8")
+        # Pre-flight /proc/<pid>/task/<tid>/stat for delta computation
+        proc_dir_pre = out_root / "proc_task_stat_pre"
+        proc_dir_pre.mkdir(exist_ok=True)
+        for tid in adb_shell(args.device, f"ls /proc/{pid}/task/", timeout=5.0).split():
+            name = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/comm", timeout=5.0).strip()
+            safe_name = "".join(c if c.isalnum() else "_" for c in name) or "noname"
+            stat = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/stat", timeout=5.0)
+            (proc_dir_pre / f"{tid}_{safe_name}.stat").write_text(
+                stat or "", encoding="utf-8",
+            )
 
     # 3. run each stage.
     t0 = time.time()
@@ -217,7 +231,7 @@ def main() -> int:
             time_to_mid = max(0.0, midpoint_at - time.time())
             time.sleep(time_to_mid)
             (out_root / "01_top_mid.txt").write_text(
-                adb_shell(args.device, "top -H -n 1 -b", timeout=10.0) or "",
+                adb_shell(args.device, "top -H -n 1 -b -o %CPU", timeout=20.0) or "",
                 encoding="utf-8",
             )
 
@@ -241,14 +255,19 @@ def main() -> int:
         )
 
     # 4a. post-flight: top -H + /proc/<pid>/task/<tid>/stat for delta.
-    post_top = adb_shell(args.device, "top -H -n 1 -b", timeout=10.0)
+    post_top = adb_shell(args.device, "top -H -n 1 -b -o %CPU", timeout=20.0)
     (out_root / "02_top_post.txt").write_text(post_top or "", encoding="utf-8")
     if pid:
-        (out_root / "proc_task_stat_post").mkdir(exist_ok=True)
+        proc_dir = out_root / "proc_task_stat_post"
+        proc_dir.mkdir(exist_ok=True)
         for tid in adb_shell(args.device, f"ls /proc/{pid}/task/", timeout=5.0).split():
             name = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/comm", timeout=5.0).strip()
+            # Sanitize the comm name: replace any non-alphanumeric chars with `_`
+            # so the filename is filesystem-safe (comm can contain spaces, dots,
+            # parens, slashes, etc., which break path joining).
+            safe_name = "".join(c if c.isalnum() else "_" for c in name) or "noname"
             stat = adb_shell(args.device, f"cat /proc/{pid}/task/{tid}/stat", timeout=5.0)
-            (out_root / "proc_task_stat_post" / f"{tid}_{name}.stat").write_text(
+            (proc_dir / f"{tid}_{safe_name}.stat").write_text(
                 stat or "", encoding="utf-8",
             )
 

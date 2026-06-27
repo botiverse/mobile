@@ -158,8 +158,31 @@ private fun SettingsComputersScreen() {
         pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
+    val visualFixture = pager.pageData.params.optString("visualFixture")
     val timeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.settingsStandaloneTimeContext()
+    }
+    if (visualFixture == "computers") {
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            SlockTopPageHeader(
+                title = "Computers",
+                subtitle = "Connected machines",
+                iconName = SlockLucideIconName.Monitor,
+                backgroundColor = SlockColor.SurfaceWhite,
+                trailingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Plus,
+                        onClick = {},
+                        size = 36.dp,
+                        shadowOffset = 3.dp
+                    )
+                }
+            )
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                SettingsComputersContent(visualSettingsComputersPayload()) { _, _ -> }
+            }
+        }
+        return
     }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
@@ -302,7 +325,7 @@ private fun SettingsComputerDetailRouteShell(
     ) {
         SlockTopPageHeader(
             title = title,
-            backgroundColor = SlockColor.SurfaceWhite,
+            subtitle = "Machine details",
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -487,36 +510,17 @@ internal fun SettingsComputerDetailContent(
                 }
             }
         }
-        item { SettingsSectionHeader(iconName = SlockLucideIconName.Bot, title = "Agents on this computer", count = payload.agents.size) }
-        if (payload.canManageMachines) {
-            item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SlockBrutalActionButton(
-                        label = "Select",
-                        leadingIcon = SlockLucideIconName.Check,
-                        onClick = { onEvent("selectAgentsForComputer", computerId) },
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        minWidth = 78.dp,
-                        minHeight = 34.dp,
-                        shadowOffset = 2.dp,
-                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
-                    )
-                    SlockBrutalActionButton(
-                        label = "Create",
-                        leadingIcon = SlockLucideIconName.Plus,
-                        onClick = { onEvent("createAgentForComputer", computerId) },
-                        backgroundColor = SlockColor.AccentPink,
-                        minWidth = 78.dp,
-                        minHeight = 34.dp,
-                        shadowOffset = 2.dp,
-                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
-                    )
-                }
+        item { SettingsSectionHeader(iconName = SlockLucideIconName.FolderOpen, title = "Agent Workspaces", count = payload.workspaces.size) }
+        payload.workspacesErrorCode?.let { error ->
+            item { SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) } }
+        } ?: if (payload.workspaces.isEmpty()) {
+            item { SettingsEmptyMessage("No workspaces", "Workspaces opened by this computer will show up here.") }
+        } else {
+            items(payload.workspaces.size, key = { index -> "workspace-$index-${payload.workspaces[index].id}" }) { index ->
+                SettingsWorkspaceCard(payload.workspaces[index])
             }
         }
+        item { SettingsSectionHeader(iconName = SlockLucideIconName.Bot, title = "Agents on this computer", count = payload.agents.size) }
         payload.agentsErrorCode?.let { error ->
             item { SettingsInlineError("Unable to load agents", error, payload.agentsRetryable) { onEvent("retryAgents", null) } }
         } ?: if (payload.agents.isEmpty()) {
@@ -532,16 +536,6 @@ internal fun SettingsComputerDetailContent(
                             null
                         }
                 )
-            }
-        }
-        item { SettingsSectionHeader(iconName = SlockLucideIconName.FolderOpen, title = "Agent Workspaces", count = payload.workspaces.size) }
-        payload.workspacesErrorCode?.let { error ->
-            item { SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) } }
-        } ?: if (payload.workspaces.isEmpty()) {
-            item { SettingsEmptyMessage("Click Scan to check for workspace directories on this computer.", "Workspace cleanup actions appear after scanning.") }
-        } else {
-            items(payload.workspaces.size, key = { index -> "workspace-$index-${payload.workspaces[index].id}" }) { index ->
-                SettingsWorkspaceCard(payload.workspaces[index])
             }
         }
         if (payload.canManageMachines) {
@@ -965,6 +959,91 @@ internal fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
             )
     }
 
+private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
+    KuiklySettingsComputersPayload(
+        instanceId = "visual-settings-computers",
+        status = "content",
+        computers =
+            listOf(
+                visualPrimaryComputer(),
+                KuiklySettingsComputerItem(
+                    id = "computer-studio",
+                    name = "Studio Test Rig",
+                    daemonVersion = "0.62.0",
+                    online = false,
+                    hostname = "studio-test-rig.local",
+                    platform = "linux",
+                    lastSeenLabel = "Jun 26, 2026, 4:10 PM",
+                    runtimes = listOf("codex"),
+                    createdAt = "Jun 19, 2026",
+                    apiKeyPrefix = "slock_lab",
+                    statusVersion = 3
+                )
+            ),
+        canAddComputer = true,
+        addComputerUnavailableReason = null,
+        latestDaemonVersion = "0.63.7"
+    )
+
+private fun visualSettingsComputerDetailPayload(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerDetailPayload =
+    SettingsComputerDetailSnapshot(
+        computer =
+            SettingsComputerSnapshot(
+                id = "computer-mbp",
+                name = "Jiachengs-MacBook-Pro",
+                daemonVersion = "0.0.50",
+                online = true,
+                hostname = "Jiachengs-MacBook-Pro.local",
+                platform = "darwin",
+                lastSeenLabel = "Active now",
+                runtimes = listOf("Claude Code", "Codex CLI"),
+                createdAt = "Jun 18, 2026",
+                lastHeartbeat = "2026-06-19T12:28:00.000Z",
+                apiKeyPrefix = "slock_vis",
+                statusVersion = 7L
+            ),
+        workspaces = emptyList(),
+        agents =
+            listOf(
+                SettingsComputerAgentSnapshot(
+                    id = "agent-product-ux",
+                    name = "Product UX Designer",
+                    statusLabel = null,
+                    ownerLabel = "Codex CLI"
+                )
+            ),
+        sections = emptyList(),
+        canManageMachines = true
+    ).toComputerDetailPayload(timeContext).let { payload ->
+        payload.copy(
+            agents =
+                payload.agents.map { agent ->
+                    if (agent.id == "agent-product-ux") {
+                        agent.copy(presenceLabel = "online")
+                    } else {
+                        agent
+                    }
+                }
+        )
+    }
+
+private fun visualPrimaryComputer(): KuiklySettingsComputerItem =
+    KuiklySettingsComputerItem(
+        id = "computer-mbp",
+        name = "Jiachengs-MacBook-Pro.local",
+        daemonVersion = "0.63.7",
+        online = true,
+        hostname = "Jiachengs-MacBook-Pro.local",
+        platform = "darwin",
+        lastSeenLabel = "Active now",
+        runtimes = listOf("codex", "claude"),
+        createdAt = "Jun 18, 2026",
+        apiKeyPrefix = "slock_vis",
+        statusVersion = 7
+    )
+
 private fun SettingsComputersSnapshot.toComputersPayload(
     refreshing: Boolean,
     timeContext: SlockTimeContext?
@@ -1038,50 +1117,6 @@ private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
         agentsErrorCode = agentsError?.code,
         agentsRetryable = agentsError?.retryable ?: false
     )
-
-private fun visualSettingsComputerDetailPayload(
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputerDetailPayload =
-    SettingsComputerDetailSnapshot(
-        computer =
-            SettingsComputerSnapshot(
-                id = "computer-mbp",
-                name = "Jiachengs-MacBook-Pro",
-                daemonVersion = "0.0.50",
-                online = true,
-                hostname = "Jiachengs-MacBook-Pro.local",
-                platform = "darwin",
-                lastSeenLabel = "Active now",
-                runtimes = listOf("Claude Code", "Codex CLI"),
-                createdAt = "Jun 18, 2026",
-                lastHeartbeat = "2026-06-19T12:28:00.000Z",
-                apiKeyPrefix = "slock_vis",
-                statusVersion = 7L
-            ),
-        workspaces = emptyList(),
-        agents =
-            listOf(
-                SettingsComputerAgentSnapshot(
-                    id = "agent-product-ux",
-                    name = "Product UX Designer",
-                    statusLabel = null,
-                    ownerLabel = "Codex CLI"
-                )
-            ),
-        sections = emptyList(),
-        canManageMachines = true
-    ).toComputerDetailPayload(timeContext).let { payload ->
-        payload.copy(
-            agents =
-                payload.agents.map { agent ->
-                    if (agent.id == "agent-product-ux") {
-                        agent.copy(presenceLabel = "online")
-                    } else {
-                        agent
-                    }
-                }
-        )
-    }
 
 private fun loadingComputerDetailPayload(
     selectedComputerId: String?,

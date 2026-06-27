@@ -562,6 +562,31 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsComputersScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.computers",
+            pageName = "compose_settings_computers",
+            pageData = JSONObject().put("visualFixture", "computers"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureSettingsComputerDetailScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.computer-detail",
+            pageName = "compose_settings_computer_detail",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-settings-computer-detail")
+                    .put("visualFixture", "computer_detail"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureSettingsAdministrationAdmins() {
         captureKmpSettingsPageCase("components.settings.administration.admins", "administration-admins")
     }
@@ -619,20 +644,6 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureSettingsConnectedAppsPage() {
         captureKmpSettingsPageCase("components.settings.connected-apps.page", "connected-apps")
-    }
-
-    @Test
-    fun captureSettingsComputerDetailScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.computer-detail",
-            pageName = "compose_settings_computer_detail",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-settings-computer-detail")
-                    .put("visualFixture", "computer_detail"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
     }
 
     @Test
