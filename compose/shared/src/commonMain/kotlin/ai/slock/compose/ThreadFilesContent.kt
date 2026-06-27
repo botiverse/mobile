@@ -23,7 +23,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -260,14 +259,6 @@ private fun ThreadFileRow(
                 overflow = TextOverflow.Ellipsis
             )
             ThreadFileMetaLine(item)
-            if (item.sourceLabel.isNotBlank()) {
-                ThreadFileSourcePill(
-                    text = item.sourceLabel,
-                    sourceType = item.sourceType,
-                    enabled = canOpenSource && !isOpening,
-                    onClick = openSourceIfIdle
-                )
-            }
             openState.threadAttachmentStatusLabel()?.let { statusLabel ->
                 Text(
                     text = statusLabel,
@@ -372,39 +363,6 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
             }
         }
     }
-}
-
-@Composable
-private fun ThreadFileSourcePill(
-    text: String,
-    sourceType: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val background =
-        if (sourceType.equals("thread", ignoreCase = true)) {
-            SlockColor.AccentCyan.copy(alpha = 0.3f)
-        } else {
-            SlockColor.AccentPink.copy(alpha = 0.3f)
-        }
-    val clickModifier =
-        if (enabled) {
-            Modifier.clickable(onClick = onClick)
-        } else {
-            Modifier
-        }
-    Text(
-        text = text,
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier =
-            clickModifier
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(background)
-                .padding(horizontal = 4.dp, vertical = 2.dp)
-    )
 }
 
 internal fun KuiklyThreadFileItem.threadFileHasSourceTarget(): Boolean =
