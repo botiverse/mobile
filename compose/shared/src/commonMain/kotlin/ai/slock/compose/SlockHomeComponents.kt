@@ -168,9 +168,6 @@ data class SlockHomeConversationItem(
     val createdAt: String? = null,
     val description: String? = null,
     val avatarLabel: String = name.take(2).uppercase(),
-    val avatarUrl: String? = null,
-    val avatarWireValue: String? = avatarUrl,
-    val gravatarUrl: String? = null,
     val peerType: String? = null,
     val presenceMemberId: String? = null,
     val hasDraft: Boolean = false,
@@ -822,8 +819,6 @@ internal fun SlockStructuralHomeShell(
                                             name = pinned.name,
                                             description = pinned.description,
                                             avatarLabel = pinned.avatarLabel,
-                                            avatarWireValue = pinned.avatarWireValue,
-                                            gravatarUrl = pinned.gravatarUrl,
                                             peerType = pinned.peerType,
                                             memberId = pinned.presenceMemberId,
                                             agentStatusResolver = agentStatusResolver,
@@ -980,8 +975,6 @@ internal fun SlockStructuralHomeShell(
                                     name = dm.name,
                                     description = dm.description,
                                     avatarLabel = dm.avatarLabel,
-                                    avatarWireValue = dm.avatarWireValue,
-                                    gravatarUrl = dm.gravatarUrl,
                                     peerType = dm.peerType,
                                     memberId = dm.presenceMemberId,
                                     agentStatusResolver = agentStatusResolver,
@@ -2043,7 +2036,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -2051,8 +2044,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val unread = badge != null
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
-    val memberAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, memberId)
-    val effectiveAvatarWireValue = memberAvatarWireValue ?: avatarWireValue
+    val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, memberId)
     val effectiveInteractionState = when {
         selected -> ChannelRowInteractionState.Selected
         pressed -> ChannelRowInteractionState.Pressed
@@ -2139,7 +2131,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
-                SlockAvatar(effectiveAvatarWireValue, avatarLabel, gravatarUrl = gravatarUrl)
+                SlockAvatar(avatarWireValue, avatarLabel)
             }
             com.tencent.kuikly.compose.foundation.layout.Row(
                 modifier =

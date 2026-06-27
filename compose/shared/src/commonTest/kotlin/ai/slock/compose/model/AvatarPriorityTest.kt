@@ -91,6 +91,28 @@ class AvatarPriorityTest {
     }
 
     @Test
+    fun renderedAvatarProjectionAllowsAgentProfileGravatarBeforeRobotFallback() {
+        assertEquals(
+            "https://www.gravatar.com/avatar/hash?s=52&d=404",
+            avatarWireValueForRenderedAvatar(
+                kind = MemberKind.Agent,
+                id = "agent-1",
+                avatarWireValue = null,
+                gravatarHash = "hash"
+            )
+        )
+        assertEquals(
+            "pixel:robot",
+            avatarWireValueForRenderedAvatar(
+                kind = MemberKind.Agent,
+                id = "agent-1",
+                avatarWireValue = null,
+                gravatarHash = null
+            )
+        )
+    }
+
+    @Test
     fun mergedAgentAvatarRejectsCurrentAndIncomingGravatarCandidates() {
         val mergedFromProfile =
             resolveMergedAvatarSlot(

@@ -223,6 +223,15 @@ fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
 fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
     avatarSlotResolution().effectiveAvatarWireValue
 
+fun MemberProfile.avatarWireValueForRenderedAvatar(): String? =
+    avatarWireValueForRenderedAvatar(
+        kind = kind,
+        id = id.value,
+        avatarWireValue = avatar?.wireValue,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
+    )
+
 fun avatarWireValueForAvatarSlot(
     kind: MemberKind,
     id: String,
@@ -237,6 +246,27 @@ fun avatarWireValueForAvatarSlot(
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash
     ).effectiveAvatarWireValue
+
+fun avatarWireValueForRenderedAvatar(
+    kind: MemberKind,
+    id: String,
+    avatarWireValue: String?,
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
+): String? {
+    val explicitAvatarWireValue =
+        avatarWireValue?.takeIf { it.isNotBlank() }
+            ?: avatarUrl?.takeIf { it.isNotBlank() }
+    return explicitAvatarWireValue
+        ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+        ?: avatarWireValueForAvatarSlot(
+            kind = kind,
+            id = id,
+            avatarWireValue = null,
+            avatarUrl = null,
+            gravatarHash = null
+        )
+}
 
 fun resolveMergedAvatarSlot(
     kind: MemberKind,

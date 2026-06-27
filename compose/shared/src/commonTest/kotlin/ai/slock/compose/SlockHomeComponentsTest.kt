@@ -201,11 +201,9 @@ class SlockHomeComponentsTest {
                 id = "channel-1",
                 kind = "channel",
                 unreadCount = 7,
-                avatarUrl = "https://example.invalid/stale.png",
                 fallbackName = "stale-name",
                 fallbackChannelType = "channel",
                 fallbackDescription = "stale-subtitle",
-                fallbackAvatarWireValue = "https://example.invalid/stale.png",
                 fallbackJoined = false,
                 fallbackArchived = false
             )
@@ -240,7 +238,6 @@ class SlockHomeComponentsTest {
         assertEquals("private", item.channelType)
         assertEquals(7, item.unreadCount)
         assertEquals("fresh-subtitle", item.description)
-        assertEquals("pixel:fresh", item.avatarWireValue)
         assertTrue(item.hasDraft)
         assertTrue(item.joined)
         assertTrue(item.archived)
@@ -273,7 +270,7 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeConversationItemUsesAgentDmAvatarFallbackWhenAvatarMissing() {
+    fun homeConversationItemKeepsDmMemberIdentityWithoutAvatarFallback() {
         val conversation =
             ConversationSummary(
                 threadId = ThreadId("dm-agent-1"),
@@ -286,7 +283,7 @@ class SlockHomeComponentsTest {
 
         val item = SharedHomeConversationRowProjector().project(conversation)
 
-        assertEquals("pixel:robot", item.avatarWireValue)
+        assertEquals("agent-1", item.presenceMemberId)
         assertEquals("agent", item.peerType)
     }
 
@@ -515,9 +512,7 @@ class SlockHomeComponentsTest {
                         SlockHomeConversationItem(
                             id = "thread-1",
                             name = "Display title must stay out",
-                            kind = "thread",
-                            avatarWireValue = "pixel:tree",
-                            gravatarUrl = "https://www.gravatar.com/avatar/thread"
+                            kind = "thread"
                         )
                     )
             )
@@ -544,9 +539,7 @@ class SlockHomeComponentsTest {
                         SlockHomeConversationItem(
                             id = "dm-agent-1",
                             name = "Product-UX-Designer",
-                            kind = "dm",
-                            avatarWireValue = "pixel:tree",
-                            gravatarUrl = "https://www.gravatar.com/avatar/agent"
+                            kind = "dm"
                         )
                     )
             )

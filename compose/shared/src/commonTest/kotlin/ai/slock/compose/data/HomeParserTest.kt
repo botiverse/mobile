@@ -1,9 +1,9 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.avatarWireValueForMemberAvatarResolver
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.avatarWireValueForRenderedAvatar
 import ai.slock.compose.model.toGravatarAvatarUrl
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -76,7 +76,7 @@ class HomeParserTest {
         assertEquals("agent-1", peerProfile.id.value)
         assertNull(peerProfile.avatarUrl)
         assertEquals("abc123", peerProfile.gravatarHash)
-        assertEquals("abc123".toGravatarAvatarUrl(), peerProfile.avatarWireValueForMemberAvatarResolver())
+        assertEquals("abc123".toGravatarAvatarUrl(), peerProfile.avatarWireValueForRenderedAvatar())
         assertEquals(6, snapshot.unreadTotal)
     }
 
