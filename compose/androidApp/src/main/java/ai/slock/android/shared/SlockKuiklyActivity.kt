@@ -1284,6 +1284,8 @@ private class SlockKuiklyImageAdapter(
         val height = imageLoadOption.requestHeight.takeIf { it > 0 }?.toSvgPixels()
                 ?: svg.documentHeight.takeIf { it > 0f }?.toInt()
                 ?: width
+        svg.setDocumentWidth(width.toFloat())
+        svg.setDocumentHeight(height.toFloat())
         val picture = svg.renderToPicture(width, height)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         picture.draw(Canvas(bitmap))
@@ -1663,12 +1665,17 @@ internal class SlockKuiklyBridgeModule(
             strokeWidth = 3f
             color = Color.BLACK
         }
+        val captionTypeface =
+                SlockKuiklyFontAdapter.resolveTypeface("space_grotesk_semibold", appContext)
+                        ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val titleTypeface =
+                SlockKuiklyFontAdapter.resolveTypeface("space_grotesk_bold", appContext)
+                        ?: captionTypeface
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(24, 24, 24)
             textSize = (width * 0.052f).coerceIn(26f, 34f)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            typeface = captionTypeface
             letterSpacing = 0.045f
-            isFakeBoldText = true
         }
         canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
         fill.color = Color.rgb(255, 216, 77)
@@ -1686,7 +1693,7 @@ internal class SlockKuiklyBridgeModule(
             val fallbackTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.BLACK
                 textSize = (width * 0.07f).coerceIn(36f, 48f)
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                typeface = titleTypeface
             }
             canvas.drawText("RAFT", horizontalInset, headerHeight.centeredTextBaseline(fallbackTitle), fallbackTitle)
         }
