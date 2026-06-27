@@ -15,6 +15,7 @@ import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.compose.model.threadIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
     @Test
@@ -291,8 +292,9 @@ class SharedInboxPanelTest {
         assertEquals("message-1", request.anchorMessageId)
         assertEquals(ConversationKind.Channel, request.conversation.kind)
         assertEquals("android-dev", request.conversation.name)
-        assertEquals(0, request.conversation.unreadCount)
-        assertEquals(0, request.conversation.mentionCount)
+        val rowSummary = item.toConversationSummary()
+        assertEquals(0, rowSummary.unreadCount)
+        assertEquals(0, rowSummary.mentionCount)
     }
 
     @Test
@@ -327,7 +329,7 @@ class SharedInboxPanelTest {
         // present (regardless of unreadCount bucket), it wins. This replaces the old
         // unread-aware chain that picked latestActivityMessageId for unreadCount == 0
         // (反例 11 / #280 audit). Channel / DirectMessage / System share the same 3-level chain.
-        val request =
+        val item =
             InboxItem(
                 key = "channel:general",
                 kind = InboxItemKind.Channel,
@@ -336,10 +338,42 @@ class SharedInboxPanelTest {
                 lastMessageId = MessageId("last-message"),
                 latestActivityMessageId = MessageId("activity-message"),
                 firstUnreadMessageId = MessageId("first-unread")
-        ).toHomeMessageOpenRequest()
+            )
+        val request = item.toHomeMessageOpenRequest()
 
-        assertEquals(MessageId("activity-message"), request.conversation.lastMessageId)
+        assertEquals(MessageId("activity-message"), item.toConversationSummary().lastMessageId)
         assertEquals("first-unread", request.anchorMessageId)
+    }
+
+    @Test
+    fun homeOpenRequestLaunchIdentityIgnoresRowActivitySummaryChanges() {
+        val base =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                lastMessageId = MessageId("last-message-1"),
+                lastMessagePreview = "First preview",
+                lastMessageAt = "2026-06-27T10:00:00Z",
+                lastMessageSenderName = "Alice",
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("first-unread-1")
+            )
+        val updated =
+            base.copy(
+                lastMessageId = MessageId("last-message-2"),
+                lastMessagePreview = "Second preview",
+                lastMessageAt = "2026-06-27T10:05:00Z",
+                lastMessageSenderName = "Bob",
+                unreadCount = 4,
+                firstUnreadMessageId = MessageId("first-unread-2")
+            )
+
+        assertNotEquals(base.toConversationSummary(), updated.toConversationSummary())
+        assertEquals(base.toHomeMessageOpenRequest().conversation, updated.toHomeMessageOpenRequest().conversation)
+        assertEquals("first-unread-1", base.toHomeMessageOpenRequest().anchorMessageId)
+        assertEquals("first-unread-2", updated.toHomeMessageOpenRequest().anchorMessageId)
     }
 
     @Test

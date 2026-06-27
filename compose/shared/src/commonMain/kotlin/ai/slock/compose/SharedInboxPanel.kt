@@ -1255,7 +1255,7 @@ internal data class ThreadLaunchOriginFallback(
 )
 
 internal data class HomeMessageOpenRequest(
-    val conversation: ConversationSummary,
+    val conversation: ThreadLaunchConversationIdentity,
     val anchorMessageId: String?,
     val originFallback: ThreadLaunchOriginFallback? = null
 )
@@ -1293,7 +1293,7 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
 
 internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
-        conversation = toConversationSummary(),
+        conversation = toConversationSummary().toThreadLaunchConversationIdentity(),
         anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
         originFallback = toThreadLaunchOriginFallback()
     )

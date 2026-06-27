@@ -2068,8 +2068,8 @@ class ThreadPayloadTest {
                 )
             )
 
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#general", payload.subtitle)
+        assertEquals("", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
@@ -2077,7 +2077,7 @@ class ThreadPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
         assertEquals(null, payload.parentNavigationHint)
         assertEquals(null, payload.toWireThreadLaunchPayload().parentNavigationHint)
-        assertEquals("loading", payload.originStatus)
+        assertEquals("missing", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
@@ -2158,13 +2158,18 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequest()
         val conversation = request.conversation
 
-        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
+        val payload =
+            buildAppShellThreadPayload(
+                conversation = conversation,
+                anchorMessageId = request.anchorMessageId,
+                originFallback = request.originFallback
+            )
 
         assertEquals("reply-message-1", request.anchorMessageId)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#general", payload.subtitle)
+        assertEquals("", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("reply-message-1", payload.focusedMessageId)
         assertEquals("thread-channel-1", payload.sourceThreadId)
@@ -2172,8 +2177,8 @@ class ThreadPayloadTest {
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
         assertEquals("message-1", payload.originParentMessageId)
-        assertEquals("loading", payload.originStatus)
-        assertEquals(null, payload.originPreview)
+        assertEquals("missing", payload.originStatus)
+        assertEquals("Parent message preview", payload.originPreview)
         assertEquals(null, payload.originMessage)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
@@ -2298,7 +2303,7 @@ class ThreadPayloadTest {
 
         assertEquals("content", payload.status)
         assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#general", payload.subtitle)
+        assertEquals("#seeded", payload.subtitle)
         assertEquals(listOf("reply-message-1"), payload.messages.map { it.id })
         assertEquals(null, payload.originParentMessageId)
         assertEquals("none", payload.originStatus)
@@ -2602,7 +2607,7 @@ class ThreadPayloadTest {
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("message-1", payload.originParentMessageId)
-        assertEquals("loading", payload.originStatus)
+        assertEquals("missing", payload.originStatus)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
     }
@@ -2628,8 +2633,8 @@ class ThreadPayloadTest {
 
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#general", payload.subtitle)
+        assertEquals("", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
         assertEquals(null, payload.streamChannelId)
