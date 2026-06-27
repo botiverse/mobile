@@ -22,7 +22,7 @@ val enableKtorOhosFork =
         .orElse(false)
 val ktorOhosVersion =
     providers.environmentVariable("SLOCK_KTOR_OHOS_VERSION")
-        .orElse("3.3.3-slock-ohos-001")
+        .orElse("2.3.7-slock-ohos-001")
 val prepareTmmCommonResources by tasks.registering(Sync::class) {
     from(commonTmmResourceInputDir)
     into(generatedTmmResourceDir.map { it.dir("commonMain/res") })

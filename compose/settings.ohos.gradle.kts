@@ -37,7 +37,7 @@ pluginManagement {
     val ktorOhosVersion =
         System.getenv("SLOCK_KTOR_OHOS_VERSION")
             ?.takeIf { it.isNotBlank() }
-            ?: "3.3.3-slock-ohos-001"
+            ?: "2.3.7-slock-ohos-001"
     val enableKtorOhosFork =
         System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK") == "1" ||
             providers.gradleProperty("slock.enableKtorOhosFork").orNull.toBoolean()
@@ -64,20 +64,17 @@ pluginManagement {
             "ktor-utils",
             "ktor-http",
             "ktor-http-cio",
-            "ktor-events",
-            "ktor-sse",
-            "ktor-websockets",
-            "ktor-websocket-serialization",
             "ktor-network",
             "ktor-network-tls",
+            "ktor-events",
+            "ktor-websockets",
+            "ktor-websocket-serialization",
             "ktor-serialization",
             "ktor-serialization-kotlinx",
             "ktor-serialization-kotlinx-json",
             "ktor-client-core",
             "ktor-client-content-negotiation",
-            "ktor-client-cio",
-            "ktor-client-json",
-            "ktor-client-logging"
+            "ktor-client-cio"
         )
     val needsKtorOhos =
         enableKtorOhosFork &&
