@@ -3,6 +3,7 @@ package ai.slock.android.core.data.realtime
 import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.PermissionBlocker
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.realtime.RealtimeAuth
@@ -10,7 +11,6 @@ import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
-import ai.slock.android.core.state.PermissionBlocker
 import kotlinx.coroutines.runBlocking
 
 class SessionRealtimeRepository(

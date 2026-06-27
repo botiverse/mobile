@@ -12,8 +12,7 @@ class UserFacingCopyQualityTest {
                 listOf(
                         "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
                         "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsBillingPage.kt",
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SettingsRepositoryDataSource.kt",
-                        "compose/androidApp/src/main/java/ai/slock/android/core/data/mock/MockSeedData.kt"
+                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SettingsRepositoryDataSource.kt"
                 )
         val bannedPhrases =
                 listOf(

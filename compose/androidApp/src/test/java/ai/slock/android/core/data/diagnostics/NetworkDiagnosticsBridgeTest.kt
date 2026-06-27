@@ -11,7 +11,7 @@ import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
-import ai.slock.android.core.state.ScreenError
+import ai.slock.compose.data.ScreenError
 import ai.slock.compose.network.model.BackfillScope
 import ai.slock.compose.network.model.NetworkStatus
 import ai.slock.compose.network.model.RealtimeConnectionPhase
