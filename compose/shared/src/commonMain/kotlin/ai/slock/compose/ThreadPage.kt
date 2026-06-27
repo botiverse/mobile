@@ -11748,7 +11748,7 @@ private fun ThreadSharePreviewModal(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 SlockModalActionButton(
-                    label = "Copy",
+                    label = "Copy MD",
                     icon = SlockLucideIconName.Copy,
                     onClick = onCopyMarkdown,
                     enabled = messages.isNotEmpty()
