@@ -1648,8 +1648,9 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun Bitmap.withThreadShareChrome(): Bitmap {
-        val headerHeight = 92
-        val footerHeight = 62
+        val headerHeight = (width * 0.18f).roundToInt().coerceIn(96, 132)
+        val footerHeight = (width * 0.12f).roundToInt().coerceIn(68, 92)
+        val horizontalInset = (width * 0.035f).roundToInt().coerceIn(18, 28).toFloat()
         val framed =
                 Bitmap.createBitmap(width, height + headerHeight + footerHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(framed)
@@ -1664,53 +1665,86 @@ internal class SlockKuiklyBridgeModule(
         }
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(82, 82, 82)
-            textSize = 18f
+            textSize = (width * 0.045f).coerceIn(22f, 30f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
         canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
         fill.color = Color.rgb(255, 216, 77)
         canvas.drawRect(0f, 0f, width.toFloat(), headerHeight.toFloat(), fill)
-        val logo = loadThreadShareLogoBitmap()
+        val logo =
+                loadThreadShareLogoBitmap(
+                        maxWidth = (width * 0.48f).roundToInt().coerceIn(220, 380),
+                        maxHeight = (headerHeight - 24).coerceAtLeast(48)
+                )
         if (logo != null) {
             val logoTop = ((headerHeight - logo.height) / 2f).coerceAtLeast(0f)
-            canvas.drawBitmap(logo, 14f, logoTop, null)
+            canvas.drawBitmap(logo, horizontalInset, logoTop, null)
             logo.recycle()
         } else {
             val fallbackTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.BLACK
-                textSize = 34f
+                textSize = (width * 0.07f).coerceIn(36f, 48f)
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("RAFT", 18f, 57f, fallbackTitle)
+            canvas.drawText("RAFT", horizontalInset, headerHeight.centeredTextBaseline(fallbackTitle), fallbackTitle)
         }
         val site = "raft.build"
-        canvas.drawText(site, width - caption.measureText(site) - 18f, 55f, caption)
+        canvas.drawText(
+                site,
+                width - caption.measureText(site) - horizontalInset,
+                headerHeight.centeredTextBaseline(caption),
+                caption
+        )
         canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
         fill.color = Color.WHITE
         val footerTop = (headerHeight + height).toFloat()
         canvas.drawRect(0f, footerTop, width.toFloat(), framed.height.toFloat(), fill)
-        canvas.drawText("Shared from Raft", 18f, footerTop + 38f, caption)
+        canvas.drawText(
+                "Shared from Raft",
+                horizontalInset,
+                footerTop + footerHeight.centeredTextBaseline(caption),
+                caption
+        )
         canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
         canvas.drawLine(0f, footerTop, width.toFloat(), footerTop, stroke)
         canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
         return framed
     }
 
-    private fun loadThreadShareLogoBitmap(): Bitmap? =
+    private fun loadThreadShareLogoBitmap(maxWidth: Int, maxHeight: Int): Bitmap? =
             runCatching {
                 appContext.assets.open("lucide/raft-logo.svg").use { input ->
                     val svg = SVG.getFromInputStream(input)
-                    val logoWidth = 190
+                    val aspectRatio =
+                            svg.documentAspectRatio
+                                    .takeIf { it > 0f }
+                                    ?: (svg.documentWidth / svg.documentHeight).takeIf { it > 0f }
+                                    ?: 4.05f
+                    var logoWidth = maxWidth.coerceAtLeast(1)
                     val logoHeight =
-                            ((logoWidth / svg.documentWidth) * svg.documentHeight)
+                            (logoWidth / aspectRatio)
                                     .roundToInt()
-                                    .coerceAtLeast(24)
-                    val picture = svg.renderToPicture(logoWidth, logoHeight)
-                    Bitmap.createBitmap(logoWidth, logoHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+                                    .coerceAtLeast(1)
+                    if (logoHeight > maxHeight) {
+                        logoWidth = (maxHeight * aspectRatio).roundToInt().coerceAtLeast(1)
+                    }
+                    val finalLogoHeight =
+                            (logoWidth / aspectRatio)
+                                    .roundToInt()
+                                    .coerceAtLeast(1)
+                    svg.setDocumentWidth(logoWidth.toFloat())
+                    svg.setDocumentHeight(finalLogoHeight.toFloat())
+                    val picture = svg.renderToPicture(logoWidth, finalLogoHeight)
+                    Bitmap.createBitmap(logoWidth, finalLogoHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
                         picture.draw(Canvas(bitmap))
                     }
                 }
             }.getOrNull()
+
+    private fun Int.centeredTextBaseline(paint: Paint): Float {
+        val metrics = paint.fontMetrics
+        return this / 2f - (metrics.ascent + metrics.descent) / 2f
+    }
 
     private fun saveThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
         SlockKuiklyThreadAdapter.execute("thread-share-image-save") {

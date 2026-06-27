@@ -7556,6 +7556,7 @@ private fun ThreadMessagesList(
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = message.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(message.id) },
+                            showSaveAction = !captureShareBounds,
                             isMessageListScrolling = listState.isScrollInProgress,
                             alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                             compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
