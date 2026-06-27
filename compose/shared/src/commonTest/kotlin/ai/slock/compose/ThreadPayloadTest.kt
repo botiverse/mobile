@@ -2182,6 +2182,75 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appShellThreadOriginFallbackIsCarriedOutsideConversationSummary() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                parentMessageSenderId = "user-1",
+                parentMessageSenderKind = MemberKind.Human,
+                latestActivityMessageId = MessageId("reply-message-1")
+            ).toHomeMessageOpenRequest()
+
+        val payload =
+            buildAppShellThreadPayload(
+                conversation = request.conversation,
+                anchorMessageId = request.anchorMessageId,
+                originFallback = request.originFallback
+            )
+
+        assertEquals("Parent message preview", request.originFallback?.preview)
+        assertEquals("user-1", request.originFallback?.senderId)
+        assertEquals(MemberKind.Human, request.originFallback?.senderKind)
+        assertEquals("channel-1:message-1", request.conversation.resolveThreadRouteIdentity().parentKey)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals("Parent message preview", payload.originPreview)
+    }
+
+    @Test
+    fun appShellThreadOriginFallbackMustMatchParentIdentity() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityMessageId = MessageId("reply-message-1")
+            ).toHomeMessageOpenRequest()
+        val wrongFallback =
+            ThreadLaunchOriginFallback(
+                parentChannelId = "channel-2",
+                parentMessageId = "message-1",
+                preview = "Wrong parent preview",
+                senderId = null,
+                senderKind = null
+            )
+
+        val payload =
+            buildAppShellThreadPayload(
+                conversation = request.conversation,
+                anchorMessageId = request.anchorMessageId,
+                originFallback = wrongFallback
+            )
+
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals(null, payload.originPreview)
+    }
+
+    @Test
     fun contentSliceUsesPatchHeaderContextInsteadOfSeededReplyOrigin() {
         val origin =
             KuiklyThreadMessageItem(

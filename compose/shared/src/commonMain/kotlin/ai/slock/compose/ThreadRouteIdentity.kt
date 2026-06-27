@@ -9,6 +9,7 @@ internal data class ThreadRouteIdentity(
     val channelKind: String? = null,
     val instanceKey: String,
     val timelineKey: String?,
+    val parentKey: String? = null,
     val canRenderTimelineCandidates: Boolean
 ) {
     val timelineChannelId: String?
@@ -79,6 +80,12 @@ private fun resolveThreadRouteIdentity(
         }
     val parentChannel = parentChannelId.nonBlank()
     val parentMessage = parentMessageId.nonBlank()
+    val parentKey =
+        if (parentChannel != null && parentMessage != null) {
+            "$parentChannel:$parentMessage"
+        } else {
+            null
+        }
     val isReplyThread =
         surface == KuiklyThreadSurfaceKind.ReplyThread ||
             (parentChannel != null && parentMessage != null)
@@ -95,6 +102,7 @@ private fun resolveThreadRouteIdentity(
                     channelKind = null,
                     instanceKey = "reply-stream:$resolvedStream",
                     timelineKey = resolvedStream,
+                    parentKey = parentKey,
                     canRenderTimelineCandidates = true
                 )
             parentChannel != null && parentMessage != null ->
@@ -103,6 +111,7 @@ private fun resolveThreadRouteIdentity(
                     channelKind = null,
                     instanceKey = "reply-parent:$parentChannel:$parentMessage",
                     timelineKey = null,
+                    parentKey = parentKey,
                     canRenderTimelineCandidates = false
                 )
             else ->
@@ -111,6 +120,7 @@ private fun resolveThreadRouteIdentity(
                     channelKind = null,
                     instanceKey = instanceId.nonBlank() ?: "reply-pending",
                     timelineKey = null,
+                    parentKey = parentKey,
                     canRenderTimelineCandidates = false
                 )
         }
@@ -121,6 +131,7 @@ private fun resolveThreadRouteIdentity(
             channelKind = routeKind.takeIf { surface == KuiklyThreadSurfaceKind.Channel },
             instanceKey = timelineKey?.let { "$routeKind:$it" } ?: instanceId.nonBlank() ?: "$routeKind:pending",
             timelineKey = timelineKey,
+            parentKey = parentKey,
             canRenderTimelineCandidates = timelineKey != null
         )
     }

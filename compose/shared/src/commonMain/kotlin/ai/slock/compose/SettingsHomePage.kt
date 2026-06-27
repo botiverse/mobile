@@ -12462,7 +12462,8 @@ internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
-    anchorMessageId: String? = null
+    anchorMessageId: String? = null,
+    originFallback: ThreadLaunchOriginFallback? = null
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
@@ -12517,9 +12518,19 @@ internal fun buildAppShellThreadPayload(
             parentMessageId = parentMessageId,
             streamChannelId = streamChannelId
         )
+    val launchHeaderContext =
+        SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId)
+    val originHeaderContext =
+        SharedThreadHeaderContextStore.conversationContext(
+            surfaceKind = surfaceKind,
+            conversation = conversation,
+            originMessage = null,
+            parentMessageId = parentMessageId,
+            originFallback = originFallback
+        )
     val payload = KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
-        title = SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId).title,
+        title = launchHeaderContext.title,
         subtitle = null,
         status = "loading",
         surfaceKind = surfaceKind,
@@ -12554,7 +12565,13 @@ internal fun buildAppShellThreadPayload(
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
-    ).withLaunchHeaderContext()
+    ).copy(
+        originMessage = originHeaderContext.originMessage,
+        originPreview = originHeaderContext.originPreview,
+        originParentMessageId = originHeaderContext.originParentMessageId,
+        originStatus = originHeaderContext.originStatus,
+        originErrorCode = originHeaderContext.originErrorCode
+    )
     return payload
 }
 

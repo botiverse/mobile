@@ -43,9 +43,11 @@ internal object SharedThreadHeaderContextStore {
         conversation: ConversationSummary,
         originMessage: KuiklyThreadMessageItem?,
         parentMessageId: String?,
+        originFallback: ThreadLaunchOriginFallback? = null,
         dmPeerName: String? = null
     ): SharedThreadHeaderContext {
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val routeIdentity = conversation.resolveThreadRouteIdentity()
         val resolvedOriginParentMessageId =
             if (isReplyThread) {
                 originMessage?.id
@@ -54,9 +56,18 @@ internal object SharedThreadHeaderContextStore {
             } else {
                 null
             }
+        val validatedOriginFallback =
+            originFallback?.takeIf { fallback ->
+                isReplyThread &&
+                    resolvedOriginParentMessageId != null &&
+                    fallback.matchesOriginParent(
+                        routeIdentity = routeIdentity,
+                        parentMessageId = resolvedOriginParentMessageId
+                    )
+            }
         val resolvedOriginPreview =
             if (isReplyThread && originMessage == null) {
-                conversation.originMessagePreview?.takeIf { it.isNotBlank() }
+                validatedOriginFallback?.preview?.takeIf { it.isNotBlank() }
             } else {
                 null
             }
@@ -84,7 +95,7 @@ internal object SharedThreadHeaderContextStore {
                     !isReplyThread -> "none"
                     originMessage != null -> "loaded"
                     resolvedOriginPreview != null -> "missing"
-                    resolvedOriginParentMessageId != null || conversation.originMessageExpected -> "missing"
+                    resolvedOriginParentMessageId != null || validatedOriginFallback?.expected == true -> "missing"
                     else -> "none"
                 }
         )
@@ -101,6 +112,17 @@ internal object SharedThreadHeaderContextStore {
         conversation: ConversationSummary
     ): String =
         conversation.safeDisplayNameOrNull().orEmpty()
+}
+
+internal fun ThreadLaunchOriginFallback.matchesOriginParent(
+    routeIdentity: ThreadRouteIdentity,
+    parentMessageId: String?
+): Boolean {
+    val normalizedParentMessageId = parentMessageId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    if (this.parentMessageId.trim() != normalizedParentMessageId) return false
+    val routeParentKey = routeIdentity.parentKey?.takeIf { it.isNotBlank() } ?: return true
+    val fallbackParentChannelId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return true
+    return "$fallbackParentChannelId:$normalizedParentMessageId" == routeParentKey
 }
 
 internal fun KuiklyThreadScreenPayload.withHeaderContext(

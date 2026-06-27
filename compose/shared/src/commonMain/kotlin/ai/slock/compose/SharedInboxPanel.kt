@@ -24,6 +24,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ThreadConversation
@@ -1240,17 +1241,23 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
         firstUnreadMessageId = firstUnreadMessageId,
         lastMessagePreview = latestActivityPreview ?: lastMessagePreview,
         lastMessageAt = latestActivityAt ?: lastMessageAt,
-        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName,
-        originMessagePreview = parentMessagePreview,
-        originMessageSenderId = parentMessageSenderId,
-        originMessageSenderKind = parentMessageSenderKind,
-        originMessageExpected = kind == InboxItemKind.Thread && parentId != null
+        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
     )
 }
 
+internal data class ThreadLaunchOriginFallback(
+    val parentChannelId: String?,
+    val parentMessageId: String,
+    val preview: String?,
+    val senderId: String?,
+    val senderKind: MemberKind?,
+    val expected: Boolean = true
+)
+
 internal data class HomeMessageOpenRequest(
     val conversation: ConversationSummary,
-    val anchorMessageId: String?
+    val anchorMessageId: String?,
+    val originFallback: ThreadLaunchOriginFallback? = null
 )
 
 /**
@@ -1287,5 +1294,19 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
 internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversation = toConversationSummary(),
-        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() }
+        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
+        originFallback = toThreadLaunchOriginFallback()
     )
+
+private fun InboxItem.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    if (kind != InboxItemKind.Thread) return null
+    val parentId = parentMessageId?.value?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = parentChannelId?.value?.takeIf { it.isNotBlank() },
+        parentMessageId = parentId,
+        preview = parentMessagePreview?.takeIf { it.isNotBlank() },
+        senderId = parentMessageSenderId?.takeIf { it.isNotBlank() },
+        senderKind = parentMessageSenderKind,
+        expected = true
+    )
+}
