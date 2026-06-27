@@ -76,6 +76,7 @@ publications for the Ktor modules used by Slock's first network target:
 - `io.ktor:ktor-client-json`
 - `io.ktor:ktor-client-logging`
 - transitive Ktor modules used by those artifacts
+  (`ktor-network`, `ktor-network-tls`, and related Ktor core modules)
 
 Use `SLOCK_KTOR_OHOS_MODULES` to override the module list when narrowing a
 local experiment.

@@ -68,6 +68,8 @@ pluginManagement {
             "ktor-sse",
             "ktor-websockets",
             "ktor-websocket-serialization",
+            "ktor-network",
+            "ktor-network-tls",
             "ktor-serialization",
             "ktor-serialization-kotlinx",
             "ktor-serialization-kotlinx-json",
