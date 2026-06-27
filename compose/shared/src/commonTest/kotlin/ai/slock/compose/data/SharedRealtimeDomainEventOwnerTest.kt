@@ -93,6 +93,37 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
+    fun agentPresenceDedupeKeepsPerMemberServerSeqIndependent() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val activityEvents = mutableListOf<MemberPresenceUpdated>()
+        val agentOne =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                serverSeq = 7L
+            )
+        val agentTwo =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-2"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                serverSeq = 7L
+            )
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyAgentActivity = activityEvents::add
+            )
+        )
+
+        owner.accept("server-1", agentOne, source = "app_shell")
+        owner.accept("server-1", agentTwo, source = "app_shell")
+        owner.accept("server-1", agentTwo, source = "app_shell")
+
+        assertEquals(listOf(agentOne, agentTwo), activityEvents)
+    }
+
+    @Test
     fun taskRealtimeEventsPatchSharedTaskProjectionStore() = runBlocking {
         val tasksDataStore = SharedTasksDataStore()
         val owner = SharedRealtimeDomainEventOwner(tasksDataStore)

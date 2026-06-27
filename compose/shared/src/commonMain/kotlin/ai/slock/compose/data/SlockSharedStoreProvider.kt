@@ -325,7 +325,10 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
         is TaskDeleted ->
             "task:deleted:$serverId:${taskId.value}"
         is MemberPresenceUpdated ->
-            serverSeq?.let { "member:presence:$serverId:$it" }
+            // agent:activity serverSeq is monotonic per agent, not per server.
+            // Include memberId so different agents with the same seq do not
+            // suppress each other's presence updates in the app-shell fanout.
+            serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
                 ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}"
         is RealtimeRefreshRequired ->
             "refresh:$serverId:${scope.name}:$reason:${channelId?.value.orEmpty()}:${memberId?.value.orEmpty()}:${subjectId.orEmpty()}"
