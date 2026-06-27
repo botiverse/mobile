@@ -90,7 +90,6 @@ import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.resolveAvatarSlot
-import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.withPreviewMembershipFallback
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -4493,16 +4492,6 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
-    val resolvedAvatar =
-        resolveMergedAvatarSlot(
-            kind = profile.kind,
-            id = profile.id.value,
-            currentAvatarWireValue = avatarWireValue,
-            currentGravatarHash = gravatarHash,
-            incomingAvatarWireValue = profile.avatar?.wireValue,
-            incomingAvatarUrl = profile.avatarUrl,
-            incomingGravatarHash = profile.gravatarHash
-        )
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
         authorHandle = authorHandle.ifBlank { profile.handle },
@@ -4513,8 +4502,6 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
                 else -> authorKind
         },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
-        avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
-        gravatarHash = resolvedAvatar.gravatarHash,
         senderMembershipStatus = senderMembershipStatus ?: profile.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = authorDeletedAt ?: profile.agentDeletedAt?.takeIf { it.isNotBlank() }
     )

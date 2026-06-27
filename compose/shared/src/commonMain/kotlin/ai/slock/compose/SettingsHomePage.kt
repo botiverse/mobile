@@ -9559,9 +9559,7 @@ private fun SharedHomeScreen(
                 }
             val memberAvatarResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
-                    slockMemberAvatarResolver(serverMembersStore, snapshot.server.id.value) { message ->
-                        bridge.log("shared_home_member_avatar_resolver $message")
-                    }
+                    slockMemberAvatarResolver(serverMembersStore, snapshot.server.id.value)
                 }
             LaunchedEffect(serverMembersStore, snapshot.server.id) {
                 bridge.log(
@@ -9759,9 +9757,7 @@ private fun SharedHomeScreen(
                 },
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
-                avatarDiagnosticsLogger = { message ->
-                    bridge.log("shared_home_dm_avatar_row $message")
-                },
+                avatarDiagnosticsLogger = {},
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )

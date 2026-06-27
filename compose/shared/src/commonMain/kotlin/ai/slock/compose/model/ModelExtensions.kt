@@ -206,11 +206,6 @@ data class AvatarSlotResolution(
                 ?: fallbackAvatarWireValue
 }
 
-data class AvatarMergeResolution(
-    val effectiveAvatarWireValue: String?,
-    val gravatarHash: String?
-)
-
 fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
     resolveAvatarSlot(
         kind = kind,
@@ -266,52 +261,6 @@ fun avatarWireValueForRenderedAvatar(
             avatarUrl = null,
             gravatarHash = null
         )
-}
-
-fun resolveMergedAvatarSlot(
-    kind: MemberKind,
-    id: String,
-    currentAvatarWireValue: String?,
-    currentGravatarHash: String? = null,
-    incomingAvatarWireValue: String? = null,
-    incomingAvatarUrl: String? = null,
-    incomingGravatarHash: String? = null
-): AvatarMergeResolution {
-    val cleanCurrentAvatar = currentAvatarWireValue?.takeIf { it.isNotBlank() }
-    val current =
-        resolveAvatarSlot(
-            kind = kind,
-            id = id,
-            avatarWireValue = cleanCurrentAvatar,
-            gravatarHash = currentGravatarHash
-        )
-    val incoming =
-        resolveAvatarSlot(
-            kind = kind,
-            id = id,
-            avatarWireValue = incomingAvatarWireValue,
-            avatarUrl = incomingAvatarUrl,
-            gravatarHash = incomingGravatarHash
-        )
-    if (kind == MemberKind.Agent) {
-        val shouldUseIncoming =
-            cleanCurrentAvatar == null ||
-                cleanCurrentAvatar.isGravatarAvatarWireValue() ||
-                cleanCurrentAvatar.isAgentFallbackAvatarWireValue()
-        return AvatarMergeResolution(
-            effectiveAvatarWireValue =
-                if (shouldUseIncoming) {
-                    incoming.effectiveAvatarWireValue ?: current.effectiveAvatarWireValue
-                } else {
-                    current.effectiveAvatarWireValue
-                },
-            gravatarHash = null
-        )
-    }
-    return AvatarMergeResolution(
-        effectiveAvatarWireValue = current.effectiveAvatarWireValue ?: incoming.effectiveAvatarWireValue,
-        gravatarHash = current.gravatarHash ?: incoming.gravatarHash
-    )
 }
 
 fun resolveAvatarSlot(

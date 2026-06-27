@@ -2729,7 +2729,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun senderProfileEnrichmentReplacesAgentFallbackWithPixelAvatar() = runBlocking {
+    fun senderProfileEnrichmentKeepsMessageAvatarFieldsOwnedByMessageSnapshot() = runBlocking {
         val memberRepository =
             FakeMemberRepository(
                 serverMembers =
@@ -2768,7 +2768,7 @@ class SharedThreadStoreTest {
         val enriched = dataSource.enrichSenderProfiles(payload)
 
         val message = enriched.messages.single()
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
 
@@ -2818,12 +2818,12 @@ class SharedThreadStoreTest {
         val message = enriched.messages.single()
         assertEquals("Agent One", message.authorName)
         assertEquals("agent-one", message.authorHandle)
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
 
     @Test
-    fun cachedHomeDirectMessageAvatarReplacesAgentFallbackAvatar() = runBlocking {
+    fun cachedHomeDirectMessageProfileDoesNotReplaceMessageAvatar() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -2868,7 +2868,7 @@ class SharedThreadStoreTest {
         val enriched = dataSource.enrichCachedSenderProfiles(payload)
 
         val message = enriched.messages.single()
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
 
@@ -4334,7 +4334,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewUsesCachedHomeDirectMessageAvatar() = runBlocking {
+    fun realtimeMessageNewKeepsAvatarFieldsOutOfCachedSenderProfileMerge() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(

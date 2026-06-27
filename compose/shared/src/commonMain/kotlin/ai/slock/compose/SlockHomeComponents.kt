@@ -320,9 +320,7 @@ private fun SlockHomePageContent() {
         }
     val memberAvatarResolver =
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
-            slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId) { message ->
-                bridge.log("home_member_avatar_resolver $message")
-            }
+            slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
         }
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -386,9 +384,7 @@ private fun SlockHomePageContent() {
         },
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
-        avatarDiagnosticsLogger = { message ->
-            bridge.log("home_dm_avatar_row $message")
-        }
+        avatarDiagnosticsLogger = {}
     )
 }
 
