@@ -9,7 +9,6 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.app.PendingIntent
 import android.content.pm.PackageManager
-import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -1383,7 +1382,6 @@ private class SlockKuiklyImageAdapter(
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
-    private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
     private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
@@ -1465,10 +1463,6 @@ internal class SlockKuiklyBridgeModule(
                 socialAuth(params, callback)
                 null
             }
-            "relationalStore" -> {
-                relationalStore(params, callback)
-                null
-            }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
@@ -1533,85 +1527,6 @@ internal class SlockKuiklyBridgeModule(
     private fun kuiklyPerformanceSnapshot(params: String?) {
         SlockAndroidBuglyDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
-
-    private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
-        SlockKuiklyThreadAdapter.execute("relational-store") {
-            val result =
-                    runCatching {
-                        val request = JSONObject(params ?: "{}")
-                        val action = request.optString("action")
-                        val sql = request.optString("sql")
-                        val bindArgs = request.optJSONArray("bindArgs").toSqlBindArgs()
-                        val databaseName =
-                                request.optString("databaseName")
-                                        .takeIf { it.isNotBlank() }
-                                        ?: "slock_shared.db"
-                        val db = database(databaseName)
-                        when (action) {
-                            "query" -> query(db, sql, bindArgs)
-                            else -> {
-                                db.execSQL(sql, bindArgs.toTypedArray())
-                                mapOf("status" to "ok")
-                            }
-                        }
-                    }.getOrElse { throwable ->
-                        mapOf(
-                                "status" to "error",
-                                "code" to -1,
-                                "message" to (throwable.message ?: "relationalStore failed")
-                        )
-                    }
-            callback?.invoke(result)
-        }
-    }
-
-    private fun database(databaseName: String): SQLiteDatabase =
-            databases.getOrPut(databaseName) {
-                appContext.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null)
-            }
-
-    private fun query(
-            db: SQLiteDatabase,
-            sql: String,
-            bindArgs: List<Any?>
-    ): Map<String, Any> {
-        db.rawQuery(sql, bindArgs.map { it?.toString() }.toTypedArray()).use { cursor ->
-            val columns = cursor.columnNames.toList()
-            val rows = mutableListOf<List<Any?>>()
-            while (cursor.moveToNext()) {
-                rows +=
-                        columns.indices.map { index ->
-                            when (cursor.getType(index)) {
-                                android.database.Cursor.FIELD_TYPE_NULL -> null
-                                android.database.Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(index)
-                                android.database.Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(index)
-                                android.database.Cursor.FIELD_TYPE_BLOB ->
-                                        cursor.getBlob(index)?.toString(StandardCharsets.UTF_8)
-                                else -> cursor.getString(index)
-                            }
-                        }
-            }
-            return mapOf("status" to "ok", "columns" to columns, "rows" to rows)
-        }
-    }
-
-    private fun JSONArray?.toSqlBindArgs(): List<Any?> =
-            buildList {
-                if (this@toSqlBindArgs == null) return@buildList
-                for (index in 0 until length()) {
-                    add(
-                            when (val value = opt(index)) {
-                                JSONObject.NULL -> null
-                                is Boolean -> if (value) 1L else 0L
-                                is Int -> value.toLong()
-                                is Long -> value
-                                is Float -> value.toDouble()
-                                is Double -> value
-                                else -> value?.toString()
-                            }
-                    )
-                }
-            }
 
     private fun toast(params: String?): Any? {
         val content = JSONObject(params ?: "{}").optString("content")

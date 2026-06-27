@@ -18,9 +18,6 @@ import platform.posix.getcwd
 import platform.posix.getenv
 import platform.posix.stat
 
-internal actual fun createSlockRelationalStore(bridge: BridgeModule): SlockRelationalStore =
-    SqlDelightRelationalStore(createSlockSqlDatabase(bridge))
-
 internal actual fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase =
     SlockSqlDatabase(
         NativeSqliteDriver(
