@@ -7459,6 +7459,7 @@ private fun ThreadMessagesList(
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             focused = activeFocusedMessageId == message.id,
+                            isMessageListScrolling = listState.isScrollInProgress,
                             alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = payload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
@@ -8423,6 +8424,7 @@ private fun ThreadMessageCard(
     onMentionAuthor: (String) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
+    isMessageListScrolling: Boolean = false,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     captureLongPressAnchor: Boolean = true,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
@@ -8478,6 +8480,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
+                        statusPulsing = !isMessageListScrolling,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -8656,6 +8659,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
+                        statusPulsing = !isMessageListScrolling,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -10338,6 +10342,7 @@ private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
+    statusPulsing: Boolean = true,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -10363,8 +10368,7 @@ private fun ThreadMessageAvatar(
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
-            // Keep Thread rows static while scrolling; global status pulse is preserved elsewhere.
-            statusPulsing = false
+            statusPulsing = status?.pulsing == true && statusPulsing
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
@@ -10380,7 +10384,8 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    status: SlockAgentStatusIndicatorState?
+    status: SlockAgentStatusIndicatorState?,
+    statusPulsing: Boolean = true
 ) {
     val avatarSource =
         remember(avatarWireValue) {
@@ -10396,8 +10401,7 @@ private fun ThreadMessageStaticAvatar(
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
-            // Keep Thread rows static while scrolling; global status pulse is preserved elsewhere.
-            statusPulsing = false
+            statusPulsing = status?.pulsing == true && statusPulsing
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
