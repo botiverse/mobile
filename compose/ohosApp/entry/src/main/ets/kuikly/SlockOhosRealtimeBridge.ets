@@ -17,8 +17,8 @@ export class SlockOhosRealtimeBridge {
     this.hostContext.onPageShow();
   }
 
-  onPageHide(keepAlive: boolean = false): void {
-    this.hostContext.onPageHide(keepAlive);
+  onPageHide(): void {
+    this.hostContext.onPageHide();
   }
 
   disconnectForSessionEnd(reason: string): void {

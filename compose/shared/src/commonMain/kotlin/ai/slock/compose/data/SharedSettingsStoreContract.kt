@@ -126,7 +126,6 @@ class SharedSettingsStoreContract(
                 SharedSettingsIntent.LeaveServer -> MviActionKey(SERVER_ACTION_LEAVE)
                 is SharedSettingsIntent.DeleteServer -> MviActionKey(SERVER_ACTION_DELETE)
                 is SharedSettingsIntent.SetNotificationPreference -> MviActionKey(MOBILE_ACTION_NOTIFICATION_PREFERENCE)
-                is SharedSettingsIntent.SetForegroundKeepAlivePreference -> MviActionKey(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE)
                 is SharedSettingsIntent.SetServerMute -> MviActionKey(MOBILE_ACTION_SERVER_MUTE)
                 is SharedSettingsIntent.SetLocale -> MviActionKey(MOBILE_ACTION_LANGUAGE)
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)

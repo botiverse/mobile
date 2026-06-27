@@ -76,13 +76,8 @@ export class SlockOhosRealtimeHostContext {
     this.sendAppLifecycleEvent('show');
   }
 
-  onPageHide(keepAlive: boolean = false): void {
+  onPageHide(): void {
     Napi.slockRealtimeOnAppHidden();
-    if (keepAlive) {
-      console.info('[SlockOhosRealtime] page_hide_keep_alive socket_retained');
-      this.sendAppLifecycleEvent('hide_keep_alive');
-      return;
-    }
     this.socketIo.suspend('background');
   }
 

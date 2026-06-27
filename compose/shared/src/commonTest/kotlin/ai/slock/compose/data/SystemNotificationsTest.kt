@@ -24,7 +24,6 @@ class SystemNotificationsTest {
         val snapshot = repository.getNotificationPreference()
 
         assertTrue(snapshot.enabled)
-        assertFalse(snapshot.foregroundKeepAliveEnabled)
     }
 
     @Test
@@ -42,26 +41,6 @@ class SystemNotificationsTest {
         assertTrue(restoredEnabled.enabled)
         assertFalse(disabled.enabled)
         assertFalse(restoredDisabled.enabled)
-    }
-
-    @Test
-    fun foregroundKeepAlivePreferenceDefaultsOffAndPersistsSelectedState() = runBlocking {
-        val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
-        )
-
-        val initial = repository.getNotificationPreference()
-        val enabled = repository.setForegroundKeepAliveEnabled(true)
-        val restoredEnabled = repository.getNotificationPreference()
-        val disabled = repository.setForegroundKeepAliveEnabled(false)
-        val restoredDisabled = repository.getNotificationPreference()
-
-        assertFalse(initial.foregroundKeepAliveEnabled)
-        assertTrue(enabled.foregroundKeepAliveEnabled)
-        assertTrue(restoredEnabled.foregroundKeepAliveEnabled)
-        assertFalse(disabled.foregroundKeepAliveEnabled)
-        assertFalse(restoredDisabled.foregroundKeepAliveEnabled)
-        assertTrue(restoredDisabled.enabled)
     }
 
     @Test

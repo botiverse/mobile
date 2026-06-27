@@ -7,7 +7,6 @@ import com.tencent.kuikly.core.pager.Pager
 
 private const val NOTIFICATION_PREFERENCE_EVENT = "slock.notificationPreferenceChanged"
 private const val KEY_ENABLED = "enabled"
-private const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = "foregroundKeepAliveEnabled"
 private const val KEY_SOURCE = "source"
 
 class KuiklyNotificationPreferenceEvents(
@@ -20,13 +19,7 @@ class KuiklyNotificationPreferenceEvents(
     fun addPreferenceListener(onChanged: (NotificationPreferenceSnapshot) -> Unit): CallbackRef =
         module.addNotify(NOTIFICATION_PREFERENCE_EVENT) { data ->
             val enabled = data?.optBoolean(KEY_ENABLED) ?: return@addNotify
-            val foregroundKeepAliveEnabled = data.optBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED)
-            onChanged(
-                NotificationPreferenceSnapshot(
-                    enabled = enabled,
-                    foregroundKeepAliveEnabled = foregroundKeepAliveEnabled
-                )
-            )
+            onChanged(NotificationPreferenceSnapshot(enabled = enabled))
         }
 
     fun removePreferenceListener(callbackRef: CallbackRef) {
@@ -38,7 +31,6 @@ class KuiklyNotificationPreferenceEvents(
             NOTIFICATION_PREFERENCE_EVENT,
             JSONObject()
                 .put(KEY_ENABLED, snapshot.enabled)
-                .put(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, snapshot.foregroundKeepAliveEnabled)
                 .put(KEY_SOURCE, source)
         )
     }
@@ -67,12 +59,6 @@ private class NotifyingNotificationPreferenceRepository(
 
     override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
         val snapshot = delegate.setNotificationEnabled(enabled)
-        events.postPreferenceChanged(snapshot)
-        return snapshot
-    }
-
-    override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
-        val snapshot = delegate.setForegroundKeepAliveEnabled(enabled)
         events.postPreferenceChanged(snapshot)
         return snapshot
     }

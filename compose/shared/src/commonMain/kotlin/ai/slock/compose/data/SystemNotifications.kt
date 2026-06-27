@@ -4,20 +4,15 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.Message
 
 data class NotificationPreferenceSnapshot(
-    val enabled: Boolean,
-    val foregroundKeepAliveEnabled: Boolean = false
+    val enabled: Boolean
 )
 
 const val NOTIFICATION_ENABLED_PREFERENCE_KEY = "notifications:enabled"
-const val NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY = "notifications:foreground_keep_alive_enabled"
 
 interface NotificationPreferenceStore {
     fun readNotificationEnabledSync(): Boolean
-    fun readForegroundKeepAliveEnabledSync(): Boolean
     suspend fun readNotificationEnabled(): Boolean
-    suspend fun readForegroundKeepAliveEnabled(): Boolean
     suspend fun saveNotificationEnabled(enabled: Boolean)
-    suspend fun saveForegroundKeepAliveEnabled(enabled: Boolean)
 }
 
 class KeyValueNotificationPreferenceStore(
@@ -26,51 +21,31 @@ class KeyValueNotificationPreferenceStore(
     override fun readNotificationEnabledSync(): Boolean =
         store.getBoolean(KEY_NOTIFICATION_ENABLED, defaultValue = true)
 
-    override fun readForegroundKeepAliveEnabledSync(): Boolean =
-        store.getBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, defaultValue = false)
-
     override suspend fun readNotificationEnabled(): Boolean =
         readNotificationEnabledSync()
-
-    override suspend fun readForegroundKeepAliveEnabled(): Boolean =
-        readForegroundKeepAliveEnabledSync()
 
     override suspend fun saveNotificationEnabled(enabled: Boolean) {
         store.putBoolean(KEY_NOTIFICATION_ENABLED, enabled)
     }
 
-    override suspend fun saveForegroundKeepAliveEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, enabled)
-    }
-
     private companion object {
         const val KEY_NOTIFICATION_ENABLED = NOTIFICATION_ENABLED_PREFERENCE_KEY
-        const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
     }
 }
 
 interface NotificationPreferenceRepository {
     suspend fun getNotificationPreference(): NotificationPreferenceSnapshot
     suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot
-    suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot
 }
 
 class PersistentNotificationPreferenceRepository(
     private val store: NotificationPreferenceStore
 ) : NotificationPreferenceRepository {
     override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
-        NotificationPreferenceSnapshot(
-            enabled = store.readNotificationEnabled(),
-            foregroundKeepAliveEnabled = store.readForegroundKeepAliveEnabled()
-        )
+        NotificationPreferenceSnapshot(enabled = store.readNotificationEnabled())
 
     override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
         store.saveNotificationEnabled(enabled)
-        return getNotificationPreference()
-    }
-
-    override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
-        store.saveForegroundKeepAliveEnabled(enabled)
         return getNotificationPreference()
     }
 }
