@@ -9,7 +9,6 @@ import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
 
 fun createPriorityHttpClient(
@@ -36,13 +35,7 @@ fun createPriorityHttpClient(
         }
 
         install(ContentNegotiation) {
-            json(
-                Json {
-                    prettyPrint = config.jsonConfig.prettyPrint
-                    isLenient = config.jsonConfig.isLenient
-                    ignoreUnknownKeys = config.jsonConfig.ignoreUnknownKeys
-                }
-            )
+            json(config.jsonConfig.toKtorJson())
         }
 
         defaultRequest {

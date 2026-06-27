@@ -17,9 +17,9 @@ val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-c
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
 val enableKtorOhosFork =
     providers.environmentVariable("SLOCK_ENABLE_KTOR_OHOS_FORK")
-        .map { it == "1" }
+        .map { it.enabledByDefault(true) }
         .orElse(providers.gradleProperty("slock.enableKtorOhosFork").map { it.toBoolean() })
-        .orElse(false)
+        .orElse(true)
 val ktorOhosVersion =
     providers.environmentVariable("SLOCK_KTOR_OHOS_VERSION")
         .orElse("2.3.7-slock-ohos-001")
@@ -51,6 +51,14 @@ fun ohosSqliteProviderLibDir(): File {
         ?.let { return file("$it/ohos-sqlite/ohos-arm64/lib") }
     return rootProject.file("../third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
 }
+
+fun String.enabledByDefault(defaultValue: Boolean): Boolean =
+    when (trim().lowercase()) {
+        "1", "true", "yes", "on" -> true
+        "0", "false", "no", "off" -> false
+        "" -> defaultValue
+        else -> defaultValue
+    }
 
 val prepareOhosSqliteProvider by tasks.registering(Exec::class) {
     val providerScript = rootProject.file("../scripts/prepare_ohos_sqlite_provider.sh")

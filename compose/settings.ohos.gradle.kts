@@ -38,9 +38,19 @@ pluginManagement {
         System.getenv("SLOCK_KTOR_OHOS_VERSION")
             ?.takeIf { it.isNotBlank() }
             ?: "2.3.7-slock-ohos-001"
+    fun String?.enabledByDefault(defaultValue: Boolean): Boolean =
+        when (this?.trim()?.lowercase()) {
+            "1", "true", "yes", "on" -> true
+            "0", "false", "no", "off" -> false
+            null, "" -> defaultValue
+            else -> defaultValue
+        }
     val enableKtorOhosFork =
-        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK") == "1" ||
-            providers.gradleProperty("slock.enableKtorOhosFork").orNull.toBoolean()
+        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK")
+            .enabledByDefault(
+                providers.gradleProperty("slock.enableKtorOhosFork").orNull
+                    .enabledByDefault(true)
+            )
     val needsStately =
         !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||

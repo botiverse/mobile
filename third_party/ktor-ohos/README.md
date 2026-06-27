@@ -140,11 +140,14 @@ The current Slock patch has successfully published the root KMP metadata and
 After publishing, validate Slock's OHOS classpath with:
 
 ```bash
-SLOCK_ENABLE_KTOR_OHOS_FORK=1 \
 SLOCK_KTOR_OHOS_VERSION=2.3.7-slock-ohos-001 \
 ./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64 \
   --no-daemon --console=plain
 ```
+
+The OHOS build enables this fork by default because shared network code now
+depends on Ktor. Set `SLOCK_ENABLE_KTOR_OHOS_FORK=0` only for explicit
+diagnostic opt-out builds.
 
 ## Rejected 3.3 Reference Path
 
@@ -172,24 +175,29 @@ not as Slock's current build input.
 Current state:
 
 - Android main build uses Ktor `2.3.7`.
-- OHOS build can optionally consume Slock's local Ktor `2.3.7` OHOS fork via
-  `SLOCK_ENABLE_KTOR_OHOS_FORK=1`.
-- Android Kuikly networking already calls Ktor internally from the host module.
-- OHOS Kuikly networking currently uses ArkTS `@kit.NetworkKit`.
+- OHOS build consumes Slock's local Ktor `2.3.7` OHOS fork by default and
+  auto-prepares/publishes missing local Ktor artifacts from
+  `scripts/prepare_ktor_ohos_fork.sh`.
+- `SlockSharedStoreProvider` now creates the common
+  `SharedKtorSlockNetworkClient` / `SharedKtorSlockAuthTransport` path for
+  product API traffic, auth/login, token refresh, raw requests, and byte-backed
+  multipart uploads.
+- Platform source only selects Ktor engines (`OkHttp` on Android, `CIO` on
+  OHOS). Business REST routing lives in shared code.
+- The Kuikly `HRSlockNetworkModule` path remains as a native fallback only for
+  upload payloads where `MultipartFile.fileRef` is present and `bytes` is
+  empty, because those refs are host-owned handles that common Ktor cannot
+  dereference directly.
 - iOS has no completed network host module yet.
 
-Recommended sequence:
+Validation sequence:
 
 1. Prepare and publish the Slock Ktor OHOS fork to `mavenLocal` using the
    script above.
-2. Enable the Slock OHOS Gradle hook with
-   `SLOCK_ENABLE_KTOR_OHOS_FORK=1` only for Ktor spike builds.
-3. Add a small shared KMP `KtorSlockNetworkTransport` and verify JSON
-   GET/POST/PATCH/DELETE, timeout, cancellation, and auth refresh.
-4. Add multipart/fileRef support after JSON traffic is stable.
-5. Migrate Android and OHOS from per-host HTTP implementations to the shared
-   Ktor transport only after focused smoke tests pass.
-
-Do not switch Android release builds away from the existing host-network path
-in the same commit as the OHOS smoke. Android should keep its current path
-until the shared transport is validated.
+2. Run `./gradlew :shared:compileDebugKotlinAndroid --no-daemon --console=plain`.
+3. Run `./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
+   --no-daemon --console=plain`.
+4. Run focused shared auth/network tests, especially
+   `SharedKtorSlockNetworkClientTest`, `SlockNetworkAuthMiddlewareTest`,
+   `AuthDataSourceTest`, `SlockRequestSchedulerTest`, and
+   `SlockApiClientContractTest`.
