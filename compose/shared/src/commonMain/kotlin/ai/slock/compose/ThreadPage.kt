@@ -599,18 +599,29 @@ internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
+internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
+    selectedMemberId: String,
+    selectedMemberKind: MemberKind? = null
+): JSONObject? {
     val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
     return JSONObject().apply {
         put("pageName", MEMBER_DETAIL_PAGE)
         put("instanceId", "thread-member-detail-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected")
         put("memberId", selected)
+        selectedMemberKind?.let { put("memberKind", it.toThreadMemberDetailKindWireValue()) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
         put("timeFormat", timeFormat)
     }
 }
+
+private fun MemberKind.toThreadMemberDetailKindWireValue(): String =
+    when (this) {
+        MemberKind.Agent -> "agent"
+        MemberKind.Human -> "human"
+        MemberKind.System -> "system"
+    }
 
 private fun KuiklyThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
     (listOfNotNull(originMessage) + messages)
@@ -1456,7 +1467,10 @@ private fun ThreadPageScreen() {
             routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
         onOpenMemberProfile = { currentPayload, timelineSlice, memberId ->
-            val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
+            val authorProfile =
+                timelineSlice.findThreadAuthorProfile(memberId)
+                    ?: currentPayload.findThreadAuthorProfile(memberId)
+            val pageData = currentPayload.toThreadMemberDetailPageData(memberId, authorProfile?.kind)
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
                 bridge.logWarn(
@@ -1464,7 +1478,7 @@ private fun ThreadPageScreen() {
                     "instanceId=${currentPayload.instanceId}"
                 )
             } else {
-                timelineSlice.findThreadAuthorProfile(memberId)
+                authorProfile
                     ?.toThreadCandidateAgentDetailSnapshot()
                     ?.let { candidate ->
                         val agentDetailStore = SlockSharedStoreRegistry.get(pager, bridge).agentDetailStore

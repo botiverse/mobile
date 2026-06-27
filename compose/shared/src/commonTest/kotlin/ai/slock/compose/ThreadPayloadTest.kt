@@ -4510,7 +4510,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMemberDetailPageDataCarriesMemberIdentityOnly() {
+    fun threadMemberDetailPageDataCarriesMemberIdentityAndExpectedKindOnly() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-1",
@@ -4521,12 +4521,14 @@ class ThreadPayloadTest {
                 timeFormat = SlockTimeFormat12Hour
             )
 
-        val pageData = payload.toThreadMemberDetailPageData("agent_android")!!
+        val pageData = payload.toThreadMemberDetailPageData("human-artin", MemberKind.Human)!!
 
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
-        assertEquals("agent_android", pageData.optString("memberId"))
-        assertEquals("thread-member-detail-thread-1-agent_android", pageData.optString("instanceId"))
+        assertEquals("human-artin", pageData.optString("memberId"))
+        assertEquals("human", pageData.optString("memberKind"))
+        assertEquals("thread-member-detail-thread-1-human-artin", pageData.optString("instanceId"))
         assertEquals("", pageData.optString("members"))
+        assertEquals("", pageData.optString("profile"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20623", pageData.optString("todayEpochDay"))
         assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
