@@ -366,11 +366,10 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
 }
 
 internal fun KuiklyThreadFileItem.threadFileHasSourceTarget(): Boolean =
-    messageId.isNotBlank() &&
-        (
-            sourceType.equals("thread", ignoreCase = true).not() ||
-                sourceParentMessageId.isNotBlank()
-        )
+    threadFileSourceFocusMessageId() != null
+
+internal fun KuiklyThreadFileItem.threadFileSourceFocusMessageId(): String? =
+    messageId.takeIf { it.isNotBlank() }
 
 @Composable
 private fun ThreadFileIconActionButton(

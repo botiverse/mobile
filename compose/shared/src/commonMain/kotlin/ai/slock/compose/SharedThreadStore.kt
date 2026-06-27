@@ -1978,6 +1978,8 @@ internal sealed interface SharedThreadIntent {
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyChannelJoined(val channelId: String) : SharedThreadIntent
+    data class SelectTab(val tab: String) : SharedThreadIntent
+    data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
         val members: List<KuiklyThreadMemberItem>,
@@ -2068,6 +2070,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyChannelJoined,
+            is SharedThreadIntent.SelectTab,
+            is SharedThreadIntent.FocusMessage,
             is SharedThreadIntent.ApplyMembersPatch,
             is SharedThreadIntent.SetAddMemberStatus,
             is SharedThreadIntent.SetRemoveMemberStatus,
@@ -2126,6 +2130,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
+            is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
             is SharedThreadIntent.SetRemoveMemberStatus ->
@@ -3038,6 +3044,21 @@ internal class SharedThreadStore(
             it.copy(
                 canLoadMoreBefore = canLoadMoreBefore,
                 canLoadMoreAfter = canLoadMoreAfter
+            )
+        }
+    }
+
+    private fun selectTab(tab: String) {
+        val normalizedTab = tab.takeIf { it.isNotBlank() } ?: return
+        reducePayloadPatch { it.copy(selectedTab = normalizedTab) }
+    }
+
+    private fun focusMessage(messageId: String, switchToTab: String?) {
+        val normalizedMessageId = messageId.takeIf { it.isNotBlank() } ?: return
+        reducePayloadPatch {
+            it.copy(
+                selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
+                focusedMessageId = normalizedMessageId
             )
         }
     }
