@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Intent
 import android.app.PendingIntent
 import android.content.pm.PackageManager
@@ -19,9 +20,11 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.util.LruCache
@@ -92,6 +95,7 @@ import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -1423,6 +1427,14 @@ internal class SlockKuiklyBridgeModule(
                 copyToPasteboard(params)
                 null
             }
+            "exportThreadShareImage" -> {
+                exportThreadShareImage(params, callback)
+                null
+            }
+            "saveThreadShareImage" -> {
+                saveThreadShareImage(params, callback)
+                null
+            }
             "reportRealTime", "reportRealtime" -> {
                 reportRealtime(params)
                 null
@@ -1541,6 +1553,145 @@ internal class SlockKuiklyBridgeModule(
         if (content.isBlank()) return
         val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Raft", content))
+    }
+
+    private fun exportThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
+        val hostActivity = activity as? SlockKuiklyActivity
+        if (hostActivity == null) {
+            callback?.invoke(mapOf("status" to "failed", "message" to "Image export unavailable"))
+            return
+        }
+        val request = JSONObject(params ?: "{}")
+        hostActivity.runOnUiThread {
+            callback?.invoke(captureThreadShareImage(hostActivity, request))
+        }
+    }
+
+    private fun captureThreadShareImage(hostActivity: SlockKuiklyActivity, request: JSONObject): Map<String, Any> {
+        val container =
+                hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                        ?: return mapOf("status" to "failed", "message" to "Thread view unavailable")
+        if (container.width <= 0 || container.height <= 0) {
+            return mapOf("status" to "failed", "message" to "Thread view is not ready")
+        }
+        val requestedX = request.optDouble("x", 0.0).roundToInt()
+        val requestedY = request.optDouble("y", 0.0).roundToInt()
+        val requestedWidth = request.optDouble("width", 0.0).roundToInt()
+        val requestedHeight = request.optDouble("height", 0.0).roundToInt()
+        val left = requestedX.coerceIn(0, container.width - 1)
+        val top = requestedY.coerceIn(0, container.height - 1)
+        val width =
+                if (requestedWidth > 0) {
+                    requestedWidth.coerceAtMost(container.width - left)
+                } else {
+                    container.width - left
+                }.coerceAtLeast(1)
+        val height =
+                if (requestedHeight > 0) {
+                    requestedHeight.coerceAtMost(container.height - top)
+                } else {
+                    container.height - top
+                }.coerceAtLeast(1)
+        val bitmap =
+                runCatching {
+                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
+                        val canvas = Canvas(output)
+                        canvas.drawColor(Color.WHITE)
+                        canvas.translate(-left.toFloat(), -top.toFloat())
+                        container.draw(canvas)
+                    }
+                }.getOrElse {
+                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                }
+        val exportDir = threadShareImageCacheDir()
+        if (!exportDir.exists() && !exportDir.mkdirs()) {
+            bitmap.recycle()
+            return mapOf("status" to "failed", "message" to "Storage unavailable")
+        }
+        cleanupThreadShareImageCache(exportDir)
+        val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}.png")
+        val saved =
+                runCatching {
+                    file.outputStream().use { output ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                    }
+                }.getOrDefault(false)
+        bitmap.recycle()
+        if (!saved || !file.exists() || file.length() <= 0L) {
+            return mapOf("status" to "failed", "message" to "Unable to write image")
+        }
+        val uri =
+                runCatching {
+                    FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
+                }.getOrElse {
+                    return mapOf("status" to "failed", "message" to "Unable to expose image")
+                }
+        return mapOf(
+                "status" to "ok",
+                "uri" to uri.toString(),
+                "path" to file.absolutePath,
+                "fileName" to file.name,
+                "mimeType" to "image/png",
+                "width" to width,
+                "height" to height
+        )
+    }
+
+    private fun saveThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
+        SlockKuiklyThreadAdapter.execute("thread-share-image-save") {
+            val request = JSONObject(params ?: "{}")
+            callback?.invoke(saveThreadShareImageFile(request))
+        }
+    }
+
+    private fun saveThreadShareImageFile(request: JSONObject): Map<String, Any> {
+        val source = File(request.optString("path"))
+        if (!source.exists() || source.length() <= 0L) {
+            return mapOf("status" to "failed", "message" to "Image file unavailable")
+        }
+        val displayName = "raft-message-share-${System.currentTimeMillis()}.png"
+        val resolver = appContext.contentResolver
+        val values =
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Raft")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+        val uri =
+                resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        ?: return mapOf("status" to "failed", "message" to "Unable to save image")
+        val copied =
+                runCatching {
+                    resolver.openOutputStream(uri)?.use { output ->
+                        FileInputStream(source).use { input -> input.copyTo(output) }
+                    } != null
+                }.getOrDefault(false)
+        if (!copied) {
+            runCatching { resolver.delete(uri, null, null) }
+            return mapOf("status" to "failed", "message" to "Unable to save image")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
+        return mapOf(
+                "status" to "ok",
+                "uri" to uri.toString(),
+                "message" to "Image saved to Pictures/Raft"
+        )
+    }
+
+    private fun threadShareImageCacheDir(): File = File(appContext.cacheDir, THREAD_SHARE_IMAGE_CACHE_DIR_NAME)
+
+    private fun cleanupThreadShareImageCache(cacheDir: File) {
+        val now = System.currentTimeMillis()
+        cacheDir.listFiles()
+                ?.filter { file -> now - file.lastModified() > THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS }
+                ?.forEach { file -> runCatching { file.delete() } }
     }
 
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
@@ -2685,6 +2836,8 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
+        private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
+        private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
         private const val ATTACHMENT_DOWNLOAD_EVENT_NAME = "slock.attachmentDownloadProgress"
     }

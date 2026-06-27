@@ -288,6 +288,32 @@ internal class BridgeModule : Module() {
         callNativeMethod("openUrl", methodArgs, null)
     }
 
+    suspend fun exportThreadShareImage(
+        x: Float?,
+        y: Float?,
+        width: Float?,
+        height: Float?
+    ): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("x", x ?: 0f)
+            methodArgs.put("y", y ?: 0f)
+            methodArgs.put("width", width ?: 0f)
+            methodArgs.put("height", height ?: 0f)
+            callNativeMethod("exportThreadShareImage", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
+    suspend fun saveThreadShareImage(path: String): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("path", path)
+            callNativeMethod("saveThreadShareImage", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
     suspend fun openAttachment(
         url: String,
         attachmentId: String,
