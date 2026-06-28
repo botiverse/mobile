@@ -362,7 +362,14 @@ class SharedServerMembersStore(
                     slice
                 }
             }
-        if (!changed && !channelChanged && nextPresenceFacts == current.presenceByMemberId) return
+        val factChanged = nextPresenceFacts != current.presenceByMemberId
+        if (!changed && !channelChanged && !factChanged) return
+        logger(
+            "shared_server_members_presence_apply memberId=$memberId " +
+                "presence=${event.presence} agentStatus=${event.agentStatus?.name.orEmpty()} " +
+                "statusLabel=${event.statusLabel.orEmpty()} serverSeq=${event.serverSeq ?: -1L} " +
+                "factChanged=$factChanged rosterChanged=$changed channelSliceChanged=$channelChanged"
+        )
         _state.value =
             current.copy(
                 entriesByServerId = nextEntries,

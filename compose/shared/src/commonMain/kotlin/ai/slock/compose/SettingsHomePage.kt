@@ -9646,6 +9646,7 @@ private fun SharedHomeScreen(
                 },
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                diagnosticsLogger = bridge::log,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )

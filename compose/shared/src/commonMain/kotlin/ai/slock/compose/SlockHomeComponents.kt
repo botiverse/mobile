@@ -372,7 +372,8 @@ private fun SlockHomePageContent() {
             bridge.settingsEvent(payload.instanceId, "archiveChannel", conversationId)
         },
         agentStatusResolver = agentStatusResolver,
-        memberAvatarResolver = memberAvatarResolver
+        memberAvatarResolver = memberAvatarResolver,
+        diagnosticsLogger = bridge::log
     )
 }
 
@@ -593,6 +594,7 @@ internal fun SlockStructuralHomeShell(
     onArchiveChannel: (String) -> Unit = {},
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
@@ -630,6 +632,21 @@ internal fun SlockStructuralHomeShell(
         if (activeId != null && channels.none { it.id == activeId } && directMessages.none { it.id == activeId }) {
             activePinMenuConversationId = null
         }
+    }
+    LaunchedEffect(currentServerId, directMessages) {
+        val sample =
+            directMessages
+                .take(6)
+                .joinToString(separator = ";") { dm ->
+                    "id=${dm.id.take(36)}:" +
+                        "peer=${dm.peerType.orEmpty()}:" +
+                        "member=${dm.presenceMemberId.orEmpty()}"
+                }
+        diagnosticsLogger(
+            "shared_home_dm_status_rows serverId=$currentServerId " +
+                "count=${directMessages.size} agentRows=${directMessages.count { it.peerType?.equals("agent", ignoreCase = true) == true }} " +
+                "withMemberId=${directMessages.count { !it.presenceMemberId.isNullOrBlank() }} sample=$sample"
+        )
     }
     // #211 React parity (revised by @artin 23:38): pinned rows are
     // shown alongside the original section copy, not deduped. The user

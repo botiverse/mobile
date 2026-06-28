@@ -431,7 +431,9 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
     is TaskUpdated -> "taskId=${task.id.value}"
     is TaskDeleted -> "taskId=${taskId.value}"
     is MemberPresenceUpdated ->
-        "memberId=${memberId.value} presence=$presence kind=${kind?.name.orEmpty()}"
+        "memberId=${memberId.value} presence=$presence kind=${kind?.name.orEmpty()} " +
+            "agentStatus=${agentStatus?.name.orEmpty()} statusLabel=${statusLabel.orEmpty()} " +
+            "serverSeq=${serverSeq ?: -1L} activityEntries=${activityEntries.size}"
     is RealtimeRefreshRequired ->
         "scope=$scope reason=$reason serverId=${serverId?.value.orEmpty()} channelId=${channelId?.value.orEmpty()} memberId=${memberId?.value.orEmpty()} subjectId=${subjectId.orEmpty()}"
     is ServerMembershipRemoved -> "serverId=${serverId.value}"
