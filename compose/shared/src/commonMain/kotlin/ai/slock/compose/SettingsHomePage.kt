@@ -9861,10 +9861,11 @@ private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsAttachmentUploadFile()
         bytes = bytes
     )
 
-private fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
-    message.ifBlank {
-        "## Raft feedback\n\n<!-- Describe what happened here. -->\n\n## Diagnostics\n\nSanitized diagnostics are attached."
-    }
+internal const val DiagnosticsFeedbackComposerSeedText: String =
+    "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->"
+
+internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
+    DiagnosticsFeedbackComposerSeedText
 
 private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
     draft: SettingsDiagnosticsFeedbackDraft

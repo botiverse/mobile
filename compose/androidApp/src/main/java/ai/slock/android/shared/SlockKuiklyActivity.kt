@@ -2408,7 +2408,7 @@ internal class SlockKuiklyBridgeModule(
         SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
         return mapOf(
                 "status" to "ok",
-                "message" to buildFeedbackText(diagnosticsFile.name, diagnostics.summaryText),
+                "message" to buildDiagnosticsChannelFeedbackMessage(),
                 "fileName" to diagnosticsFile.name,
                 "mimeType" to diagnosticsFeedbackMimeType(diagnosticsFile),
                 "sizeBytes" to bytes.size.toLong(),
@@ -2431,6 +2431,13 @@ internal class SlockKuiklyBridgeModule(
             when (file.extension.lowercase()) {
                 "zip" -> "application/zip"
                 else -> "text/plain"
+            }
+
+    private fun buildDiagnosticsChannelFeedbackMessage(): String =
+            buildString {
+                appendLine("Diagnostics zip attached.")
+                appendLine()
+                append("<!-- Describe what happened here. -->")
             }
 
     private fun buildMergedSettingsDiagnosticsExportText(): String {

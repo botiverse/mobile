@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.SettingsDiagnosticsFeedbackDraft
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,5 +79,27 @@ class ThreadComposerLayoutTest {
         assertEquals(listOf(listOf("image", "report"), listOf("logs", "trace")), rows.map { row -> row.map { it.id } })
         assertEquals(64, rows.first().first().composerAttachmentPreviewWidthDp())
         assertEquals(128, rows.first()[1].composerAttachmentPreviewWidthDp())
+    }
+
+    @Test
+    fun diagnosticsFeedbackComposerMessageDoesNotInlineDiagnosticsText() {
+        val draft =
+            SettingsDiagnosticsFeedbackDraft(
+                message =
+                    """
+                    ## Diagnostics
+
+                    App, device, server, and recent logs should stay in the zip attachment.
+                    """.trimIndent(),
+                fileName = "slock-feedback.zip",
+                mimeType = "application/zip",
+                sizeBytes = 12L,
+                bytes = byteArrayOf(1, 2, 3)
+            )
+
+        assertEquals(
+            "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->",
+            draft.diagnosticsComposerMessage()
+        )
     }
 }
