@@ -24,9 +24,15 @@ class SessionRealtimeRepository(
                 runBlocking {
                     val refreshed =
                         if (reason == "connect_error") {
-                            tokenProvider.refreshSession(failedAccessToken = store.readSession()?.accessToken)
+                            tokenProvider.refreshSession(
+                                failedAccessToken = store.readSession()?.accessToken,
+                                clearOnUnauthorized = false
+                            )
                         } else {
-                            tokenProvider.currentSession(refreshIfExpiringSoon = true)
+                            tokenProvider.currentSession(
+                                refreshIfExpiringSoon = true,
+                                clearOnUnauthorized = false
+                            )
                         }
                     refreshed?.toRealtimeAuthForSelectedServer()
                 }
@@ -38,7 +44,10 @@ class SessionRealtimeRepository(
         val session = if (tokenProvider != null) {
             store.readSession()
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-            tokenProvider.currentSession(refreshIfExpiringSoon = true)
+            tokenProvider.currentSession(
+                refreshIfExpiringSoon = true,
+                clearOnUnauthorized = false
+            )
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_refresh_failed", requiredCapability = "auth_session"))
         } else {
             store.readSession()

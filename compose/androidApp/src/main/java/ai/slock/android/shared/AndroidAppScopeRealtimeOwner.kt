@@ -140,7 +140,11 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeConnectJob =
             scope.launch {
                 try {
-                    var session = tokenProvider.currentSession(refreshIfExpiringSoon = true)
+                    var session =
+                        tokenProvider.currentSession(
+                            refreshIfExpiringSoon = true,
+                            clearOnUnauthorized = false
+                        )
                     var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockDiagnosticsLogger.w(
@@ -149,7 +153,11 @@ internal object AndroidAppScopeRealtimeOwner {
                         )
                         if (missingSelectedServerRetryCount < 1) {
                             delay(1500L)
-                            session = tokenProvider.currentSession(refreshIfExpiringSoon = true)
+                            session =
+                                tokenProvider.currentSession(
+                                    refreshIfExpiringSoon = true,
+                                    clearOnUnauthorized = false
+                                )
                             serverId = session?.currentServerId?.let(::ServerId)
                             if (serverId == null) {
                                 SlockDiagnosticsLogger.w(

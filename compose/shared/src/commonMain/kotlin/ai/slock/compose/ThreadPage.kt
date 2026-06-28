@@ -408,6 +408,20 @@ internal fun threadHeaderDisplayTitle(
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
 
+internal enum class StandaloneThreadAuthRequiredAction {
+    PreserveSession,
+    OpenLogin
+}
+
+internal fun standaloneThreadAuthRequiredAction(
+    session: StoredAuthSession?
+): StandaloneThreadAuthRequiredAction =
+    if (session == null) {
+        StandaloneThreadAuthRequiredAction.OpenLogin
+    } else {
+        StandaloneThreadAuthRequiredAction.PreserveSession
+    }
+
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
@@ -1429,11 +1443,28 @@ private fun ThreadPageScreen() {
         },
         onAuthRequired = { code ->
             bridge.logWarn("thread_auth_required code=$code route=standalone instanceId=${payload.instanceId}")
-            bridge.toast("Session expired")
             threadPageCoroutineScope.launch {
-                authStore.clearSession()
+                val session =
+                    runCatchingPreservingCancellation { authStore.readSession() }
+                        .getOrNull()
+                when (standaloneThreadAuthRequiredAction(session)) {
+                    StandaloneThreadAuthRequiredAction.PreserveSession -> {
+                        bridge.logWarn(
+                            "thread_auth_required_session_preserved code=$code " +
+                                "route=standalone instanceId=${payload.instanceId} " +
+                                "serverId=${session?.currentServerId.orEmpty()}"
+                        )
+                        bridge.toast("Unable to load thread. Try again.")
+                    }
+                    StandaloneThreadAuthRequiredAction.OpenLogin -> {
+                        bridge.toast("Session expired")
+                        routerModule.openPage(
+                            LOGIN_PAGE,
+                            JSONObject().apply { put("pageName", LOGIN_PAGE) }
+                        )
+                    }
+                }
             }
-            routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
         onOpenMemberProfile = { currentPayload, timelineSlice, memberId ->
             val authorProfile =

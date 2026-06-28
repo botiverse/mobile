@@ -82,6 +82,79 @@ class SharedAuthTokenProviderTest {
         )
     }
 
+    @Test
+    fun preservesSessionWhenRefreshTokenIsUnauthorizedAndClearDisabled() = runBlocking {
+        val warnings = mutableListOf<String>()
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "preserve-access", refreshToken = "preserve-refresh")
+            )
+        val provider =
+            SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi =
+                    FakeAuthApi(
+                        refreshTokenAssertion = "preserve-refresh",
+                        responses =
+                            listOf(
+                                AuthApiResult.Failure(code = 401, errorBodyText = """{"error":"invalid refresh"}""")
+                            )
+                    ),
+                clockMillis = { 0L },
+                warningLogger = warnings::add
+            )
+
+        assertNull(
+            provider.refreshSession(
+                failedAccessToken = "preserve-access",
+                clearOnUnauthorized = false
+            )
+        )
+        assertEquals("preserve-access", store.readSession()?.accessToken)
+        assertEquals(
+            listOf(
+                "refresh_failed status=401",
+                "refresh_unauthorized_session_preserved"
+            ),
+            warnings
+        )
+    }
+
+    @Test
+    fun preservesSessionWhenRefreshTokenIsMissingAndClearDisabled() = runBlocking {
+        val warnings = mutableListOf<String>()
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "old-access", refreshToken = "")
+            )
+        val provider =
+            SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi =
+                    FakeAuthApi(
+                        refreshTokenAssertion = "unused",
+                        responses = emptyList()
+                    ),
+                clockMillis = { 0L },
+                warningLogger = warnings::add
+            )
+
+        assertNull(
+            provider.currentSession(
+                refreshIfExpiringSoon = true,
+                clearOnUnauthorized = false
+            )
+        )
+        assertEquals("old-access", store.readSession()?.accessToken)
+        assertEquals(
+            listOf(
+                "refresh_skip reason=missing_refresh_token",
+                "refresh_missing_refresh_token_session_preserved"
+            ),
+            warnings
+        )
+    }
+
     private class FakeAuthApi(
         private val refreshTokenAssertion: String,
         private val responses: List<AuthApiResult<AuthRefreshResponse>>,

@@ -630,6 +630,29 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneThreadAuthRequiredPreservesExistingSession() {
+        val session =
+            StoredAuthSession(
+                user =
+                    StoredAuthUser(
+                        id = "user-artin",
+                        email = "artin@example.com"
+                    ),
+                accessToken = "access-token",
+                refreshToken = "refresh-token"
+            )
+
+        assertEquals(
+            StandaloneThreadAuthRequiredAction.PreserveSession,
+            standaloneThreadAuthRequiredAction(session)
+        )
+        assertEquals(
+            StandaloneThreadAuthRequiredAction.OpenLogin,
+            standaloneThreadAuthRequiredAction(null)
+        )
+    }
+
+    @Test
     fun threadMessagesLazyItemCountTracksScrollableRows() {
         assertEquals(
             4,

@@ -164,6 +164,35 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun repositoryPreservesSessionWhenRealtimeRefreshIsUnauthorized() {
+        val transport = FakeRealtimeSocketTransport()
+        val store =
+            InMemoryAuthSessionStore(
+                sampleSession.copy(
+                    accessToken = "unauthorized-opaque-access",
+                    refreshToken = "unauthorized-refresh"
+                )
+            )
+        val repository = SessionRealtimeRepository(
+            store = store,
+            client = SocketIoRealtimeClient(transport),
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = FakeAuthApi(refreshFailureCode = 401),
+                clockMillis = { 0L },
+                logger = {},
+                warningLogger = {}
+            )
+        )
+
+        val result = runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+
+        assertTrue(result is DataResult.NoPermission)
+        assertTrue(transport.lastAuth.isEmpty())
+        assertEquals("unauthorized-opaque-access", store.session?.accessToken)
+    }
+
+    @Test
     fun clientMapsHeartbeatResumeMessagesAndJoinChannel() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
@@ -930,6 +959,7 @@ class RealtimeRepositoryTest {
 
     private class FakeAuthApi(
         private val refreshFailure: Throwable? = null,
+        private val refreshFailureCode: Int? = null,
         private val responses: List<AuthRefreshResponse> = listOf(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
     ) : SlockAuthApi {
         private var refreshIndex = 0
@@ -953,6 +983,7 @@ class RealtimeRepositoryTest {
 
         override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
             refreshFailure?.let { throw it }
+            refreshFailureCode?.let { return AuthApiResult.Failure(it) }
             val response = responses.getOrElse(refreshIndex) { responses.last() }
             refreshIndex += 1
             return AuthApiResult.Success(response)

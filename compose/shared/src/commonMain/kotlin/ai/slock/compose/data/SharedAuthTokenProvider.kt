@@ -19,17 +19,26 @@ class SharedAuthTokenProvider(
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : AuthTokenProvider {
-    suspend fun currentSession(refreshIfExpiringSoon: Boolean = true): StoredAuthSession? {
+    suspend fun currentSession(
+        refreshIfExpiringSoon: Boolean = true,
+        clearOnUnauthorized: Boolean = true
+    ): StoredAuthSession? {
         val current = sessionStore.readSession() ?: return null
         if (!refreshIfExpiringSoon) return current
         val expiresAt = current.accessToken.jwtExpiresAtMillis()
         val shouldRefresh = expiresAt == null || expiresAt - clockMillis() <= refreshSoonThresholdMillis
         if (!shouldRefresh) return current
         logger("refresh_proactive_start reason=${if (expiresAt == null) "missing_exp" else "near_expiry"}")
-        return refreshSession(failedAccessToken = current.accessToken)
+        return refreshSession(
+            failedAccessToken = current.accessToken,
+            clearOnUnauthorized = clearOnUnauthorized
+        )
     }
 
-    suspend fun refreshSession(failedAccessToken: String?): StoredAuthSession? =
+    suspend fun refreshSession(
+        failedAccessToken: String?,
+        clearOnUnauthorized: Boolean = true
+    ): StoredAuthSession? =
         processRefreshMutex.withLock {
             val current = sessionStore.readSession() ?: return@withLock null
             if (
@@ -43,9 +52,23 @@ class SharedAuthTokenProvider(
             val refreshToken = current.refreshToken.takeIf { it.isNotBlank() }
                 ?: run {
                     warningLogger("refresh_skip reason=missing_refresh_token")
-                    sessionStore.clearSession()
+                    if (clearOnUnauthorized) {
+                        sessionStore.clearSession()
+                    } else {
+                        warningLogger("refresh_missing_refresh_token_session_preserved")
+                    }
                     return@withLock null
                 }
+            if (
+                !clearOnUnauthorized &&
+                recentPreservedUnauthorizedFailure?.matches(
+                    current,
+                    nowMillis = clockMillis()
+                ) == true
+            ) {
+                warningLogger("refresh_skip reason=recent_unauthorized_session_preserved")
+                return@withLock null
+            }
 
             logger("refresh_start")
             when (val response = authApi.refresh(refreshToken)) {
@@ -56,6 +79,9 @@ class SharedAuthTokenProvider(
                             refreshToken = response.data.refreshToken
                         )
                     sessionStore.saveSession(updated)
+                    if (recentPreservedUnauthorizedFailure?.matchesTokens(current) == true) {
+                        recentPreservedUnauthorizedFailure = null
+                    }
                     logger("refresh_success")
                     updated
                 }
@@ -63,8 +89,19 @@ class SharedAuthTokenProvider(
                     val code = response.code
                     warningLogger("refresh_failed status=$code")
                     if (code == 401 || code == 403) {
-                        sessionStore.clearSession()
-                        warningLogger("refresh_unauthorized_session_cleared")
+                        if (clearOnUnauthorized) {
+                            sessionStore.clearSession()
+                            recentPreservedUnauthorizedFailure = null
+                            warningLogger("refresh_unauthorized_session_cleared")
+                        } else {
+                            recentPreservedUnauthorizedFailure =
+                                PreservedUnauthorizedFailure(
+                                    accessToken = current.accessToken,
+                                    refreshToken = current.refreshToken,
+                                    failedAtMillis = clockMillis()
+                                )
+                            warningLogger("refresh_unauthorized_session_preserved")
+                        }
                     }
                     null
                 }
@@ -91,8 +128,25 @@ class SharedAuthTokenProvider(
     private companion object {
         const val DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS = 60_000L
         val processRefreshMutex = Mutex()
+        var recentPreservedUnauthorizedFailure: PreservedUnauthorizedFailure? = null
     }
 }
+
+private data class PreservedUnauthorizedFailure(
+    val accessToken: String,
+    val refreshToken: String,
+    val failedAtMillis: Long
+) {
+    fun matches(session: StoredAuthSession, nowMillis: Long): Boolean =
+        matchesTokens(session) &&
+            nowMillis - failedAtMillis in 0..PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS
+
+    fun matchesTokens(session: StoredAuthSession): Boolean =
+        accessToken == session.accessToken &&
+            refreshToken == session.refreshToken
+}
+
+private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L
 
 @OptIn(ExperimentalEncodingApi::class)
 private fun String.jwtExpiresAtMillis(): Long? {
