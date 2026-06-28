@@ -97,6 +97,7 @@ class SlockThreadWebLinkTargetTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("channel-123", payload.sourceThreadId)
         assertEquals("channel-123", payload.streamChannelId)
+        assertEquals("message-456", payload.focusedMessageId)
         assertEquals(null, payload.originParentMessageId)
         assertEquals("none", payload.originStatus)
         assertEquals(
@@ -104,5 +105,33 @@ class SlockThreadWebLinkTargetTest {
             payload.resolveThreadComposer(displayName = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)).placeholder
         )
         assertEquals(false, payload.resolveThreadComposer().enabled)
+    }
+
+    @Test
+    fun webLinkLoadingPayloadUsesReplyRouteForThreadPermalink() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                title = "Thread",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                canSend = true
+            ).webLinkLoadingPayload(
+                SlockThreadWebLinkTarget(
+                    channelId = "channel-123",
+                    messageId = "reply-456",
+                    routeKind = KuiklyThreadSurfaceKind.Channel,
+                    threadParentMessageId = "parent-789"
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(null, payload.sourceThreadId)
+        assertEquals(null, payload.streamChannelId)
+        assertEquals("channel-123", payload.parentChannelId)
+        assertEquals("parent-789", payload.parentMessageId)
+        assertEquals("parent-789", payload.originParentMessageId)
+        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals("loading", payload.originStatus)
+        assertEquals("parent-789", payload.resolveThreadComposer().parentMessageId)
+        assertEquals("channel-123", payload.resolveThreadComposer().mentionChannelId)
     }
 }

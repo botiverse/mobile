@@ -3549,26 +3549,13 @@ internal fun SharedThreadRouteContent(
                             return@ThreadPageContent
                         }
                         val loadingPayload = renderedThread.parentMessageContextLoadingPayload(parentMessageId)
+                        bridge.log(
+                            "thread_route_open action=parent_message parentMessageId=$parentMessageId " +
+                                "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
+                                "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
+                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                        )
                         onOpenThreadPayload(loadingPayload)
-                        coroutineScope.launch {
-                            when (val result = dataSource.openMessageContext(parentMessageId, loadingPayload)) {
-                                is DataResult.Content -> onReplaceThreadPayload(result.data)
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    onReplaceThreadPayload(
-                                        loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed")
-                                    )
-                                    bridge.toast("Unable to open parent message")
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    onReplaceThreadPayload(
-                                        loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed")
-                                    )
-                                    bridge.toast("Unable to open parent message")
-                                }
-                            }
-                        }
                     }
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
@@ -3770,26 +3757,15 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Comment source unavailable")
                         return@ThreadPageContent
                     }
+                    bridge.log(
+                        "thread_route_open action=comment_host hostMessageId=$hostMessageId " +
+                            "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
+                            "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                            "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
+                            "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
+                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                    )
                     onOpenThreadPayload(loadingPayload)
-                    coroutineScope.launch {
-                        when (val result = dataSource.openCommentHost(hostMessageId, loadingPayload)) {
-                            is DataResult.Content -> onReplaceThreadPayload(result.data)
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_comment_host_open_failed")
-                                )
-                                bridge.toast("Unable to open comment source")
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_comment_host_open_failed")
-                                )
-                                bridge.toast("Unable to open comment source")
-                            }
-                        }
-                    }
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
                     val target = itemId.toSlockThreadWebLinkTarget()
@@ -3797,26 +3773,16 @@ internal fun SharedThreadRouteContent(
                         bridge.openUrl(itemId, null)
                     } else {
                         val loadingPayload = renderedThread.webLinkLoadingPayload(target)
+                        bridge.log(
+                            "thread_route_open action=markdown_url routeKind=${target.routeKind} " +
+                                "targetChannelId=${target.channelId} messageId=${target.messageId.orEmpty()} " +
+                                "threadParentMessageId=${target.threadParentMessageId.orEmpty()} " +
+                                "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
+                                "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
+                                "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
+                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                        )
                         onOpenThreadPayload(loadingPayload)
-                        coroutineScope.launch {
-                            when (val result = dataSource.fetchWebLinkThreadPayload(loadingPayload, target)) {
-                                is DataResult.Content -> onReplaceThreadPayload(result.data)
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    onReplaceThreadPayload(
-                                        loadingPayload.copy(status = "error", errorCode = "thread_weblink_open_failed")
-                                    )
-                                    bridge.toast("Unable to open link")
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    onReplaceThreadPayload(
-                                        loadingPayload.copy(status = "error", errorCode = "thread_weblink_open_failed")
-                                    )
-                                    bridge.toast("Unable to open link")
-                                }
-                            }
-                        }
                     }
                 }
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
@@ -4779,6 +4745,59 @@ private fun String.slockPercentDecode(): String {
 }
 
 internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {
+    val threadParentMessageId = target.threadParentMessageId?.takeIf { it.isNotBlank() }
+    if (threadParentMessageId != null) {
+        val focusedMessageId = target.messageId?.takeIf { it.isNotBlank() }
+        val composer =
+            buildThreadSurfaceComposerPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                displayName = ThreadReplyPageTitle,
+                fallbackId = threadParentMessageId,
+                enabled = canSend,
+                mentionChannelId = target.channelId,
+                parentMessageId = threadParentMessageId,
+                streamChannelId = null
+            )
+        return copy(
+            instanceId = "shared-shell-thread-pending-$threadParentMessageId",
+            title = ThreadReplyPageTitle,
+            subtitle = replyThreadHeaderSubtitle(),
+            status = "loading",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = null,
+            streamChannelId = null,
+            parentChannelId = target.channelId,
+            parentMessageId = threadParentMessageId,
+            parentSurfaceKind =
+                if (target.routeKind == "dm") {
+                    KuiklyThreadSurfaceKind.DirectMessage
+                } else {
+                    KuiklyThreadSurfaceKind.Channel
+                },
+            parentChannelKind =
+                if (target.routeKind == "dm") {
+                    KuiklyThreadSurfaceKind.DirectMessage
+                } else {
+                    KuiklyThreadSurfaceKind.Channel
+                },
+            originParentMessageId = threadParentMessageId,
+            focusedMessageId = focusedMessageId,
+            navigationLabel = "Back",
+            selectedTab = KuiklyThreadTab.Chat.wireValue,
+            showModeTabs = false,
+            showReplyActions = false,
+            showOpenInChannelAction = true,
+            originMessage = null,
+            originPreview = null,
+            originStatus = "loading",
+            originErrorCode = null,
+            messages = emptyList(),
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+            errorCode = null,
+            composer = composer
+        ).withLaunchHeaderContext()
+    }
     val composer =
         KuiklyThreadComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.Channel,
@@ -4795,6 +4814,7 @@ internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThread
         streamChannelId = target.channelId,
         parentChannelId = null,
         parentMessageId = null,
+        focusedMessageId = target.messageId?.takeIf { it.isNotBlank() },
         selectedTab = KuiklyThreadTab.Chat.wireValue,
         messages = emptyList(),
         originMessage = null,
