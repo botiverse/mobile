@@ -63,8 +63,8 @@ class SlockKuiklyNotificationLaunchTest {
         val pageData =
             SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
                 JSONObject()
-                    .put("threadId", "thread-parent-msg")
-                    .put("channelId", "channel-1")
+                    .put("threadId", "thread-message-1")
+                    .put("channelId", "thread-message-1")
                     .put("parentChannelId", "channel-1")
                     .put("parentMessageId", "parent-msg")
                     .put("messageId", "reply-msg")
@@ -74,9 +74,9 @@ class SlockKuiklyNotificationLaunchTest {
         assertNotNull(pageData)
         val payload = JSONObject(pageData!!.getString("payload"))
         assertEquals("thread", payload.getString("surfaceKind"))
-        assertEquals("thread-parent-msg", payload.getString("threadId"))
-        assertEquals("thread-parent-msg", payload.getString("sourceThreadId"))
-        assertEquals("thread-parent-msg", payload.getString("streamChannelId"))
+        assertEquals("thread-message-1", payload.getString("threadId"))
+        assertEquals("thread-message-1", payload.getString("sourceThreadId"))
+        assertEquals("thread-message-1", payload.getString("streamChannelId"))
         assertEquals("channel-1", payload.getString("parentChannelId"))
         assertEquals("parent-msg", payload.getString("parentMessageId"))
         assertEquals("parent-msg", payload.getString("originParentMessageId"))

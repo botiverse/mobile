@@ -136,11 +136,44 @@ class SystemNotificationsTest {
         assertEquals("#ops", request.title)
     }
 
-    private fun message(body: String = "Hello"): Message =
+    @Test
+    fun unreadNotificationRequestUsesThreadChannelAsLaunchStream() {
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = "server-1",
+                message =
+                    message(
+                        threadId = "channel-1",
+                        channelId = "channel-1",
+                        threadChannelId = "thread-message-1",
+                        parentMessageId = "message-1"
+                    ),
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                conversationName = "general",
+                conversationKind = ConversationKind.Thread
+            )
+
+        requireNotNull(request)
+        assertEquals("thread-message-1", request.threadId)
+        assertEquals("thread-message-1", request.channelId)
+        assertEquals("channel-1", request.parentChannelId)
+        assertEquals("message-1", request.parentMessageId)
+        assertEquals("unread:server-1:thread-message-1:message-1", request.notificationKey)
+    }
+
+    private fun message(
+        body: String = "Hello",
+        threadId: String = "thread-1",
+        channelId: String = "channel-1",
+        threadChannelId: String? = null,
+        parentMessageId: String? = null
+    ): Message =
         Message(
             id = MessageId("message-1"),
-            threadId = ThreadId("thread-1"),
-            channelId = ChannelId("channel-1"),
+            threadId = ThreadId(threadId),
+            channelId = ChannelId(channelId),
+            threadChannelId = threadChannelId?.let(::ChannelId),
             author =
                 MemberProfile(
                     id = MemberId("member-2"),
@@ -149,6 +182,7 @@ class SystemNotificationsTest {
                     kind = MemberKind.Human
                 ),
             timestampLabel = "now",
-            body = body
+            body = body,
+            parentMessageId = parentMessageId?.let(::MessageId)
         )
 }

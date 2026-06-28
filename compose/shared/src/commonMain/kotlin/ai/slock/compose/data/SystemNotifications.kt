@@ -158,7 +158,7 @@ fun buildSystemUnreadNotificationRequest(
             else -> "$sender: $preview"
         }
     val channelId = message.threadChannelId?.value ?: message.channelId?.value
-    val threadId = message.threadId.value
+    val threadId = channelId ?: message.threadId.value
     val messageId = message.id.value
     val parentMessageId = message.parentMessageId?.value
     val parentChannelId =
