@@ -1830,7 +1830,8 @@ private fun ComposerSuggestionInteractiveRow(
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.CenterStart
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
