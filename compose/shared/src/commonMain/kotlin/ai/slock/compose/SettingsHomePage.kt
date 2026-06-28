@@ -2628,7 +2628,7 @@ private fun SlockAppShellContent() {
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
                             bridge = bridge,
-                            authStore = authStore,
+                            session = readySession,
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
@@ -2636,7 +2636,6 @@ private fun SlockAppShellContent() {
                             agentDetailStore = sharedStores.agentDetailStore,
                             serverMembersStore = sharedStores.serverMembersStore,
                             membersRefreshKey = membersListRefreshKey,
-                            currentServerId = readyServerId,
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
                             onContentLoaded = { membersListCachedContent = it },
@@ -8868,7 +8867,7 @@ private fun AppShellAuthErrorContent(
 @Composable
 private fun SharedMembersScreen(
     bridge: ai.slock.compose.base.BridgeModule,
-    authStore: SlockAuthSessionStore,
+    session: StoredAuthSession?,
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
@@ -8876,7 +8875,6 @@ private fun SharedMembersScreen(
     agentDetailStore: SharedAgentDetailStore,
     serverMembersStore: SharedServerMembersStore,
     membersRefreshKey: Int,
-    currentServerId: String?,
     initialContent: SharedMembersUiState.Content?,
     onContentLoaded: (SharedMembersUiState.Content) -> Unit,
     timeContext: AppShellTimeContext?,
@@ -8884,6 +8882,7 @@ private fun SharedMembersScreen(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
 ) {
+    val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
@@ -8893,13 +8892,9 @@ private fun SharedMembersScreen(
     LaunchedEffect(membersRefreshKey, currentServerId) {
         var previousContent: SharedMembersUiState.Content? = null
         try {
-            val session = authStore.readSession()
-            val targetServerId = currentServerId?.trim()?.takeIf { it.isNotBlank() }
-            val sessionServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-            val serverId = targetServerId ?: sessionServerId
             previousContent =
-                sharedMembersCachedContentForServer(state as? SharedMembersUiState.Content, serverId)
-                    ?: sharedMembersCachedContentForServer(initialContent, serverId)
+                sharedMembersCachedContentForServer(state as? SharedMembersUiState.Content, currentServerId)
+                    ?: sharedMembersCachedContentForServer(initialContent, currentServerId)
             if (previousContent != null) {
                 serverMembersStore.seed(MemberSnapshot(previousContent.server, previousContent.members))
                 state = previousContent
@@ -8907,17 +8902,18 @@ private fun SharedMembersScreen(
             } else {
                 state = SharedMembersUiState.Loading
             }
-            val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
-            if (session == null || serverId.isNullOrBlank() || server == null) {
+            val server = session?.servers?.firstOrNull { it.id == currentServerId }?.toServerSummary()
+            if (session == null || currentServerId.isNullOrBlank() || server == null) {
                 state = previousContent ?: SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
-            val response = serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Visible)
+            val serverId = ServerId(currentServerId)
+            val response = serverMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
             state =
                 when (response) {
                     is DataResult.Content -> {
                         val content =
-                            serverMembersStore.currentServerMembersContent(ServerId(serverId), fallbackServer = server)?.let { snapshot ->
+                            serverMembersStore.currentServerMembersContent(serverId, fallbackServer = server)?.let { snapshot ->
                                 SharedMembersUiState.Content(snapshot.server, snapshot.members, session.user.id)
                             } ?: SharedMembersUiState.Content(server, emptyList(), session.user.id)
                         onContentLoaded(content)
