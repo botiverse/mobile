@@ -1,6 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
+#import "iosApp-Swift.h"
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
 
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
@@ -661,7 +662,8 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
 }
 
 - (void)reportRealTime:(NSDictionary *)args {
-    NSLog(@"[%@][warn] realtime bridge is out of scope for iOS P0 host bridge", SlockBridgeDefaultLogTag);
+    NSDictionary *params = SlockBridgeParams(args);
+    [[SlockIosRealtimeHost shared] handleCommand:params];
 }
 
 - (void)reportRealtime:(NSDictionary *)args {
@@ -698,7 +700,7 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
             @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
             @"platformLabel" : @"iOS",
             @"sessionStatusLabel" : @"Not wired",
-            @"socketStatusLabel" : @"Realtime unsupported",
+            @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
             @"notificationStatusLabel" : @"Notifications unsupported"
         };
     }
