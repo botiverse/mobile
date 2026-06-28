@@ -192,6 +192,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -2375,11 +2376,6 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
-    val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
-    val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
-        computersStore?.computerPickerSliceFlow(createAgentComputerServerId) ?: emptyComputerPickerSliceFlow
-    }.collectAsState(SharedComputersPickerSlice())
-
     fun routeAuthRequired(code: String? = null): Boolean {
         if (!code.isAuthSessionErrorCode()) return false
         onAuthRequired(code ?: "auth_required")
@@ -2393,25 +2389,6 @@ internal fun SharedThreadRouteContent(
         } else {
             false
         }
-
-    LaunchedEffect(
-        computersStore,
-        createAgentDialogState?.messageId,
-        createAgentComputerServerId,
-        createAgentComputerServerResolved
-    ) {
-        if (createAgentDialogState == null) return@LaunchedEffect
-        if (!createAgentComputerServerResolved) return@LaunchedEffect
-        val serverId = createAgentComputerServerId
-        if (serverId.isNullOrBlank()) return@LaunchedEffect
-        computersStore?.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
-    }
-
-    LaunchedEffect(createAgentDialogState?.messageId, computerPickerSlice.errorCode) {
-        if (createAgentDialogState == null) return@LaunchedEffect
-        val code = computerPickerSlice.errorCode ?: return@LaunchedEffect
-        routeAuthRequired(code)
-    }
 
     LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
         val composer =
@@ -4348,41 +4325,25 @@ internal fun SharedThreadRouteContent(
             )
         }
         createAgentDialogState?.let { dialogState ->
-            val machinesErrorCode =
-                when {
-                    computersStore != null &&
-                        createAgentComputerServerResolved &&
-                        createAgentComputerServerId.isNullOrBlank() -> "server_id_missing"
-                    computerPickerSlice.status == SharedComputersLoadStatus.Error -> computerPickerSlice.errorCode
-                    else -> null
-                }
-            SharedCreateAgentDialog(
-                submitting = dialogState.submitting,
-                errorMessage = dialogState.errorCode?.let(::threadCreateAgentDialogErrorCopy),
-                initialName = dialogState.card.name.removePrefix("@"),
-                initialDescription = dialogState.card.description.orEmpty(),
-                draftHint = dialogState.card.draftHint,
-                suggestedComputer = dialogState.card.suggestedComputer,
-                requiredComputer = dialogState.card.requiredComputer,
-                machines = computerPickerSlice.machines,
-                machinesLoading =
-                    computersStore != null &&
-                        (!createAgentComputerServerResolved ||
-                            computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
-                machinesErrorMessage = machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
+            ThreadCreateAgentActionDialogHost(
+                dialogState = dialogState,
+                computersStore = computersStore,
+                computerServerId = createAgentComputerServerId,
+                computerServerResolved = createAgentComputerServerResolved,
+                onAuthRequired = ::routeAuthRequired,
                 onDismiss = {
                     if (!dialogState.submitting) {
                         createAgentDialogState = null
                     }
                 },
-                onSubmit = { request ->
+                onSubmit = submitCreateAgent@{ request ->
                     if (dialogState.submitting) {
-                        return@SharedCreateAgentDialog
+                        return@submitCreateAgent
                     }
                     val normalizedName = request.name.trim().removePrefix("@")
                     if (normalizedName.isBlank()) {
                         createAgentDialogState = dialogState.copy(errorCode = "agent_name_required")
-                        return@SharedCreateAgentDialog
+                        return@submitCreateAgent
                     }
                     val submitCard =
                         dialogState.card.copy(
@@ -4438,6 +4399,65 @@ internal fun SharedThreadRouteContent(
             )
         }
     }
+}
+
+@Composable
+private fun ThreadCreateAgentActionDialogHost(
+    dialogState: ThreadCreateAgentActionDialogState,
+    computersStore: SharedComputersStore?,
+    computerServerId: String?,
+    computerServerResolved: Boolean,
+    onAuthRequired: (String?) -> Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
+) {
+    val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
+    val computerPickerSlice by remember(computersStore, computerServerId) {
+        computersStore?.computerPickerSliceFlow(computerServerId) ?: emptyComputerPickerSliceFlow
+    }.collectAsState(SharedComputersPickerSlice())
+
+    LaunchedEffect(
+        computersStore,
+        dialogState.messageId,
+        computerServerId,
+        computerServerResolved
+    ) {
+        if (!computerServerResolved) return@LaunchedEffect
+        val serverId = computerServerId
+        if (serverId.isNullOrBlank()) return@LaunchedEffect
+        computersStore?.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+    }
+
+    LaunchedEffect(dialogState.messageId, computerPickerSlice.errorCode) {
+        val code = computerPickerSlice.errorCode ?: return@LaunchedEffect
+        onAuthRequired(code)
+    }
+
+    val machinesErrorCode =
+        when {
+            computersStore != null &&
+                computerServerResolved &&
+                computerServerId.isNullOrBlank() -> "server_id_missing"
+            computerPickerSlice.status == SharedComputersLoadStatus.Error -> computerPickerSlice.errorCode
+            else -> null
+        }
+    SharedCreateAgentDialog(
+        submitting = dialogState.submitting,
+        errorMessage = dialogState.errorCode?.let(::threadCreateAgentDialogErrorCopy),
+        initialName = dialogState.card.name.removePrefix("@"),
+        initialDescription = dialogState.card.description.orEmpty(),
+        draftHint = dialogState.card.draftHint,
+        suggestedComputer = dialogState.card.suggestedComputer,
+        requiredComputer = dialogState.card.requiredComputer,
+        machines = computerPickerSlice.machines,
+        machinesLoading =
+            computersStore != null &&
+                (!computerServerResolved ||
+                    computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
+        machinesErrorMessage = machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
+        onDismiss = onDismiss,
+        onSubmit = onSubmit
+    )
 }
 
 private suspend fun openSharedThreadAttachment(
@@ -5607,30 +5627,27 @@ private fun ThreadTasksJoinResultLogger(
     onLogged: (String) -> Unit,
     log: (String) -> Unit
 ) {
-    val pendingTasksState = remember { TasksUiState(ScreenLoadState.Loading) }
-    val tasksState =
-        if (tasksViewModel != null) {
-            val collectedTasksState by tasksViewModel.state.collectAsState()
-            collectedTasksState
-        } else {
-            pendingTasksState
-        }
-    LaunchedEffect(startedTasksJoinThreadId, taskChannelId?.value, tasksState.loadState) {
+    LaunchedEffect(tasksViewModel, startedTasksJoinThreadId, taskChannelId?.value) {
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
         if (startedTasksJoinThreadId != resolvedTaskChannelId.value) {
             return@LaunchedEffect
         }
-        val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@LaunchedEffect
-        val resultKey = "${resolvedTaskChannelId.value}:$result:$taskCount"
-        if (lastTasksJoinResultKey == resultKey) {
-            return@LaunchedEffect
+        tasksViewModel ?: return@LaunchedEffect
+        var latestLoggedKey = lastTasksJoinResultKey
+        tasksViewModel.state.collect { tasksState ->
+            val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@collect
+            val resultKey = "${resolvedTaskChannelId.value}:$result:$taskCount"
+            if (latestLoggedKey == resultKey) {
+                return@collect
+            }
+            latestLoggedKey = resultKey
+            onLogged(resultKey)
+            val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
+            log(
+                "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
+                    "tasks=$taskCount durationMs=$durationMs"
+            )
         }
-        onLogged(resultKey)
-        val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
-        log(
-            "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
-                "tasks=$taskCount durationMs=$durationMs"
-        )
     }
 }
 
