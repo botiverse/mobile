@@ -181,7 +181,6 @@ class ComposeLocalWriteThrough(
         if (events.isEmpty()) return false
         val newMessages = mutableListOf<Message>()
         val updatedMessages = mutableListOf<Message>()
-        val threadUpdates = mutableListOf<ThreadUpdated>()
         var wrote = false
         events.forEach { event ->
             when (event) {
@@ -189,7 +188,7 @@ class ComposeLocalWriteThrough(
                 is MessageNew -> newMessages += event.message
                 is MessageUpdated -> updatedMessages += event.message
                 is SyncResumeResponse -> newMessages += event.messages
-                is ThreadUpdated -> threadUpdates += event
+                is ThreadUpdated -> Unit
                 is RealtimeRefreshRequired -> {
                     logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
                     wrote = true
@@ -199,9 +198,6 @@ class ComposeLocalWriteThrough(
                 }
                 else -> Unit
             }
-        }
-        latestThreadUpdates(threadUpdates).forEach { event ->
-            wrote = writeThreadMetadata(serverId, event, activeConversationId) || wrote
         }
         if (newMessages.isNotEmpty()) {
             wrote = writeRealtimeMessages(serverId, newMessages, incrementUnread = true, activeConversationId) || wrote
@@ -407,69 +403,6 @@ class ComposeLocalWriteThrough(
             }
         return wroteHome || wroteThread
     }
-
-    private suspend fun writeThreadMetadata(
-        serverId: ServerId,
-        event: ThreadUpdated,
-        activeConversationId: String?
-    ): Boolean {
-        val home = store.readHome(serverId)
-        val wroteHome =
-            if (home != null) {
-                val updatedHome =
-                    home.copy(
-                        channels = home.channels.map { conversation -> conversation.withThreadMetadata(event) },
-                        directMessages =
-                            home.directMessages.map { conversation -> conversation.withThreadMetadata(event) }
-                    )
-                if (updatedHome != home) {
-                    store.writeHome(updatedHome)
-                    logger(
-                        "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
-                    )
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        val threadIds =
-            (
-                home?.threadIdsForMetadata(event).orEmpty() +
-                    listOfNotNull(activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId)) +
-                    ThreadId(event.threadChannelId.value)
-            ).distinct()
-        var wroteThread = false
-        threadIds.forEach { threadId ->
-            val existing = store.readThread(threadId) ?: return@forEach
-            val patched = existing.withThreadMetadata(event)
-            val streamChannelId = patched.conversation.messageStreamChannelId()
-            wroteThread =
-                writeThreadPatch(
-                    snapshot = patched,
-                    source = "thread_metadata",
-                    streamChannelId = streamChannelId,
-                    rawMessageCount = patched.messages.size,
-                    hasParent = patched.parentMessage != null
-                ) || wroteThread
-        }
-        if (wroteThread && !wroteHome) {
-            logger(
-                "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
-            )
-        }
-        return wroteHome || wroteThread
-    }
-
-    private fun latestThreadUpdates(events: List<ThreadUpdated>): List<ThreadUpdated> =
-        events
-            .fold(mutableMapOf<Pair<MessageId, ChannelId>, ThreadUpdated>()) { latest, event ->
-                latest[event.parentMessageId to event.threadChannelId] = event
-                latest
-            }
-            .values
-            .toList()
 
     private suspend fun updateHomePreview(
         serverId: ServerId,
@@ -890,58 +823,6 @@ private fun HomeSnapshot.clearAllUnread(): HomeSnapshot {
         channels = channels.map { it.clearUnread() },
         directMessages = directMessages.map { it.clearUnread() },
         unreadTotal = 0
-    )
-}
-
-private fun ConversationSummary.withThreadMetadata(event: ThreadUpdated): ConversationSummary =
-    if (lastMessageId == event.parentMessageId || thread?.parentMessageId == event.parentMessageId) {
-        copy(
-            thread =
-                ThreadConversation(
-                    parentChannelId = channelId ?: event.threadChannelId,
-                    parentMessageId = event.parentMessageId,
-                    streamChannelId = event.threadChannelId,
-                    parentChannelKind = channelType.normalizedThreadChannelKind()
-                )
-        )
-    } else {
-        this
-    }
-
-private fun HomeSnapshot.threadIdsForMetadata(event: ThreadUpdated): List<ThreadId> =
-    (channels + directMessages)
-        .flatMap { conversation -> conversation.threadIdsForMetadata(event) }
-        .distinct()
-
-private fun ConversationSummary.threadIdsForMetadata(event: ThreadUpdated): List<ThreadId> {
-    val ids = mutableListOf<ThreadId>()
-    if (lastMessageId == event.parentMessageId || thread?.parentMessageId == event.parentMessageId) {
-        ids += threadId
-    }
-    val parentChannelId = channelId ?: thread?.parentChannelId
-    if (parentChannelId != null) {
-        ids += threadIdentity(parentChannelId, event.parentMessageId)
-    }
-    ids += ThreadId(event.threadChannelId.value)
-    return ids.distinct()
-}
-
-private fun ThreadSnapshot.withThreadMetadata(event: ThreadUpdated): ThreadSnapshot {
-    fun Message.withMetadata(): Message =
-        if (id == event.parentMessageId) {
-            copy(
-                threadChannelId = event.threadChannelId,
-                replyCount = event.replyCount,
-                unreadReplyCount = event.unreadCount ?: unreadReplyCount,
-                firstUnreadReplyMessageId = event.firstUnreadMessageId
-            )
-        } else {
-            this
-        }
-    return copy(
-        conversation = conversation.withThreadMetadata(event),
-        parentMessage = parentMessage?.withMetadata(),
-        messages = messages.map { message -> message.withMetadata() }
     )
 }
 

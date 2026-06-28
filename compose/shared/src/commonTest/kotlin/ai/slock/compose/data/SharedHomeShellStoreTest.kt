@@ -1,11 +1,14 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -195,6 +198,39 @@ class SharedHomeShellStoreTest {
             listOf<SharedActivityIntent>(
                 SharedActivityIntent.ApplyRealtimeEvent(event),
                 SharedActivityIntent.Refresh,
+                SharedActivityIntent.ApplyRealtimeEvent(event)
+            ),
+            fixture.activityIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
+    fun threadUpdatedRealtimeStillRefreshesActivityWhenHomeIsVisible() {
+        val fixture = fixture()
+        val store = fixture.store
+        val event =
+            ThreadUpdated(
+                parentMessageId = MessageId("parent-1"),
+                threadChannelId = ChannelId("thread-parent-1"),
+                replyCount = 3,
+                lastReplyAt = "12:00",
+                participantIds = emptyList(),
+                unreadCount = 1
+            )
+
+        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            listOf<SharedHomeIntent>(
+                SharedHomeIntent.SetSurfaceVisible(true),
+                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
+            ),
+            fixture.homeIntents
+        )
+        assertEquals(
+            listOf<SharedActivityIntent>(
                 SharedActivityIntent.ApplyRealtimeEvent(event)
             ),
             fixture.activityIntents

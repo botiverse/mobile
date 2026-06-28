@@ -411,7 +411,7 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun threadMetadataPatchesCachedParentMessageWithoutReplacingTimeline() = runBlocking {
+    fun threadMetadataDoesNotPatchCachedParentMessageFooterFacts() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store, logger = logs::add)
@@ -449,11 +449,12 @@ class ComposeLocalWriteThroughTest {
 
         val cached = store.readThread(threadId)
         val cachedMessages = cached?.messages.orEmpty()
-        assertEquals(true, wrote)
-        assertEquals(4, cached?.parentMessage?.replyCount)
-        assertEquals(4, cachedMessages[0].replyCount)
+        assertEquals(false, wrote)
+        assertEquals(0, cached?.parentMessage?.replyCount)
+        assertEquals(0, cachedMessages[0].replyCount)
+        assertEquals(0, cachedMessages[0].unreadReplyCount)
         assertTrue(cachedMessages[1] === reply)
-        assertTrue(logs.any { it.contains("thread_patch source=thread_metadata") && it.contains("timelineChanged=false") && it.contains("changedMessageIds=[parent-1]") })
+        assertTrue(logs.none { it.contains("thread_patch source=thread_metadata") })
     }
 
     @Test
@@ -487,7 +488,7 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun realtimeBatchMergesSameThreadMessagesAndMetadataButNotTasks() = runBlocking {
+    fun realtimeBatchMergesSameThreadMessagesButNotThreadMetadataOrTasks() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store, logger = logs::add)
@@ -531,12 +532,12 @@ class ComposeLocalWriteThroughTest {
         val cached = store.readThread(ThreadId("channel-1"))
         assertEquals(listOf("parent-1", "m2", "m3"), cached?.messages?.map { it.id.value })
         assertEquals(3, cached?.lastSeq)
-        assertEquals(3, cached?.messages?.first()?.replyCount)
-        assertEquals(2, cached?.messages?.first()?.unreadReplyCount)
+        assertEquals(0, cached?.messages?.first()?.replyCount)
+        assertEquals(0, cached?.messages?.first()?.unreadReplyCount)
         assertEquals("Old task", cached?.tasks?.single()?.title)
         assertEquals(TaskStatus.Todo, cached?.tasks?.single()?.status)
         assertEquals(1, logs.count { it.contains("thread_patch source=realtime_message") })
-        assertEquals(1, logs.count { it.contains("thread_patch source=thread_metadata") })
+        assertEquals(0, logs.count { it.contains("thread_patch source=thread_metadata") })
         assertEquals(0, logs.count { it.contains("thread_patch source=realtime_task") })
     }
 
