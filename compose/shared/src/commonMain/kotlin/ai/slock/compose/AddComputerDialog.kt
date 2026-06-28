@@ -139,7 +139,7 @@ private fun AddComputerTypeStep(
                     onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
                 },
                 enabled = state.canManage && !state.atLimit && !state.registering,
-                leadingIcon = if (state.registering) SlockLucideIconName.Loader else SlockLucideIconName.Plus,
+                leadingIcon = if (state.registering) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Plus,
                 leadingIconSpinning = state.registering,
                 backgroundColor = SlockColor.AccentPink
             )

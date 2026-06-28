@@ -3835,7 +3835,7 @@ private fun SettingsConnectedAppsContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.Loader, title = "Loading") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.LoaderCircle, title = "Loading") {
                         SettingsFormDetailText("Loading integrations, marketplace apps, and OAuth clients.")
                     }
                 }
@@ -3993,7 +3993,7 @@ private fun SettingsLanguageRegionContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading language and region settings.", null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading language and region settings.", null, onRetry)
                 }
             is ScreenLoadState.Empty ->
                 item {
@@ -4177,7 +4177,7 @@ private fun SettingsAppearanceContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading appearance settings.", null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading appearance settings.", null, onRetry)
                 }
             is ScreenLoadState.Empty ->
                 item {
@@ -4405,7 +4405,7 @@ private fun SettingsNotificationsContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading notification settings.", null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading notification settings.", null, onRetry)
                 }
             is ScreenLoadState.Empty ->
                 item {

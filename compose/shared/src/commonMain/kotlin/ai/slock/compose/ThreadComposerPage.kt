@@ -1566,7 +1566,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.Loader, modifier = Modifier.size(16.dp), color = "#FF000000", spinning = true)
+            SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = "#FF000000", spinning = true)
             Text(
                 text = if (progress > 0) "$progress%" else "Uploading",
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
