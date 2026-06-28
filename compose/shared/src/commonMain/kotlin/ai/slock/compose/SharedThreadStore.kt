@@ -752,7 +752,7 @@ internal class SharedThreadDataSource(
             }
         }
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-        val serverMembers = serverId?.let { serverMembersStore?.cachedSnapshot(it)?.members }
+        val serverMembers = serverId?.let { serverMembersStore?.currentServerMembers(it) }
         val members =
             channelMembers.data.members
                 .distinctBy { it.memberKey }

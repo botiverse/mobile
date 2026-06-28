@@ -485,24 +485,24 @@ class SharedActivityStore(
 
     private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
-            val members =
+            val profilesById =
                 serverMembersStore?.let { store ->
-                    when (store.loadMembers(serverId, DataRequestPriority.Visible)) {
-                        is DataResult.Content -> store.cachedSnapshot(serverId)?.members.orEmpty()
-                        else -> emptyList()
+                    when (store.refreshMembers(serverId, DataRequestPriority.Visible)) {
+                        is DataResult.Content -> store.currentServerMemberProfilesById(serverId)
+                        else -> emptyMap()
                     }
                 } ?: when (val result = memberRepository?.getMembers(DataRequestPriority.Visible, serverId)) {
-                    is DataResult.Content -> result.data.members
-                    else -> emptyList()
+                    is DataResult.Content ->
+                        result.data.members
+                            .filter { it.id.value.trim().isNotBlank() }
+                            .associateBy { it.id.value.trim() }
+                    else -> emptyMap()
                 }
-            members.associateBy(
-                keySelector = { it.id.value },
-                valueTransform = {
-                    SharedActivitySenderProfile(
-                        displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } }
-                    )
-                }
-            )
+            profilesById.mapValues { (_, profile) ->
+                SharedActivitySenderProfile(
+                    displayName = profile.displayName.ifBlank { profile.handle.ifBlank { profile.id.value } }
+                )
+            }
         } catch (_: Throwable) {
             emptyMap()
         }

@@ -788,7 +788,7 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
         }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        environment.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+        environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
@@ -843,7 +843,7 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
                 ?.takeIf { it.isNotBlank() }
         savedServerId = serverId
         if (serverId != null) {
-            environment.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+            environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
         }
     }
     val memberAvatarResolver =
@@ -2239,8 +2239,8 @@ private fun SlockAppShellContent() {
                     return@launch
                 }
                 createChannelMembers =
-                    when (val result = sharedStores.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Visible)) {
-                        is DataResult.Content -> sharedStores.serverMembersStore.cachedSnapshot(ServerId(serverId))?.members.orEmpty()
+                    when (val result = sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Visible)) {
+                        is DataResult.Content -> sharedStores.serverMembersStore.currentServerMembers(ServerId(serverId))
                         is DataResult.Empty,
                         is DataResult.Error,
                         is DataResult.NoPermission -> emptyList()
@@ -8901,12 +8901,12 @@ private fun SharedMembersScreen(
                 state = previousContent ?: SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
-            val response = serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Visible)
+            val response = serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Visible)
             state =
                 when (response) {
                     is DataResult.Content -> {
                         val content =
-                            serverMembersStore.cachedSnapshot(ServerId(serverId))?.let { snapshot ->
+                            serverMembersStore.currentServerMembersContent(ServerId(serverId), fallbackServer = server)?.let { snapshot ->
                                 SharedMembersUiState.Content(snapshot.server, snapshot.members, session.user.id)
                             } ?: SharedMembersUiState.Content(server, emptyList(), session.user.id)
                         onContentLoaded(content)
@@ -9457,7 +9457,7 @@ private fun SharedHomeScreen(
             }
             LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing) {
                 if (!current.contentRefreshing) {
-                    serverMembersStore?.loadMembers(snapshot.server.id, DataRequestPriority.Background)
+                    serverMembersStore?.refreshMembers(snapshot.server.id, DataRequestPriority.Background)
                 }
             }
             LaunchedEffect(conversationDirectoryStore, snapshot.server.id, snapshot.channels, snapshot.directMessages) {

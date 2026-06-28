@@ -36,8 +36,8 @@ internal class SharedMembersDataSource(
         val server = ai.slock.compose.model.ServerId(serverId)
         val store = serverMembersStore
         if (store != null) {
-            return when (val result = store.loadMembers(server, DataRequestPriority.Foreground)) {
-                is DataResult.Content -> DataResult.Content(store.cachedSnapshot(server)?.members.orEmpty())
+            return when (val result = store.refreshMembers(server, DataRequestPriority.Foreground)) {
+                is DataResult.Content -> DataResult.Content(store.currentServerMembers(server))
                 is DataResult.Empty -> DataResult.Empty(result.reason)
                 is DataResult.Error -> result
                 is DataResult.NoPermission -> result

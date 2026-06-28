@@ -313,7 +313,7 @@ private fun SlockHomePageContent() {
         }
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        sharedStores.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+        sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     SlockStructuralHomeShell(
         currentServerName = payload.currentServerName,

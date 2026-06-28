@@ -164,13 +164,13 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSenderFiltersError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSenderFiltersError("server_missing")
-                    when (val result = loadServerMembers(serverId, DataRequestPriority.Visible)) {
+                    when (val result = loadSearchSenderFilters(serverId, DataRequestPriority.Visible, session.user.id)) {
                         is DataResult.Content ->
                             _state.value =
                                 _state.value.copy(
                                     search =
                                         _state.value.search.copy(
-                                            senderFilters = result.data.members.toSearchSenderFilters(session.user.id),
+                                            senderFilters = result.data,
                                             senderFiltersLoading = false,
                                             senderFiltersErrorCode = null
                                         )
@@ -411,24 +411,28 @@ class SharedHomeSearchSavedStore(
 
     private suspend fun currentServerId(): ServerId? = authStore.readSession()?.currentServerId?.let(::ServerId)
 
-    private suspend fun loadServerMembers(
+    private suspend fun loadSearchSenderFilters(
         serverId: ServerId,
-        priority: DataRequestPriority
-    ): DataResult<MemberSnapshot> {
+        priority: DataRequestPriority,
+        currentUserId: String
+    ): DataResult<List<SearchSenderFilterItem>> {
         val store = serverMembersStore
         if (store != null) {
-            return when (val result = store.loadMembers(serverId, priority)) {
+            return when (val result = store.refreshMembers(serverId, priority)) {
                 is DataResult.Content ->
-                    store.cachedSnapshot(serverId)
-                        ?.let { DataResult.Content(it) }
-                        ?: DataResult.Empty(EmptyReason.NoMembers)
+                    DataResult.Content(store.currentServerMembers(serverId).toSearchSenderFilters(currentUserId))
                 is DataResult.Empty -> DataResult.Empty(result.reason)
                 is DataResult.Error -> DataResult.Error(result.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
             }
         }
-        return memberRepository?.getMembers(priority, serverId)
-            ?: DataResult.Error(ScreenError(code = "members_unavailable", retryable = false))
+        return when (val result = memberRepository?.getMembers(priority, serverId)) {
+            is DataResult.Content -> DataResult.Content(result.data.members.toSearchSenderFilters(currentUserId))
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+            null -> DataResult.Error(ScreenError(code = "members_unavailable", retryable = false))
+        }
     }
 
     private fun applySavedResult(

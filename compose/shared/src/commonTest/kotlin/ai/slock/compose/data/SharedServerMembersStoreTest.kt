@@ -12,17 +12,17 @@ import kotlin.test.assertIs
 
 class SharedServerMembersStoreTest {
     @Test
-    fun loadMembersCachesPerServer() = runBlocking {
+    fun refreshMembersCachesPerServer() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
 
-        val first = store.loadMembers(ServerId("server-1"))
-        val second = store.loadMembers(ServerId("server-1"))
+        val first = store.refreshMembers(ServerId("server-1"))
+        val second = store.refreshMembers(ServerId("server-1"))
 
         assertIs<DataResult.Content<Unit>>(first)
         assertIs<DataResult.Content<Unit>>(second)
         assertEquals(1, repository.getMembersCalls)
-        assertEquals(listOf("u1"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
+        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
         assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
     }
 
@@ -31,13 +31,13 @@ class SharedServerMembersStoreTest {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
 
-        store.loadMembers(ServerId("server-1"))
+        store.refreshMembers(ServerId("server-1"))
         repository.membersByServer["server-1"] = listOf(member("u2", "Mina"))
-        val result = store.loadMembers(ServerId("server-1"), force = true)
+        val result = store.refreshMembers(ServerId("server-1"), force = true)
 
         assertIs<DataResult.Content<Unit>>(result)
         assertEquals(2, repository.getMembersCalls)
-        assertEquals(listOf("u2"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
+        assertEquals(listOf("u2"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
     }
 
     @Test
@@ -46,11 +46,11 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(repository)
 
         store.seed(MemberSnapshot(server("server-1"), listOf(member("u3", "Nina"))))
-        val result = store.loadMembers(ServerId("server-1"))
+        val result = store.refreshMembers(ServerId("server-1"))
 
         assertIs<DataResult.Content<Unit>>(result)
         assertEquals(0, repository.getMembersCalls)
-        assertEquals(listOf("u3"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
+        assertEquals(listOf("u3"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
     }
 
     @Test
@@ -127,10 +127,10 @@ class SharedServerMembersStoreTest {
         repository.membersByServer["server-1"] =
             listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online))
 
-        val result = store.loadMembers(ServerId("server-1"))
+        val result = store.refreshMembers(ServerId("server-1"))
 
         assertIs<DataResult.Content<Unit>>(result)
-        val agent = store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().single { it.id.value == "agent-1" }
+        val agent = store.currentServerMembers(ServerId("server-1")).single { it.id.value == "agent-1" }
         assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals(AgentStatus.Working.presence, agent.presence)
     }

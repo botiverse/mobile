@@ -531,10 +531,10 @@ class SharedSettingsDataSource(
     private suspend fun refreshServerMembersForSettingsStatus(serverId: String, force: Boolean) {
         val store = serverMembersStore ?: return
         val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return
-        when (val result = store.loadMembers(ServerId(cleanServerId), priority = DataRequestPriority.Background, force = force)) {
+        when (val result = store.refreshMembers(ServerId(cleanServerId), priority = DataRequestPriority.Background, force = force)) {
             is DataResult.Content ->
                 diagnosticsLogger?.invoke(
-                    "settings_member_status_refresh_result serverId=$cleanServerId result=content members=${store.cachedSnapshot(ServerId(cleanServerId))?.members.orEmpty().size}"
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=content members=${store.currentServerMemberCount(ServerId(cleanServerId))}"
                 )
             is DataResult.Empty ->
                 diagnosticsLogger?.invoke(

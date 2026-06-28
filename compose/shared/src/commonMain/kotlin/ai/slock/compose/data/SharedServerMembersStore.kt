@@ -189,8 +189,33 @@ class SharedServerMembersStore(
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
-    fun cachedSnapshot(serverId: ServerId): MemberSnapshot? =
-        _state.value.entryFor(serverId)?.snapshotOrNull()
+    fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> =
+        state
+            .map { current ->
+                current.entryFor(serverId)
+                    ?: SharedServerMembersEntry(serverId = serverId.value.trim())
+            }
+            .distinctUntilChanged()
+
+    fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
+        _state.value.entryFor(serverId)?.members.orEmpty()
+
+    fun currentServerMemberCount(serverId: ServerId): Int =
+        _state.value.entryFor(serverId)?.members.orEmpty().size
+
+    fun currentServerMemberProfilesById(serverId: ServerId): Map<String, MemberProfile> =
+        currentServerMembers(serverId)
+            .filter { it.id.value.trim().isNotBlank() }
+            .associateBy { it.id.value.trim() }
+
+    fun currentServerMembersContent(
+        serverId: ServerId,
+        fallbackServer: ServerSummary? = null
+    ): MemberSnapshot? {
+        val entry = _state.value.entryFor(serverId)
+        val server = entry?.server ?: fallbackServer ?: return null
+        return MemberSnapshot(server = server, members = entry?.members.orEmpty())
+    }
 
     fun memberSuggestionSliceFlow(
         serverId: ServerId,
@@ -346,10 +371,18 @@ class SharedServerMembersStore(
             )
     }
 
-    suspend fun loadMembers(
+    suspend fun refreshMembers(
         serverId: ServerId,
         priority: DataRequestPriority = DataRequestPriority.Visible,
         force: Boolean = false
+    ): DataResult<Unit> {
+        return loadMembersIntoStore(serverId, priority, force)
+    }
+
+    private suspend fun loadMembersIntoStore(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        force: Boolean
     ): DataResult<Unit> {
         val key = serverId.value.trim()
         if (key.isBlank()) {
@@ -605,7 +638,7 @@ class SharedServerMembersStore(
     ) {
         val result =
             runCatchingPreservingCancellation {
-                loadMembers(ServerId(serverId), DataRequestPriority.Visible)
+                refreshMembers(ServerId(serverId), DataRequestPriority.Visible)
             }.getOrElse { throwable ->
                 logger("shared_server_members_suggestions_members_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
                 setMemberSuggestionFailure(suggestionScope, "members_exception")
@@ -613,7 +646,7 @@ class SharedServerMembersStore(
             }
         when (result) {
             is DataResult.Content -> {
-                val serverMembers = cachedSnapshot(ServerId(serverId))?.members.orEmpty()
+                val serverMembers = currentServerMembers(ServerId(serverId))
                 val channelMembers =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(

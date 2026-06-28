@@ -140,10 +140,10 @@ class SharedHomeDataSource(
         val store = serverMembersStore
             ?: return AgentDirectMessageStatusPatch(snapshot, changed = false)
         val serverId = snapshot.server.id
-        when (val result = store.loadMembers(serverId, priority = priority, force = true)) {
+        when (val result = store.refreshMembers(serverId, priority = priority, force = true)) {
             is DataResult.Content ->
                 diagnosticsLogger(
-                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=content members=${store.cachedSnapshot(serverId)?.members.orEmpty().size}"
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=content members=${store.currentServerMemberCount(serverId)}"
                 )
             is DataResult.Empty ->
                 diagnosticsLogger(

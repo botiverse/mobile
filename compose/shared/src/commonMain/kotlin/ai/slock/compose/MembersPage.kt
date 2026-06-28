@@ -811,7 +811,7 @@ internal fun MembersPageContent() {
         }
     LaunchedEffect(sharedStores.serverMembersStore, serverId) {
         val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        sharedStores.serverMembersStore.loadMembers(ServerId(cleanServerId), DataRequestPriority.Background)
+        sharedStores.serverMembersStore.refreshMembers(ServerId(cleanServerId), DataRequestPriority.Background)
     }
     val computersSlice by computersStore
         .computerPickerSliceFlow(serverId)
@@ -1313,7 +1313,7 @@ private fun MemberDetailPageContent() {
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        provider.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+        provider.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
 
     when (val current = routeState) {
