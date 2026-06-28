@@ -37,10 +37,20 @@ pluginManagement {
     val ktorOhosVersion =
         System.getenv("SLOCK_KTOR_OHOS_VERSION")
             ?.takeIf { it.isNotBlank() }
-            ?: "3.3.3-slock-ohos-001"
+            ?: "2.3.7-slock-ohos-001"
+    fun String?.enabledByDefault(defaultValue: Boolean): Boolean =
+        when (this?.trim()?.lowercase()) {
+            "1", "true", "yes", "on" -> true
+            "0", "false", "no", "off" -> false
+            null, "" -> defaultValue
+            else -> defaultValue
+        }
     val enableKtorOhosFork =
-        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK") == "1" ||
-            providers.gradleProperty("slock.enableKtorOhosFork").orNull.toBoolean()
+        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK")
+            .enabledByDefault(
+                providers.gradleProperty("slock.enableKtorOhosFork").orNull
+                    .enabledByDefault(true)
+            )
     val needsStately =
         !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
@@ -64,20 +74,17 @@ pluginManagement {
             "ktor-utils",
             "ktor-http",
             "ktor-http-cio",
-            "ktor-events",
-            "ktor-sse",
-            "ktor-websockets",
-            "ktor-websocket-serialization",
             "ktor-network",
             "ktor-network-tls",
+            "ktor-events",
+            "ktor-websockets",
+            "ktor-websocket-serialization",
             "ktor-serialization",
             "ktor-serialization-kotlinx",
             "ktor-serialization-kotlinx-json",
             "ktor-client-core",
             "ktor-client-content-negotiation",
-            "ktor-client-cio",
-            "ktor-client-json",
-            "ktor-client-logging"
+            "ktor-client-cio"
         )
     val needsKtorOhos =
         enableKtorOhosFork &&

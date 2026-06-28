@@ -73,6 +73,17 @@ class KtorSlockNetworkClient(
             agentId = agentId.value,
             file = file
         ).toHomeNetworkResponse()
+
+    override suspend fun uploadConnectedAppLogo(
+        priority: DataRequestPriority,
+        clientRecordId: String,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        client.uploadConnectedAppLogo(
+            priority = priority.toNetworkPriority(),
+            clientRecordId = clientRecordId,
+            file = file
+        ).toHomeNetworkResponse()
 }
 
 private fun DataRequestPriority.toNetworkPriority(): SlockRequestPriority =

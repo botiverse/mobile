@@ -4,12 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-SOURCE_URL="${SLOCK_KTOR_OHOS_SOURCE_URL:-https://gitcode.com/CPF-KMP-CMP/ktor.git}"
-SOURCE_REF="${SLOCK_KTOR_OHOS_SOURCE_REF:-main-3.3.3-OH}"
-BRANCH_NAME="${SLOCK_KTOR_OHOS_BRANCH:-slock-3.3.3-ohos}"
-VERSION_NAME="${SLOCK_KTOR_OHOS_VERSION:-3.3.3-slock-ohos-001}"
+SOURCE_URL="${SLOCK_KTOR_OHOS_SOURCE_URL:-https://github.com/ktorio/ktor.git}"
+SOURCE_REF="${SLOCK_KTOR_OHOS_SOURCE_REF:-2.3.7}"
+BRANCH_NAME="${SLOCK_KTOR_OHOS_BRANCH:-slock-2.3.7-ohos-kba}"
+VERSION_NAME="${SLOCK_KTOR_OHOS_VERSION:-2.3.7-slock-ohos-001}"
 WORKDIR="${SLOCK_KTOR_OHOS_WORKDIR:-${REPO_ROOT}/third_party/.workdirs/ktor-slock-ohos}"
 PATCH_DIR="${SLOCK_KTOR_OHOS_PATCH_DIR:-${REPO_ROOT}/third_party/ktor-ohos/patches}"
+GRADLE_RUNNER="${SLOCK_KTOR_OHOS_GRADLE:-${REPO_ROOT}/compose/gradlew}"
 
 PUBLISH=false
 for arg in "$@"; do
@@ -31,6 +32,7 @@ Environment overrides:
   SLOCK_KTOR_OHOS_VERSION       local publication version
   SLOCK_KTOR_OHOS_WORKDIR       checkout directory
   SLOCK_KTOR_OHOS_PATCH_DIR     directory containing *.patch files
+  SLOCK_KTOR_OHOS_GRADLE        Gradle runner used for publish
   SLOCK_KTOR_OHOS_MODULES       whitespace-separated Gradle project paths
 EOF
       exit 0
@@ -54,6 +56,14 @@ git fetch origin "${SOURCE_REF}" --tags
 git checkout --force FETCH_HEAD
 git clean -fdx
 git checkout -B "${BRANCH_NAME}"
+
+if [[ -d "${PATCH_DIR}" ]]; then
+  while IFS= read -r patch; do
+    [[ -n "${patch}" ]] || continue
+    echo "Applying patch: ${patch}"
+    git apply --unidiff-zero "${patch}"
+  done < <(find "${PATCH_DIR}" -maxdepth 1 -type f -name '*.patch' | sort)
+fi
 
 python3 - <<PY
 from pathlib import Path
@@ -79,14 +89,6 @@ if version_file.exists():
     version_file.write_text(version + "\\n")
 PY
 
-if [[ -d "${PATCH_DIR}" ]]; then
-  while IFS= read -r patch; do
-    [[ -n "${patch}" ]] || continue
-    echo "Applying patch: ${patch}"
-    git apply "${patch}"
-  done < <(find "${PATCH_DIR}" -maxdepth 1 -type f -name '*.patch' | sort)
-fi
-
 echo "Prepared Ktor OHOS fork at ${WORKDIR}"
 echo "Source: ${SOURCE_URL} ${SOURCE_REF}"
 echo "Branch: ${BRANCH_NAME}"
@@ -98,11 +100,11 @@ if [[ "${PUBLISH}" != "true" ]]; then
   exit 0
 fi
 
-read -r -a modules <<< "${SLOCK_KTOR_OHOS_MODULES:-:ktor-io :ktor-utils :ktor-http :ktor-http-cio :ktor-events :ktor-sse :ktor-websockets :ktor-websocket-serialization :ktor-network :ktor-network-tls :ktor-serialization :ktor-serialization-kotlinx :ktor-serialization-kotlinx-json :ktor-client-core :ktor-client-content-negotiation :ktor-client-cio :ktor-client-json :ktor-client-logging}"
+read -r -a modules <<< "${SLOCK_KTOR_OHOS_MODULES:-:ktor-io :ktor-utils :ktor-http :ktor-http:ktor-http-cio :ktor-network :ktor-network:ktor-network-tls :ktor-shared:ktor-events :ktor-shared:ktor-websockets :ktor-shared:ktor-websocket-serialization :ktor-shared:ktor-serialization :ktor-shared:ktor-serialization:ktor-serialization-kotlinx :ktor-shared:ktor-serialization:ktor-serialization-kotlinx:ktor-serialization-kotlinx-json :ktor-client:ktor-client-core :ktor-client:ktor-client-plugins:ktor-client-content-negotiation :ktor-client:ktor-client-cio}"
 tasks=()
 for module in "${modules[@]}"; do
   tasks+=("${module}:publishKotlinMultiplatformPublicationToMavenLocal")
   tasks+=("${module}:publishOhosArm64PublicationToMavenLocal")
 done
 
-./gradlew --no-daemon --no-configuration-cache --console=plain -PreleaseVersion="${VERSION_NAME}" "${tasks[@]}"
+"${GRADLE_RUNNER}" -p "${WORKDIR}" --no-daemon --no-configuration-cache --console=plain -PreleaseVersion="${VERSION_NAME}" "${tasks[@]}"

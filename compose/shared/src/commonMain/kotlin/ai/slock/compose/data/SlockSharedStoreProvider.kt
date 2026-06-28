@@ -147,17 +147,25 @@ internal class SlockSharedStoreProvider private constructor(
                     namespace = SlockLocalPreferenceStore.KuiklyNamespace
                 )
             val networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+            val nativeNetworkFallback =
+                KuiklySlockNetworkClient(
+                    sessionStore = authStore,
+                    networkModule = networkModule,
+                    warningLogger = { message -> bridge.log("shared_network_native_fallback $message") }
+                )
             val authDataSource =
                 SharedAuthDataSource(
-                    transport = KuiklySlockAuthTransport(networkModule = networkModule),
+                    transport = SharedKtorSlockAuthTransport(
+                        warningLogger = { message -> bridge.log("shared_auth_network $message") }
+                    ),
                     sessionStore = authStore,
                     diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
                 )
             val networkClient =
-                KuiklySlockNetworkClient(
+                SharedKtorSlockNetworkClient(
                     sessionStore = authStore,
-                    networkModule = networkModule,
-                    warningLogger = { message -> bridge.log("shared_network $message") }
+                    warningLogger = { message -> bridge.log("shared_network $message") },
+                    nativeFileRefFallback = nativeNetworkFallback
                 )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,

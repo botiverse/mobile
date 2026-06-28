@@ -208,6 +208,8 @@ class SlockApiClient(
         multipart(priority, "auth/me/avatar", MultipartFormData(files = listOf(file)))
     suspend fun uploadAgentAvatar(priority: SlockRequestPriority, agentId: String, file: MultipartFile): KmpHttpResponse =
         multipart(priority, "agents/$agentId/avatar", MultipartFormData(files = listOf(file)))
+    suspend fun uploadConnectedAppLogo(priority: SlockRequestPriority, clientRecordId: String, file: MultipartFile): KmpHttpResponse =
+        multipart(priority, "integrations/clients/$clientRecordId/logo", MultipartFormData(files = listOf(file)))
     suspend fun attachmentUrl(
         priority: SlockRequestPriority,
         attachmentId: String,
