@@ -29,6 +29,7 @@ internal class SlockKuiklyPageRenderView(
     private var viewDidAppear = false
     private var pageDidAppear = false
     private var childDidAttach = false
+    private var childVisible = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
 
     private val childDelegate =
@@ -207,11 +208,16 @@ internal class SlockKuiklyPageRenderView(
             size = Size(width, height)
         )
         childDidAttach = true
+        syncChildVisibility()
         performAllLazyChildEvents()
     }
 
     private fun destroyChild() {
         val child = childRenderView ?: return
+        if (childVisible) {
+            child.onPause()
+            childVisible = false
+        }
         childRenderView = null
         childDidAttach = false
         lazyChildEvents.clear()
@@ -226,27 +232,19 @@ internal class SlockKuiklyPageRenderView(
         when (event) {
             EVENT_DID_APPEAR -> {
                 viewDidAppear = true
-                if (pageDidAppear) {
-                    performTaskWhenChildAttached { childRenderView?.onResume() }
-                }
+                syncChildVisibility()
             }
             EVENT_DID_DISAPPEAR -> {
                 viewDidAppear = false
-                if (pageDidAppear) {
-                    performTaskWhenChildAttached { childRenderView?.onPause() }
-                }
+                syncChildVisibility()
             }
             EVENT_VIEW_DID_APPEAR -> {
                 pageDidAppear = true
-                if (viewDidAppear) {
-                    performTaskWhenChildAttached { childRenderView?.onResume() }
-                }
+                syncChildVisibility()
             }
             EVENT_VIEW_DID_DISAPPEAR -> {
                 pageDidAppear = false
-                if (viewDidAppear) {
-                    performTaskWhenChildAttached { childRenderView?.onPause() }
-                }
+                syncChildVisibility()
             }
             EVENT_WINDOW_SIZE_DID_CHANGED,
             EVENT_ROOT_VIEW_SIZE_DID_CHANGED,
@@ -257,6 +255,17 @@ internal class SlockKuiklyPageRenderView(
             else -> {
                 performTaskWhenChildAttached { childRenderView?.sendEvent(event, data) }
             }
+        }
+    }
+
+    private fun syncChildVisibility() {
+        val shouldBeVisible = viewDidAppear && pageDidAppear && childDidAttach
+        if (childVisible == shouldBeVisible) return
+        childVisible = shouldBeVisible
+        if (shouldBeVisible) {
+            childRenderView?.onResume()
+        } else {
+            childRenderView?.onPause()
         }
     }
 

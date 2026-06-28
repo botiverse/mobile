@@ -31,6 +31,7 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   private viewDidAppear = false;
   private pageDidAppear = false;
   private childVisible = false;
+  renderRevision: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -44,10 +45,10 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   setProp(propKey: string, propValue: KRAny | KuiklyRenderCallback): boolean {
     switch (propKey) {
       case kPageName:
-        this.pageName = normalizeText(propValue);
+        this.updatePageName(normalizeText(propValue));
         return true;
       case kPageData:
-        this.pageData = normalizeText(propValue);
+        this.updatePageData(normalizePageData(propValue));
         return true;
       case kGlassStyle:
         return true;
@@ -80,6 +81,7 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
       this.onPageLoadComplete(false, stack);
     });
     this.onPageLoadComplete(true);
+    this.syncChildVisibility();
   }
 
   getPageData(): KRRecord {
@@ -94,6 +96,36 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
 
   getDelegate(): IKuiklyViewDelegate {
     return this.delegate;
+  }
+
+  getRenderKey(): string {
+    return `${this.renderRevision}:${this.pageName}`;
+  }
+
+  private updatePageName(next: string): void {
+    if (this.pageName === next) {
+      return;
+    }
+    this.pageName = next;
+    this.resetChildForNewPage();
+  }
+
+  private updatePageData(next: string): void {
+    if (this.pageData === next) {
+      return;
+    }
+    this.pageData = next;
+    this.resetChildForNewPage();
+  }
+
+  private resetChildForNewPage(): void {
+    if (this.childVisible) {
+      this.delegate.pageDidDisappear();
+      this.childVisible = false;
+    }
+    this.delegate = new KuiklyViewDelegate();
+    this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
+    this.updateArkUI();
   }
 
   private onPageLoadComplete(isSucceed: boolean, errorReason?: string): void {
@@ -169,19 +201,21 @@ export struct SlockKuiklyPageViewComponent {
         this.renderView.getViewWidth() > 0 &&
         this.renderView.getViewHeight() > 0
       ) {
-        Kuikly({
-          pagerName: this.renderView.pageName,
-          pagerData: this.renderView.getPageData(),
-          delegate: this.renderView.getDelegate(),
-          nativeManager: globalNativeManager,
-          onControllerReadyCallback: (controller: KRNativeRenderController) => {
-            this.renderView.onKuiklyControllerReady(controller);
-          },
-          initialSize: {
-            width: this.renderView.getViewWidth(),
-            height: this.renderView.getViewHeight(),
-          },
-        })
+        ForEach([this.renderView.getRenderKey()], (_renderKey: string) => {
+          Kuikly({
+            pagerName: this.renderView.pageName,
+            pagerData: this.renderView.getPageData(),
+            delegate: this.renderView.getDelegate(),
+            nativeManager: globalNativeManager,
+            onControllerReadyCallback: (controller: KRNativeRenderController) => {
+              this.renderView.onKuiklyControllerReady(controller);
+            },
+            initialSize: {
+              width: this.renderView.getViewWidth(),
+              height: this.renderView.getViewHeight(),
+            },
+          })
+        }, (renderKey: string) => renderKey)
       }
     }
     .width('100%')
@@ -194,6 +228,11 @@ function normalizeText(value: KRAny | KuiklyRenderCallback): string {
     return '';
   }
   return String(value);
+}
+
+function normalizePageData(value: KRAny | KuiklyRenderCallback): string {
+  const text = normalizeText(value);
+  return text.length > 0 ? text : '{}';
 }
 
 @Builder
