@@ -257,7 +257,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
                 val value =
                     store.decodeString(
-                        localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
+                        AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
                         null
                     ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
                 value == "true"
@@ -268,8 +268,5 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 )
                 false
             }
-
-        private fun localPreferenceKey(key: String): String =
-            "${SlockLocalPreferenceStore.KuiklyNamespace}:$key"
     }
 }

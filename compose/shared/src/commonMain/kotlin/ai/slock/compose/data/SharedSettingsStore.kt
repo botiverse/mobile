@@ -307,6 +307,7 @@ sealed interface SharedSettingsIntent {
     data class DeleteServer(val request: SettingsServerDeleteRequest) : SharedSettingsIntent
     data class RequestServerConfirmation(val action: String, val itemId: String? = null) : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
+    data class SetForegroundKeepAlivePreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
     data class UpdateLanguageRegionPreference(
@@ -715,6 +716,14 @@ class SharedSettingsDataSource(
             notificationPreferenceRepository
                 ?: return DataResult.Error(ScreenError("settings_notification_preference_unavailable", retryable = false))
         repository.setNotificationEnabled(enabled)
+        return loadMobile()
+    }
+
+    suspend fun setForegroundKeepAlivePreference(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            notificationPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_notification_preference_unavailable", retryable = false))
+        repository.setForegroundKeepAliveEnabled(enabled)
         return loadMobile()
     }
 
@@ -1490,6 +1499,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setNotificationPreference(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_NOTIFICATION_PREFERENCE)
+            }
+            is SharedSettingsIntent.SetForegroundKeepAlivePreference -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, inProgress = true)
+                    )
+                dataSource.setForegroundKeepAlivePreference(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE)
             }
             is SharedSettingsIntent.SetServerMute -> {
                 _state.value =
@@ -2292,6 +2309,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.DeleteServer,
             is SharedSettingsIntent.RequestServerConfirmation,
             is SharedSettingsIntent.SetNotificationPreference,
+            is SharedSettingsIntent.SetForegroundKeepAlivePreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
@@ -2447,6 +2465,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
     }
 
 internal const val MOBILE_ACTION_NOTIFICATION_PREFERENCE = "notificationPreference"
+internal const val MOBILE_ACTION_FOREGROUND_KEEP_ALIVE = "foregroundKeepAlive"
 internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"

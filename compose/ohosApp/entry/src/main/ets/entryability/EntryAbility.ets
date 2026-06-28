@@ -14,6 +14,7 @@ import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
+import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
 
@@ -177,6 +178,7 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     // Ability has brought to foreground
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onForeground');
+    slockOhosRealtimeKeepAlive.stop(this.context, 'foreground');
     this.restoreMainWindowLayout();
     slockOhosRealtimeBridge.onPageShow();
   }
@@ -184,7 +186,8 @@ export default class EntryAbility extends UIAbility {
   onBackground(): void {
     // Ability has back to background
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onBackground');
-    slockOhosRealtimeBridge.onPageHide();
+    slockOhosRealtimeKeepAlive.start(this.context, 'ability_background');
+    slockOhosRealtimeBridge.onPageHide(true);
   }
 
   private initBugly(launchParam: AbilityConstant.LaunchParam): void {

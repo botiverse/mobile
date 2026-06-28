@@ -39,6 +39,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
     private var realtimeConnectJob: Job? = null
     private var appVisibility: AppVisibility = AppVisibility.Background
+    private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
     private var hostNetworkOnline: Boolean? = null
 
@@ -107,6 +108,22 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
+    fun enableBackgroundKeepAlive(
+        context: Context,
+        source: String = "unknown"
+    ) {
+        backgroundKeepAliveEnabled = true
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
+        )
+        healthCheckRealtimeConnection(
+            context = context.applicationContext,
+            allowBackground = true,
+            reason = "background_keep_alive"
+        )
+    }
+
     fun publishCurrentNetworkStatus(
         context: Context,
         source: String = "unknown"
@@ -117,6 +134,15 @@ internal object AndroidAppScopeRealtimeOwner {
             online = appContext.isHostNetworkOnline(),
             source = source,
             force = true
+        )
+    }
+
+    fun disableBackgroundKeepAlive(reason: String = "unknown") {
+        if (!backgroundKeepAliveEnabled) return
+        backgroundKeepAliveEnabled = false
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
         )
     }
 
@@ -230,7 +256,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun onNetworkAvailable(context: Context) {
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=network_available visibility=$appVisibility"
+            "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
         val appContext = context.applicationContext
         emitHostNetworkStatus(
@@ -240,7 +266,7 @@ internal object AndroidAppScopeRealtimeOwner {
         )
         healthCheckRealtimeConnection(
             context = appContext,
-            allowBackground = false,
+            allowBackground = backgroundKeepAliveEnabled,
             reason = "network_available"
         )
     }
@@ -332,6 +358,7 @@ internal object AndroidAppScopeRealtimeOwner {
             true
         }
         if (!disconnected) return
+        backgroundKeepAliveEnabled = false
     }
 
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
