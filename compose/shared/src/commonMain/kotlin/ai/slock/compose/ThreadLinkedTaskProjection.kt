@@ -11,6 +11,9 @@ internal data class ThreadLinkedTasksProjection(
     val lookup: Map<String, TaskSummary>
 )
 
+internal fun emptyThreadLinkedTasksProjection(): ThreadLinkedTasksProjection =
+    ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
+
 internal data class ThreadLinkedTaskReferences(
     val messageIds: Set<String>,
     val taskIds: Set<String>,
@@ -29,6 +32,17 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
         taskAssigneeId = linkedTask.assignee?.id?.value,
         taskAssigneeName = linkedTask.threadLinkedTaskAssigneeDisplayName()
     )
+}
+
+internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
+    projection: ThreadLinkedTasksProjection
+): KuiklyThreadMessageItem {
+    val linkedTask = projection.lookup.threadLinkedTaskForMessage(this)
+    return when {
+        linkedTask != null -> withLinkedTask(linkedTask)
+        projection.authoritative -> withoutLinkedTask()
+        else -> this
+    }
 }
 
 internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =

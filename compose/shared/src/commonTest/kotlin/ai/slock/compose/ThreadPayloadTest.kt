@@ -4128,11 +4128,115 @@ class ThreadPayloadTest {
         val payload = KuiklyThreadScreenPayload(messages = listOf(message))
         val linkedTasks = listOf(task).threadLinkedTasksByMessageLookup(payload.threadLinkedTaskReferences())
 
-        val actionMessage = payload.threadActionMessage("message-240", linkedTasks)
+        val actionMessage =
+            payload.threadActionMessage(
+                "message-240",
+                ThreadLinkedTasksProjection(authoritative = true, lookup = linkedTasks)
+            )
 
         assertEquals("message-240", actionMessage?.taskId)
         assertEquals("InReview", actionMessage?.taskStatus)
         assertEquals(240, actionMessage?.taskNumber)
+    }
+
+    @Test
+    fun threadActionMessageClearsStaleTaskFactsWhenProjectionIsAuthoritativeEmpty() {
+        val staleMessage =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "historical task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "Todo",
+                taskAssigneeId = "agent-android",
+                taskAssigneeName = "Android Developer"
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(staleMessage))
+
+        val actionMessage =
+            payload.threadActionMessage(
+                "message-240",
+                ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap())
+            )
+
+        assertEquals(null, actionMessage?.taskId)
+        assertEquals(null, actionMessage?.taskNumber)
+        assertEquals(null, actionMessage?.taskStatus)
+        assertEquals(null, actionMessage?.taskAssigneeId)
+        assertEquals(null, actionMessage?.taskAssigneeName)
+        assertEquals("task-240", staleMessage.taskId)
+    }
+
+    @Test
+    fun findTaskParentMessageUsesLinkedTaskProjectionWithoutProjectedTimeline() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "historical task"
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "historical task",
+                status = TaskStatus.Done,
+                taskNumber = 240,
+                messageId = MessageId("message-240"),
+                assignee = null,
+                updatedAtLabel = ""
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val timeline = payload.toThreadTimelineSlice()
+        val projection =
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = listOf(task).threadLinkedTasksByMessageLookup(payload.threadLinkedTaskReferences())
+            )
+
+        val parent = timeline.findTaskParentMessage("task-240", projection)
+
+        assertEquals("message-240", parent?.id)
+        assertEquals(null, timeline.messages.single().taskId)
+    }
+
+    @Test
+    fun findMarkdownTaskIdUsesLinkedTaskProjectionWithoutProjectedTimeline() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "historical task"
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "historical task",
+                status = TaskStatus.InProgress,
+                taskNumber = 240,
+                messageId = MessageId("message-240"),
+                assignee = null,
+                updatedAtLabel = ""
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val timeline = payload.toThreadTimelineSlice()
+        val projection =
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = listOf(task).threadLinkedTasksByMessageLookup(payload.threadLinkedTaskReferences())
+            )
+
+        val taskId =
+            timeline.findMarkdownTaskId(
+                ThreadMarkdownTag("#240", ThreadMarkdownTagKind.Task),
+                projection
+            )
+
+        assertEquals("task-240", taskId)
+        assertEquals(null, timeline.messages.single().taskId)
     }
 
     @Test

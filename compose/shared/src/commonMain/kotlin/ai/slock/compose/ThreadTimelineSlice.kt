@@ -227,24 +227,47 @@ internal fun ThreadTimelineSlice.threadActionMessage(
             message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
         }
 
-internal fun ThreadTimelineSlice.findTaskParentMessage(taskId: String): KuiklyThreadMessageItem? =
-    messages.firstOrNull { message ->
-        message.id == taskId || message.taskId == taskId
-    } ?: originMessage?.takeIf { message ->
-        message.id == taskId || message.taskId == taskId
-    }
+internal fun ThreadTimelineSlice.threadActionMessage(
+    messageId: String,
+    linkedTasksProjection: ThreadLinkedTasksProjection
+): KuiklyThreadMessageItem? =
+    threadMessageById(messageId)
+        ?.withLinkedTaskProjection(linkedTasksProjection)
 
-internal fun ThreadTimelineSlice.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
+internal fun ThreadTimelineSlice.findTaskParentMessage(
+    taskId: String,
+    linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
+): KuiklyThreadMessageItem? {
+    val taskKey = taskId.trim().takeIf { it.isNotBlank() } ?: return null
+    return messages.firstOrNull { message ->
+        message.id == taskKey ||
+            message.taskId == taskKey ||
+            linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)?.id?.value == taskKey
+    } ?: originMessage?.takeIf { message ->
+        message.id == taskKey ||
+            message.taskId == taskKey ||
+            linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)?.id?.value == taskKey
+    }
+}
+
+internal fun ThreadTimelineSlice.findMarkdownTaskId(
+    tag: ThreadMarkdownTag,
+    linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
+): String? {
     val key = tag.label.removePrefix("#").trim()
     val taskNumber = key.toIntOrNull()
-    return messages.firstOrNull { message ->
-        message.taskId?.equals(key, ignoreCase = true) == true ||
-            message.taskNumber == taskNumber
-    }?.taskId
-        ?: originMessage?.takeIf { message ->
-            message.taskId?.equals(key, ignoreCase = true) == true ||
-                message.taskNumber == taskNumber
-        }?.taskId
+    fun KuiklyThreadMessageItem.markdownTaskMatch(): String? {
+        val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(this)
+        return when {
+            linkedTask?.id?.value?.equals(key, ignoreCase = true) == true -> linkedTask.id.value
+            taskNumber != null && linkedTask?.taskNumber == taskNumber -> linkedTask.id.value
+            taskId?.equals(key, ignoreCase = true) == true -> taskId
+            taskNumber != null && this.taskNumber == taskNumber -> taskId
+            else -> null
+        }
+    }
+    return messages.firstNotNullOfOrNull { message -> message.markdownTaskMatch() }
+        ?: originMessage?.markdownTaskMatch()
 }
 
 internal fun ThreadTimelineSlice.findThreadAuthorProfile(memberId: String): MemberProfile? =

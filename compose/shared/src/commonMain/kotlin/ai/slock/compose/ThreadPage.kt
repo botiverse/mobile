@@ -1155,30 +1155,6 @@ private fun requestKuiklyThreadPerformanceSnapshot(
     }
 }
 
-private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
-    val key = tag.label.removePrefix("#").trim()
-    val taskNumber = key.toIntOrNull()
-    return tasks.firstOrNull { task ->
-        task.id.equals(key, ignoreCase = true) ||
-            task.taskNumber == taskNumber
-    }?.id
-        ?: messages.firstOrNull { message ->
-            message.taskId?.equals(key, ignoreCase = true) == true ||
-                message.taskNumber == taskNumber
-        }?.taskId
-        ?: originMessage?.takeIf { message ->
-            message.taskId?.equals(key, ignoreCase = true) == true ||
-                message.taskNumber == taskNumber
-        }?.taskId
-}
-
-private fun KuiklyThreadScreenPayload.findTaskParentMessage(taskId: String): KuiklyThreadMessageItem? =
-    messages.firstOrNull { message ->
-        message.id == taskId || message.taskId == taskId
-    } ?: originMessage?.takeIf { message ->
-        message.id == taskId || message.taskId == taskId
-    }
-
 private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     Chat("chat", "Chat"),
     Tasks("tasks", "Tasks"),
@@ -2301,7 +2277,7 @@ internal fun SharedThreadRouteContent(
         remember(timelineSlice) {
             timelineSlice.threadLinkedTaskReferences()
         }
-    val sharedTaskProjection by remember(
+    val linkedTasksProjection by remember(
         tasksDataStore,
         currentServerId,
         taskChannelId?.value,
@@ -2318,19 +2294,11 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    val taskProjectionLookup =
-        threadLinkedTasksLookup(
-            scopedProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
-            sharedStoreProjection = sharedTaskProjection
-        )
     val renderedPayload =
         remember(baseRenderedPayload) {
             baseRenderedPayload
         }
-    val renderedTimelineSlice =
-        remember(timelineSlice, taskProjectionLookup) {
-            timelineSlice.withThreadLinkedTasksProjection(taskProjectionLookup)
-        }
+    val renderedTimelineSlice = timelineSlice
     val memberSuggestionsFlow =
         remember(
             serverMembersStore,
@@ -3152,7 +3120,7 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
-            linkedTasksByMessageLookup = taskProjectionLookup.lookup,
+            linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
@@ -3248,7 +3216,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
-                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)
+                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     val permalink =
                         message?.let {
                             renderedThread.threadMessagePermalink(
@@ -3264,7 +3232,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message?.body.isNullOrBlank()) {
                         bridge.toast("No text to select")
                     } else {
@@ -3273,7 +3241,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     val parentMessage =
-                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)
+                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
                         bridge.toast("Unable to open replies")
                         return@ThreadPageContent
@@ -3425,7 +3393,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
                     val previousSaved =
-                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)?.isSaved
+                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.isSaved
                             ?: false
                     val nextSaved = !previousSaved
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
@@ -3456,7 +3424,7 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val actionCard =
-                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)?.threadActionCard()
+                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.threadActionCard()
                     if (actionCard == null) {
                         bridge.toast("Action is no longer available")
                         return@ThreadPageContent
@@ -3545,7 +3513,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
-                    val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId)
+                    val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
@@ -3592,7 +3560,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openCommentHost" && !itemId.isNullOrBlank() -> {
                     val commentRef =
-                        renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)?.commentRef
+                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.commentRef
                     val hostMessageId = commentRef?.hostMessageId?.takeIf { it.isNotBlank() }
                     val loadingPayload = commentRef?.let { renderedThread.commentHostLoadingPayload(it) }
                     if (hostMessageId == null || loadingPayload == null) {
@@ -3792,7 +3760,7 @@ internal fun SharedThreadRouteContent(
                     if (itemId in pendingTaskConvertMessageIds) {
                         return@ThreadPageContent
                     }
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, taskProjectionLookup.lookup)
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
                         bridge.toast("Unable to convert message")
                         return@ThreadPageContent
@@ -5665,7 +5633,7 @@ private fun ThreadPageContent(
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
     taskChannelId: ChannelId?,
-    linkedTasksByMessageLookup: Map<String, TaskSummary>,
+    linkedTasksProjection: ThreadLinkedTasksProjection,
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
@@ -5827,7 +5795,7 @@ private fun ThreadPageContent(
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
             }
             ThreadMarkdownTagKind.Task -> {
-                val taskId = timelineSlice.findMarkdownTaskId(tag)
+                val taskId = timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
                 if (!taskId.isNullOrBlank()) {
                     onThreadEvent("openTask", taskId, null, null)
                 } else {
@@ -5891,7 +5859,7 @@ private fun ThreadPageContent(
                         replyMetadataByParentId = replyMetadataByParentId,
                         composerDraftPersistSlice = composerDraftPersistSlice,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
-                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                        linkedTasksProjection = linkedTasksProjection,
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -6603,7 +6571,7 @@ private fun ThreadChatTab(
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     composerKeyboardInsetDp: Float,
-    linkedTasksByMessageLookup: Map<String, TaskSummary>,
+    linkedTasksProjection: ThreadLinkedTasksProjection,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -6668,7 +6636,7 @@ private fun ThreadChatTab(
                     replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                    linkedTasksProjection = linkedTasksProjection,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -6715,7 +6683,7 @@ private fun ThreadChatTab(
                     replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                    linkedTasksProjection = linkedTasksProjection,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -6756,7 +6724,7 @@ private fun ThreadChatTab(
                 replyMetadataByParentId = replyMetadataByParentId,
                 activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
-                linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                linkedTasksProjection = linkedTasksProjection,
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
@@ -6822,7 +6790,7 @@ private fun ThreadMessagesList(
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
-    linkedTasksByMessageLookup: Map<String, TaskSummary>,
+    linkedTasksProjection: ThreadLinkedTasksProjection,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -7360,7 +7328,7 @@ private fun ThreadMessagesList(
                     ThreadOriginCard(
                         renderConfig = renderConfig,
                         timelineSlice = renderPayload,
-                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+                        linkedTasksProjection = linkedTasksProjection,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
@@ -7480,12 +7448,12 @@ private fun ThreadMessagesList(
                                 )
                     }
                 }
-                val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
+                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 val displayMessage =
-                    remember(message, linkedTask, messagePerformanceKey) {
+                    remember(message, linkedTasksProjection) {
                         val startedAt = TimeSource.Monotonic.markNow()
-                        message.withLinkedTask(linkedTask)
+                        message.withLinkedTaskProjection(linkedTasksProjection)
                             .also {
                                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
                                 if (shouldLogThreadPerformance(durationMs)) {
@@ -7649,7 +7617,7 @@ private fun ThreadMessagesList(
             )
         }
         actionMessageId?.let { messageId ->
-            renderPayload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
+            renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 ThreadMessageActionMenu(
@@ -7718,7 +7686,7 @@ private fun ThreadMessagesList(
             }
         }
         taskStatusMenuMessageId?.let { messageId ->
-            renderPayload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
+            renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
                 SlockBaseMenuOverlay(
                     anchor = taskStatusMenuAnchor,
@@ -7885,9 +7853,9 @@ internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
 
 internal fun KuiklyThreadScreenPayload.threadActionMessage(
     messageId: String,
-    linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap()
+    linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
 ): KuiklyThreadMessageItem? =
-    toThreadTimelineSlice().threadActionMessage(messageId, linkedTasksByMessageLookup)
+    toThreadTimelineSlice().threadActionMessage(messageId, linkedTasksProjection)
 
 internal fun formatThreadMessageQuote(text: String): String =
     text.replace("\r\n", "\n")
@@ -10481,7 +10449,7 @@ private fun ThreadMessageMenuDivider() {
 private fun ThreadOriginCard(
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
-    linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap(),
+    linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection(),
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -10539,8 +10507,8 @@ private fun ThreadOriginCard(
             }
             else -> {
                 timelineSlice.originMessage?.let { origin ->
-                    val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(origin)
-                    val displayOrigin = origin.withLinkedTask(linkedTask)
+                    val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(origin)
+                    val displayOrigin = origin.withLinkedTaskProjection(linkedTasksProjection)
                     val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                     val originActionCard = if (contentExtrasVisible) origin.threadActionCard() else null
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
