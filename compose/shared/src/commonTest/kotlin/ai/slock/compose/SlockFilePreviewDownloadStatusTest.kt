@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.BridgeAttachmentDownloadProgress
+import com.tencent.kuikly.core.views.PlayState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -200,6 +201,35 @@ class SlockFilePreviewDownloadStatusTest {
             )
 
         assertEquals(SlockLucideIconName.FileVideoCamera, icon)
+    }
+
+    @Test
+    fun mp4VideoClassifierAcceptsOnlyMp4ForMobilePreview() {
+        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mp4", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.bin", mimeType = "video/mp4"))
+        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.MP4?token=1", mimeType = ""))
+        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.webm", mimeType = "video/webm"))
+        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mov", mimeType = "video/quicktime"))
+    }
+
+    @Test
+    fun videoTimeLabelIncludesStateAndDuration() {
+        assertEquals(
+            "Playing · 0:12 / 1:05",
+            slockFilePreviewVideoTimeLabel(
+                currentTimeMs = 12_000,
+                totalTimeMs = 65_000,
+                playState = PlayState.PLAYING
+            )
+        )
+        assertEquals(
+            "Playback failed · 0:00",
+            slockFilePreviewVideoTimeLabel(
+                currentTimeMs = 0,
+                totalTimeMs = 0,
+                playState = PlayState.ERROR
+            )
+        )
     }
 
     @Test

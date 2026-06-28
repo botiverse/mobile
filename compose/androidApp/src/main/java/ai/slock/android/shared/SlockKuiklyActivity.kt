@@ -953,6 +953,7 @@ internal object SlockKuiklyAdapters {
             krFontAdapter = SlockKuiklyFontAdapter
             krRouterAdapter = SlockKuiklyRouterAdapter
             krThreadAdapter = SlockKuiklyThreadAdapter
+            krVideoViewAdapter = SlockKRVideoViewAdapter
         }
     }
 }

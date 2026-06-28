@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
+import com.tencent.kuikly.compose.foundation.layout.aspectRatio
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -42,12 +43,14 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.material3.LinearProgressIndicator
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -64,6 +67,9 @@ import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.core.views.PlayState
+import com.tencent.kuikly.core.views.VideoPlayControl
+import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -97,6 +103,7 @@ internal data class SlockFilePreviewPayload(
     val message: String = "",
     val error: String? = null,
     val externalUrl: String? = null,
+    val videoUrl: String? = null,
     val externalFileName: String = "",
     val externalMimeType: String = "",
     val source: String = "",
@@ -443,6 +450,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
             "image" -> "Image preview"
             "markdown" -> "Markdown preview"
             "text" -> "Text preview"
+            "video" -> "Video preview"
             else -> "File preview"
         },
         subtitle = name.ifBlank { "Attachment" },
@@ -481,6 +489,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             mimeType = externalMimeType
         )
     val wantsImage = externalMimeType.substringBefore(';').trim().startsWith("image/", ignoreCase = true)
+    val wantsMp4Video =
+        slockFilePreviewIsMp4VideoAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
     val wantsText =
         !wantsMarkdown &&
             slockFilePreviewIsTextLikeAttachment(
@@ -490,6 +503,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
             copy(
@@ -514,6 +528,28 @@ private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
         imageUrl = imageUrl,
         message = if (imageUrl == null) "Image preview is unavailable." else "",
         error = if (imageUrl == null) "image_preview_unavailable" else null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load video preview.",
+            error = "video_preview_url_failed"
+        )
+    return copy(
+        kind = "video",
+        title = "Video preview",
+        videoUrl = target,
+        message = "",
+        error = null
     )
 }
 
@@ -682,6 +718,12 @@ internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: St
         normalizedMime.equals("text/x-markdown", ignoreCase = true) ||
         fileName.endsWith(".md", ignoreCase = true) ||
         fileName.endsWith(".markdown", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    if (normalizedMime.equals("video/mp4", ignoreCase = true)) return true
+    return fileName.substringBefore('?').substringBefore('#').endsWith(".mp4", ignoreCase = true)
 }
 
 internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {
@@ -924,6 +966,24 @@ internal fun SlockFilePreviewPayloadContent(
                     )
                 }
             }
+        "video" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewVideoPanel(
+                    source = payload.videoUrl.orEmpty(),
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    fallbackMessage = payload.message,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         "loading" -> {
             SlockFilePreviewImageGallerySurface(
                 payload = payload,
@@ -1020,10 +1080,201 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
     when (kind) {
         "markdown", "text" -> SlockLucideIconName.FileText
         "image" -> SlockLucideIconName.Image
+        "video" -> SlockLucideIconName.Film
         "loading" -> SlockLucideIconName.LoaderCircle
         "error" -> SlockLucideIconName.TriangleAlert
         else -> slockFilePreviewFileIconName(this)
     }
+
+@Composable
+private fun SlockFilePreviewVideoPanel(
+    source: String,
+    name: String,
+    meta: String,
+    fallbackMessage: String,
+    modifier: Modifier = Modifier
+) {
+    var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
+    var playState by remember(source) { mutableStateOf(PlayState.NONE) }
+    var firstFrameVisible by remember(source) { mutableStateOf(false) }
+    var currentTimeMs by remember(source) { mutableStateOf(0) }
+    var totalTimeMs by remember(source) { mutableStateOf(0) }
+    val canPlay = source.isNotBlank()
+    val isPlaying = playState == PlayState.PLAYING
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF000000))
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .heightIn(max = 420.dp)
+                    .background(Color(0xFF000000))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            if (canPlay) {
+                SlockFilePreviewKuiklyVideo(
+                    source = source,
+                    playControl = playControl,
+                    onPlayStateChanged = { playState = it },
+                    onPlayTimeChanged = { current, total ->
+                        currentTimeMs = current
+                        totalTimeMs = total
+                    },
+                    onFirstFrame = {
+                        firstFrameVisible = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (!canPlay) {
+                SlockFilePreviewVideoOverlayText(
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    title = fallbackMessage.ifBlank { "Video preview is unavailable." },
+                    detail = name.ifBlank { meta }
+                )
+            } else if (!firstFrameVisible && !isPlaying) {
+                SlockFilePreviewVideoOverlayText(
+                    iconName = SlockLucideIconName.Play,
+                    title = name.ifBlank { "Video preview" },
+                    detail = meta
+                )
+            }
+        }
+        Box(modifier = Modifier.height(SlockSpacing.Md))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = if (isPlaying) "Pause" else "Play",
+                onClick = {
+                    if (!canPlay) return@SlockBrutalActionButton
+                    playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                },
+                enabled = canPlay,
+                leadingIcon = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+                minWidth = 94.dp,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
+            Text(
+                text = slockFilePreviewVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewVideoOverlayText(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String
+) {
+    Column(
+        modifier =
+            Modifier
+                .background(Color(0xCC000000))
+                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FFFFFFFF")
+        Text(
+            text = title,
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.SurfaceWhite,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = SlockType.Caption,
+                color = SlockColor.SurfaceWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewKuiklyVideo(
+    source: String,
+    playControl: VideoPlayControl,
+    onPlayStateChanged: (PlayState) -> Unit,
+    onPlayTimeChanged: (Int, Int) -> Unit,
+    onFirstFrame: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    MakeKuiklyComposeNode(
+        factory = { VideoView() },
+        modifier = modifier,
+        viewUpdate = { view ->
+            view.getViewAttr().apply {
+                src(source)
+                resizeModeToContain()
+                muted(false)
+                rate(1f)
+                playControl(playControl)
+            }
+            view.getViewEvent().apply {
+                playStateDidChanged { state, _ -> onPlayStateChanged(state) }
+                playTimeDidChanged { current, total -> onPlayTimeChanged(current, total) }
+                firstFrameDidDisplay { onFirstFrame() }
+            }
+        }
+    )
+}
+
+internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int, playState: PlayState): String {
+    val stateLabel =
+        when (playState) {
+            PlayState.PLAYING -> "Playing"
+            PlayState.BUFFERING -> "Buffering"
+            PlayState.PAUSED -> "Paused"
+            PlayState.PLAY_END -> "Ended"
+            PlayState.ERROR -> "Playback failed"
+            PlayState.NONE -> "Ready"
+        }
+    val current = currentTimeMs.slockFilePreviewVideoDurationLabel()
+    val total = totalTimeMs.takeIf { it > 0 }?.slockFilePreviewVideoDurationLabel()
+    return if (total == null) {
+        "$stateLabel · $current"
+    } else {
+        "$stateLabel · $current / $total"
+    }
+}
+
+private fun Int.slockFilePreviewVideoDurationLabel(): String {
+    val totalSeconds = (coerceAtLeast(0) / 1000)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
+}
 
 internal fun SlockFilePreviewPayload.imageGalleryProgressLabel(): String? {
     val size = imageGallery.size
@@ -1107,6 +1358,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
         message = SlockFilePreviewLoadingLabel,
         error = null,
         externalUrl = null,
+        videoUrl = null,
         externalFileName = title.ifBlank { "attachment-${attachmentId.take(8)}" },
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,

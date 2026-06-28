@@ -2876,6 +2876,7 @@ internal fun SharedThreadRouteContent(
             when {
                 attachment.isMarkdownAttachment() -> "markdown"
                 attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
+                attachment.isMp4VideoAttachment() -> "video"
                 else -> "file"
             }
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = lazyPreviewKind))
@@ -11117,6 +11118,9 @@ private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
 private fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
+private fun KuiklyThreadAttachmentItem.isMp4VideoAttachment(): Boolean =
+    slockFilePreviewIsMp4VideoAttachment(fileName = name, mimeType = mimeType)
+
 private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
     isPdfAttachment() ||
         isMarkdownAttachment() ||
@@ -11126,7 +11130,7 @@ private fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
-    isPreviewableDocumentAttachment() || isHtmlAttachment() || normalizedMimeType().startsWith("video/")
+    isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     listOf(sizeLabel, mimeType)
@@ -11154,6 +11158,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
     when {
+        isMp4VideoAttachment() -> "Video preview"
         isTextLikeAttachment() || isHtmlAttachment() -> "Text preview"
         isPreviewableDocumentAttachment() -> "Document preview"
         else -> null
