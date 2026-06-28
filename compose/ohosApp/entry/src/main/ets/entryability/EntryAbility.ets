@@ -11,6 +11,7 @@ import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
+import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
@@ -72,6 +73,7 @@ export default class EntryAbility extends UIAbility {
 
     KuiklyRenderAdapterManager.krLogAdapter = new LogAdapter();
     KuiklyRenderAdapterManager.krRouterAdapter = new RouterAdapter();
+    KuiklyRenderAdapterManager.krVideoViewAdapter = new SlockKRVideoAdapter();
     this.registerSlockFonts(mainWindow);
 
     windowStage.loadContent('pages/Index', (err, data) => {
