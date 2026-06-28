@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.SlockFilePreviewStore
 import ai.slock.compose.SharedThreadComposerDraftPersistSlice
 import ai.slock.compose.SharedThreadComposerDraftPersistence
 import ai.slock.compose.model.AgentCreated
@@ -42,6 +43,7 @@ internal class SlockSharedStoreProvider private constructor(
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
+    val filePreviewStore: SlockFilePreviewStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
     private var homeActivityStore: SharedActivityStore? = null
@@ -213,6 +215,7 @@ internal class SlockSharedStoreProvider private constructor(
                             namespace = SharedApiEnvironmentStore.Namespace
                         )
                     ),
+                filePreviewStore = SlockFilePreviewStore(),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
             ).also { provider ->
                 provider.installAuthSessionClearNotifyBridge { message ->

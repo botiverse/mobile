@@ -90,6 +90,32 @@ private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDow
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
 @Serializable
+internal data class WireSlockFilePreviewLaunchPayload(
+    val previewId: String = ""
+)
+
+internal class SlockFilePreviewStore(
+    private val maxEntries: Int = 32
+) {
+    private var nextId = 0
+    private val entries = LinkedHashMap<String, SlockFilePreviewPayload>()
+
+    fun put(payload: SlockFilePreviewPayload): String {
+        nextId += 1
+        val id = "file-preview-$nextId"
+        entries[id] = payload
+        while (entries.size > maxEntries) {
+            val firstKey = entries.keys.firstOrNull() ?: break
+            entries.remove(firstKey)
+        }
+        return id
+    }
+
+    fun get(id: String): SlockFilePreviewPayload? =
+        entries[id]
+}
+
+@Serializable
 internal data class SlockFilePreviewPayload(
     val kind: String = "unsupported",
     val title: String = "File preview",
@@ -158,23 +184,30 @@ private fun SlockFilePreviewStandalonePageContent() {
         remember(pager.pageData.params.toString()) {
             val source = pager.pageData.params.optString("payload")
             val startedAt = TimeSource.Monotonic.markNow()
-            val parsed =
+            val parsedLaunch =
                 source
                     .takeIf { it.isNotBlank() }
                     ?.let {
-                        runCatching { SlockFilePreviewJson.decodeFromString(SlockFilePreviewPayload.serializer(), it) }
+                        runCatching { SlockFilePreviewJson.decodeFromString(WireSlockFilePreviewLaunchPayload.serializer(), it) }
                     }
+            val previewId = parsedLaunch?.getOrNull()?.previewId.orEmpty()
+            val resolvedPayload = previewId.takeIf { it.isNotBlank() }?.let(sharedStores.filePreviewStore::get)
             FilePreviewLaunchPayloadTrace(
                 payload =
-                    parsed?.getOrNull() ?: SlockFilePreviewPayload(
-                title = "Preview unavailable",
-                subtitle = "File preview",
-                message = "Preview payload could not be loaded.",
-                error = "payload_parse_failed"
+                    resolvedPayload ?: SlockFilePreviewPayload(
+                        title = "Preview unavailable",
+                        subtitle = "File preview",
+                        message = "Preview payload could not be loaded.",
+                        error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
                     ),
                 responseBytes = source.encodeToByteArray().size,
                 durationMs = startedAt.elapsedNow().inWholeMilliseconds,
-                result = if (parsed?.isSuccess == true) "success" else "failure"
+                result =
+                    when {
+                        resolvedPayload != null -> "success"
+                        parsedLaunch?.isSuccess == true -> "missing_preview"
+                        else -> "failure"
+                    }
             )
         }
     LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
@@ -431,13 +464,24 @@ private data class FilePreviewLaunchPayloadTrace(
 )
 
 internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
-    val pageData =
-        JSONObject().apply {
-            put("pageName", SLOCK_FILE_PREVIEW_PAGE)
-            put("payload", SlockFilePreviewJson.encodeToString(payload))
-        }
+    val bridge = Utils.bridgeModule(pagerId)
+    val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
+    val previewId = sharedStores.filePreviewStore.put(payload)
+    val pageData = slockFilePreviewLaunchPageData(previewId)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
 }
+
+internal fun slockFilePreviewLaunchPageData(previewId: String): JSONObject =
+    JSONObject().apply {
+        put("pageName", SLOCK_FILE_PREVIEW_PAGE)
+        put(
+            "payload",
+            SlockFilePreviewJson.encodeToString(
+                WireSlockFilePreviewLaunchPayload.serializer(),
+                WireSlockFilePreviewLaunchPayload(previewId = previewId)
+            )
+        )
+    }
 
 internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
     kind: String,

@@ -2,10 +2,48 @@ package ai.slock.compose
 
 import ai.slock.compose.base.BridgeAttachmentDownloadProgress
 import com.tencent.kuikly.core.views.PlayState
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
+@OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewDownloadStatusTest {
+    @Test
+    fun filePreviewLaunchPayloadOnlyCarriesPreviewIdentity() {
+        val descriptor = WireSlockFilePreviewLaunchPayload.serializer().descriptor
+        val names = (0 until descriptor.elementsCount).map(descriptor::getElementName)
+
+        assertEquals(listOf("previewId"), names)
+    }
+
+    @Test
+    fun filePreviewLaunchPageDataDoesNotSerializeProductState() {
+        val pageData = slockFilePreviewLaunchPageData("preview-1")
+        val encodedPayload = pageData.optString("payload")
+
+        assertEquals(SLOCK_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
+        listOf(
+            "title",
+            "subtitle",
+            "name",
+            "path",
+            "meta",
+            "content",
+            "imageUrl",
+            "videoUrl",
+            "externalUrl",
+            "externalFileName",
+            "externalMimeType",
+            "source",
+            "attachmentId",
+            "agentId",
+            "imageGallery"
+        ).forEach { forbidden ->
+            assertFalse(encodedPayload.contains(forbidden), "$forbidden must stay outside compose_file_preview launch pageData")
+        }
+    }
+
     @Test
     fun downloadStatusLabelIncludesPercentAndSpeed() {
         val label =
