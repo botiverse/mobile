@@ -9,6 +9,7 @@ internal object SlockKuiklyPages {
     const val APP_SHELL = "compose_slock_app_shell"
     const val THREAD = "compose_thread"
     const val THREAD_COMPOSER_VISUAL = "compose_thread_composer_visual"
+    const val MARKDOWN_RERENDER_VISUAL = "compose_markdown_rerender_visual"
     const val HOME = "compose_home"
     const val MEMBERS = "compose_members"
     const val SETTINGS_HOME = "compose_settings_home"

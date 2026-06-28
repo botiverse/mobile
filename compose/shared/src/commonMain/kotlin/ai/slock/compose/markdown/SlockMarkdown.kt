@@ -394,6 +394,14 @@ internal fun String.shouldUseSlockMarkdownInlineTextFastPath(): Boolean {
 private val SlockMarkdownInlineTextFastPathBlockers =
     setOf('\\', '\n', '\r', '[', ']', '<', '>', '|')
 
+private fun String.shouldUseSlockMarkdownDirectInlineTagFastPath(): Boolean {
+    if (isEmpty() || contains("://")) return false
+    return none { it in SlockMarkdownDirectInlineTagFastPathBlockers }
+}
+
+private val SlockMarkdownDirectInlineTagFastPathBlockers =
+    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '|')
+
 private fun String.hasSlockMarkdownBlockShape(): Boolean {
     val trimmed = trimStart()
     return SlockMarkdownHeadingPrefixRegex.containsMatchIn(trimmed) ||
@@ -1032,6 +1040,29 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
     }
 }
 
+internal fun buildSlockMarkdownDirectInlineTagAnnotatedString(
+    content: String,
+    style: TextStyle,
+    tokenPlan: MarkdownInlineTokenPlan
+): AnnotatedString {
+    val tagTokens = tokenPlan.tagTokens()
+    if (tagTokens.isEmpty()) return AnnotatedString(content)
+    return buildAnnotatedString {
+        pushStyle(style.toSpanStyle())
+        var cursor = 0
+        tagTokens.forEach { token ->
+            val start = token.range.first.coerceIn(0, content.length)
+            val endExclusive = (token.range.last + 1).coerceIn(start, content.length)
+            if (start < cursor) return@forEach
+            if (start > cursor) append(content.substring(cursor, start))
+            appendInlineContent(token.id, token.label)
+            cursor = endExclusive
+        }
+        if (cursor < content.length) append(content.substring(cursor))
+        pop()
+    }
+}
+
 @Composable
 private fun SlockMarkdownMeasuredInlineCodeBox(
     modifier: Modifier,
@@ -1262,7 +1293,11 @@ fun SlockMarkdownBody(
         val (renderedText, cacheHit) =
             traceMarkdownSection(SlockMarkdownTraceNames.ANNOTATE) {
                 SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
-                    buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
+                    if (tokenPlan.tagTokens().isNotEmpty() && content.shouldUseSlockMarkdownDirectInlineTagFastPath()) {
+                        buildSlockMarkdownDirectInlineTagAnnotatedString(content, resolvedStyle, tokenPlan)
+                    } else {
+                        buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
+                    }
                 }
             }
         val inlineContent = remember(annotator) {

@@ -588,6 +588,22 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun directInlineTagRendererKeepsChannelThreadPlaceholders() {
+        val body = "Final #markdown专修:9579b48a @artin #markdown专修 #37."
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("markdown专修"))
+        val annotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, plan)
+
+        assertEquals(
+            listOf("#markdown专修:9579b48a", "@artin", "#markdown专修", "#37"),
+            plan.tagTokens().map { it.label }
+        )
+        assertEquals(
+            setOf("slock:6", "slock:27", "slock:34", "slock:46"),
+            annotated.slockMarkdownInlineContentIds()
+        )
+    }
+
+    @Test
     fun inlineReferencesMatchTask25Boundaries() {
         val body =
             "我已补发日报到 #raft-mobile，消息是 #raft-mobile:4752266f。也已确认主 reminder " +
