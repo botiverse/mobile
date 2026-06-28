@@ -59,6 +59,7 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedServerMembersEntry
 import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentProfile
@@ -154,6 +155,7 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -812,14 +814,8 @@ internal fun MembersPageContent() {
             serverMembersStore = sharedStores.serverMembersStore
         )
     }
-    var currentAgentCount by remember { mutableStateOf(payload.members.count { it.kind == MemberKind.Agent }) }
     var maxAgents by remember { mutableStateOf(-1) }
-    var localMembers by remember { mutableStateOf(payload.members) }
-    LaunchedEffect(payload) {
-        // Sync local members when the host pushes a fresh payload
-        localMembers = payload.members
-        currentAgentCount = payload.members.count { it.kind == MemberKind.Agent }
-    }
+    var optimisticMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     // Derive the active serverId from the auth session. Replaces the prior
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
@@ -828,6 +824,29 @@ internal fun MembersPageContent() {
         activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
+    val serverMembersEntry by remember(sharedStores.serverMembersStore, serverId) {
+        val cleanServerId = serverId.trim()
+        if (cleanServerId.isBlank()) {
+            flowOf(SharedServerMembersEntry(serverId = ""))
+        } else {
+            sharedStores.serverMembersStore.serverMembersEntryFlow(ServerId(cleanServerId))
+        }
+    }.collectAsState(SharedServerMembersEntry(serverId = serverId))
+    val localMembers =
+        remember(serverMembersEntry.members, optimisticMembers) {
+            val merged = LinkedHashMap<String, MemberProfile>()
+            serverMembersEntry.members.forEach { member ->
+                member.id.value.trim().takeIf { it.isNotBlank() }?.let { merged[it] = member }
+            }
+            optimisticMembers.forEach { member ->
+                member.id.value.trim().takeIf { it.isNotBlank() && it !in merged }?.let { merged[it] = member }
+            }
+            merged.values.toList()
+        }
+    val currentAgentCount = localMembers.count { it.kind == MemberKind.Agent }
+    LaunchedEffect(serverId) {
+        optimisticMembers = emptyList()
+    }
     val agentStatusResolver =
         remember(sharedStores.serverMembersStore, serverId) {
             slockAgentStatusResolver(sharedStores.serverMembersStore, serverId)
@@ -860,7 +879,14 @@ internal fun MembersPageContent() {
                         presence = ai.slock.compose.model.Presence.Offline,
                         agentStatus = ai.slock.compose.model.AgentStatus.Online
                     )
-                    localMembers = localMembers + profile
+                    optimisticMembers = optimisticMembers + profile
+                    serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
+                        sharedStores.serverMembersStore.refreshMembers(
+                            ServerId(cleanServerId),
+                            DataRequestPriority.Background,
+                            force = true
+                        )
+                    }
                 }
                 when (result) {
                     is DataResult.Content -> DataResult.Content(Unit)
@@ -981,7 +1007,7 @@ internal fun MembersPageContent() {
         payload = payload.copy(members = localMembers),
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
-            val pageData = payload.toMemberDetailPageData(member.id.value)
+            val pageData = payload.toMemberDetailPageData(member.id.value, member.kind)
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
                 bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
@@ -1789,7 +1815,6 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     if (isBlank()) return KuiklyMembersPayload()
     val payload = JSONObject(this)
     val labelsJson = payload.optJSONObject("labels")
-    val membersJson = payload.optJSONArray("members")
     return KuiklyMembersPayload(
         instanceId = payload.optString("instanceId"),
         title = payload.optString("title").ifBlank { "Members" },
@@ -1804,25 +1829,23 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
             humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },
             addHuman = labelsJson?.optString("addHuman").orEmpty().ifBlank { "Add human" }
-        ),
-        members =
-            buildList {
-                if (membersJson == null) return@buildList
-                for (index in 0 until membersJson.length()) {
-                    add(membersJson.optJSONObject(index).toMemberProfile())
-                }
-            }
+        )
     )
 }
 
-internal fun KuiklyMembersPayload.toMemberDetailPageData(memberId: String): JSONObject? {
+internal fun KuiklyMembersPayload.toMemberDetailPageData(
+    memberId: String,
+    selectedMemberKind: MemberKind? = null
+): JSONObject? {
     val selected = memberId.trim().takeIf { it.isNotBlank() } ?: return null
     val selectedMember = members.firstOrNull { it.id.value == selected }
     return JSONObject().apply {
         put("pageName", MEMBER_DETAIL_PAGE)
         put("instanceId", "members-detail-${instanceId.ifBlank { "members" }}-$selected")
         put("memberId", selected)
-        selectedMember?.let { put("memberKind", it.kind.toMemberDetailKindWireValue()) }
+        (selectedMemberKind ?: selectedMember?.kind)?.let {
+            put("memberKind", it.toMemberDetailKindWireValue())
+        }
         initialAgentTab?.let { put("initialAgentTab", it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }

@@ -124,6 +124,26 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun membersPayloadIgnoresLaunchMembersContent() {
+        val payload =
+            """
+            {
+              "instanceId": "server-1",
+              "members": [
+                {
+                  "id": "agent-1",
+                  "displayName": "Launch Agent",
+                  "kind": "agent"
+                }
+              ]
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+
+        assertEquals("server-1", payload.instanceId)
+        assertEquals(emptyList<MemberProfile>(), payload.members)
+    }
+
+    @Test
     fun membersPayloadCanCreateAgentsParsesFalseAndTrue() {
         val falsePayload =
             """
@@ -165,7 +185,7 @@ class SharedMembersParserTest {
                 timeFormat = SlockTimeFormat12Hour
             )
 
-        val pageData = payload.toMemberDetailPageData("human-artin")!!
+        val pageData = payload.toMemberDetailPageData("human-artin", MemberKind.Human)!!
 
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("members-detail-members-server-1-human-artin", pageData.optString("instanceId"))
@@ -211,8 +231,9 @@ class SharedMembersParserTest {
                 permissions = ServerPermissions(canManageSettings = true)
             )
 
-        assertEquals(false, buildHostMembersPayload(restrictedServer, emptyList(), null).canCreateAgents)
-        assertEquals(true, buildHostMembersPayload(adminServer, emptyList(), null).canCreateAgents)
+        assertEquals(false, buildHostMembersPayload(restrictedServer, null).canCreateAgents)
+        assertEquals(true, buildHostMembersPayload(adminServer, null).canCreateAgents)
+        assertEquals(emptyList<MemberProfile>(), buildHostMembersPayload(adminServer, null).members)
     }
 
     @Test

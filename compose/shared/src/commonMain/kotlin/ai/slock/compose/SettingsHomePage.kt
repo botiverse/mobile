@@ -8962,7 +8962,8 @@ private fun SharedMembersScreen(
                 code = current.code
             )
         is SharedMembersUiState.Content -> {
-            val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
+            val membersPayload = buildHostMembersPayload(current.server, timeContext)
+            val renderMembersPayload = membersPayload.copy(members = current.members)
             val serverId = current.server.id.value
             val agentStatusResolver =
                 remember(serverMembersStore, serverId) {
@@ -9108,12 +9109,12 @@ private fun SharedMembersScreen(
                 }
             }
             MembersRouteContent(
-                payload = membersPayload,
+                payload = renderMembersPayload,
                 refreshing = refreshing,
                 onAddHuman = { loadInviteJoinLink() },
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
-                    val pageData = membersPayload.toMemberDetailPageData(member.id.value)
+                    val pageData = membersPayload.toMemberDetailPageData(member.id.value, member.kind)
                     if (pageData == null) {
                         bridge.toast("Unable to open profile")
                         bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
@@ -9151,14 +9152,12 @@ private fun SharedMembersScreen(
 
 internal fun buildHostMembersPayload(
     server: ServerSummary,
-    members: List<MemberProfile>,
     timeContext: SlockTimeContext?,
     agentPanelTabOrder: List<String> = emptyList()
 ): KuiklyMembersPayload =
     KuiklyMembersPayload(
         instanceId = server.id.value,
         title = "Members",
-        members = members,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
