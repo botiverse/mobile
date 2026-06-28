@@ -19,7 +19,6 @@ import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.topLevelThreadId
 import ai.slock.compose.network.MultipartFile
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -1061,15 +1060,19 @@ private suspend fun <T> executeConversationWithDiagnostics(
                 "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
         )
         val parseStartedAt = TimeSource.Monotonic.markNow()
-        diagnosticsLogger("conversation_parse_start source=$sourceLabel responseBytes=$responseBytes dispatcher=Default")
+        diagnosticsLogger(
+            "conversation_parse_start source=$sourceLabel responseBytes=$responseBytes " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+        )
         val result =
-            withContext(Dispatchers.Default) {
+            withContext(SlockJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
         diagnosticsLogger(
             "conversation_parse_result source=$sourceLabel result=${dataResult.conversationDiagnosticsResult()} " +
-                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (cancellation: kotlinx.coroutines.CancellationException) {

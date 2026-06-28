@@ -1,6 +1,5 @@
 package ai.slock.compose.data
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -16,7 +15,7 @@ internal suspend inline fun <T> parseResponseBodyWithTrace(
     crossinline parser: () -> T
 ): T {
     val responseBytes = body.encodeToByteArray().size
-    val dispatcherLabel = if (parseOnDefault) "Default" else "caller"
+    val dispatcherLabel = if (parseOnDefault) SLOCK_JSON_PARSE_DISPATCHER_LABEL else "caller"
     diagnosticsLogger(
         "${markerPrefix}_network_body_received source=$source " +
             "code=${code ?: "unknown"} responseBytes=$responseBytes hasBody=$hasBody"
@@ -28,7 +27,7 @@ internal suspend inline fun <T> parseResponseBodyWithTrace(
     )
     val result =
         if (parseOnDefault) {
-            withContext(Dispatchers.Default) { parser() }
+            withContext(SlockJsonParseDispatcher) { parser() }
         } else {
             parser()
         }

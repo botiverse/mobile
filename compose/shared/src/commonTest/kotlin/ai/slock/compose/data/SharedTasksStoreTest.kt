@@ -926,7 +926,7 @@ class SharedTasksStoreTest {
         val content = assertIs<DataResult.Content<TaskSnapshot>>(result)
         assertEquals(1, content.data.tasks.size)
         assertTrue(logs.any { it.contains("tasks_network_body_received source=tasks_server") })
-        assertTrue(logs.any { it.contains("tasks_parse_start source=tasks_server") && it.contains("dispatcher=Default") })
+        assertTrue(logs.any { it.contains("tasks_parse_start source=tasks_server") && it.contains("dispatcher=JsonParse") })
         assertTrue(logs.any { it.contains("tasks_parse_result source=tasks_server result=content tasks=1") })
         assertTrue(logs.any { it.contains("tasks_map_result source=tasks_server result=content tasks=1") })
     }

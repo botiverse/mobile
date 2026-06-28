@@ -56,7 +56,7 @@ class RelationalComposeLocalDataStoreTest {
             logs.any {
                 it.contains("local_cache_decode source=thread result=success") &&
                     it.contains("durationMs=") &&
-                    it.contains("dispatcher=caller")
+                    it.contains("dispatcher=JsonParse")
             }
         )
     }

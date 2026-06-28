@@ -1,0 +1,10 @@
+package ai.slock.compose.data
+
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+
+@OptIn(ExperimentalCoroutinesApi::class)
+internal actual val SlockJsonParseDispatcher: CoroutineDispatcher by lazy {
+    Dispatchers.Default.limitedParallelism(2)
+}

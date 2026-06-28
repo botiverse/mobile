@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -163,12 +164,15 @@ class RelationalComposeLocalDataStore(
             decodeLocalSnapshot("unread", encoded) { json.decodeFromString<ChannelUnreadSnapshot>(encoded) }
         }
 
-    private inline fun <T> decodeLocalSnapshot(source: String, encoded: String, decoder: () -> T): T? {
+    private suspend inline fun <T> decodeLocalSnapshot(source: String, encoded: String, crossinline decoder: () -> T): T? {
         val startedAt = TimeSource.Monotonic.markNow()
-        val result = runCatching(decoder)
+        val result = withContext(SlockJsonParseDispatcher) {
+            runCatching(decoder)
+        }
         diagnosticsLogger(
             "local_cache_decode source=$source result=${if (result.isSuccess) "success" else "failure"} " +
-                "responseBytes=${encoded.encodeToByteArray().size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
+                "responseBytes=${encoded.encodeToByteArray().size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
         )
         return result.getOrNull()
     }

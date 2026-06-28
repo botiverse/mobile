@@ -231,13 +231,13 @@ class ConversationRepositoryDataSourceTest {
         assertTrue(
             logs.any {
                 it.contains("conversation_parse_start source=messages_channel") &&
-                    it.contains("dispatcher=Default")
+                    it.contains("dispatcher=JsonParse")
             }
         )
         assertTrue(
             logs.any {
                 it.contains("conversation_parse_result source=messages_channel result=content") &&
-                    it.contains("dispatcher=Default")
+                    it.contains("dispatcher=JsonParse")
             }
         )
     }

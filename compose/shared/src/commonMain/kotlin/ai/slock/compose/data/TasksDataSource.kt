@@ -12,7 +12,6 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -373,9 +372,12 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
             "hasBody=${bodyText != null}"
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
-    diagnosticsLogger("tasks_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    diagnosticsLogger(
+        "tasks_parse_start source=$source responseBytes=$responseBytes " +
+            "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+    )
     val result =
-        withContext(Dispatchers.Default) {
+        withContext(SlockJsonParseDispatcher) {
             toTasksResult(filter = filter, source = source)
         }
     val durationMs = parseStartedAt.elapsedNow().inWholeMilliseconds
@@ -389,11 +391,11 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
         }
     diagnosticsLogger(
         "tasks_parse_result source=$source result=$resultLabel tasks=$taskCount " +
-            "durationMs=$durationMs dispatcher=Default"
+            "durationMs=$durationMs dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
     )
     diagnosticsLogger(
         "tasks_map_result source=$source result=$resultLabel tasks=$taskCount " +
-            "durationMs=$durationMs dispatcher=Default"
+            "durationMs=$durationMs dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }

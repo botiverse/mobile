@@ -4,7 +4,6 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -2050,15 +2049,19 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
                 "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
         )
         val parseStartedAt = TimeSource.Monotonic.markNow()
-        diagnosticsLogger("settings_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+        diagnosticsLogger(
+            "settings_parse_start source=$source responseBytes=$responseBytes " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+        )
         val result =
-            withContext(Dispatchers.Default) {
+            withContext(SlockJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = DataResult.Content(result)
         diagnosticsLogger(
             "settings_parse_result source=$source ${dataResult.settingsDiagnosticsResult()} " +
-                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (exception: SettingsContractMismatch) {
@@ -2095,15 +2098,19 @@ private suspend fun <T> executeSettingsWithDiagnostics(
                 "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
         )
         val parseStartedAt = TimeSource.Monotonic.markNow()
-        warningLogger("settings_parse_start source=$sourceLabel responseBytes=$responseBytes dispatcher=Default")
+        warningLogger(
+            "settings_parse_start source=$sourceLabel responseBytes=$responseBytes " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+        )
         val result =
-            withContext(Dispatchers.Default) {
+            withContext(SlockJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
         warningLogger(
             "settings_parse_result source=$sourceLabel ${dataResult.settingsDiagnosticsResult()} " +
-                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
+                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (cancellation: CancellationException) {

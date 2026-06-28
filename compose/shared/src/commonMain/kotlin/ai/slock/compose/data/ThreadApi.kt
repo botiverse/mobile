@@ -4,7 +4,6 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -439,9 +438,11 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
             "responseBytes=$responseBytes hasBody=${bodyText != null}"
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
-    diagnosticsLogger("thread_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    diagnosticsLogger(
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+    )
     val result =
-        withContext(Dispatchers.Default) {
+        withContext(SlockJsonParseDispatcher) {
             mapThreadBodySync(contractCode, serializer, transform)
         }
     val resultLabel =
@@ -454,7 +455,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     }
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }
@@ -470,9 +471,11 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
             "responseBytes=$responseBytes hasBody=${bodyText != null}"
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
-    diagnosticsLogger("thread_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    diagnosticsLogger(
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+    )
     val result =
-        withContext(Dispatchers.Default) {
+        withContext(SlockJsonParseDispatcher) {
             mapThreadSendBodySync(contractCode)
         }
     val resultLabel =
@@ -483,7 +486,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
     val messageCount = (result as? ThreadApiResult.Success<ThreadMessagesPage>)?.data?.messageCount ?: 0
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }

@@ -126,11 +126,11 @@ class ThreadApiTest {
         val result = api.messageSync("channel-1", sinceSeq = 1)
 
         assertEquals(1, assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messageCount)
-        assertTrue(logs.any { it.contains("thread_parse_start source=thread_sync") && it.contains("dispatcher=Default") })
+        assertTrue(logs.any { it.contains("thread_parse_start source=thread_sync") && it.contains("dispatcher=JsonParse") })
         assertTrue(
             logs.any {
                 it.contains("thread_parse_result source=thread_sync result=success messages=1") &&
-                    it.contains("dispatcher=Default")
+                    it.contains("dispatcher=JsonParse")
             }
         )
     }
@@ -469,7 +469,10 @@ class ThreadApiTest {
                 normalizedPath.startsWith("channels/saved/") && method == "DELETE" -> ok("""{"ok":true}""")
                 normalizedPath.endsWith("/reactions") -> ok(reactionBody)
                 normalizedPath == "tasks/convert-message" && method == "POST" -> ok("""{"task":{"id":"task-converted"}}""")
-                normalizedPath.startsWith("tasks/") && normalizedPath.endsWith("/status") -> ok("""{"ok":true}""")
+                normalizedPath.startsWith("tasks/") && normalizedPath.endsWith("/status") -> {
+                    val taskId = normalizedPath.removePrefix("tasks/").removeSuffix("/status")
+                    ok("""{"task":{"id":"$taskId"}}""")
+                }
                 normalizedPath.endsWith("/threads") -> ok(createThreadBody)
                 else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
             }
