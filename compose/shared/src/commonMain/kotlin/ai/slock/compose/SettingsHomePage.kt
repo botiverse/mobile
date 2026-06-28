@@ -1727,7 +1727,6 @@ private fun SlockAppShellContent() {
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = readySession?.currentServerId
-    val appShellCurrentServerId = appShellCurrentServerId(homeState, readyServerId)
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
@@ -2589,7 +2588,16 @@ private fun SlockAppShellContent() {
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             savedCount = homeSearchSavedState.saved.totalCount,
-                            onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
+                            onIntent = { intent ->
+                                if (intent is SharedHomeIntent.SelectServer) {
+                                    readySession
+                                        ?.withAppShellSelectedServer(intent.serverId)
+                                        ?.let { session ->
+                                            authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                                        }
+                                }
+                                homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
+                            },
                             onNotificationDismiss = { id ->
                                 homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
                             },
@@ -2628,9 +2636,9 @@ private fun SlockAppShellContent() {
                             agentDetailStore = sharedStores.agentDetailStore,
                             serverMembersStore = sharedStores.serverMembersStore,
                             membersRefreshKey = membersListRefreshKey,
-                            currentServerId = appShellCurrentServerId,
+                            currentServerId = readyServerId,
                             initialContent =
-                                sharedMembersCachedContentForServer(membersListCachedContent, appShellCurrentServerId),
+                                sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
                             onContentLoaded = { membersListCachedContent = it },
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset,
@@ -9170,15 +9178,11 @@ internal sealed interface SharedMembersUiState {
     ) : SharedMembersUiState
 }
 
-internal fun appShellCurrentServerId(homeState: SharedHomeState, readyServerId: String?): String? =
-    (homeState.content as? SharedHomeContentState.Content)
-        ?.snapshot
-        ?.server
-        ?.id
-        ?.value
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?: readyServerId?.trim()?.takeIf { it.isNotBlank() }
+internal fun StoredAuthSession.withAppShellSelectedServer(serverId: String): StoredAuthSession? {
+    val targetServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val server = servers.firstOrNull { it.id == targetServerId } ?: return null
+    return copy(selectedServerId = targetServerId, selectedServerSlug = server.slug)
+}
 
 internal fun sharedMembersCachedContentForServer(
     cachedContent: SharedMembersUiState.Content?,

@@ -341,43 +341,27 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellCurrentServerPrefersLoadedHomeServerOverStaleReadySession() {
-        val loadedState =
-            SharedHomeState(
-                content =
-                    SharedHomeContentState.Content(
-                        snapshot =
-                            HomeSnapshot(
-                                server = ServerSummary(ServerId("server-2"), "Server Two"),
-                                currentMember =
-                                    MemberProfile(
-                                        id = MemberId("user-1"),
-                                        displayName = "Artin",
-                                        handle = "artin",
-                                        kind = MemberKind.Human
-                                    ),
-                                channels = emptyList(),
-                                directMessages = emptyList(),
-                                unreadTotal = 0
-                            ),
-                        session =
-                            StoredAuthSession(
-                                user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
-                                accessToken = "token",
-                                refreshToken = "refresh",
-                                selectedServerId = "server-2",
-                                servers =
-                                    listOf(
-                                        StoredAuthServer(id = "server-1", name = "Old", slug = "old"),
-                                        StoredAuthServer(id = "server-2", name = "Server Two", slug = "server-two")
-                                    )
-                            )
+    fun appShellSelectedServerUpdatesReadySessionIdentity() {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+                accessToken = "token",
+                refreshToken = "refresh",
+                selectedServerId = "server-1",
+                selectedServerSlug = "old",
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-1", name = "Old", slug = "old"),
+                        StoredAuthServer(id = "server-2", name = "Server Two", slug = "server-two")
                     )
             )
 
-        assertEquals("server-2", appShellCurrentServerId(loadedState, "server-1"))
-        assertEquals("server-1", appShellCurrentServerId(SharedHomeState(), "server-1"))
-        assertNull(appShellCurrentServerId(SharedHomeState(), ""))
+        val selected = session.withAppShellSelectedServer("server-2")
+
+        assertEquals("server-2", selected?.currentServerId)
+        assertEquals("server-two", selected?.selectedServerSlug)
+        assertNull(session.withAppShellSelectedServer("missing"))
+        assertNull(session.withAppShellSelectedServer(""))
     }
 
     @Test
