@@ -162,6 +162,13 @@ class SharedHomeShellStore(
         val current = _state.value
         if (current.destination == SharedHomeShellDestinationActivity) {
             dispatchActivity(SharedActivityIntent.ApplyRealtimeEvent(event))
+        } else if (current.primarySurfaceVisible) {
+            dispatchActivity(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                    event = event,
+                    activeConversationId = current.selectedConversationId
+                )
+            )
         }
     }
 

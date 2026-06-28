@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MessageNew
@@ -84,6 +85,8 @@ class SharedActivityStore(
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.event)
+            is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
+                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
         }
     }
 
@@ -122,6 +125,27 @@ class SharedActivityStore(
         if (current.loading || current.refreshing) return
         if (!current.loaded || current.snapshot != null) {
             load(refresh = true, pullRefresh = false)
+        }
+    }
+
+    private fun applyRealtimeSummaryEvent(
+        event: RealtimeEvent,
+        activeConversationId: String?
+    ) {
+        scope.launch {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@launch
+            val currentUserId = currentUserId() ?: return@launch
+            val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
+            if (increment <= 0) return@launch
+            _state.value =
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            totalUnreadCount = snapshot.totalUnreadCount + increment
+                        ),
+                    errorCode = null
+                )
         }
     }
 
@@ -540,6 +564,13 @@ class SharedActivityStore(
     private suspend fun currentServerId(): ServerId? =
         authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
 
+    private suspend fun currentUserId(): String? =
+        authStore.readSession()
+            ?.user
+            ?.id
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
     private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
             val profilesById =
@@ -788,6 +819,10 @@ sealed interface SharedActivityIntent {
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent) : SharedActivityIntent
+    data class ApplyRealtimeSummaryEvent(
+        val event: RealtimeEvent,
+        val activeConversationId: String?
+    ) : SharedActivityIntent
 }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean =
@@ -809,6 +844,54 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
                 scope == RealtimeRefreshScope.Settings
         else -> false
     }
+
+private fun RealtimeEvent.activitySummaryUnreadIncrement(
+    snapshot: InboxSnapshot,
+    activeConversationId: String?,
+    currentUserId: String
+): Int =
+    when (this) {
+        is MessageNew -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId)
+        is SyncResumeResponse ->
+            messages
+                .distinctBy { it.id }
+                .sumOf { message -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId) }
+        is ThreadUpdated ->
+            unreadCount
+                ?.takeIf { it > 0 && !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) }
+                ?: 0
+        else -> 0
+    }
+
+private fun InboxSnapshot.unreadIncrementForMessage(
+    message: Message,
+    activeConversationId: String?,
+    currentUserId: String
+): Int {
+    val channelId = message.channelId ?: message.threadChannelId ?: return 0
+    if (message.author.id.value == currentUserId) return 0
+    if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
+    if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
+    return 1
+}
+
+private fun isActiveActivityConversation(
+    streamChannelId: String,
+    activeConversationId: String?,
+    snapshot: InboxSnapshot
+): Boolean {
+    if (activeConversationId.isNullOrBlank()) return false
+    if (streamChannelId == activeConversationId) return true
+    return snapshot.items.any { item ->
+        item.channelId.value == streamChannelId &&
+            (
+                item.key == activeConversationId ||
+                    item.channelId.value == activeConversationId ||
+                    item.threadChannelId?.value == activeConversationId ||
+                    item.parentMessageId?.value == activeConversationId
+                )
+    }
+}
 
 private fun DataResult<InboxSnapshot>.activityDiagnosticsResult(): String =
     when (this) {

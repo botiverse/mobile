@@ -9,11 +9,14 @@ import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -395,6 +398,74 @@ class SharedActivityStoreTest {
 
         assertEquals(1, inbox.initialLoadCount)
         assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun homeSummaryRealtimeIncrementsUnreadWithoutRefreshingActivityRows() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalCount = 1, totalUnreadCount = 1),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 9)), totalCount = 1, totalUnreadCount = 9)
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                MessageNew(message("message-new", channelId = "channel-1", authorId = "user-2")),
+                activeConversationId = null
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(1, store.state.value.totalCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun homeSummaryRealtimeSkipsSelfAuthoredAndActiveConversationMessages() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(activityItem("channel-1", unreadCount = 1), activityItem("channel-2", unreadCount = 1)),
+                            totalCount = 2,
+                            totalUnreadCount = 2
+                        )
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                SyncResumeResponse(
+                    messages =
+                        listOf(
+                            message("self-message", channelId = "channel-1", authorId = "user-1"),
+                            message("active-message", channelId = "channel-2", authorId = "user-2"),
+                            message("inactive-message", channelId = "channel-1", authorId = "user-2")
+                        ),
+                    currentSeq = 3L,
+                    hasMore = false
+                ),
+                activeConversationId = "channel-2"
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(3, store.state.value.totalUnreadCount)
+        assertEquals(listOf("channel:channel-1", "channel:channel-2"), store.state.value.items.map { it.key })
         scope.cancel()
     }
 
@@ -932,6 +1003,26 @@ class SharedActivityStoreTest {
             firstUnreadMessageId = if (unreadCount > 0) MessageId("first-$channelId") else null,
             lastMessageId = MessageId("last-$channelId"),
             latestActivityMessageId = MessageId("latest-$channelId")
+        )
+
+    private fun message(
+        id: String,
+        channelId: String = "channel-1",
+        authorId: String = "user-2"
+    ): Message =
+        Message(
+            id = MessageId(id),
+            threadId = ThreadId(channelId),
+            channelId = ChannelId(channelId),
+            author =
+                MemberProfile(
+                    id = MemberId(authorId),
+                    displayName = "User $authorId",
+                    handle = authorId,
+                    kind = MemberKind.Human
+                ),
+            timestampLabel = "now",
+            body = "message $id"
         )
 
     private fun mentionActionItem(resolutionId: String): InboxItem =

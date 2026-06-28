@@ -196,6 +196,7 @@ class SharedHomeShellStoreTest {
         )
         assertEquals(
             listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.ApplyRealtimeEvent(event)
             ),
@@ -205,7 +206,7 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun threadUpdatedRealtimeDoesNotRefreshActivityWhenOnlyHomeIsVisible() {
+    fun threadUpdatedRealtimeOnlyUpdatesActivitySummaryWhenOnlyHomeIsVisible() {
         val fixture = fixture()
         val store = fixture.store
         val event =
@@ -228,7 +229,31 @@ class SharedHomeShellStoreTest {
             ),
             fixture.homeIntents
         )
-        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
+            ),
+            fixture.activityIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
+    fun homeVisibleRealtimeSummaryReceivesActiveConversationId() {
+        val fixture = fixture()
+        val store = fixture.store
+        val event = SyncResumeResponse(messages = emptyList(), currentSeq = 1L, hasMore = false)
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedConversation("channel-1"))
+        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = "channel-1")
+            ),
+            fixture.activityIntents
+        )
         fixture.cancel()
     }
 
