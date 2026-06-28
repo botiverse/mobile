@@ -3664,7 +3664,7 @@ private fun KuiklyThreadTaskItem.matchesAnyThreadTaskReference(
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
 
-private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = null): KuiklyThreadMemberItem =
+private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId?): KuiklyThreadMemberItem =
     KuiklyThreadMemberItem(
         id = id.value,
         displayName = displayName,
