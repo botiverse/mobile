@@ -79,8 +79,8 @@ class ComposeLocalWriteThroughTest {
         writer.writeHomeResult(DataResult.Content(snapshot), source = "test_home")
 
         assertEquals(listOf("channel-1", "channel-2"), store.readHome(serverId)?.channels?.map { it.threadId.value })
-        assertEquals(1, logs.count { it.startsWith("write_home source=test_home") })
-        assertEquals(1, logs.count { it.startsWith("write_home_skip source=test_home reason=unchanged") })
+        assertEquals(1, logs.count { it.startsWith("store_merge domain=home source=test_home") })
+        assertEquals(1, logs.count { it.startsWith("store_merge_skip domain=home source=test_home reason=unchanged") })
     }
 
     @Test
@@ -224,8 +224,8 @@ class ComposeLocalWriteThroughTest {
         writer.writeThreadResult(DataResult.Content(snapshot), source = "test_thread")
 
         assertEquals(snapshot.messages.single().id, store.readThread(ThreadId("channel-1"))?.messages?.single()?.id)
-        assertEquals(1, logs.count { it.startsWith("thread_patch source=test_thread") })
-        assertEquals(1, logs.count { it.startsWith("write_thread_skip source=test_thread reason=unchanged") })
+        assertEquals(1, logs.count { it.startsWith("store_merge_patch domain=thread source=test_thread") })
+        assertEquals(1, logs.count { it.startsWith("store_merge_skip domain=thread source=test_thread reason=unchanged") })
     }
 
     @Test
@@ -259,7 +259,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals("edited body", cachedMessages[0].body)
         assertTrue(cachedMessages[0] !== firstMessage)
         assertTrue(cachedMessages[1] === secondMessage)
-        assertTrue(logs.any { it.contains("thread_patch source=test_thread") && it.contains("timelineChanged=false") && it.contains("changedMessageIds=[m1]") })
+        assertTrue(logs.any { it.contains("store_merge_patch domain=thread source=test_thread") && it.contains("timelineChanged=false") && it.contains("changedMessageIds=[m1]") })
     }
 
     @Test
@@ -292,7 +292,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals(listOf("m1", "m2"), cachedMessages.map { it.id.value })
         assertTrue(cachedMessages[0] === firstMessage)
         assertTrue(cachedMessages[1] === secondMessage)
-        assertTrue(logs.any { it.contains("thread_patch source=test_pagination") && it.contains("timelineChanged=true") && it.contains("changedMessageIds=[m2]") })
+        assertTrue(logs.any { it.contains("store_merge_patch domain=thread source=test_pagination") && it.contains("timelineChanged=true") && it.contains("changedMessageIds=[m2]") })
     }
 
     @Test
@@ -407,7 +407,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals(true, wrote)
         assertEquals("edited body", cachedMessages[0].body)
         assertTrue(cachedMessages[1] === secondMessage)
-        assertTrue(logs.any { it.contains("thread_patch source=realtime_message") && it.contains("changedMessageIds=[m1]") })
+        assertTrue(logs.any { it.contains("store_merge_patch domain=thread source=realtime_message") && it.contains("changedMessageIds=[m1]") })
     }
 
     @Test
@@ -454,7 +454,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals(0, cachedMessages[0].replyCount)
         assertEquals(0, cachedMessages[0].unreadReplyCount)
         assertTrue(cachedMessages[1] === reply)
-        assertTrue(logs.none { it.contains("thread_patch source=thread_metadata") })
+        assertTrue(logs.none { it.contains("store_merge_patch domain=thread source=thread_metadata") })
     }
 
     @Test
@@ -484,7 +484,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals(listOf("task-1"), cachedTasks.map { it.id.value })
         assertEquals("Old one", cachedTasks.single().title)
         assertEquals(TaskStatus.Todo, cachedTasks.single().status)
-        assertTrue(logs.none { it.contains("thread_patch source=realtime_task") })
+        assertTrue(logs.none { it.contains("store_merge_patch domain=thread source=realtime_task") })
     }
 
     @Test
@@ -536,9 +536,9 @@ class ComposeLocalWriteThroughTest {
         assertEquals(0, cached?.messages?.first()?.unreadReplyCount)
         assertEquals("Old task", cached?.tasks?.single()?.title)
         assertEquals(TaskStatus.Todo, cached?.tasks?.single()?.status)
-        assertEquals(1, logs.count { it.contains("thread_patch source=realtime_message") })
-        assertEquals(0, logs.count { it.contains("thread_patch source=thread_metadata") })
-        assertEquals(0, logs.count { it.contains("thread_patch source=realtime_task") })
+        assertEquals(1, logs.count { it.contains("store_merge_patch domain=thread source=realtime_message") })
+        assertEquals(0, logs.count { it.contains("store_merge_patch domain=thread source=thread_metadata") })
+        assertEquals(0, logs.count { it.contains("store_merge_patch domain=thread source=realtime_task") })
     }
 
     @Test
@@ -748,7 +748,8 @@ class ComposeLocalWriteThroughTest {
         writer.writeRealtimeEvent(serverId, ai.slock.compose.model.Heartbeat(seq = 42))
 
         assertNull(store.readHome(serverId))
-        assertEquals(listOf("write_realtime_skip type=heartbeat seq=42"), logs)
+        assertTrue(logs.any { it == "write_realtime_skip type=heartbeat seq=42" })
+        assertTrue(logs.any { it.startsWith("store_merge domain=realtime source=events") && it.contains("wrote=false") })
     }
 
     private fun home(

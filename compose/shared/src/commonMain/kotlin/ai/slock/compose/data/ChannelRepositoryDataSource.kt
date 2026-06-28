@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val channelRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -85,6 +86,7 @@ class RealChannelRepository(
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
         return when (val result = homeDataSource.loadHome(serverId, DataRequestPriority.Visible)) {
             is DataResult.Content -> {
+                val startedAt = TimeSource.Monotonic.markNow()
                 val snapshot = result.data
                 rememberConversationSummaries(serverId, snapshot.channels)
                 rememberConversationSummaries(serverId, snapshot.directMessages)
@@ -99,6 +101,11 @@ class RealChannelRepository(
                     )
                 val mergedUnreadTotal =
                     channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
+                warningLogger(
+                    "repository_merge domain=home source=get_home serverId=${serverId.value} " +
+                        "channels=${channels.size} directMessages=${directMessages.size} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
                 DataResult.Content(
                     if (snapshot.unreadSource == AppBadgeSource.SERVER_UNREAD_SUMMARY) {
                         mergedSnapshot
@@ -318,10 +325,16 @@ class RealChannelRepository(
         incoming: List<ConversationSummary>
     ): List<ConversationSummary> =
         directMessageCacheMutex.withLock {
+            val startedAt = TimeSource.Monotonic.markNow()
             val existing = directMessageCache?.takeIf { it.serverId == serverId }?.directMessages.orEmpty()
             val merged = mergeDirectMessages(existing, incoming)
             directMessageCache = CachedDirectMessages(serverId, merged)
             rememberConversationSummaries(serverId, merged)
+            warningLogger(
+                "repository_merge domain=direct_messages source=cache_merge serverId=${serverId.value} " +
+                    "existing=${existing.size} incoming=${incoming.size} merged=${merged.size} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             merged
         }
 
@@ -331,35 +344,67 @@ class RealChannelRepository(
     ) {
         if (conversations.isEmpty()) return
         conversationSummaryCacheMutex.withLock {
+            val startedAt = TimeSource.Monotonic.markNow()
             val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
             val merged = existing.toMutableMap()
+            var changed = 0
             conversations.forEach { conversation ->
                 val key = conversation.cacheKey() ?: return@forEach
-                merged[key] = merged[key]?.mergeConversationSummary(conversation) ?: conversation
+                val previous = merged[key]
+                val next = previous?.mergeConversationSummary(conversation) ?: conversation
+                if (next != previous) changed += 1
+                merged[key] = next
             }
             conversationSummaryCache = CachedConversationSummaries(serverId, merged)
+            warningLogger(
+                "repository_merge domain=conversation_summaries source=remember serverId=${serverId.value} " +
+                    "existing=${existing.size} incoming=${conversations.size} changed=$changed merged=${merged.size} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
         }
     }
 
     private suspend fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
         conversationSummaryCacheMutex.withLock {
+            val startedAt = TimeSource.Monotonic.markNow()
             val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries ?: return
             val filtered =
                 existing.filterValues { summary ->
                     summary.channelId != channelId && summary.threadId.value != channelId.value
                 }
             conversationSummaryCache = CachedConversationSummaries(serverId, filtered)
+            warningLogger(
+                "repository_merge domain=conversation_summaries source=remove serverId=${serverId.value} " +
+                    "channelId=${channelId.value} existing=${existing.size} merged=${filtered.size} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
         }
     }
 
     private suspend fun List<ConversationSummary>.withCachedConversationSummaries(serverId: ServerId): List<ConversationSummary> =
         conversationSummaryCacheMutex.withLock {
+            val startedAt = TimeSource.Monotonic.markNow()
             val cached = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
-            if (cached.isEmpty()) return@withLock this
-            map { conversation ->
-                val key = conversation.cacheKey()
-                if (key == null) conversation else cached[key]?.mergeConversationSummary(conversation) ?: conversation
+            if (cached.isEmpty()) {
+                warningLogger(
+                    "repository_merge_skip domain=conversation_summaries source=apply_cached serverId=${serverId.value} " +
+                        "reason=empty_cache incoming=${size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
+                return@withLock this
             }
+            var changed = 0
+            val merged = map { conversation ->
+                val key = conversation.cacheKey()
+                val next = if (key == null) conversation else cached[key]?.mergeConversationSummary(conversation) ?: conversation
+                if (next != conversation) changed += 1
+                next
+            }
+            warningLogger(
+                "repository_merge domain=conversation_summaries source=apply_cached serverId=${serverId.value} " +
+                    "incoming=${size} cached=${cached.size} changed=$changed " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            merged
         }
 
     private suspend fun serverContext(serverId: ServerId): SharedChannelServerContext? =

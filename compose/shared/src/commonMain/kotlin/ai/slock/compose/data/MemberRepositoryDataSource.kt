@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
+import kotlin.time.TimeSource
 
 private val memberRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -184,6 +185,7 @@ class RealMemberRepository(
     private val agentLifecycleActionsInFlight = mutableSetOf<MemberId>()
 
     override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
+        val startedAt = TimeSource.Monotonic.markNow()
         val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         val result =
             executeMember(
@@ -218,9 +220,17 @@ class RealMemberRepository(
         val mergedResult =
             when (result) {
                 is DataResult.Content -> {
+                    val mergeStartedAt = TimeSource.Monotonic.markNow()
                     val machineNames = (machineNameResult as? DataResult.Content)?.data.orEmpty()
                     val agents = (agentResult as? DataResult.Content)?.data.orEmpty().resolveComputerLabels(machineNames)
                     val mergedMembers = (result.data.members + agents).distinctBy { it.memberKey }
+                    val mergeMs = mergeStartedAt.elapsedNow().inWholeMilliseconds
+                    logger(
+                        "repository_merge domain=members source=server_members serverId=${serverId.value} " +
+                            "humans=${result.data.members.size} agents=${agents.size} machines=${machineNames.size} " +
+                            "merged=${mergedMembers.size} mergeMs=$mergeMs " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                     if (mergedMembers.isEmpty()) {
                         DataResult.Empty(EmptyReason.NoMembers)
                     } else {
@@ -232,7 +242,8 @@ class RealMemberRepository(
         mergedResult.logMemberCounts(source = "server_members", serverId = serverId.value, logger = logger)
         logger(
             "repository_agents_merge source=server_agents serverId=${serverId.value} result=${agentResult.memberResultName()} " +
-                "agentsCount=${(agentResult as? DataResult.Content)?.data?.count { it.kind == MemberKind.Agent } ?: 0}"
+                "agentsCount=${(agentResult as? DataResult.Content)?.data?.count { it.kind == MemberKind.Agent } ?: 0} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
         return mergedResult
     }
@@ -659,8 +670,15 @@ class RealMemberRepository(
 
     private suspend fun mergeAgentActivity(agentId: MemberId, incoming: List<AgentActivityEntry>): List<AgentActivityEntry> =
         agentActivityCacheMutex.withLock {
-            val merged = mergeAgentActivityEntries(agentActivityCache[agentId].orEmpty(), incoming)
+            val startedAt = TimeSource.Monotonic.markNow()
+            val existing = agentActivityCache[agentId].orEmpty()
+            val merged = mergeAgentActivityEntries(existing, incoming)
             agentActivityCache[agentId] = merged
+            logger(
+                "repository_merge domain=agent_activity source=cache_merge agentId=${agentId.value} " +
+                    "existing=${existing.size} incoming=${incoming.size} merged=${merged.size} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             merged
         }
 
