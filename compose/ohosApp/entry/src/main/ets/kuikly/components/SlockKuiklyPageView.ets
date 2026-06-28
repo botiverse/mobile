@@ -30,6 +30,7 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   private delegate: IKuiklyViewDelegate = new KuiklyViewDelegate();
   private viewDidAppear = false;
   private pageDidAppear = false;
+  private childVisible = false;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -69,9 +70,9 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   }
 
   onDestroy(): void {
-    if (this.viewDidAppear && this.pageDidAppear) {
-      this.delegate.pageDidDisappear();
-    }
+    this.viewDidAppear = false;
+    this.pageDidAppear = false;
+    this.syncChildVisibility();
   }
 
   onKuiklyControllerReady(controller: KRNativeRenderController): void {
@@ -113,23 +114,19 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
       switch (event) {
         case 'didAppear':
           this.viewDidAppear = true;
-          this.dispatchAppearIfReady();
+          this.syncChildVisibility();
           break;
         case 'didDisappear':
           this.viewDidAppear = false;
-          if (this.pageDidAppear) {
-            this.delegate.pageDidDisappear();
-          }
+          this.syncChildVisibility();
           break;
         case 'viewDidAppear':
           this.pageDidAppear = true;
-          this.dispatchAppearIfReady();
+          this.syncChildVisibility();
           break;
         case 'viewDidDisappear':
           this.pageDidAppear = false;
-          if (this.viewDidAppear) {
-            this.delegate.pageDidDisappear();
-          }
+          this.syncChildVisibility();
           break;
         case 'windowSizeDidChanged':
         case 'rootViewSizeDidChanged':
@@ -147,9 +144,16 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
     }
   }
 
-  private dispatchAppearIfReady(): void {
-    if (this.viewDidAppear && this.pageDidAppear) {
+  private syncChildVisibility(): void {
+    const shouldBeVisible = this.viewDidAppear && this.pageDidAppear;
+    if (this.childVisible === shouldBeVisible) {
+      return;
+    }
+    this.childVisible = shouldBeVisible;
+    if (shouldBeVisible) {
       this.delegate.pageDidAppear();
+    } else {
+      this.delegate.pageDidDisappear();
     }
   }
 }

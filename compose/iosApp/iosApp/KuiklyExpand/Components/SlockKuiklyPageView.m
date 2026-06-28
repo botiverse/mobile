@@ -30,6 +30,7 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
 @property (nonatomic, strong) KuiklyBaseView *childView;
 @property (nonatomic, assign) BOOL viewDidAppear;
 @property (nonatomic, assign) BOOL pageDidAppear;
+@property (nonatomic, assign) BOOL childVisible;
 
 @end
 
@@ -167,7 +168,7 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
     [self.contentContainerView addSubview:childView];
     [self bringGlassHighlightToFront];
     [self applyGlassStyle];
-    [self dispatchAppearIfReady];
+    [self syncChildVisibility];
 }
 
 - (void)detachChild {
@@ -175,7 +176,11 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
     if (!childView) {
         return;
     }
-    [childView viewDidDisappear];
+    if (self.childVisible) {
+        [childView viewWillDisappear];
+        [childView viewDidDisappear];
+        self.childVisible = NO;
+    }
     [childView removeFromSuperview];
     self.childView = nil;
 }
@@ -272,20 +277,16 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
     NSDictionary *data = [eventData[@"data"] isKindOfClass:NSDictionary.class] ? eventData[@"data"] : @{};
     if ([event isEqualToString:@"didAppear"]) {
         self.viewDidAppear = YES;
-        [self dispatchAppearIfReady];
+        [self syncChildVisibility];
     } else if ([event isEqualToString:@"didDisappear"]) {
         self.viewDidAppear = NO;
-        if (self.pageDidAppear) {
-            [self.childView viewDidDisappear];
-        }
+        [self syncChildVisibility];
     } else if ([event isEqualToString:@"viewDidAppear"]) {
         self.pageDidAppear = YES;
-        [self dispatchAppearIfReady];
+        [self syncChildVisibility];
     } else if ([event isEqualToString:@"viewDidDisappear"]) {
         self.pageDidAppear = NO;
-        if (self.viewDidAppear) {
-            [self.childView viewDidDisappear];
-        }
+        [self syncChildVisibility];
     } else if (
         [event isEqualToString:@"windowSizeDidChanged"] ||
         [event isEqualToString:@"rootViewSizeDidChanged"] ||
@@ -300,9 +301,18 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
     }
 }
 
-- (void)dispatchAppearIfReady {
-    if (self.viewDidAppear && self.pageDidAppear && self.childView) {
+- (void)syncChildVisibility {
+    BOOL shouldBeVisible = self.viewDidAppear && self.pageDidAppear && self.childView != nil;
+    if (self.childVisible == shouldBeVisible) {
+        return;
+    }
+    self.childVisible = shouldBeVisible;
+    if (shouldBeVisible) {
+        [self.childView viewWillAppear];
         [self.childView viewDidAppear];
+    } else {
+        [self.childView viewWillDisappear];
+        [self.childView viewDidDisappear];
     }
 }
 
