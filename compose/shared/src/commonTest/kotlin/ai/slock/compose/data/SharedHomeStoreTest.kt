@@ -311,7 +311,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatesVisibleHomeFromLocalSnapshot() = runBlocking {
+    fun realtimeMessageUpdatesVisibleHomeWithoutWritingLocalCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(ServerId("server-1")))
@@ -354,9 +354,10 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("live update", content.snapshot.channels.single().lastMessagePreview)
+        assertEquals("live update", content.baseSnapshot.channels.single().lastMessagePreview)
         assertEquals(1, content.snapshot.channels.single().unreadCount)
         assertEquals(1, content.snapshot.unreadTotal)
-        assertEquals("live update", localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(null, localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
         scope.cancel()
     }
 
@@ -415,7 +416,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun heartbeatDoesNotReloadVisibleHomeSnapshot() = runBlocking {
+    fun heartbeatDoesNotReloadOrWriteVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
@@ -433,6 +434,7 @@ class SharedHomeStoreTest {
             presenceFlushDelayMillis = 0L
         )
         store.accept(SharedHomeIntent.Start)
+        val beforeContent = store.state.value.content
         logs.clear()
 
         store.accept(
@@ -442,7 +444,9 @@ class SharedHomeStoreTest {
             )
         )
 
-        assertEquals(listOf("write_realtime_skip type=heartbeat seq=42"), logs)
+        assertTrue(store.state.value.content === beforeContent)
+        assertEquals(null, localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(emptyList(), logs)
         scope.cancel()
     }
 
@@ -831,8 +835,7 @@ class SharedHomeStoreTest {
         assertEquals(MemberId("agent-1"), afterContent.snapshot.directMessages.single().presenceMemberId)
         assertEquals(
             listOf(
-                "home_realtime_refresh_lightweight scope=Agents reason=agent:activity",
-                "home_agent_status_refresh_skip reason=member_store_projection"
+                "home_realtime_refresh_lightweight scope=Agents reason=agent:activity"
             ),
             logs.filter {
                 it.startsWith("home_realtime_refresh_lightweight ") ||
@@ -1033,7 +1036,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun hiddenRealtimeMessageWritesCacheWithoutProjectingHomeState() = runBlocking {
+    fun hiddenRealtimeMessageMarksDirtyWithoutWritingLocalCacheOrProjectingHomeState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
@@ -1076,7 +1079,7 @@ class SharedHomeStoreTest {
         val afterState = store.state.value
         assertTrue(afterState.content === beforeContent)
         assertEquals(true, afterState.homeRealtimeDirty)
-        assertEquals("cached while hidden", localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(null, localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
         assertEquals(emptyList(), logs.filter { it.startsWith("read_home ") })
         assertContains(logs, "home_realtime_dirty serverId=server-1 reason=message_new")
         scope.cancel()

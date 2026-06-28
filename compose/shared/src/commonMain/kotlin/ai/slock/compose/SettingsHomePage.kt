@@ -1419,13 +1419,6 @@ private fun SlockAppShellContent() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
-    val localWriteThrough =
-        remember {
-            ComposeLocalWriteThrough(
-                sharedStores.localDataStore,
-                logger = { message -> bridge.logDebug("shared_home_cache $message") }
-            )
-        }
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
     val memberRepository =
@@ -1445,7 +1438,6 @@ private fun SlockAppShellContent() {
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
-                localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
                 },
@@ -1584,7 +1576,6 @@ private fun SlockAppShellContent() {
             conversationRepository,
             memberRepository,
             sharedStores.serverMembersStore,
-            localWriteThrough,
             sharedStores.activityStateCache,
             homeViewModel,
             appShellCoroutineScope
@@ -1594,7 +1585,6 @@ private fun SlockAppShellContent() {
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                localWriteThrough = localWriteThrough,
                 activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 scope = appShellCoroutineScope

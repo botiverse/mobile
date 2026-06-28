@@ -499,9 +499,7 @@ class ComposeLocalWriteThrough(
         val startedAt = TimeSource.Monotonic.markNow()
         val home = store.readHome(serverId) ?: return false
         val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return false
-        var totalUnreadIncrement = 0
-        fun ConversationSummary.updateIfMatches(): ConversationSummary {
-            if (messageStreamChannelId() != streamChannelId) return this
+        fun ConversationSummary.updatedPreview(): HomePreviewUpdate {
             val isActiveConversation =
                 activeConversationId != null &&
                     (
@@ -518,41 +516,64 @@ class ComposeLocalWriteThrough(
                         message.author.id != home.currentMember.id
                     }
                 }
-            totalUnreadIncrement += unreadIncrement
-            return copy(
-                lastMessageId = latest.id,
-                lastMessagePreview = latest.body,
-                lastMessageAt = latest.timestampLabel,
-                lastMessageSenderName = latest.author.displayName,
-                unreadCount = unreadCount + unreadIncrement,
-                firstUnreadMessageId =
-                    firstUnreadMessageId
-                        ?: unreadCandidateMessages
-                            .firstOrNull { message ->
-                                unreadIncrement > 0 &&
-                                    message.id != lastMessageId &&
-                                    message.author.id != home.currentMember.id
-                            }
-                            ?.id,
-                unreadCountKnown = unreadCountKnown || unreadIncrement > 0
-            )
+            val updated =
+                copy(
+                    lastMessageId = latest.id,
+                    lastMessagePreview = latest.body,
+                    lastMessageAt = latest.timestampLabel,
+                    lastMessageSenderName = latest.author.displayName,
+                    unreadCount = unreadCount + unreadIncrement,
+                    firstUnreadMessageId =
+                        firstUnreadMessageId
+                            ?: unreadCandidateMessages
+                                .firstOrNull { message ->
+                                    unreadIncrement > 0 &&
+                                        message.id != lastMessageId &&
+                                        message.author.id != home.currentMember.id
+                                }
+                                ?.id,
+                    unreadCountKnown = unreadCountKnown || unreadIncrement > 0
+                )
+            return HomePreviewUpdate(updated, unreadIncrement)
         }
+        val channelIndex = home.channels.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
+        val directMessageIndex =
+            if (channelIndex < 0) {
+                home.directMessages.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
+            } else {
+                -1
+            }
+        if (channelIndex < 0 && directMessageIndex < 0) return false
+        val currentConversation =
+            if (channelIndex >= 0) home.channels[channelIndex] else home.directMessages[directMessageIndex]
+        val previewUpdate = currentConversation.updatedPreview()
+        if (previewUpdate.conversation == currentConversation) return false
         val updatedHome =
-            home.copy(
-                channels = home.channels.map { it.updateIfMatches() },
-                directMessages = home.directMessages.map { it.updateIfMatches() },
-                unreadTotal = home.unreadTotal + totalUnreadIncrement
-            )
-        if (updatedHome == home) return false
+            if (channelIndex >= 0) {
+                home.copy(
+                    channels = home.channels.replaceAt(channelIndex, previewUpdate.conversation),
+                    unreadTotal = home.unreadTotal + previewUpdate.unreadIncrement
+                )
+            } else {
+                home.copy(
+                    directMessages = home.directMessages.replaceAt(directMessageIndex, previewUpdate.conversation),
+                    unreadTotal = home.unreadTotal + previewUpdate.unreadIncrement
+                )
+            }
         store.writeHome(updatedHome)
         logger(
             "store_merge domain=home_preview source=realtime_message serverId=${serverId.value} " +
                 "streamChannelId=${streamChannelId.value} messages=${messages.size} unreadCandidates=${unreadCandidateMessages.size} " +
-                "unreadIncrement=$totalUnreadIncrement durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                "unreadIncrement=${previewUpdate.unreadIncrement} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
         return true
     }
 }
+
+private data class HomePreviewUpdate(
+    val conversation: ConversationSummary,
+    val unreadIncrement: Int
+)
 
 private data class ThreadTimelineSelector(
     val messageIds: List<MessageId>,
@@ -879,25 +900,45 @@ private fun ConversationSummary.withUnreadCounts(
 }
 
 private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnapshot {
-    var cleared = 0
-    fun ConversationSummary.clearIfMatches(): ConversationSummary {
-        if (messageStreamChannelId() != channelId && this.channelId != channelId && threadId.value != channelId.value) {
-            return this
-        }
-        cleared += unreadCount
-        return copy(
+    fun ConversationSummary.matches(): Boolean =
+        messageStreamChannelId() == channelId || this.channelId == channelId || threadId.value == channelId.value
+
+    fun ConversationSummary.clearedUnread(): ConversationSummary =
+        copy(
             unreadCount = 0,
             unreadCountKnown = true,
             mentionCount = 0,
             mentionCountKnown = true,
             firstUnreadMessageId = null
         )
+
+    val channelIndex = channels.indexOfFirst { it.matches() }
+    if (channelIndex >= 0) {
+        val current = channels[channelIndex]
+        val updated = current.clearedUnread()
+        return if (updated == current) {
+            this
+        } else {
+            copy(
+                channels = channels.replaceAt(channelIndex, updated),
+                unreadTotal = (unreadTotal - current.unreadCount).coerceAtLeast(0)
+            )
+        }
     }
-    return copy(
-        channels = channels.map { it.clearIfMatches() },
-        directMessages = directMessages.map { it.clearIfMatches() },
-        unreadTotal = (unreadTotal - cleared).coerceAtLeast(0)
-    )
+    val directMessageIndex = directMessages.indexOfFirst { it.matches() }
+    if (directMessageIndex >= 0) {
+        val current = directMessages[directMessageIndex]
+        val updated = current.clearedUnread()
+        return if (updated == current) {
+            this
+        } else {
+            copy(
+                directMessages = directMessages.replaceAt(directMessageIndex, updated),
+                unreadTotal = (unreadTotal - current.unreadCount).coerceAtLeast(0)
+            )
+        }
+    }
+    return this
 }
 
 private fun HomeSnapshot.clearAllUnread(): HomeSnapshot {
@@ -923,6 +964,12 @@ private fun List<Message>.dedupeAndSortMessages(): List<Message> =
             .thenBy { it.seq ?: Long.MIN_VALUE }
             .thenBy { it.id.value }
     )
+
+private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
+    val updated = toMutableList()
+    updated[index] = value
+    return updated
+}
 
 private fun List<Message>.mergeRealtimeMessages(incoming: List<Message>): List<Message> {
     val byId = associateBy { it.id }.toMutableMap()

@@ -6,10 +6,14 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -282,11 +286,6 @@ class SharedHomeStore(
             return
         }
         if (event is MemberPresenceUpdated) return
-        val result = dataSource.applyRealtimeEvent(
-            serverId = serverId,
-            event = event,
-            activeConversationId = _state.value.selectedConversationId
-        )
         if (event is DirectMessageCreated) {
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
@@ -297,33 +296,7 @@ class SharedHomeStore(
             )
             return
         }
-        if (result is DataResult.Content) {
-            val session = currentContent?.session
-                ?: authStore.readSession()
-                ?: return
-            // #81: realtime increment path — the `result.data.preserveStableRowsFrom`
-            // call above preserves the existing unreadSource field on the
-            // snapshot, so we can derive a fresh badge from it directly.
-            // lastUpdated advances, isStale clears.
-            val nextContent =
-                contentFromDurableSnapshot(
-                    snapshot = result.data,
-                    session = session,
-                    contentRefreshing = currentContent?.contentRefreshing == true,
-                    previousContent = currentContent
-                )
-            val nextBadge = snapshotToBadgeCount(
-                snapshot = nextContent.baseSnapshot,
-                selectedServerId = nextContent.baseSnapshot.server.id,
-                isStale = false
-            )
-            reduceState(
-                _state.value.copy(
-                    content = nextContent,
-                    appBadgeCount = nextBadge
-                )
-            )
-        }
+        applyRealtimeHomeEventLocally(serverId, event)
     }
 
     private suspend fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
@@ -338,12 +311,6 @@ class SharedHomeStore(
             }
             is MemberPresenceUpdated -> Unit
             else -> {
-                dataSource.applyRealtimeEvent(
-                    serverId = serverId,
-                    event = event,
-                    activeConversationId = _state.value.selectedConversationId,
-                    projectUpdatedSnapshot = false
-                )
                 if (event.updatesHomeSnapshot()) {
                     hiddenHomeSnapshotDirty = true
                     markHomeRealtimeDirty(serverId, event.homeRealtimeDirtyReason())
@@ -394,6 +361,63 @@ class SharedHomeStore(
         if (current.homeRealtimeDirty) return
         diagnosticsLogger("home_realtime_dirty serverId=${serverId.value} reason=$reason")
         reduceState(current.copy(homeRealtimeDirty = true))
+    }
+
+    private fun applyRealtimeHomeEventLocally(serverId: ServerId, event: RealtimeEvent): Boolean {
+        val current = _state.value
+        val content = current.content as? SharedHomeContentState.Content ?: return false
+        if (content.baseSnapshot.server.id != serverId) return false
+        val startedAt = kotlin.time.TimeSource.Monotonic.markNow()
+        val messagePatch =
+            when (event) {
+                is MessageNew -> HomeRealtimeMessagePatch(messages = listOf(event.message), incrementUnread = true)
+                is MessageUpdated -> HomeRealtimeMessagePatch(messages = listOf(event.message), incrementUnread = false)
+                is SyncResumeResponse -> HomeRealtimeMessagePatch(messages = event.messages, incrementUnread = true)
+                else -> null
+            } ?: return false
+        val activeConversationId = current.selectedConversationId
+        val nextSnapshot =
+            content.snapshot.withRealtimeMessages(
+                patch = messagePatch,
+                activeConversationId = activeConversationId
+            )
+        if (nextSnapshot === content.snapshot || nextSnapshot == content.snapshot) {
+            diagnosticsLogger(
+                "store_merge_skip domain=home source=store_realtime reason=unchanged " +
+                    "event=${event.toSharedHomeRealtimeEventDiagnosticsLabel()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return false
+        }
+        val nextBaseSnapshot =
+            content.baseSnapshot.withRealtimeMessages(
+                patch = messagePatch,
+                activeConversationId = activeConversationId
+            )
+        val nextContent =
+            content.copy(
+                snapshot = nextSnapshot,
+                baseSnapshot = nextBaseSnapshot
+            )
+        val nextBadge = snapshotToBadgeCount(
+            snapshot = nextBaseSnapshot,
+            selectedServerId = nextBaseSnapshot.server.id,
+            isStale = false
+        )
+        val changed =
+            reduceState(
+                current.copy(
+                    content = nextContent,
+                    serverUnreadCounts = nextBaseSnapshot.serverUnreadCounts,
+                    appBadgeCount = nextBadge
+                )
+            )
+        diagnosticsLogger(
+            "store_merge domain=home source=store_realtime serverId=${serverId.value} " +
+                "event=${event.toSharedHomeRealtimeEventDiagnosticsLabel()} messages=${messagePatch.messages.size} " +
+                "incrementUnread=${messagePatch.incrementUnread} changed=$changed " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
+        return changed
     }
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
@@ -1261,6 +1285,123 @@ private fun SharedHomeState.toSharedHomeStateDiagnosticsSummary(): String =
         append(appBadgeCount.isStale)
     }
 
+private data class HomeRealtimeMessagePatch(
+    val messages: List<Message>,
+    val incrementUnread: Boolean
+)
+
+private data class HomeRealtimeConversationPatch(
+    val conversation: ConversationSummary,
+    val unreadIncrement: Int
+)
+
+private fun HomeSnapshot.withRealtimeMessages(
+    patch: HomeRealtimeMessagePatch,
+    activeConversationId: String?
+): HomeSnapshot {
+    if (patch.messages.isEmpty()) return this
+    var next = this
+    patch.messages
+        .groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
+        .forEach { (streamChannelId, streamMessages) ->
+            next =
+                next.withRealtimeMessagesForStream(
+                    streamChannelId = streamChannelId,
+                    messages = streamMessages,
+                    incrementUnread = patch.incrementUnread,
+                    activeConversationId = activeConversationId
+                )
+        }
+    return next
+}
+
+private fun HomeSnapshot.withRealtimeMessagesForStream(
+    streamChannelId: ChannelId,
+    messages: List<Message>,
+    incrementUnread: Boolean,
+    activeConversationId: String?
+): HomeSnapshot {
+    val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return this
+    val channelIndex = channels.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
+    val directMessageIndex =
+        if (channelIndex < 0) {
+            directMessages.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
+        } else {
+            -1
+        }
+    if (channelIndex < 0 && directMessageIndex < 0) return this
+    val currentConversation =
+        if (channelIndex >= 0) channels[channelIndex] else directMessages[directMessageIndex]
+    val conversationPatch =
+        currentConversation.withRealtimePreview(
+            latest = latest,
+            messages = messages,
+            incrementUnread = incrementUnread,
+            activeConversationId = activeConversationId,
+            currentMemberId = currentMember.id.value
+        )
+    if (conversationPatch.conversation == currentConversation) return this
+    val nextUnreadTotal = (unreadTotal + conversationPatch.unreadIncrement).coerceAtLeast(0)
+    val nextServerUnreadCount = (server.unreadCount + conversationPatch.unreadIncrement).coerceAtLeast(0)
+    return if (channelIndex >= 0) {
+        copy(
+            channels = channels.replaceAt(channelIndex, conversationPatch.conversation),
+            server = server.copy(unreadCount = nextServerUnreadCount),
+            unreadTotal = nextUnreadTotal,
+            serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+        )
+    } else {
+        copy(
+            directMessages = directMessages.replaceAt(directMessageIndex, conversationPatch.conversation),
+            server = server.copy(unreadCount = nextServerUnreadCount),
+            unreadTotal = nextUnreadTotal,
+            serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+        )
+    }
+}
+
+private fun ConversationSummary.withRealtimePreview(
+    latest: Message,
+    messages: List<Message>,
+    incrementUnread: Boolean,
+    activeConversationId: String?,
+    currentMemberId: String
+): HomeRealtimeConversationPatch {
+    if (!incrementUnread && latest.id != lastMessageId) {
+        return HomeRealtimeConversationPatch(this, unreadIncrement = 0)
+    }
+    val isActiveConversation =
+        activeConversationId != null &&
+            (
+                threadId.value == activeConversationId ||
+                    channelId?.value == activeConversationId ||
+                    messageStreamChannelId().value == activeConversationId
+                )
+    val unreadCandidates =
+        if (!incrementUnread || isActiveConversation) {
+            emptyList()
+        } else {
+            messages
+                .distinctBy { it.id }
+                .filter { message ->
+                    message.id != lastMessageId &&
+                        message.author.id.value != currentMemberId
+                }
+        }
+    val unreadIncrement = unreadCandidates.size
+    val next =
+        copy(
+            lastMessageId = latest.id,
+            lastMessagePreview = latest.body,
+            lastMessageAt = latest.timestampLabel,
+            lastMessageSenderName = latest.author.displayName,
+            unreadCount = unreadCount + unreadIncrement,
+            firstUnreadMessageId = firstUnreadMessageId ?: unreadCandidates.firstOrNull()?.id,
+            unreadCountKnown = unreadCountKnown || unreadIncrement > 0
+        )
+    return HomeRealtimeConversationPatch(next, unreadIncrement)
+}
+
 private fun SharedHomeContentState.toSharedHomeContentDiagnosticsSummary(): String =
     when (this) {
         is SharedHomeContentState.Loading ->
@@ -1304,6 +1445,12 @@ private fun HomeSnapshot.withConversationUnread(
         unreadTotal = nextUnreadTotal,
         serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
     )
+}
+
+private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
+    val updated = toMutableList()
+    updated[index] = value
+    return updated
 }
 
 private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {
