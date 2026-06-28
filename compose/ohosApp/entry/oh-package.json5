@@ -6,7 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@kuikly-open/render": 'file:./libs/kuikly-render-staging2-652ba003.har',
+    "@kuikly-open/render": 'file:./libs/kuikly-render-staging2-fcb0e392.har',
     "@ohos/apng": "^1.0.0-rc.8",
     "@tencent/mmkv": "2.1.0",
     "bugly": "0.5.1",
