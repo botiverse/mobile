@@ -3338,34 +3338,14 @@ internal fun SharedThreadRouteContent(
                             threadChannelId = parentMessage.threadChannelId
                         )
                     )
+                    bridge.log(
+                        "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                            "parentMessageId=${parentMessage.id} replyCount=${parentMessage.replyCount} " +
+                            "unreadReplyCount=${parentMessage.unreadReplyCount} " +
+                            "knownThreadChannelId=${parentMessage.threadChannelId.orEmpty()} " +
+                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                    )
                     onOpenThreadPayload(loadingPayload)
-                    coroutineScope.launch {
-                        when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.ApplyReplyThreadRead(
-                                        parentMessageId = parentMessage.id,
-                                        threadChannelId = result.data.resolveThreadRouteIdentity().timelineChannelId
-                                    )
-                                )
-                                onReplaceThreadPayload(result.data)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_reply_open_failed")
-                                )
-                                bridge.toast("Unable to open replies")
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_reply_open_failed")
-                                )
-                                bridge.toast("Unable to open replies")
-                            }
-                        }
-                    }
                 }
                 action == "followMessageThread" && !itemId.isNullOrBlank() -> {
                     if (itemId in pendingThreadFollowMessageIds) {
@@ -3610,34 +3590,13 @@ internal fun SharedThreadRouteContent(
                             threadChannelId = parentMessage.threadChannelId
                         )
                     )
+                    bridge.log(
+                        "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                            "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentMessage.replyCount} " +
+                            "knownThreadChannelId=${parentMessage.threadChannelId.orEmpty()} " +
+                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                    )
                     onOpenThreadPayload(loadingPayload)
-                    coroutineScope.launch {
-                        when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.ApplyReplyThreadRead(
-                                        parentMessageId = parentMessage.id,
-                                        threadChannelId = result.data.resolveThreadRouteIdentity().timelineChannelId
-                                    )
-                                )
-                                onReplaceThreadPayload(result.data)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed")
-                                )
-                                bridge.toast("Unable to open task")
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                onReplaceThreadPayload(
-                                    loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed")
-                                )
-                                bridge.toast("Unable to open task")
-                            }
-                        }
-                    }
                 }
                 action == "openCommentHost" && !itemId.isNullOrBlank() -> {
                     val commentRef =
