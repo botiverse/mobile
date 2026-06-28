@@ -1817,21 +1817,69 @@ internal data class SharedThreadState(
  */
 internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
-private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState {
+private data class SharedThreadHydrationTrace(
+    val state: SharedThreadState,
+    val timelineProjectionMs: Long,
+    val replyMetadataProjectionMs: Long,
+    val sliceEqualityMs: Long,
+    val totalMs: Long,
+    val timelineChanged: Boolean,
+    val replyMetadataChanged: Boolean
+)
+
+private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadHydrationTrace {
+    val totalStartedAt = TimeSource.Monotonic.markNow()
+    val timelineStartedAt = TimeSource.Monotonic.markNow()
     val nextTimelineSlice = payload.toThreadTimelineSlice()
+    val timelineProjectionMs = timelineStartedAt.elapsedNow().inWholeMilliseconds
+    val replyMetadataStartedAt = TimeSource.Monotonic.markNow()
     val nextReplyMetadataByParentId = payload.toThreadReplyMetadataMap()
-    return if (
-        timelineSlice == nextTimelineSlice &&
-        replyMetadataByParentId == nextReplyMetadataByParentId
-    ) {
-        this
-    } else {
-        copy(
-            timelineSlice = nextTimelineSlice,
-            replyMetadataByParentId = nextReplyMetadataByParentId
-        )
-    }
+    val replyMetadataProjectionMs = replyMetadataStartedAt.elapsedNow().inWholeMilliseconds
+    val equalityStartedAt = TimeSource.Monotonic.markNow()
+    val timelineChanged = timelineSlice != nextTimelineSlice
+    val replyMetadataChanged = replyMetadataByParentId != nextReplyMetadataByParentId
+    val sliceEqualityMs = equalityStartedAt.elapsedNow().inWholeMilliseconds
+    val nextState =
+        if (!timelineChanged && !replyMetadataChanged) {
+            this
+        } else {
+            copy(
+                timelineSlice = nextTimelineSlice,
+                replyMetadataByParentId = nextReplyMetadataByParentId
+            )
+        }
+    return SharedThreadHydrationTrace(
+        state = nextState,
+        timelineProjectionMs = timelineProjectionMs,
+        replyMetadataProjectionMs = replyMetadataProjectionMs,
+        sliceEqualityMs = sliceEqualityMs,
+        totalMs = totalStartedAt.elapsedNow().inWholeMilliseconds,
+        timelineChanged = timelineChanged,
+        replyMetadataChanged = replyMetadataChanged
+    )
 }
+
+private fun SharedThreadHydrationTrace.toDiagnosticsString(
+    previousState: SharedThreadState,
+    emitted: Boolean,
+    stateEqualityMs: Long
+): String =
+    "thread_store_hydrate " +
+        "threadId=${state.payload.sourceThreadId.orEmpty()} " +
+        "status=${state.payload.status.ifBlank { "unknown" }} " +
+        "rawMessages=${state.payload.messages.size} " +
+        "timelineMessages=${state.timelineSlice.messages.size} " +
+        "replyMetadata=${state.replyMetadataByParentId.size} " +
+        "timelineChanged=$timelineChanged " +
+        "replyMetadataChanged=$replyMetadataChanged " +
+        "emitted=$emitted " +
+        "durationMs=$totalMs " +
+        "timelineProjectionMs=$timelineProjectionMs " +
+        "replyMetadataProjectionMs=$replyMetadataProjectionMs " +
+        "sliceEqualityMs=$sliceEqualityMs " +
+        "stateEqualityMs=$stateEqualityMs " +
+        "previousRawMessages=${previousState.payload.messages.size} " +
+        "previousReplyMetadata=${previousState.replyMetadataByParentId.size}"
 
 private data class ThreadReadAllMarker(
     val channelId: String,
@@ -2973,9 +3021,20 @@ internal class SharedThreadStore(
     }
 
     private fun reduceState(nextState: SharedThreadState): Boolean {
-        val normalizedState = nextState.withSynchronizedTimelineSlice()
-        if (normalizedState == _state.value) return false
-        _state.value = normalizedState
+        val previousState = _state.value
+        val hydrationTrace = nextState.withSynchronizedTimelineSlice()
+        val stateEqualityStartedAt = TimeSource.Monotonic.markNow()
+        val emitted = hydrationTrace.state != previousState
+        val stateEqualityMs = stateEqualityStartedAt.elapsedNow().inWholeMilliseconds
+        diagnosticsLogger?.invoke(
+            hydrationTrace.toDiagnosticsString(
+                previousState = previousState,
+                emitted = emitted,
+                stateEqualityMs = stateEqualityMs
+            )
+        )
+        if (!emitted) return false
+        _state.value = hydrationTrace.state
         return true
     }
 
