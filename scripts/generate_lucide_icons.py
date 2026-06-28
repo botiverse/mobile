@@ -6,6 +6,7 @@ Outputs by default:
 - Android Compose ImageVector catalog
 - OHOS raw SVG resources and Path registry
 - Shared Kuikly icon name registry
+- Shared/OHOS/iOS bundled brand SVG assets used by assets:// image URLs
 
 Requirements for Android generation:
   brew install s2c   (dev-tonholo/svg-to-compose tap)
@@ -33,6 +34,7 @@ LUCIDE_RAW_URL = "https://raw.githubusercontent.com/lucide-icons/lucide"
 LUCIDE_API_URL = "https://api.github.com/repos/lucide-icons/lucide"
 SVG_NS = "http://www.w3.org/2000/svg"
 NORMALIZED_VIEWPORT = 24.0
+BRAND_ASSET_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "brand")
 PATH_TOKEN_RE = re.compile(r"[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
 PATH_COMMAND_ARITY = {
     "M": 2,
@@ -234,13 +236,7 @@ LUCIDE_ICONS = [
 
 BRAND_SVGS = {
     "slock-icon": os.path.join(
-        REPO_ROOT,
-        "third_party",
-        "slock-source",
-        "packages",
-        "web",
-        "public",
-        "brand",
+        BRAND_ASSET_SOURCE_DIR,
         "slock-icon.svg",
     ),
     "slock-lockup": os.path.join(
@@ -253,6 +249,45 @@ BRAND_SVGS = {
         "brand",
         "logo-lockup-dark.svg",
     ),
+}
+
+BRAND_ASSET_SVGS = {
+    "raft-logo": [
+        os.path.join(
+            BRAND_ASSET_SOURCE_DIR,
+            "raft-logo.svg",
+        ),
+        os.path.join(
+            REPO_ROOT,
+            "compose",
+            "ohosApp",
+            "entry",
+            "src",
+            "main",
+            "resources",
+            "resfile",
+            "lucide",
+            "raft-logo.svg",
+        ),
+    ],
+    "slock-icon": [
+        os.path.join(
+            BRAND_ASSET_SOURCE_DIR,
+            "slock-icon.svg",
+        ),
+        os.path.join(
+            REPO_ROOT,
+            "compose",
+            "ohosApp",
+            "entry",
+            "src",
+            "main",
+            "resources",
+            "resfile",
+            "lucide",
+            "slock-icon.svg",
+        ),
+    ],
 }
 
 ANDROID_FILLED_ICON_VARIANTS = {
@@ -307,6 +342,22 @@ DEFAULT_SHARED_CATALOG_OUTPUT = os.path.join(
     "slock",
     "compose",
     "SlockLucideIconCatalog.kt",
+)
+DEFAULT_SHARED_ASSET_OUTPUT = os.path.join(
+    REPO_ROOT,
+    "compose",
+    "shared",
+    "src",
+    "commonMain",
+    "assets",
+    "lucide",
+)
+DEFAULT_IOS_ASSET_CATALOG = os.path.join(
+    REPO_ROOT,
+    "compose",
+    "iosApp",
+    "iosApp",
+    "Assets.xcassets",
 )
 
 _SVG_CACHE = {}
@@ -969,6 +1020,65 @@ def read_ohos_svg(icon_name, version, resfile_output, lucide_source_dir):
     return read_lucide_svg(icon_name, version, fallback_dir=resfile_output, lucide_source_dir=lucide_source_dir)
 
 
+def read_brand_asset_svg(asset_name):
+    candidates = BRAND_ASSET_SVGS.get(asset_name)
+    if not candidates:
+        raise RuntimeError(f"Unknown brand asset '{asset_name}'")
+    for path in candidates:
+        if path and os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as file:
+                return file.read().strip() + "\n"
+    raise RuntimeError(
+        f"Brand asset SVG '{asset_name}' is missing. Checked: {', '.join(candidates)}"
+    )
+
+
+def ios_imageset_contents(filename):
+    return json.dumps(
+        {
+            "images": [
+                {
+                    "filename": filename,
+                    "idiom": "universal",
+                }
+            ],
+            "info": {
+                "author": "xcode",
+                "version": 1,
+            },
+            "properties": {
+                "preserves-vector-representation": True,
+            },
+        },
+        indent=2,
+    ) + "\n"
+
+
+def write_text(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(text)
+
+
+def generate_brand_assets(shared_asset_output, ohos_resfile_output, ios_asset_catalog):
+    shared_asset_output = os.path.abspath(shared_asset_output)
+    ohos_resfile_output = os.path.abspath(ohos_resfile_output)
+    ios_asset_catalog = os.path.abspath(ios_asset_catalog)
+    for asset_name in BRAND_ASSET_SVGS.keys():
+        svg_text = read_brand_asset_svg(asset_name)
+        filename = f"{asset_name}.svg"
+        write_text(os.path.join(shared_asset_output, filename), svg_text)
+        write_text(os.path.join(ohos_resfile_output, filename), svg_text)
+
+        imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
+        write_text(os.path.join(imageset_dir, filename), svg_text)
+        write_text(os.path.join(imageset_dir, "Contents.json"), ios_imageset_contents(filename))
+    print(
+        f"Generated {len(BRAND_ASSET_SVGS)} brand SVG assets -> "
+        f"{shared_asset_output}, {ohos_resfile_output}, {ios_asset_catalog}"
+    )
+
+
 def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
     all_icons = [*BRAND_SVGS.keys(), *icons]
     cases = []
@@ -1093,7 +1203,7 @@ def generate_shared_catalog(icons, output):
 
 def parse_targets(value):
     targets = {part.strip().lower() for part in value.split(",") if part.strip()}
-    valid = {"android", "ohos", "shared"}
+    valid = {"android", "ohos", "shared", "brand-assets"}
     unknown = targets - valid
     if unknown:
         raise argparse.ArgumentTypeError(f"Unknown target(s): {', '.join(sorted(unknown))}")
@@ -1106,29 +1216,35 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("icons", nargs="*", help="Lucide icon names. Defaults to the Slock manifest in this file.")
     parser.add_argument("--version", default=DEFAULT_VERSION)
-    parser.add_argument("--targets", type=parse_targets, default=parse_targets("android,ohos,shared"))
+    parser.add_argument("--targets", type=parse_targets, default=parse_targets("android,ohos,shared,brand-assets"))
     parser.add_argument("--android-output", default=DEFAULT_ANDROID_OUTPUT)
     parser.add_argument("--ohos-output", default=DEFAULT_OHOS_PATH_OUTPUT)
     parser.add_argument("--ohos-resfile-output", default=DEFAULT_OHOS_RESFILE_OUTPUT)
     parser.add_argument("--shared-catalog-output", default=DEFAULT_SHARED_CATALOG_OUTPUT)
+    parser.add_argument("--shared-asset-output", default=DEFAULT_SHARED_ASSET_OUTPUT)
+    parser.add_argument("--ios-asset-catalog", default=DEFAULT_IOS_ASSET_CATALOG)
     parser.add_argument("--lucide-cache-dir", default=DEFAULT_LUCIDE_CACHE_DIR)
     parser.add_argument("--lucide-repo-dir", default=None)
     parser.add_argument("--download-workers", type=int, default=8)
     parser.add_argument("--all-lucide-icons", action="store_true")
     args = parser.parse_args()
 
-    lucide_source_dir = resolve_lucide_source(args.version, args.lucide_cache_dir, args.lucide_repo_dir)
-    if args.all_lucide_icons:
-        icons = list_all_lucide_icons(lucide_source_dir)
-    else:
-        icons = [normalize_icon_name(icon) for icon in (args.icons or LUCIDE_ICONS)]
-    prefetch_lucide_svgs(
-        icons,
-        args.version,
-        os.path.abspath(args.ohos_resfile_output),
-        lucide_source_dir,
-        args.download_workers,
-    )
+    lucide_targets = args.targets & {"android", "ohos", "shared"}
+    lucide_source_dir = None
+    icons = []
+    if lucide_targets:
+        lucide_source_dir = resolve_lucide_source(args.version, args.lucide_cache_dir, args.lucide_repo_dir)
+        if args.all_lucide_icons:
+            icons = list_all_lucide_icons(lucide_source_dir)
+        else:
+            icons = [normalize_icon_name(icon) for icon in (args.icons or LUCIDE_ICONS)]
+        prefetch_lucide_svgs(
+            icons,
+            args.version,
+            os.path.abspath(args.ohos_resfile_output),
+            lucide_source_dir,
+            args.download_workers,
+        )
     if "android" in args.targets:
         generate_android(
             icons,
@@ -1147,6 +1263,12 @@ def main():
         )
     if "shared" in args.targets:
         generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output))
+    if "brand-assets" in args.targets:
+        generate_brand_assets(
+            os.path.abspath(args.shared_asset_output),
+            os.path.abspath(args.ohos_resfile_output),
+            os.path.abspath(args.ios_asset_catalog),
+        )
 
 
 if __name__ == "__main__":
