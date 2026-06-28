@@ -150,6 +150,9 @@ internal fun ThreadTimelineSlice.latestMessageListItemIndex(): Int {
     return firstMessageListItemIndex() + messages.lastIndex
 }
 
+internal fun ThreadTimelineSlice.bottomScrollPaddingListItemIndex(lazyItemCount: Int): Int =
+    if (lazyItemCount > 0) lazyItemCount - 1 else latestMessageListItemIndex()
+
 internal fun ThreadTimelineSlice.latestMessageLayoutKey(): String {
     val latest = messages.lastOrNull()
         ?: return "empty:$originStatus:$canLoadMoreBefore:$canLoadMoreAfter"
