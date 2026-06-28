@@ -195,8 +195,7 @@ class SqlDelightComposeLocalDataStoreTest {
         )
 
         val restored = assertNotNull(store.readThread(ThreadId("channel-1")))
-        assertEquals("message-1", restored.messages.single().task?.id?.value)
-        assertEquals(TaskStatus.Todo, restored.messages.single().task?.status)
+        assertEquals(null, restored.messages.single().task)
         assertEquals(listOf("message-1"), restored.tasks.map { it.id.value })
     }
 
@@ -323,7 +322,7 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
-    fun writeHomePersistsConversationDirectoryRowsAndAliases() = runBlocking {
+    fun writeHomeDoesNotPersistConversationDirectoryRowsAndAliases() = runBlocking {
         val database = createDatabase()
         val store =
             SqlDelightComposeLocalDataStore(
@@ -361,15 +360,16 @@ class SqlDelightComposeLocalDataStoreTest {
             )
         )
 
-        val directory = SharedConversationDirectoryStore(database)
-        assertEquals("general", assertNotNull(directory.resolveProjection(serverId, "channel-1")).title)
-        val dmByMember = assertNotNull(directory.resolveProjection(serverId, "agent-1"))
-        assertEquals("Codex Agent", dmByMember.title)
-        assertEquals("agent-1", dmByMember.peerMemberId)
+        val restored = assertNotNull(store.readHome(serverId))
+        assertEquals("general", restored.channels.single().name)
+        assertEquals("Codex Agent", restored.directMessages.single().name)
+        assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
+        assertEquals(null, SharedConversationDirectoryStore(database).resolveProjection(serverId, "channel-1"))
+        assertEquals(null, SharedConversationDirectoryStore(database).resolveProjection(serverId, "agent-1"))
     }
 
     @Test
-    fun writeThroughThreadRefreshDoesNotPublishGenericChannelMetadata() = runBlocking {
+    fun writeThroughThreadRefreshDoesNotWriteConversationDirectoryRows() = runBlocking {
         val database = createDatabase()
         val store =
             SqlDelightComposeLocalDataStore(
@@ -414,10 +414,10 @@ class SqlDelightComposeLocalDataStoreTest {
             source = "messages_channel"
         )
 
-        val projection = assertNotNull(SharedConversationDirectoryStore(database).resolveProjection(serverId, "joint-1"))
-        assertEquals("joint", projection.channelKind)
-        assertEquals("raft-mobile", projection.title)
-        assertEquals("Mobile bridge", projection.subtitle)
+        val restored = assertNotNull(store.readHome(serverId))
+        assertEquals("raft-mobile", restored.channels.single().name)
+        assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
+        assertEquals(null, SharedConversationDirectoryStore(database).resolveProjection(serverId, "joint-1"))
     }
 
     @Test
@@ -455,8 +455,10 @@ class SqlDelightComposeLocalDataStoreTest {
             )
         )
 
+        val restored = assertNotNull(store.readHome(serverId))
+        assertEquals("general", restored.channels.single().name)
         val directory = SharedConversationDirectoryStore(database)
-        assertEquals("general", assertNotNull(directory.resolveProjection(serverId, "channel-1")).title)
+        assertEquals(null, directory.resolveProjection(serverId, "channel-1"))
         assertEquals(null, directory.resolveProjection(serverId, "reply-thread-1"))
         assertEquals(null, directory.resolveProjection(serverId, "parent-1"))
     }
@@ -513,7 +515,7 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
-    fun writeThreadRewritesStaleParentChannelAliasForReplyThread() = runBlocking {
+    fun writeThreadDoesNotWriteConversationDirectoryRowsForReplyThread() = runBlocking {
         val database = createDatabase()
         val store =
             SqlDelightComposeLocalDataStore(
@@ -554,20 +556,16 @@ class SqlDelightComposeLocalDataStoreTest {
             )
 
         store.writeThread(snapshot)
-        database.queries.upsertConversationAlias(
-            serverId = serverId.value,
-            aliasId = "parent-channel",
-            aliasKind = SharedConversationAliasKind.Channel.name,
-            canonicalChannelId = "reply-stream-1",
-            lastSyncedAtMs = 1L
-        )
         store.writeThread(snapshot)
 
+        val restored = assertNotNull(store.readThread(threadId))
+        assertEquals("Thread", restored.conversation.name)
+        assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
         val directory = SharedConversationDirectoryStore(database)
         val state = directory.observeServer(serverId).first()
         assertEquals(emptyMap(), state.duplicateAliases)
         assertEquals(null, directory.resolveProjection(serverId, "parent-channel"))
-        assertEquals("Thread", assertNotNull(directory.resolveProjection(serverId, "reply-stream-1")).title)
+        assertEquals(null, directory.resolveProjection(serverId, "reply-stream-1"))
     }
 
     private fun createDatabase(): SlockSqlDatabase {

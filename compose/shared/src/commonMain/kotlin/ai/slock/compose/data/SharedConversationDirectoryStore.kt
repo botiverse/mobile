@@ -12,12 +12,12 @@ import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.ConversationAliasEntity
-import app.cash.sqldelight.Query
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal enum class SharedConversationDirectorySource(val rank: Int) {
     RouteSeed(0),
@@ -71,10 +71,15 @@ internal data class SharedConversationDirectoryState(
 }
 
 internal class SharedConversationDirectoryStore(
-    private val database: SlockSqlDatabase,
+    @Suppress("UNUSED_PARAMETER") database: SlockSqlDatabase,
     private val clock: () -> Long = { defaultNowMillis() },
     private val logger: (String) -> Unit = {}
 ) {
+    private val mutex = Mutex()
+    private val channelsByServer = mutableMapOf<String, Map<String, ChannelEntity>>()
+    private val aliasesByServer = mutableMapOf<String, List<ConversationAliasEntity>>()
+    private val states = MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
+
     fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
         observeDirectory(serverId)
 
@@ -96,10 +101,7 @@ internal class SharedConversationDirectoryStore(
         serverId: ServerId,
         id: String
     ): SharedConversationDirectoryProjection? =
-        buildState(
-            channels = database.queries.selectConversationDirectory(serverId.value).executeAsList(),
-            aliases = database.queries.selectConversationAliasesForServer(serverId.value).executeAsList()
-        ).resolve(id)
+        states.value[serverId.value]?.resolve(id)
 
     suspend fun upsertConversation(
         serverId: ServerId,
@@ -108,77 +110,49 @@ internal class SharedConversationDirectoryStore(
     ) {
         val canonicalChannelId = conversation.directoryCanonicalChannelId().value
         val now = clock()
-        val existing = database.queries.selectChannel(serverId.value, canonicalChannelId).executeAsOneOrNull()
-        val merged = mergeConversation(existing, conversation, source, canonicalChannelId)
-        database.transaction {
-            database.queries.upsertChannel(
-                serverId = serverId.value,
+        mutex.withLock {
+            val serverKey = serverId.value
+            val existingChannels = channelsByServer[serverKey].orEmpty()
+            val existingAliases = aliasesByServer[serverKey].orEmpty()
+            val existing = existingChannels[canonicalChannelId]
+            val merged = mergeConversation(existing, conversation, source, canonicalChannelId)
+            val nextChannel = merged.toChannelEntity(
+                serverId = serverKey,
                 channelId = canonicalChannelId,
-                type = merged.type,
-                name = merged.name,
-                description = merged.description,
-                parentChannelId = merged.parentChannelId,
-                parentMessageId = merged.parentMessageId,
-                avatarUrl = merged.avatarUrl,
-                presenceMemberId = merged.presenceMemberId,
-                joined = merged.joined,
-                archived = merged.archived,
-                memberCount = merged.memberCount,
-                unreadCount = merged.unreadCount,
-                mentionCount = merged.mentionCount,
-                lastMessageId = merged.lastMessageId,
-                firstUnreadMessageId = merged.firstUnreadMessageId,
-                lastMessagePreview = merged.lastMessagePreview,
-                lastMessageSenderName = merged.lastMessageSenderName,
-                hasDraft = merged.hasDraft,
-                replyCount = merged.replyCount,
-                jointChannelId = merged.jointChannelId,
-                jointRole = merged.jointRole,
-                jointPeerServerId = merged.jointPeerServerId,
-                jointPeerServerName = merged.jointPeerServerName,
-                jointPeerServerSlug = merged.jointPeerServerSlug,
-                jointPeerStatus = merged.jointPeerStatus,
-                capabilities = merged.capabilities,
-                updatedAtLabel = merged.updatedAtLabel,
                 lastSyncedAtMs = now
             )
-            database.queries.deleteConversationAliasesForCanonical(
-                serverId = serverId.value,
-                canonicalChannelId = canonicalChannelId
-            )
-            conversation.aliases(canonicalChannelId).forEach { alias ->
-                database.queries.upsertConversationAlias(
-                    serverId = serverId.value,
-                    aliasId = alias.id,
-                    aliasKind = alias.kind.name,
-                    canonicalChannelId = canonicalChannelId,
-                    lastSyncedAtMs = now
-                )
+            val nextAliases =
+                existingAliases.filterNot { alias -> alias.canonicalChannelId == canonicalChannelId } +
+                    conversation.aliases(canonicalChannelId).map { alias ->
+                        ConversationAliasEntity(
+                            serverId = serverKey,
+                            aliasId = alias.id,
+                            aliasKind = alias.kind.name,
+                            canonicalChannelId = canonicalChannelId,
+                            lastSyncedAtMs = now
+                        )
+                    }
+            val nextChannels = existingChannels + (canonicalChannelId to nextChannel)
+            if (nextChannels == existingChannels && nextAliases == existingAliases) {
+                return
             }
+            channelsByServer[serverKey] = nextChannels
+            aliasesByServer[serverKey] = nextAliases
+            states.value =
+                states.value +
+                    (
+                        serverKey to buildState(
+                            channels = nextChannels.values.toList(),
+                            aliases = nextAliases
+                        )
+                    )
         }
     }
 
     private fun observeDirectory(serverId: ServerId): Flow<SharedConversationDirectoryState> =
-        callbackFlow {
-            val channelsQuery = database.queries.selectConversationDirectory(serverId.value)
-            val aliasesQuery = database.queries.selectConversationAliasesForServer(serverId.value)
-            fun emitCurrent() {
-                trySend(
-                    buildState(
-                        channels = channelsQuery.executeAsList(),
-                        aliases = aliasesQuery.executeAsList()
-                    )
-                )
-            }
-            val listener = Query.Listener { emitCurrent() }
-            channelsQuery.addListener(listener)
-            aliasesQuery.addListener(listener)
-            emitCurrent()
-            awaitClose {
-                channelsQuery.removeListener(listener)
-                aliasesQuery.removeListener(listener)
-            }
-        }.distinctUntilChanged()
+        states
+            .map { byServer -> byServer[serverId.value] ?: SharedConversationDirectoryState() }
+            .distinctUntilChanged()
 
     private fun buildState(
         channels: List<ChannelEntity>,
@@ -276,6 +250,43 @@ internal class SharedConversationDirectoryStore(
         )
     }
 }
+
+private fun ChannelEntityDraft.toChannelEntity(
+    serverId: String,
+    channelId: String,
+    lastSyncedAtMs: Long
+): ChannelEntity =
+    ChannelEntity(
+        serverId = serverId,
+        channelId = channelId,
+        type = type,
+        name = name,
+        description = description,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        avatarUrl = avatarUrl,
+        presenceMemberId = presenceMemberId,
+        joined = joined,
+        archived = archived,
+        memberCount = memberCount,
+        unreadCount = unreadCount,
+        mentionCount = mentionCount,
+        lastMessageId = lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageSenderName = lastMessageSenderName,
+        hasDraft = hasDraft,
+        replyCount = replyCount,
+        jointChannelId = jointChannelId,
+        jointRole = jointRole,
+        jointPeerServerId = jointPeerServerId,
+        jointPeerServerName = jointPeerServerName,
+        jointPeerServerSlug = jointPeerServerSlug,
+        jointPeerStatus = jointPeerStatus,
+        capabilities = capabilities,
+        updatedAtLabel = updatedAtLabel,
+        lastSyncedAtMs = lastSyncedAtMs
+    )
 
 private data class ConversationDirectoryAlias(
     val id: String,

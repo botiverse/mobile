@@ -1,6 +1,5 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.resolveThreadRouteIdentity
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -22,7 +21,6 @@ import ai.slock.compose.model.SessionSnapshot
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.messageStreamChannelId
-import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.shared.data.local.AttachmentEntity
@@ -65,17 +63,6 @@ internal class SqlDelightComposeLocalDataStore(
         fallback.readHome(serverId)
 
     override suspend fun writeHome(snapshot: HomeSnapshot) {
-        val now = clock()
-        val queries = database.queries
-        database.transaction {
-            (snapshot.channels + snapshot.directMessages).forEach { conversation ->
-                queries.upsertConversationChannel(
-                    serverId = snapshot.server.id.value,
-                    channel = conversation,
-                    now = now
-                )
-            }
-        }
         fallback.writeHome(snapshot)
     }
 
@@ -149,13 +136,6 @@ internal class SqlDelightComposeLocalDataStore(
         database.transaction {
             val channel = snapshot.conversation
             val messageChannelId = channel.storageCanonicalChannelId()
-            queries.upsertConversationChannel(
-                serverId = serverId.value,
-                channel = channel,
-                now = now,
-                canonicalChannelId = messageChannelId.value,
-                replyCount = snapshot.parentMessage?.replyCount?.toLong() ?: 0L
-            )
             val allMessages =
                 (listOfNotNull(snapshot.parentMessage) + snapshot.messages)
                     .distinctBy { it.id }
@@ -219,11 +199,6 @@ internal class SqlDelightComposeLocalDataStore(
     }
 
     override suspend fun clearChannelUnread(channelId: ChannelId) {
-        val queries = database.queries
-        val serverId = queries.selectChannelServerId(channelId.value).executeAsOneOrNull()
-        if (serverId != null) {
-            queries.clearChannelUnread(clock(), serverId, channelId.value)
-        }
         fallback.clearChannelUnread(channelId)
     }
 
@@ -382,122 +357,6 @@ internal class SqlDelightComposeLocalDataStore(
         )
     }
 
-    private fun SlockDatabaseQueries.upsertConversationChannel(
-        serverId: String,
-        channel: ConversationSummary,
-        now: Long,
-        canonicalChannelId: String = channel.storageCanonicalChannelId().value,
-        replyCount: Long = 0L
-    ) {
-        val existing = selectChannel(serverId, canonicalChannelId).executeAsOneOrNull()
-        val incomingType = channel.toChannelType()
-        val incomingName = channel.name.ifBlank { canonicalChannelId }
-        val incomingPresenceMemberId = channel.presenceMemberId?.value
-        val existingDirectMessage =
-            existing?.takeIf { incomingType == "dm" && it.type == "dm" }
-        val shouldPreserveDmMetadata = existingDirectMessage != null
-        val existingNameLooksConcrete =
-            existingDirectMessage?.name?.isBlankOrDirectoryIdentity(
-                canonicalChannelId = canonicalChannelId,
-                channel = channel
-            ) == false
-        val nameLooksSparse =
-            shouldPreserveDmMetadata &&
-                channel.nameIsBlankOrIdentity(additionalIdentityIds = setOf(canonicalChannelId)) &&
-                existingNameLooksConcrete
-        val storedName = if (nameLooksSparse) existingDirectMessage.name else incomingName
-        val storedDescription =
-            if (shouldPreserveDmMetadata) channel.subtitle ?: existingDirectMessage.description else channel.subtitle
-        val storedPresenceMemberId =
-            if (shouldPreserveDmMetadata) incomingPresenceMemberId ?: existingDirectMessage.presenceMemberId else incomingPresenceMemberId
-        upsertChannel(
-            serverId = serverId,
-            channelId = canonicalChannelId,
-            type = incomingType,
-            name = storedName,
-            description = storedDescription,
-            parentChannelId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentChannelId?.value else null,
-            parentMessageId = if (channel.kind == ConversationKind.Thread) channel.thread?.parentMessageId?.value else null,
-            avatarUrl = null,
-            presenceMemberId = storedPresenceMemberId,
-            joined = channel.joined.toLongFlag(),
-            archived = channel.archived.toLongFlag(),
-            memberCount = channel.memberCount?.toLong(),
-            unreadCount = channel.unreadCount.toLong(),
-            mentionCount = channel.mentionCount.toLong(),
-            lastMessageId = channel.lastMessageId?.value,
-            firstUnreadMessageId = channel.firstUnreadMessageId?.value,
-            lastMessagePreview = channel.lastMessagePreview,
-            lastMessageSenderName = channel.lastMessageSenderName,
-            hasDraft = channel.hasDraft.toLongFlag(),
-            replyCount = replyCount,
-            jointChannelId = channel.jointChannelId,
-            jointRole = channel.jointRole,
-            jointPeerServerId = channel.jointPeerServerId?.value,
-            jointPeerServerName = channel.jointPeerServerName,
-            jointPeerServerSlug = channel.jointPeerServerSlug,
-            jointPeerStatus = channel.jointPeerStatus,
-            capabilities = channel.permissions.toCapabilityMask(),
-            updatedAtLabel = channel.lastMessageAt,
-            lastSyncedAtMs = now
-        )
-        deleteConversationAliasesForCanonical(
-            serverId = serverId,
-            canonicalChannelId = canonicalChannelId
-        )
-        val aliases =
-            buildSet {
-                addAll(channel.conversationAliases(canonicalChannelId))
-                storedPresenceMemberId
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.PresenceMember)) }
-            }
-        aliases.forEach { alias ->
-            upsertConversationAlias(
-                serverId = serverId,
-                aliasId = alias.id,
-                aliasKind = alias.kind.name,
-                canonicalChannelId = canonicalChannelId,
-                lastSyncedAtMs = now
-            )
-        }
-    }
-
-    private fun String?.isBlankOrDirectoryIdentity(
-        canonicalChannelId: String,
-        channel: ConversationSummary
-    ): Boolean {
-        val value = this?.takeIf { it.isNotBlank() } ?: return true
-        return value == canonicalChannelId ||
-            value == channel.threadId.value ||
-            value == channel.channelId?.value ||
-            (channel.kind == ConversationKind.Thread && value == channel.thread?.streamChannelId?.value)
-    }
-
-    private data class StoredConversationAlias(
-        val id: String,
-        val kind: SharedConversationAliasKind
-    )
-
-    private fun ConversationSummary.conversationAliases(canonicalChannelId: String): Set<StoredConversationAlias> =
-        buildSet {
-            val routeIdentity = resolveThreadRouteIdentity()
-            val isReplyThread = kind == ConversationKind.Thread
-            add(StoredConversationAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
-            channelId
-                ?.value
-                ?.takeIf { it.isNotBlank() }
-                ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
-                ?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Channel)) }
-            threadId.value.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Thread)) }
-            if (isReplyThread) {
-                thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Stream)) }
-                thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentChannel)) }
-                thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentMessage)) }
-            }
-            presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.PresenceMember)) }
-        }
-
     private fun ConversationSummary.storageCanonicalChannelId(): ChannelId =
         if (kind == ConversationKind.Thread) {
             messageStreamChannelId()
@@ -508,16 +367,6 @@ internal class SqlDelightComposeLocalDataStore(
     private fun decodeMetadata(value: String): Map<String, String> =
         runCatching { json.decodeFromString<Map<String, String>>(value) }.getOrDefault(emptyMap())
 
-    private fun ConversationSummary.toChannelType(): String =
-        when (kind) {
-            ConversationKind.Thread -> "thread"
-            ConversationKind.Joint -> "joint"
-            ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: "channel"
-            ConversationKind.DirectMessage -> "dm"
-            ConversationKind.Inbox,
-            ConversationKind.System -> "channel"
-        }
-
     private fun String.toConversationKind(): ConversationKind =
         when (lowercase()) {
             "thread" -> ConversationKind.Thread
@@ -526,12 +375,6 @@ internal class SqlDelightComposeLocalDataStore(
             else -> ConversationKind.Channel
         }
 
-    private fun ConversationPermissions.toCapabilityMask(): Long =
-        (if (canRead) 1L else 0L) or
-            (if (canSend) 2L else 0L) or
-            (if (canAttach) 4L else 0L) or
-            (if (canCreateTask) 8L else 0L)
-
     private fun Long.toConversationPermissions(): ConversationPermissions =
         ConversationPermissions(
             canRead = this and 1L != 0L,
@@ -539,8 +382,6 @@ internal class SqlDelightComposeLocalDataStore(
             canAttach = this and 4L != 0L,
             canCreateTask = this and 8L != 0L
         )
-
-    private fun Boolean.toLongFlag(): Long = if (this) 1L else 0L
 
     private fun MemberKind.toStoredKind(): String =
         when (this) {
