@@ -44,8 +44,8 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
     ThreadTimelineSlice(
         status = status,
         originStatus = originStatus,
-        messages = messages,
-        originMessage = originMessage,
+        messages = messages.map { message -> message.withoutThreadReplyMetadata() },
+        originMessage = originMessage?.withoutThreadReplyMetadata(),
         focusedMessageId = focusedMessageId,
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
@@ -74,7 +74,7 @@ internal fun KuiklyThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadat
         isThreadFollowed = isThreadFollowed
     )
 
-internal fun ThreadTimelineSlice.toThreadReplyMetadataMap(): Map<String, ThreadReplyMetadata> =
+internal fun KuiklyThreadScreenPayload.toThreadReplyMetadataMap(): Map<String, ThreadReplyMetadata> =
     buildMap {
         originMessage?.let { message ->
             put(message.id, message.toThreadReplyMetadata())
@@ -88,6 +88,25 @@ internal fun Map<String, ThreadReplyMetadata>.threadReplyMetadataFor(
     message: KuiklyThreadMessageItem
 ): ThreadReplyMetadata =
     this[message.id] ?: message.toThreadReplyMetadata()
+
+internal fun KuiklyThreadMessageItem.withoutThreadReplyMetadata(): KuiklyThreadMessageItem =
+    if (
+        threadChannelId == null &&
+        replyCount == 0 &&
+        unreadReplyCount == 0 &&
+        firstUnreadReplyMessageId == null &&
+        !isThreadFollowed
+    ) {
+        this
+    } else {
+        copy(
+            threadChannelId = null,
+            replyCount = 0,
+            unreadReplyCount = 0,
+            firstUnreadReplyMessageId = null,
+            isThreadFollowed = false
+        )
+    }
 
 internal fun KuiklyThreadScreenPayload.withoutThreadTimelineContent(): KuiklyThreadScreenPayload =
     copy(

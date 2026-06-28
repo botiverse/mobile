@@ -111,7 +111,7 @@ class ThreadBottomAnchorSignatureTest {
 
     @Test
     fun replyMetadataProjection_carriesReplyFooterFactsByParentMessageId() {
-        val metadata =
+        val payload =
             payload(
                 messages =
                     listOf(
@@ -119,16 +119,27 @@ class ThreadBottomAnchorSignatureTest {
                             "m1",
                             replyCount = 2,
                             unreadReplyCount = 1
+                        ).copy(
+                            threadChannelId = "thread-m1",
+                            firstUnreadReplyMessageId = "reply-1",
+                            isThreadFollowed = true
                         )
                     )
             )
-                .timelineSlice()
-                .toThreadReplyMetadataMap()
-                .getValue("m1")
+        val metadata = payload.toThreadReplyMetadataMap().getValue("m1")
+        val timelineMessage = payload.timelineSlice().messages.single()
 
         assertEquals("m1", metadata.parentMessageId)
         assertEquals(2, metadata.replyCount)
         assertEquals(1, metadata.unreadReplyCount)
+        assertEquals("thread-m1", metadata.threadChannelId)
+        assertEquals("reply-1", metadata.firstUnreadReplyMessageId)
+        assertEquals(true, metadata.isThreadFollowed)
+        assertEquals(null, timelineMessage.threadChannelId)
+        assertEquals(0, timelineMessage.replyCount)
+        assertEquals(0, timelineMessage.unreadReplyCount)
+        assertEquals(null, timelineMessage.firstUnreadReplyMessageId)
+        assertEquals(false, timelineMessage.isThreadFollowed)
     }
 
     @Test

@@ -9600,9 +9600,6 @@ private fun String.isUuidLike(): Boolean {
     }
 }
 
-internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): String =
-    threadMessageRepliesMetaLabel(message.toThreadReplyMetadata())
-
 internal fun threadMessageRepliesMetaLabel(replyMetadata: ThreadReplyMetadata): String =
     buildString {
         append(replyMetadata.replyCount)

@@ -1799,7 +1799,7 @@ private const val ThreadReadAllCoalesceWindowMillis = 2_000L
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
-    val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = timelineSlice.toThreadReplyMetadataMap(),
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = payload.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
     /**
@@ -1819,7 +1819,7 @@ internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
 private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState {
     val nextTimelineSlice = payload.toThreadTimelineSlice()
-    val nextReplyMetadataByParentId = nextTimelineSlice.toThreadReplyMetadataMap()
+    val nextReplyMetadataByParentId = payload.toThreadReplyMetadataMap()
     return if (
         timelineSlice == nextTimelineSlice &&
         replyMetadataByParentId == nextReplyMetadataByParentId
