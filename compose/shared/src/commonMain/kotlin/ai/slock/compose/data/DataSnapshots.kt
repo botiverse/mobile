@@ -193,7 +193,6 @@ data class AgentDetailSummary(
     val machineName: String? = null,
     val daemonVersion: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
     val creator: AgentCreatorSummary? = null,
@@ -220,7 +219,6 @@ data class AgentCreatedSummary(
     val name: String,
     val displayName: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val runtime: String? = null,
     val status: String? = null
 )

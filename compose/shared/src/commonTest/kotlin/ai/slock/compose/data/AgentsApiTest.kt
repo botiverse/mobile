@@ -27,7 +27,6 @@ class AgentsApiTest {
         assertEquals("local", detail.executionMode)
         assertEquals("0.57.1", detail.daemonVersion)
         assertEquals("pixel:robot", detail.avatarUrl)
-        assertEquals("agent-hash", detail.gravatarHash)
         assertEquals("user-1", detail.creatorId)
         assertEquals("human", detail.creatorType)
         assertEquals("Artin", detail.creator?.displayName)
@@ -36,7 +35,6 @@ class AgentsApiTest {
         assertEquals("hash-1", detail.creator?.gravatarHash)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
         assertEquals("Helper", detail.createdAgents.single().displayName)
-        assertEquals("child-hash", detail.createdAgents.single().gravatarHash)
         val created = assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data
         assertEquals("agent-2", created.id)
         assertEquals("pixel:tree", created.avatarUrl)
@@ -159,7 +157,7 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","gravatarHash":"agent-hash","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle","gravatarHash":"child-hash"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
