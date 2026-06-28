@@ -1,7 +1,13 @@
 export interface SlockOhosDiagnosticEntry {
   timestampMillis: number;
+  level: string;
   tag: string;
+  event: string;
   message: string;
+  thread: string;
+  seq: number;
+  dropped: number;
+  truncated: boolean;
 }
 
 export class SlockOhosDiagnostics {
@@ -24,15 +30,23 @@ export class SlockOhosDiagnostics {
     SlockOhosDiagnostics.persistentRecorder = recorder;
   }
 
-  static record(tag: string, message: string, timestampMillis: number = Date.now()): void {
+  static record(tag: string, message: string, timestampMillis: number = Date.now(), level: string = 'info'): void {
     const safeTag = SlockOhosDiagnostics.sanitize(tag).slice(0, 48);
-    const safeMessage = SlockOhosDiagnostics.sanitize(message).slice(0, 280);
+    const normalizedLevel = SlockOhosDiagnostics.normalizeLevel(level);
+    const sanitizedMessage = SlockOhosDiagnostics.sanitize(message);
+    const safeMessage = sanitizedMessage.slice(0, 2048);
     SlockOhosDiagnostics.entries.push({
       timestampMillis,
+      level: normalizedLevel,
       tag: safeTag,
+      event: SlockOhosDiagnostics.eventName(safeMessage),
       message: safeMessage,
+      thread: 'arkts',
+      seq: timestampMillis,
+      dropped: 0,
+      truncated: sanitizedMessage.length > safeMessage.length,
     });
-    SlockOhosDiagnostics.persistentRecorder?.(safeTag, safeMessage);
+    SlockOhosDiagnostics.persistentRecorder?.(safeTag, safeMessage.slice(0, 280));
     if (SlockOhosDiagnostics.entries.length > SlockOhosDiagnostics.MAX_ENTRIES) {
       SlockOhosDiagnostics.entries.splice(
         0,
@@ -46,8 +60,28 @@ export class SlockOhosDiagnostics {
   }
 
   static exportText(limit: number = 500): string {
+    return [
+      'App-owned recent diagnostics',
+      'Files: 0',
+      '',
+      '### recent-memory.jsonl',
+      SlockOhosDiagnostics.exportJsonl(limit),
+    ].join('\n');
+  }
+
+  static exportJsonl(limit: number = 500): string {
     return SlockOhosDiagnostics.recent(limit)
-      .map((entry: SlockOhosDiagnosticEntry) => `${entry.timestampMillis} ${entry.tag}: ${entry.message}`)
+      .map((entry: SlockOhosDiagnosticEntry) => JSON.stringify({
+        ts: new Date(entry.timestampMillis).toISOString(),
+        level: entry.level,
+        tag: entry.tag,
+        event: entry.event,
+        message: entry.message,
+        thread: entry.thread,
+        seq: entry.seq,
+        dropped: entry.dropped,
+        truncated: entry.truncated,
+      }))
       .join('\n');
   }
 
@@ -61,5 +95,19 @@ export class SlockOhosDiagnostics {
       sanitized = sanitized.replace(pattern, '$1[redacted]');
     });
     return sanitized;
+  }
+
+  private static normalizeLevel(value: string): string {
+    const level = value.trim().toLowerCase();
+    if (level === 'debug' || level === 'info' || level === 'warn' || level === 'error') {
+      return level;
+    }
+    return 'info';
+  }
+
+  private static eventName(message: string): string {
+    const firstSpace = message.indexOf(' ');
+    const event = firstSpace >= 0 ? message.slice(0, firstSpace) : message;
+    return event.slice(0, 96);
   }
 }
