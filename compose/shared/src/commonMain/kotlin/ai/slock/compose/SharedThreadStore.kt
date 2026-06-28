@@ -1799,6 +1799,7 @@ private const val ThreadReadAllCoalesceWindowMillis = 2_000L
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = timelineSlice.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
     /**
@@ -1818,7 +1819,18 @@ internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
 private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState {
     val nextTimelineSlice = payload.toThreadTimelineSlice()
-    return if (timelineSlice == nextTimelineSlice) this else copy(timelineSlice = nextTimelineSlice)
+    val nextReplyMetadataByParentId = nextTimelineSlice.toThreadReplyMetadataMap()
+    return if (
+        timelineSlice == nextTimelineSlice &&
+        replyMetadataByParentId == nextReplyMetadataByParentId
+    ) {
+        this
+    } else {
+        copy(
+            timelineSlice = nextTimelineSlice,
+            replyMetadataByParentId = nextReplyMetadataByParentId
+        )
+    }
 }
 
 private data class ThreadReadAllMarker(
@@ -1914,6 +1926,11 @@ internal class SharedThreadStore(
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> =
         state
             .map { threadState -> threadState.timelineSlice }
+            .distinctUntilChanged()
+
+    fun replyMetadataFlow(): Flow<Map<String, ThreadReplyMetadata>> =
+        state
+            .map { threadState -> threadState.replyMetadataByParentId }
             .distinctUntilChanged()
 
     fun highlightedMentionsFlow(): Flow<Set<String>> =
@@ -2367,6 +2384,12 @@ internal class SharedThreadStore(
                 currentUserId = dataSource.readSession()?.user?.id,
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
+        val rawReplyCountGap =
+            rawMerged.realtimeReplyCountGap(
+                event = event,
+                previous = existing,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
         val merged = rawMerged
         if (realtimeGapServerSeq != null) {
             diagnosticsLogger?.invoke(
@@ -2378,6 +2401,16 @@ internal class SharedThreadStore(
             return
         }
         if (rawMerged === existing) {
+            if (rawReplyCountGap != null) {
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_reply_count_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
+                        "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                        "loadedReplies=${existing.loadedReplyTimelineCount()} " +
+                        "replyCount=${rawReplyCountGap.replyCount}"
+                )
+                recoverRealtimeGapFromVisibleTail(rawReplyCountGap)
+                return
+            }
             diagnosticsLogger?.invoke(
                 "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
                     "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
@@ -3005,12 +3038,16 @@ internal class SharedThreadViewModel(
         get() = store.state.value.payload.withoutThreadTimelineContent()
     val currentTimelineSlice: ThreadTimelineSlice
         get() = store.state.value.timelineSlice
+    val currentReplyMetadataByParentId: Map<String, ThreadReplyMetadata>
+        get() = store.state.value.replyMetadataByParentId
     val currentHighlightedMentions: Set<String>
         get() = store.state.value.highlightedMentions
 
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> = store.payloadFlow()
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> = store.timelineSliceFlow()
+
+    fun replyMetadataFlow(): Flow<Map<String, ThreadReplyMetadata>> = store.replyMetadataFlow()
 
     fun highlightedMentionsFlow(): Flow<Set<String>> = store.highlightedMentionsFlow()
 

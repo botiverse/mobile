@@ -8,6 +8,15 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskSummary
 
+internal data class ThreadReplyMetadata(
+    val parentMessageId: String,
+    val threadChannelId: String?,
+    val replyCount: Int,
+    val unreadReplyCount: Int,
+    val firstUnreadReplyMessageId: String?,
+    val isThreadFollowed: Boolean
+)
+
 internal data class ThreadTimelineSlice(
     val status: String,
     val originStatus: String,
@@ -54,6 +63,31 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel()
     )
+
+internal fun KuiklyThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
+    ThreadReplyMetadata(
+        parentMessageId = id,
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() },
+        replyCount = replyCount,
+        unreadReplyCount = unreadReplyCount,
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId?.takeIf { it.isNotBlank() },
+        isThreadFollowed = isThreadFollowed
+    )
+
+internal fun ThreadTimelineSlice.toThreadReplyMetadataMap(): Map<String, ThreadReplyMetadata> =
+    buildMap {
+        originMessage?.let { message ->
+            put(message.id, message.toThreadReplyMetadata())
+        }
+        messages.forEach { message ->
+            put(message.id, message.toThreadReplyMetadata())
+        }
+    }
+
+internal fun Map<String, ThreadReplyMetadata>.threadReplyMetadataFor(
+    message: KuiklyThreadMessageItem
+): ThreadReplyMetadata =
+    this[message.id] ?: message.toThreadReplyMetadata()
 
 internal fun KuiklyThreadScreenPayload.withoutThreadTimelineContent(): KuiklyThreadScreenPayload =
     copy(
@@ -116,10 +150,6 @@ internal fun ThreadTimelineSlice.latestMessageLayoutKey(): String {
         append(latest.attachments.size)
         append(':')
         append(latest.taskId.orEmpty())
-        append(':')
-        append(latest.replyCount)
-        append(':')
-        append(latest.unreadReplyCount)
         append(':')
         append(latest.threadReactionLayoutSignature())
     }

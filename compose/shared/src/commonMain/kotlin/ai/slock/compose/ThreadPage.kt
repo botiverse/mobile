@@ -1986,6 +1986,9 @@ internal fun SharedThreadRouteContent(
     val timelineSlice by remember(threadViewModel) {
         threadViewModel.timelineSliceFlow()
     }.collectAsState(threadViewModel.currentTimelineSlice)
+    val replyMetadataByParentId by remember(threadViewModel) {
+        threadViewModel.replyMetadataFlow()
+    }.collectAsState(threadViewModel.currentReplyMetadataByParentId)
     val highlightedMentions by remember(threadViewModel) {
         threadViewModel.highlightedMentionsFlow()
     }.collectAsState(threadViewModel.currentHighlightedMentions)
@@ -3163,6 +3166,7 @@ internal fun SharedThreadRouteContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
+            replyMetadataByParentId = replyMetadataByParentId,
             headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
@@ -5635,6 +5639,7 @@ private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     timelineSlice: ThreadTimelineSlice,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
@@ -5866,6 +5871,7 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         renderConfig = timelineRenderConfig,
                         timelineSlice = timelineSlice,
+                        replyMetadataByParentId = replyMetadataByParentId,
                         composerDraftPersistSlice = composerDraftPersistSlice,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6577,6 +6583,7 @@ private fun ThreadChatTab(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
@@ -6641,6 +6648,7 @@ private fun ThreadChatTab(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
+                    replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6687,6 +6695,7 @@ private fun ThreadChatTab(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
+                    replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6727,6 +6736,7 @@ private fun ThreadChatTab(
                 threadInstanceKey = threadInstanceKey,
                 renderConfig = renderConfig,
                 timelineSlice = timelineSlice,
+                replyMetadataByParentId = replyMetadataByParentId,
                 activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
@@ -6792,6 +6802,7 @@ private fun ThreadMessagesList(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
@@ -6892,8 +6903,6 @@ private fun ThreadMessagesList(
         renderPayload.messages.lastOrNull()?.body?.length,
         renderPayload.messages.lastOrNull()?.attachments?.size,
         renderPayload.messages.lastOrNull()?.taskId,
-        renderPayload.messages.lastOrNull()?.replyCount,
-        renderPayload.messages.lastOrNull()?.unreadReplyCount,
         renderPayload.messages.lastOrNull()?.threadReactionLayoutSignature()
     ) {
         renderPayload.latestMessageLayoutKey()
@@ -7455,6 +7464,7 @@ private fun ThreadMessagesList(
                     }
                 }
                 val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
+                val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 val displayMessage =
                     remember(message, linkedTask, messagePerformanceKey) {
                         val startedAt = TimeSource.Monotonic.markNow()
@@ -7515,6 +7525,7 @@ private fun ThreadMessagesList(
                     } else {
                         ThreadMessageCard(
                             message = displayMessage,
+                            replyMetadata = replyMetadata,
                             hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
                             actionCard = actionCard,
                             messageIndex = absoluteMessageIndex,
@@ -7623,8 +7634,10 @@ private fun ThreadMessagesList(
         actionMessageId?.let { messageId ->
             renderPayload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
+                val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 ThreadMessageActionMenu(
                     message = message,
+                    replyMetadata = replyMetadata,
                     anchor = actionMenuAnchor,
                     showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
@@ -7933,10 +7946,6 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
         append(latest.attachments.size)
         append(':')
         append(latest.taskId.orEmpty())
-        append(':')
-        append(latest.replyCount)
-        append(':')
-        append(latest.unreadReplyCount)
         append(':')
         append(latest.threadReactionLayoutSignature())
     }
@@ -8471,6 +8480,7 @@ private fun ThreadHistoryStatusRow(
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
     actionCard: ThreadActionCard? = message.threadActionCard(),
     messageIndex: Int = -1,
@@ -8547,7 +8557,7 @@ private fun ThreadMessageCard(
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
-            message.hasThreadFooterMeta(hasReplyDraft)
+            message.hasThreadFooterMeta(replyMetadata, hasReplyDraft)
     Box(
         modifier =
             Modifier
@@ -8735,6 +8745,7 @@ private fun ThreadMessageCard(
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                 ThreadMessageFooterMeta(
                                     message = message,
+                                    replyMetadata = replyMetadata,
                                     hasReplyDraft = hasReplyDraft,
                                     showReplyAction = showReplyAction,
                                     taskOpenEnabled = taskOpenEnabled,
@@ -9458,6 +9469,7 @@ private const val ThreadCompactContinuationWindowMillis = 30L * ThreadMillisPerM
 @Composable
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
     showReplyAction: Boolean,
     taskOpenEnabled: Boolean,
@@ -9471,7 +9483,7 @@ private fun ThreadMessageFooterMeta(
     onToggleReaction: ((String) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
-    val hasReplies = message.replyCount > 0 || hasReplyDraft
+    val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     if (!hasTask && !hasReplies && !hasReactions) return
@@ -9501,7 +9513,7 @@ private fun ThreadMessageFooterMeta(
             )
         }
         if (hasReplies) {
-            val replyLabel = threadMessageRepliesMetaLabel(message)
+            val replyLabel = threadMessageRepliesMetaLabel(replyMetadata)
             SlockAnchoredMetaChip(
                 label = replyLabel,
                 iconName = SlockLucideIconName.MessageSquare,
@@ -9528,8 +9540,14 @@ private fun ThreadMessageFooterMeta(
 }
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(hasReplyDraft: Boolean = false): Boolean =
+    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft)
+
+internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
+    replyMetadata: ThreadReplyMetadata,
+    hasReplyDraft: Boolean = false
+): Boolean =
     hasThreadTaskFooterMeta() ||
-        replyCount > 0 ||
+        replyMetadata.replyCount > 0 ||
         hasReplyDraft ||
         reactions.any { it.count > 0 }
 
@@ -9583,12 +9601,15 @@ private fun String.isUuidLike(): Boolean {
 }
 
 internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): String =
+    threadMessageRepliesMetaLabel(message.toThreadReplyMetadata())
+
+internal fun threadMessageRepliesMetaLabel(replyMetadata: ThreadReplyMetadata): String =
     buildString {
-        append(message.replyCount)
-        append(if (message.replyCount == 1) " reply" else " replies")
-        if (message.unreadReplyCount > 0) {
+        append(replyMetadata.replyCount)
+        append(if (replyMetadata.replyCount == 1) " reply" else " replies")
+        if (replyMetadata.unreadReplyCount > 0) {
             append(" · ")
-            append(message.unreadReplyCount)
+            append(replyMetadata.unreadReplyCount)
             append(" new")
         }
     }
@@ -9749,6 +9770,7 @@ private val ThreadMessageMenuHorizontalNudge = 16.dp
 
 private fun threadMessageMenuActions(
     message: KuiklyThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     showReplyAction: Boolean,
     showSaveAction: Boolean,
     showTaskStatusAction: Boolean,
@@ -9798,15 +9820,15 @@ private fun threadMessageMenuActions(
                 )
             )
         }
-        val followThreadChannelId = message.threadChannelId?.takeIf { it.isNotBlank() }
-        if (followThreadChannelId != null || message.replyCount > 0 || message.isThreadFollowed) {
+        val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+        if (followThreadChannelId != null || replyMetadata.replyCount > 0 || replyMetadata.isThreadFollowed) {
             add(
                 ThreadMessageMenuAction(
-                    label = if (message.isThreadFollowed) "Unfollow Thread" else "Follow Thread",
+                    label = if (replyMetadata.isThreadFollowed) "Unfollow Thread" else "Follow Thread",
                     icon = SlockLucideIconName.MessageSquare,
                     group = "message",
                     onClick = {
-                        if (message.isThreadFollowed && followThreadChannelId != null) {
+                        if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
                             onUnfollowThread(followThreadChannelId)
                         } else {
                             onFollowThread()
@@ -9851,6 +9873,7 @@ private fun threadMessageMenuActions(
 @Composable
 private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     anchor: Offset,
     showReplyAction: Boolean,
     showSaveAction: Boolean,
@@ -9876,6 +9899,7 @@ private fun ThreadMessageActionMenu(
     val actions =
         remember(
             message,
+            replyMetadata,
             showReplyAction,
             showSaveAction,
             showTaskStatusAction,
@@ -9895,6 +9919,7 @@ private fun ThreadMessageActionMenu(
         ) {
             threadMessageMenuActions(
                 message = message,
+                replyMetadata = replyMetadata,
                 showReplyAction = showReplyAction,
                 showSaveAction = showSaveAction,
                 showTaskStatusAction = showTaskStatusAction,

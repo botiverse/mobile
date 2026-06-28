@@ -103,10 +103,32 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun latestMessageLayoutKey_replyCountChange_changesKey() {
+    fun latestMessageLayoutKey_replyCountChange_keepsKeyEqual() {
         val a = payload(messages = listOf(message("m1", replyCount = 1)))
         val b = payload(messages = listOf(message("m1", replyCount = 2)))
-        assertNotEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
+        assertEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
+    }
+
+    @Test
+    fun replyMetadataProjection_carriesReplyFooterFactsByParentMessageId() {
+        val metadata =
+            payload(
+                messages =
+                    listOf(
+                        message(
+                            "m1",
+                            replyCount = 2,
+                            unreadReplyCount = 1
+                        )
+                    )
+            )
+                .timelineSlice()
+                .toThreadReplyMetadataMap()
+                .getValue("m1")
+
+        assertEquals("m1", metadata.parentMessageId)
+        assertEquals(2, metadata.replyCount)
+        assertEquals(1, metadata.unreadReplyCount)
     }
 
     @Test
