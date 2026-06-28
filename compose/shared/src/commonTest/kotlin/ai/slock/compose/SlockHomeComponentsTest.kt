@@ -442,6 +442,18 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun pullRefreshIndicatorShowsDragProgressBeforeRefreshing() {
+        assertFalse(slockPullRefreshIndicatorVisible(pullProgress = 0f, isRefreshing = false))
+        assertTrue(slockPullRefreshIndicatorVisible(pullProgress = 0.1f, isRefreshing = false))
+        assertTrue(slockPullRefreshIndicatorVisible(pullProgress = 0f, isRefreshing = true))
+
+        assertEquals(0f, slockPullRefreshIndicatorRotationDegrees(pullProgress = 0f, isRefreshing = false))
+        assertEquals(180f, slockPullRefreshIndicatorRotationDegrees(pullProgress = 0.5f, isRefreshing = false))
+        assertEquals(360f, slockPullRefreshIndicatorRotationDegrees(pullProgress = 2f, isRefreshing = false))
+        assertEquals(0f, slockPullRefreshIndicatorRotationDegrees(pullProgress = 0.5f, isRefreshing = true))
+    }
+
+    @Test
     fun sharedHomeHeaderRefreshingTracksLoadedContentRefreshState() {
         val refreshing =
             SharedHomeState(

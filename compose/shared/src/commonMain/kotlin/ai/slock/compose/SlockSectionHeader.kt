@@ -154,7 +154,7 @@ internal fun SlockRaftPullRefreshIndicator(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier
 ) {
-    if (!isRefreshing) return
+    if (!slockPullRefreshIndicatorVisible(pullProgress, isRefreshing)) return
     Box(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
@@ -163,10 +163,21 @@ internal fun SlockRaftPullRefreshIndicator(
             SlockLucideIconName.LoaderCircle,
             modifier = Modifier.size(LoadingSpinnerSize),
             color = SlockColor.TextBlackArgb,
-            spinning = true
+            spinning = isRefreshing,
+            rotationDegrees = slockPullRefreshIndicatorRotationDegrees(pullProgress, isRefreshing)
         )
     }
 }
+
+internal fun slockPullRefreshIndicatorVisible(pullProgress: Float, isRefreshing: Boolean): Boolean =
+    isRefreshing || pullProgress > 0f
+
+internal fun slockPullRefreshIndicatorRotationDegrees(pullProgress: Float, isRefreshing: Boolean): Float =
+    if (isRefreshing) {
+        0f
+    } else {
+        pullProgress.coerceIn(0f, 1f) * 360f
+    }
 
 @Composable
 internal fun SlockCenteredLoading(
