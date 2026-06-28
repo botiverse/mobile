@@ -819,7 +819,10 @@ internal fun LoginContent(
             LoginDraftSubmitDecision.IgnoreBusy -> Unit
         }
     }
-    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
+    AuthScaffold(
+        onDiagnosticsShortcut = onOpenDiagnostics,
+        contentScrollable = true
+    ) {
         AuthCenterMark()
         Text(
             text = "Sign In",
@@ -923,7 +926,10 @@ internal fun RegisterContent(
     var termsAccepted by remember { mutableStateOf(false) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
-    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
+    AuthScaffold(
+        onDiagnosticsShortcut = onOpenDiagnostics,
+        contentScrollable = true
+    ) {
         AuthCenterMark()
         Text(
             text = "Create Account",
@@ -998,7 +1004,10 @@ internal fun ForgotPasswordContent(
     onBackToSignIn: () -> Unit,
     onOpenDiagnostics: () -> Unit = {}
 ) {
-    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
+    AuthScaffold(
+        onDiagnosticsShortcut = onOpenDiagnostics,
+        contentScrollable = true
+    ) {
         AuthCenterMark()
         Text(
             text = "Reset Password",
