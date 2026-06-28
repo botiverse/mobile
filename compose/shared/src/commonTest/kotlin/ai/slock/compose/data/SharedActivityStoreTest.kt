@@ -10,6 +10,8 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
@@ -325,6 +327,74 @@ class SharedActivityStoreTest {
         inbox.completeNext(activityItem("channel-3"))
         assertEquals(false, store.state.value.refreshing)
         assertEquals(false, store.state.value.pullRefreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun scopedRealtimeRefreshesActivitySummaryCounts() = runBlocking {
+        val refreshScopes =
+            listOf(
+                RealtimeRefreshScope.Home,
+                RealtimeRefreshScope.ChannelMembers,
+                RealtimeRefreshScope.ServerMembers,
+                RealtimeRefreshScope.Agents,
+                RealtimeRefreshScope.Machines,
+                RealtimeRefreshScope.Settings
+            )
+
+        refreshScopes.forEachIndexed { index, refreshScope ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val inbox =
+                FakeInboxRepository(
+                    initialSnapshots =
+                        listOf(
+                            snapshot(listOf(activityItem("channel-$index", unreadCount = index + 1)), totalUnreadCount = index + 1),
+                            snapshot(listOf(activityItem("channel-$index", unreadCount = index + 2)), totalUnreadCount = index + 2)
+                        )
+                )
+            val store = activityStore(scope, inbox)
+
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            store.dispatch(
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    RealtimeRefreshRequired(
+                        scope = refreshScope,
+                        reason = "test"
+                    )
+                )
+            )
+
+            assertEquals(2, inbox.initialLoadCount, "scope=$refreshScope")
+            assertEquals(index + 2, store.state.value.totalUnreadCount, "scope=$refreshScope")
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun announcementRealtimeDoesNotRefreshActivitySummaryCounts() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Announcements,
+                    reason = "announcement:new"
+                )
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
         scope.cancel()
     }
 

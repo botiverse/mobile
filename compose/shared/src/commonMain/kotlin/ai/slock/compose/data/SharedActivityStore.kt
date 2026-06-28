@@ -663,7 +663,13 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
         is TaskUpdated,
         is TaskDeleted,
         is SyncResumeResponse -> true
-        is RealtimeRefreshRequired -> scope == RealtimeRefreshScope.Home
+        is RealtimeRefreshRequired ->
+            scope == RealtimeRefreshScope.Home ||
+                scope == RealtimeRefreshScope.ChannelMembers ||
+                scope == RealtimeRefreshScope.ServerMembers ||
+                scope == RealtimeRefreshScope.Agents ||
+                scope == RealtimeRefreshScope.Machines ||
+                scope == RealtimeRefreshScope.Settings
         else -> false
     }
 
