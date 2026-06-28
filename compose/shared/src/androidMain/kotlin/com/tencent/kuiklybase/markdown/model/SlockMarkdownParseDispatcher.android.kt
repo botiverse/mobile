@@ -27,3 +27,7 @@ private val androidMarkdownParseDispatcher: CoroutineDispatcher by lazy {
 
 internal actual val SlockMarkdownParseDispatcher: CoroutineDispatcher
     get() = androidMarkdownParseDispatcher
+
+fun warmUpSlockMarkdownParseDispatcher() {
+    androidMarkdownParseDispatcher
+}

@@ -27,3 +27,7 @@ private val androidJsonParseDispatcher: CoroutineDispatcher by lazy {
 
 internal actual val SlockJsonParseDispatcher: CoroutineDispatcher
     get() = androidJsonParseDispatcher
+
+fun warmUpSlockJsonParseDispatcher() {
+    androidJsonParseDispatcher
+}
