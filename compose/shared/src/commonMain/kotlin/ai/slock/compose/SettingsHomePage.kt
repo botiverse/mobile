@@ -433,6 +433,7 @@ private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
 private const val AppShellNotificationServerIdKey = "slockNotificationServerId"
+private const val AppShellChildPageGlassStyleLiquid = "liquid"
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
@@ -1353,7 +1354,8 @@ private fun SlockAppShellChildTabHost(
         pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
         pageData = pageData,
         modifier = Modifier.fillMaxSize(),
-        active = active
+        active = active,
+        glassStyle = AppShellChildPageGlassStyleLiquid
     )
 }
 

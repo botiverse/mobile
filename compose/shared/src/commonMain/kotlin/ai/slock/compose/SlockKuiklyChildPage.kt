@@ -41,6 +41,7 @@ internal class SlockKuiklyChildPageView :
     IPagerEventObserver {
     private var appliedPageName: String? = null
     private var appliedPageData: String? = null
+    private var appliedGlassStyle: String? = null
     private var active = true
     private var viewAppeared = false
     private var childLifecycleVisible = false
@@ -86,16 +87,19 @@ internal class SlockKuiklyChildPageView :
     fun applyChildPageAttrs(
         pageName: String,
         pageData: String,
+        glassStyle: String?,
         force: Boolean = false
     ) {
-        if (!force && appliedPageName == pageName && appliedPageData == pageData) {
+        if (!force && appliedPageName == pageName && appliedPageData == pageData && appliedGlassStyle == glassStyle) {
             return
         }
         appliedPageName = pageName
         appliedPageData = pageData
+        appliedGlassStyle = glassStyle
         getViewAttr().run {
             pageName(pageName)
             pageData(pageData)
+            glassStyle(glassStyle)
         }
     }
 
@@ -142,6 +146,15 @@ internal class SlockKuiklyChildPageAttr : Attr() {
         "pageData" with value
         return this
     }
+
+    fun glassStyle(value: String?): SlockKuiklyChildPageAttr {
+        if (value == null) {
+            "glassStyle" with ""
+        } else {
+            "glassStyle" with value
+        }
+        return this
+    }
 }
 
 internal class SlockKuiklyChildPageEvent : Event() {
@@ -169,6 +182,7 @@ internal fun SlockKuiklyChildPage(
     pageData: JSONObject,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    glassStyle: String? = null,
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
 ) {
@@ -177,7 +191,7 @@ internal fun SlockKuiklyChildPage(
         factory = { SlockKuiklyChildPageView() },
         modifier = modifier,
         viewInit = {
-            applyChildPageAttrs(pageName = pageName, pageData = pageDataText, force = true)
+            applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
             updateActive(active)
             event {
                 loadSuccess(onLoadSuccess)
@@ -185,7 +199,7 @@ internal fun SlockKuiklyChildPage(
             }
         },
         viewUpdate = { view ->
-            view.applyChildPageAttrs(pageName = pageName, pageData = pageDataText)
+            view.applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle)
             view.updateActive(active)
             view.event {
                 loadSuccess(onLoadSuccess)

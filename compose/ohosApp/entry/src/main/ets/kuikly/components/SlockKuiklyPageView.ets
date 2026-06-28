@@ -13,6 +13,7 @@ import globalNativeManager from '../MyNativeManager';
 
 const kPageName = 'pageName';
 const kPageData = 'pageData';
+const kGlassStyle = 'glassStyle';
 const kLoadSuccess = 'loadSuccess';
 const kLoadFailure = 'loadFailure';
 const kSendEvent = 'sendEvent';
@@ -46,6 +47,8 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
         return true;
       case kPageData:
         this.pageData = normalizeText(propValue);
+        return true;
+      case kGlassStyle:
         return true;
       case kLoadSuccess:
         this.loadSuccessCallback = propValue as KuiklyRenderCallback;

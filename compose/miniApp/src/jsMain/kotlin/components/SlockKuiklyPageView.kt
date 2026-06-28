@@ -44,6 +44,7 @@ class SlockKuiklyPageView : IKuiklyRenderViewExport, KuiklyRenderViewDelegatorDe
                 updatePageData(propValue.toString())
                 true
             }
+            PROP_GLASS_STYLE -> true
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -216,6 +217,7 @@ class SlockKuiklyPageView : IKuiklyRenderViewExport, KuiklyRenderViewDelegatorDe
         const val VIEW_NAME = "SlockKuiklyPageView"
         private const val PROP_PAGE_NAME = "pageName"
         private const val PROP_PAGE_DATA = "pageData"
+        private const val PROP_GLASS_STYLE = "glassStyle"
         private const val METHOD_SEND_EVENT = "sendEvent"
         private const val EVENT_DID_APPEAR = "didAppear"
         private const val EVENT_DID_DISAPPEAR = "didDisappear"
