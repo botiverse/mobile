@@ -604,6 +604,35 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineTagPlaceholdersCanBeScopedPerMessageRow() {
+        val body = "Ping @artin in #markdown专修"
+        val firstPlan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                knownChannelNames = setOf("markdown专修"),
+                inlineContentScope = "message-a"
+            )
+        val secondPlan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                knownChannelNames = setOf("markdown专修"),
+                inlineContentScope = "message-b"
+            )
+        val firstAnnotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, firstPlan)
+        val secondAnnotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, secondPlan)
+
+        assertEquals(
+            setOf("slock-message-a:5", "slock-message-a:15"),
+            firstAnnotated.slockMarkdownInlineContentIds()
+        )
+        assertEquals(
+            setOf("slock-message-b:5", "slock-message-b:15"),
+            secondAnnotated.slockMarkdownInlineContentIds()
+        )
+        assertFalse(firstPlan.signature == secondPlan.signature)
+    }
+
+    @Test
     fun inlineReferencesMatchTask25Boundaries() {
         val body =
             "我已补发日报到 #raft-mobile，消息是 #raft-mobile:4752266f。也已确认主 reminder " +
