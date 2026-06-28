@@ -37,10 +37,34 @@ data class SharedServerMembersEntry(
         server?.let { MemberSnapshot(server = it, members = members) }
 }
 
+data class SharedServerChannelMembersScope(
+    val serverId: String,
+    val channelId: String
+)
+
+data class SharedServerChannelMembersSlice(
+    val serverId: String? = null,
+    val channelId: String,
+    val members: List<MemberProfile> = emptyList(),
+    val canAddMembers: Boolean = true,
+    val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
+    val errorCode: String? = null
+) {
+    fun snapshotOrNull(): ChannelMemberSnapshot? =
+        channelId.takeIf { it.isNotBlank() }?.let {
+            ChannelMemberSnapshot(
+                channelId = ChannelId(it),
+                members = members,
+                canAddMembers = canAddMembers
+            )
+        }
+}
+
 data class SharedServerMembersState(
     val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
     val presenceByMemberId: Map<String, MemberPresenceUpdated> = emptyMap(),
-    val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap()
+    val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap(),
+    val channelMemberSlices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice> = emptyMap()
 ) {
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
@@ -64,6 +88,20 @@ data class SharedServerMembersState(
             )
         ] ?: SharedMembersMemberSuggestionSlice()
 
+    fun channelMemberSlice(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): SharedServerChannelMembersSlice =
+        channelMemberSlices[
+            SharedServerChannelMembersScope(
+                serverId = serverId.value.trim(),
+                channelId = channelId.value.trim()
+            )
+        ] ?: SharedServerChannelMembersSlice(
+            serverId = serverId.value.trim(),
+            channelId = channelId.value.trim()
+        )
+
     fun memberStatus(
         serverId: ServerId?,
         memberId: String?
@@ -81,6 +119,11 @@ data class SharedServerMembersState(
                 .asSequence()
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+                ?: channelMemberSlices.values
+                    .asSequence()
+                    .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
+                    .flatMap { it.members.asSequence() }
+                    .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
         val presenceFact = presenceByMemberId[cleanMemberId]
         if (
             presenceFact != null &&
@@ -118,6 +161,11 @@ data class SharedServerMembersState(
             .asSequence()
             .flatMap { it.members.asSequence() }
             .firstOrNull { it.id.value.trim() == cleanMemberId }
+            ?: channelMemberSlices.values
+                .asSequence()
+                .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
     }
 }
 
@@ -155,6 +203,19 @@ class SharedServerMembersStore(
                     serverId = serverId,
                     mentionChannelId = mentionChannelId,
                     memberScopedMentions = memberScopedMentions
+                )
+            }
+            .distinctUntilChanged()
+
+    fun channelMemberSliceFlow(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): Flow<SharedServerChannelMembersSlice> =
+        state
+            .map { current ->
+                current.channelMemberSlice(
+                    serverId = serverId,
+                    channelId = channelId
                 )
             }
             .distinctUntilChanged()
@@ -253,11 +314,35 @@ class SharedServerMembersStore(
                     entry
                 }
             }
-        if (!changed && nextPresenceFacts == current.presenceByMemberId) return
+        var channelChanged = false
+        val nextChannelSlices =
+            current.channelMemberSlices.mapValues { (_, slice) ->
+                var sliceChanged = false
+                val nextMembers =
+                    slice.members.map { member ->
+                        if (member.kind == MemberKind.Agent && member.id.value == memberId) {
+                            sliceChanged = true
+                            member.copy(
+                                presence = event.presence,
+                                agentStatus = event.agentStatus ?: member.agentStatus
+                            )
+                        } else {
+                            member
+                        }
+                    }
+                if (sliceChanged) {
+                    channelChanged = true
+                    slice.copy(members = nextMembers)
+                } else {
+                    slice
+                }
+            }
+        if (!changed && !channelChanged && nextPresenceFacts == current.presenceByMemberId) return
         _state.value =
             current.copy(
                 entriesByServerId = nextEntries,
-                presenceByMemberId = nextPresenceFacts
+                presenceByMemberId = nextPresenceFacts,
+                channelMemberSlices = nextChannelSlices
             )
     }
 
@@ -343,6 +428,113 @@ class SharedServerMembersStore(
         }
     }
 
+    suspend fun loadChannelMembers(
+        serverId: ServerId,
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        force: Boolean = false
+    ): DataResult<ChannelMemberSnapshot> {
+        val serverKey = serverId.value.trim()
+        val channelKey = channelId.value.trim()
+        if (serverKey.isBlank() || channelKey.isBlank()) {
+            return DataResult.Error(ScreenError(code = "channel_members_scope_missing", retryable = false))
+        }
+        val scope = SharedServerChannelMembersScope(serverId = serverKey, channelId = channelKey)
+        cachedLoadedChannelSnapshot(scope, force)?.let { return DataResult.Content(it) }
+        return mutex.withLock {
+            cachedLoadedChannelSnapshot(scope, force)?.let { return@withLock DataResult.Content(it) }
+            val previous = _state.value.channelMemberSlices[scope]
+            putChannelSlice(
+                scope,
+                (previous ?: SharedServerChannelMembersSlice(serverId = serverKey, channelId = channelKey)).copy(
+                    status = SharedServerMembersLoadStatus.InFlight,
+                    errorCode = null
+                )
+            )
+            val result =
+                try {
+                    memberRepository.getChannelMembers(priority, ChannelId(channelKey))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    logger(
+                        "shared_server_channel_members_load_result serverId=$serverKey " +
+                            "channelId=$channelKey result=exception type=${throwable::class.simpleName}"
+                    )
+                    val error = DataResult.Error(ScreenError(code = "channel_members_exception", retryable = true))
+                    markChannelFailure(scope, previous, error.error.code)
+                    return@withLock error
+                }
+            when (result) {
+                is DataResult.Content -> {
+                    val normalizedChannelId = result.data.channelId.value.trim().ifBlank { channelKey }
+                    val normalizedScope =
+                        SharedServerChannelMembersScope(
+                            serverId = serverKey,
+                            channelId = normalizedChannelId
+                        )
+                    val members =
+                        result.data.members
+                            .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
+                            .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
+                    putChannelSlice(
+                        normalizedScope,
+                        SharedServerChannelMembersSlice(
+                            serverId = serverKey,
+                            channelId = normalizedChannelId,
+                            members = members,
+                            canAddMembers = result.data.canAddMembers,
+                            status = SharedServerMembersLoadStatus.Loaded,
+                            errorCode = null
+                        )
+                    )
+                    if (normalizedScope != scope) removeChannelSlice(scope)
+                    seedProfiles(ServerId(serverKey), members)
+                    logger(
+                        "shared_server_channel_members_load_result serverId=$serverKey " +
+                            "channelId=$normalizedChannelId result=content members=${members.size}"
+                    )
+                    return@withLock DataResult.Content(
+                        ChannelMemberSnapshot(
+                            channelId = ChannelId(normalizedChannelId),
+                            members = members,
+                            canAddMembers = result.data.canAddMembers
+                        )
+                    )
+                }
+                is DataResult.Empty -> {
+                    putChannelSlice(
+                        scope,
+                        SharedServerChannelMembersSlice(
+                            serverId = serverKey,
+                            channelId = channelKey,
+                            members = emptyList(),
+                            canAddMembers = previous?.canAddMembers ?: true,
+                            status = SharedServerMembersLoadStatus.Loaded,
+                            errorCode = null
+                        )
+                    )
+                    logger("shared_server_channel_members_load_result serverId=$serverKey channelId=$channelKey result=empty")
+                }
+                is DataResult.Error -> {
+                    markChannelFailure(scope, previous, result.error.code)
+                    logger(
+                        "shared_server_channel_members_load_result serverId=$serverKey " +
+                            "channelId=$channelKey result=error code=${result.error.code}"
+                    )
+                }
+                is DataResult.NoPermission -> {
+                    markChannelFailure(scope, previous, result.blocker.code)
+                    logger(
+                        "shared_server_channel_members_load_result serverId=$serverKey " +
+                            "channelId=$channelKey result=no_permission code=${result.blocker.code}"
+                    )
+                }
+            }
+            result
+        }
+    }
+
     suspend fun ensureMemberSuggestionsForServer(
         serverId: ServerId,
         mentionChannelId: String? = null,
@@ -393,6 +585,16 @@ class SharedServerMembersStore(
         val entry = _state.value.entriesByServerId[key] ?: return null
         if (entry.status != SharedServerMembersLoadStatus.Loaded) return null
         return entry.snapshotOrNull()
+    }
+
+    private fun cachedLoadedChannelSnapshot(
+        scope: SharedServerChannelMembersScope,
+        force: Boolean
+    ): ChannelMemberSnapshot? {
+        if (force) return null
+        val slice = _state.value.channelMemberSlices[scope] ?: return null
+        if (slice.status != SharedServerMembersLoadStatus.Loaded) return null
+        return slice.snapshotOrNull()
     }
 
     private suspend fun loadMemberSuggestions(
@@ -475,7 +677,12 @@ class SharedServerMembersStore(
         }
         val result =
             runCatchingPreservingCancellation {
-                memberRepository.getChannelMembers(DataRequestPriority.Visible, ChannelId(mentionChannelId))
+                loadChannelMembers(
+                    serverId = ServerId(serverId),
+                    channelId = ChannelId(mentionChannelId),
+                    priority = DataRequestPriority.Visible,
+                    force = preserveExistingOnEmpty
+                )
             }.getOrElse { throwable ->
                 logger(
                     "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
@@ -516,7 +723,11 @@ class SharedServerMembersStore(
     ): List<MemberProfile> {
         val result =
             runCatchingPreservingCancellation {
-                memberRepository.getChannelMembers(DataRequestPriority.Visible, ChannelId(mentionChannelId))
+                loadChannelMembers(
+                    serverId = ServerId(serverId),
+                    channelId = ChannelId(mentionChannelId),
+                    priority = DataRequestPriority.Visible
+                )
             }.getOrElse { throwable ->
                 logger(
                     "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
@@ -603,6 +814,20 @@ class SharedServerMembersStore(
         )
     }
 
+    private fun markChannelFailure(
+        scope: SharedServerChannelMembersScope,
+        previous: SharedServerChannelMembersSlice?,
+        code: String
+    ) {
+        putChannelSlice(
+            scope,
+            (previous ?: SharedServerChannelMembersSlice(serverId = scope.serverId, channelId = scope.channelId)).copy(
+                status = SharedServerMembersLoadStatus.Error,
+                errorCode = code
+            )
+        )
+    }
+
     private fun putEntry(
         key: String,
         entry: SharedServerMembersEntry
@@ -613,10 +838,27 @@ class SharedServerMembersStore(
             )
     }
 
+    private fun putChannelSlice(
+        scope: SharedServerChannelMembersScope,
+        slice: SharedServerChannelMembersSlice
+    ) {
+        _state.value =
+            _state.value.copy(
+                channelMemberSlices = _state.value.channelMemberSlices + (scope to slice)
+            )
+    }
+
     private fun removeEntry(key: String) {
         _state.value =
             _state.value.copy(
                 entriesByServerId = _state.value.entriesByServerId - key
+            )
+    }
+
+    private fun removeChannelSlice(scope: SharedServerChannelMembersScope) {
+        _state.value =
+            _state.value.copy(
+                channelMemberSlices = _state.value.channelMemberSlices - scope
             )
     }
 }
@@ -645,8 +887,9 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
         )
     }
 
-private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile =
-    copy(
+private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
+    val agentProfile = kind == MemberKind.Agent || seed.kind == MemberKind.Agent
+    return copy(
         displayName = displayName.takeIf { it.isNotBlank() } ?: seed.displayName,
         handle = handle.takeIf { it.isNotBlank() } ?: seed.handle,
         description = description ?: seed.description,
@@ -658,8 +901,11 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile =
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
         serverName = serverName ?: seed.serverName,
-        serverSlug = serverSlug ?: seed.serverSlug
+        serverSlug = serverSlug ?: seed.serverSlug,
+        presence = if (agentProfile) seed.presence else presence,
+        agentStatus = if (agentProfile) seed.agentStatus ?: agentStatus else agentStatus
     )
+}
 
 private fun List<MemberProfile>.toServerMembersMemberSuggestions(
     localServerId: String? = null

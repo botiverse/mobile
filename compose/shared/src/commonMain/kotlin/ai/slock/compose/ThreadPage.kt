@@ -25,6 +25,7 @@ import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
@@ -51,6 +52,8 @@ import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
 import ai.slock.compose.data.SharedMembersStore
+import ai.slock.compose.data.SharedServerChannelMembersSlice
+import ai.slock.compose.data.SharedServerMembersLoadStatus
 import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.SharedTasksDataSource
@@ -103,6 +106,7 @@ import ai.slock.compose.model.toGravatarAvatarUrl
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -215,6 +219,13 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
+
+private data class ThreadMembersProjection(
+    val membersCount: Int,
+    val members: List<KuiklyThreadMemberItem>,
+    val memberCandidates: List<KuiklyThreadMemberItem>,
+    val canAddMembers: Boolean
+)
 
 private data class ThreadShareCaptureRect(
     val x: Float,
@@ -2280,6 +2291,54 @@ internal fun SharedThreadRouteContent(
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    val threadMembersServerId = currentServerId?.let(::ServerId)
+    val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    val serverMembersState by remember(serverMembersStore) {
+        serverMembersStore?.state ?: MutableStateFlow(SharedServerMembersState())
+    }.collectAsState(SharedServerMembersState())
+    val threadChannelMembersSlice by remember(
+        serverMembersStore,
+        threadMembersServerId,
+        threadMembersChannelId,
+        active
+    ) {
+        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore.channelMemberSliceFlow(
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId
+            )
+                .onStart {
+                    if (active) {
+                        serverMembersStore.loadChannelMembers(
+                            serverId = threadMembersServerId,
+                            channelId = threadMembersChannelId,
+                            priority = DataRequestPriority.Visible
+                        )
+                    }
+                }
+        } else {
+            MutableStateFlow(
+                SharedServerChannelMembersSlice(
+                    serverId = threadMembersServerId?.value,
+                    channelId = threadMembersChannelId?.value.orEmpty()
+                )
+            )
+        }
+    }.collectAsState(
+        SharedServerChannelMembersSlice(
+            serverId = threadMembersServerId?.value,
+            channelId = threadMembersChannelId?.value.orEmpty()
+        )
+    )
+    val threadMembersProjection =
+        remember(baseRenderedPayload, threadChannelMembersSlice, serverMembersState, threadMembersServerId) {
+            threadMembersProjection(
+                basePayload = baseRenderedPayload,
+                channelMembersSlice = threadChannelMembersSlice,
+                serverMembersState = serverMembersState,
+                serverId = threadMembersServerId
+            )
+        }
     val taskProjectionReferences =
         remember(timelineSlice) {
             timelineSlice.threadLinkedTaskReferences()
@@ -2302,8 +2361,8 @@ internal fun SharedThreadRouteContent(
             ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val renderedPayload =
-        remember(baseRenderedPayload) {
-            baseRenderedPayload
+        remember(baseRenderedPayload, threadMembersProjection) {
+            baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
     val renderedTimelineSlice = timelineSlice
     val memberSuggestionsFlow =
@@ -3647,6 +3706,14 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
                             is DataResult.Content -> {
+                                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+                                    serverMembersStore.loadChannelMembers(
+                                        serverId = threadMembersServerId,
+                                        channelId = threadMembersChannelId,
+                                        priority = DataRequestPriority.Visible,
+                                        force = true
+                                    )
+                                }
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -3689,6 +3756,14 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
                             is DataResult.Content -> {
+                                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+                                    serverMembersStore.loadChannelMembers(
+                                        serverId = threadMembersServerId,
+                                        channelId = threadMembersChannelId,
+                                        priority = DataRequestPriority.Visible,
+                                        force = true
+                                    )
+                                }
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -3912,7 +3987,18 @@ internal fun SharedThreadRouteContent(
                     threadViewModel.dispatch(SharedThreadIntent.SelectTab(tab))
                 }
                 action == "loadMembers" -> {
-                    threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
+                    if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+                        coroutineScope.launch {
+                            serverMembersStore.loadChannelMembers(
+                                serverId = threadMembersServerId,
+                                channelId = threadMembersChannelId,
+                                priority = DataRequestPriority.Visible,
+                                force = true
+                            )
+                        }
+                    } else {
+                        threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
+                    }
                 }
                 action == "loadOlder" || action == "retryLoadOlder" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
@@ -12034,6 +12120,99 @@ private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: 
 
 private val KuiklyThreadMemberItem.memberKey: String
     get() = "${kind.lowercase()}:$id"
+
+private fun KuiklyThreadScreenPayload.withThreadMembersProjection(
+    projection: ThreadMembersProjection
+): KuiklyThreadScreenPayload =
+    copy(
+        membersCount = projection.membersCount,
+        members = projection.members,
+        memberCandidates = projection.memberCandidates,
+        canAddMembers = projection.canAddMembers
+    )
+
+private fun threadMembersProjection(
+    basePayload: KuiklyThreadScreenPayload,
+    channelMembersSlice: SharedServerChannelMembersSlice,
+    serverMembersState: SharedServerMembersState,
+    serverId: ServerId?
+): ThreadMembersProjection {
+    val loadedMembers =
+        channelMembersSlice.members
+            .distinctBy { it.threadMemberKey }
+            .map { it.toKuiklyThreadMemberItem(serverId) }
+    val members =
+        if (channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded) {
+            loadedMembers
+        } else {
+            basePayload.members
+        }
+    val memberKeys = members.map { it.memberKey }.toSet()
+    val serverMembers =
+        serverId
+            ?.let { serverMembersState.entryFor(it)?.members }
+            .orEmpty()
+    val candidates =
+        if (serverMembers.isEmpty()) {
+            basePayload.memberCandidates
+        } else {
+            serverMembers
+                .filterNot { it.threadMemberKey in memberKeys }
+                .map { it.toKuiklyThreadMemberItem(serverId) }
+        }
+    return ThreadMembersProjection(
+        membersCount =
+            when {
+                channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded -> members.size
+                basePayload.membersCount > 0 -> basePayload.membersCount
+                else -> members.size
+            },
+        members = members,
+        memberCandidates = candidates,
+        canAddMembers =
+            if (channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded) {
+                channelMembersSlice.canAddMembers
+            } else {
+                basePayload.canAddMembers
+            }
+    )
+}
+
+private val MemberProfile.threadMemberKey: String
+    get() = "${kind.name.lowercase()}:${id.value.trim()}"
+
+private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = null): KuiklyThreadMemberItem =
+    KuiklyThreadMemberItem(
+        id = id.value,
+        displayName = displayName,
+        handle = handle,
+        roleLabel =
+            roleDescription
+                ?: when (kind) {
+                    MemberKind.Agent -> "Agent"
+                    MemberKind.Human -> "Member"
+                    MemberKind.System -> "System"
+                },
+        avatarUrl = avatarWireValueForAvatarSlot(),
+        avatarLabel = avatarLabel,
+        kind = kind.name.lowercase(),
+        sourceServerId = serverId?.value,
+        sourceServerLabel = remoteSourceServerLabel(localServerId),
+        canRemove = isLocalToServer(localServerId),
+        presence = presence.takeIf { kind == MemberKind.Agent && (agentStatus != null || presence != Presence.Offline) },
+        agentStatus = agentStatus.takeIf { kind == MemberKind.Agent }
+    )
+
+private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
+    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return true
+    val localId = localServerId?.value?.takeIf { it.isNotBlank() } ?: return true
+    return sourceId == localId
+}
+
+private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): String? {
+    if (isLocalToServer(localServerId)) return null
+    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
+}
 
 private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
     avatarUrl?.takeIf { it.isNotBlank() }

@@ -135,6 +135,78 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun loadChannelMembersCachesPerChannelAndSeedsProfiles() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active,
+                    avatar = AvatarReference.fromWireValue("pixel:build")
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+
+        val first = store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+        val second = store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(first)
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(second)
+        assertEquals(1, repository.getChannelMembersCalls)
+        assertEquals(listOf("agent-1"), second.data.members.map { it.id.value })
+        assertEquals(
+            SharedServerMembersLoadStatus.Loaded,
+            store.state.value.channelMemberSlice(ServerId("server-1"), ChannelId("channel-1")).status
+        )
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
+        assertEquals(
+            "pixel:build",
+            store.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun applyPresencePatchesChannelMemberSliceBeforeFullRosterLoads() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member("agent-1", "Build Agent").copy(
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Online,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = AgentStatus.Thinking.presence,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Thinking
+            )
+        )
+
+        val member =
+            store.state.value
+                .channelMemberSlice(ServerId("server-1"), ChannelId("channel-1"))
+                .members
+                .single()
+        assertEquals(AgentStatus.Thinking, member.agentStatus)
+        assertEquals(AgentStatus.Thinking.presence, member.presence)
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
+    }
+
+    @Test
     fun memberStatusFlowEmitsOnlyForTargetMemberStatusChanges() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -285,6 +357,25 @@ class SharedServerMembersStoreTest {
             ).suggestions
         assertEquals(false, suggestions.single { it.handle == "cindy" }.inMentionChannel)
         assertEquals(true, suggestions.single { it.handle == "artin" }.inMentionChannel)
+        assertEquals(1, repository.getChannelMembersCalls)
+    }
+
+    @Test
+    fun scopedMemberSuggestionsReuseCachedChannelMembers() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u2", "Artin"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
         assertEquals(1, repository.getChannelMembersCalls)
     }
 
