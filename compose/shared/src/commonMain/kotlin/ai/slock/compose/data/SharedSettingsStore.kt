@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 enum class SharedSettingsDestination {
     Home,
@@ -1041,11 +1042,16 @@ class SharedSettingsDataSource(
 }
 
 class SharedSettingsViewModel(
-    dataSource: SharedSettingsDataSource
+    dataSource: SharedSettingsDataSource,
+    diagnosticsLogger: (String) -> Unit = {}
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedSettingsStore(dataSource = dataSource, scope = viewModelScope)
+            SharedSettingsStore(
+                dataSource = dataSource,
+                scope = viewModelScope,
+                diagnosticsLogger = diagnosticsLogger
+            )
         }
     private val contractDelegate =
         lazy {
@@ -1118,7 +1124,8 @@ private fun StoredAuthSession.aboutServerLabel(): String =
 class SharedSettingsStore(
     private val dataSource: SharedSettingsDataSource,
     private val scope: CoroutineScope,
-    initialState: SharedSettingsState = SharedSettingsState()
+    initialState: SharedSettingsState = SharedSettingsState(),
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
@@ -2196,6 +2203,7 @@ class SharedSettingsStore(
         destination: SharedSettingsDestination,
         update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
     ) {
+        val startedAt = TimeSource.Monotonic.markNow()
         _state.value = _state.value.markRefreshing(destination)
         try {
             val nextState = toScreenLoadState()
@@ -2212,6 +2220,10 @@ class SharedSettingsStore(
                         }
                     ScreenLoadState.Loading -> _state.value.update(nextState)
                 }
+            diagnosticsLogger(
+                "store_load domain=settings destination=${destination.name} result=${this.settingsStoreDiagnosticsResult()} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -2222,9 +2234,21 @@ class SharedSettingsStore(
                 } else {
                     _state.value.update(error).finishRefreshing(destination).copy(routeErrorCode = "settings_network")
                 }
+            diagnosticsLogger(
+                "store_load domain=settings destination=${destination.name} result=exception code=settings_network " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
         }
     }
 }
+
+private fun DataResult<*>.settingsStoreDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
+    }
 
 private val SharedSettingsIntent.loadsSettingsContent: Boolean
     get() =

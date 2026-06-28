@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 private const val HomeSavedPageSize = 100
 private const val HomeSearchPageSize = 30
@@ -32,7 +33,8 @@ class SharedHomeSearchSavedStore(
     private val savedStateCache: SharedHomeSavedStateCache? = null,
     private val scope: CoroutineScope,
     private val timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
-    private val searchDebounceMillis: Long = SearchDebounceMillis
+    private val searchDebounceMillis: Long = SearchDebounceMillis,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedHomeSearchSavedState())
     val state: StateFlow<SharedHomeSearchSavedState> = _state.asStateFlow()
@@ -157,6 +159,7 @@ class SharedHomeSearchSavedStore(
         senderFiltersJob?.cancel()
         senderFiltersJob =
             scope.launch {
+                val startedAt = TimeSource.Monotonic.markNow()
                 _state.value =
                     _state.value.copy(
                         search = _state.value.search.copy(senderFiltersLoading = true, senderFiltersErrorCode = null)
@@ -164,7 +167,12 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSenderFiltersError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSenderFiltersError("server_missing")
-                    when (val result = loadSearchSenderFilters(serverId, DataRequestPriority.Visible, session.user.id)) {
+                    val result = loadSearchSenderFilters(serverId, DataRequestPriority.Visible, session.user.id)
+                    diagnosticsLogger(
+                        "store_load domain=home_search_sender_filters result=${result.senderFiltersDiagnosticsResult()} " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
+                    when (result) {
                         is DataResult.Content ->
                             _state.value =
                                 _state.value.copy(
@@ -192,6 +200,10 @@ class SharedHomeSearchSavedStore(
                     throw cancellation
                 } catch (_: Throwable) {
                     setSenderFiltersError("sender_filters_network")
+                    diagnosticsLogger(
+                        "store_load domain=home_search_sender_filters result=exception code=sender_filters_network " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
             }
     }
@@ -206,6 +218,7 @@ class SharedHomeSearchSavedStore(
         savedJob?.cancel()
         savedJob =
             scope.launch {
+                val startedAt = TimeSource.Monotonic.markNow()
                 val previous = _state.value.saved
                 val refreshInPlace = refresh && (previous.loaded || previous.items.isNotEmpty())
                 _state.value =
@@ -254,10 +267,18 @@ class SharedHomeSearchSavedStore(
                         serverId = serverId,
                         userId = session.user.id
                     )
+                    diagnosticsLogger(
+                        "store_load domain=saved refresh=$refresh append=${!refresh} " +
+                            "result=${result.savedDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
                     setSavedError("saved_network")
+                    diagnosticsLogger(
+                        "store_load domain=saved refresh=$refresh append=${!refresh} result=exception code=saved_network " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
             }
     }
@@ -295,6 +316,7 @@ class SharedHomeSearchSavedStore(
         val requestToken = ++searchRequestToken
         searchJob =
             scope.launch {
+                val startedAt = TimeSource.Monotonic.markNow()
                 val previous = _state.value.search
                 val refreshInPlace = refresh && (previous.searched || previous.items.isNotEmpty())
                 _state.value =
@@ -342,11 +364,24 @@ class SharedHomeSearchSavedStore(
                         )
                     if (isActiveSearchRequest(requestToken)) {
                         applySearchResult(result, append = !refresh)
+                        diagnosticsLogger(
+                            "store_load domain=search refresh=$refresh append=${!refresh} " +
+                                "result=${result.searchDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    } else {
+                        diagnosticsLogger(
+                            "store_load domain=search refresh=$refresh append=${!refresh} result=stale_request " +
+                                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        )
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
                     setSearchErrorIfActive(requestToken, "search_network")
+                    diagnosticsLogger(
+                        "store_load domain=search refresh=$refresh append=${!refresh} result=exception code=search_network " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
             }
     }
@@ -666,6 +701,38 @@ class SharedHomeSavedStateCache {
 private fun savedStateCacheKey(serverId: String, userId: String): String =
     "${serverId.trim()}:${userId.trim()}"
 
+private fun DataResult<List<SearchSenderFilterItem>>.senderFiltersDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content filters=${data.size}"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
+    }
+
+private fun DataResult<MemberSnapshot>.memberDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content members=${data.members.size}"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
+    }
+
+private fun DataResult<SavedSnapshot>.savedDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content items=${data.items.size} total=${data.totalCount}"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
+    }
+
+private fun DataResult<SearchSnapshot>.searchDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content items=${data.items.size} total=${data.totalCount}"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
+    }
+
 class SharedHomeSearchSavedViewModel(
     authStore: SlockAuthSessionStore,
     savedRepository: SavedRepository,
@@ -673,7 +740,8 @@ class SharedHomeSearchSavedViewModel(
     memberRepository: MemberRepository? = null,
     serverMembersStore: SharedServerMembersStore? = null,
     savedStateCache: SharedHomeSavedStateCache? = null,
-    timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() }
+    timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
+    diagnosticsLogger: (String) -> Unit = {}
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
@@ -685,7 +753,8 @@ class SharedHomeSearchSavedViewModel(
                 serverMembersStore = serverMembersStore,
                 savedStateCache = savedStateCache,
                 scope = viewModelScope,
-                timeRangeBoundsProvider = timeRangeBoundsProvider
+                timeRangeBoundsProvider = timeRangeBoundsProvider,
+                diagnosticsLogger = diagnosticsLogger
             )
         }
     private val store: SharedHomeSearchSavedStore by storeDelegate

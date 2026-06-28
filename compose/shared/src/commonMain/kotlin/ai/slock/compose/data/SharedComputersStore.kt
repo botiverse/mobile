@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 internal enum class SharedComputersLoadStatus {
     Idle,
@@ -128,9 +129,11 @@ class SharedComputersStore internal constructor(
     }
 
     private suspend fun ensureComputersForServer(serverId: String, force: Boolean = false) {
+        val startedAt = TimeSource.Monotonic.markNow()
         val normalizedServerId = serverId.normalizedComputerServerId()
         if (normalizedServerId == null) {
             logger("shared_computers_skip reason=server_id_missing")
+            logger("store_load domain=computers serverId= result=skip reason=server_id_missing durationMs=${startedAt.elapsedNow().inWholeMilliseconds}")
             return
         }
         val current = _state.value.selectComputerServerSlice(normalizedServerId)
@@ -139,6 +142,11 @@ class SharedComputersStore internal constructor(
                 current.status == SharedComputersLoadStatus.InFlight)
         ) {
             logger("shared_computers_skip serverId=$normalizedServerId reason=loaded_or_inflight")
+            logger(
+                "store_load domain=computers serverId=$normalizedServerId result=skip reason=loaded_or_inflight " +
+                    "force=$force status=${current.status.name} machines=${current.machines.size} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             return
         }
         setServerSlice(
@@ -150,6 +158,10 @@ class SharedComputersStore internal constructor(
                 computersApiClient.machines(ServerId(normalizedServerId))
             }.getOrElse { throwable ->
                 logger("shared_computers_result serverId=$normalizedServerId result=exception message=${throwable.message.orEmpty()}")
+                logger(
+                    "store_load domain=computers serverId=$normalizedServerId result=exception code=computers_exception " +
+                        "force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
                 setServerSlice(
                     serverId = normalizedServerId,
                     slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = "computers_exception")
@@ -169,15 +181,27 @@ class SharedComputersStore internal constructor(
                             status = SharedComputersLoadStatus.Loaded,
                         )
                 )
+                logger(
+                    "store_load domain=computers serverId=$normalizedServerId result=content machines=${result.data.machines.size} " +
+                        "online=${result.data.onlineCount} force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
             }
             is DataResult.Empty -> {
                 setServerSlice(
                     serverId = normalizedServerId,
                     slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Loaded)
                 )
+                logger(
+                    "store_load domain=computers serverId=$normalizedServerId result=empty code=${result.reason.name} " +
+                        "force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
             }
             is DataResult.Error -> {
                 logger("shared_computers_result serverId=$normalizedServerId result=error code=${result.error.code}")
+                logger(
+                    "store_load domain=computers serverId=$normalizedServerId result=error code=${result.error.code} " +
+                        "force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
                 setServerSlice(
                     serverId = normalizedServerId,
                     slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.error.code)
@@ -185,6 +209,10 @@ class SharedComputersStore internal constructor(
             }
             is DataResult.NoPermission -> {
                 logger("shared_computers_result serverId=$normalizedServerId result=no_permission code=${result.blocker.code}")
+                logger(
+                    "store_load domain=computers serverId=$normalizedServerId result=no_permission code=${result.blocker.code} " +
+                        "force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
                 setServerSlice(
                     serverId = normalizedServerId,
                     slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.blocker.code)

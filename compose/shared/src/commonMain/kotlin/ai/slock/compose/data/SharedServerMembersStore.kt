@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.TimeSource
 
 enum class SharedServerMembersLoadStatus {
     Idle,
@@ -333,13 +334,30 @@ class SharedServerMembersStore(
         priority: DataRequestPriority,
         force: Boolean
     ): DataResult<Unit> {
+        val startedAt = TimeSource.Monotonic.markNow()
         val key = serverId.value.trim()
         if (key.isBlank()) {
+            logger(
+                "store_load domain=server_members serverId= result=error code=server_missing " +
+                    "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
         }
-        cachedLoadedSnapshot(key, force)?.let { return DataResult.Content(Unit) }
+        cachedLoadedSnapshot(key, force)?.let {
+            logger(
+                "store_load domain=server_members serverId=$key result=cache_hit members=${it.members.size} " +
+                    "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return DataResult.Content(Unit)
+        }
         return mutex.withLock {
-            cachedLoadedSnapshot(key, force)?.let { return@withLock DataResult.Content(Unit) }
+            cachedLoadedSnapshot(key, force)?.let {
+                logger(
+                    "store_load domain=server_members serverId=$key result=cache_hit_locked members=${it.members.size} " +
+                        "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
+                return@withLock DataResult.Content(Unit)
+            }
             val previous = _state.value.entriesByServerId[key]
             putEntry(
                 key,
@@ -355,6 +373,10 @@ class SharedServerMembersStore(
                     throw cancellation
                 } catch (throwable: Throwable) {
                     logger("shared_server_members_load_result serverId=$key result=exception type=${throwable::class.simpleName}")
+                    logger(
+                        "store_load domain=server_members serverId=$key result=exception code=members_exception " +
+                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                     val error = DataResult.Error(ScreenError(code = "members_exception", retryable = true))
                     markFailure(key, previous, error.error.code)
                     return@withLock error
@@ -382,6 +404,10 @@ class SharedServerMembersStore(
                     logger(
                         "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
                     )
+                    logger(
+                        "store_load domain=server_members serverId=$normalizedKey result=content members=${snapshot.members.size} " +
+                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                     return@withLock DataResult.Content(Unit)
                 }
                 is DataResult.Empty -> {
@@ -396,14 +422,26 @@ class SharedServerMembersStore(
                         )
                     )
                     logger("shared_server_members_load_result serverId=$key result=empty")
+                    logger(
+                        "store_load domain=server_members serverId=$key result=empty code=${result.reason.name} " +
+                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
                 is DataResult.Error -> {
                     markFailure(key, previous, result.error.code)
                     logger("shared_server_members_load_result serverId=$key result=error code=${result.error.code}")
+                    logger(
+                        "store_load domain=server_members serverId=$key result=error code=${result.error.code} " +
+                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
                 is DataResult.NoPermission -> {
                     markFailure(key, previous, result.blocker.code)
                     logger("shared_server_members_load_result serverId=$key result=no_permission code=${result.blocker.code}")
+                    logger(
+                        "store_load domain=server_members serverId=$key result=no_permission code=${result.blocker.code} " +
+                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 }
             }
             result.map { Unit }

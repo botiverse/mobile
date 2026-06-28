@@ -62,14 +62,16 @@ internal class SlockSharedStoreProvider private constructor(
         localWriteThrough: ComposeLocalWriteThrough? = null,
         activityStateCache: SharedActivityStateCache? = this.activityStateCache,
         onUnreadCountsChanged: (() -> Unit)? = null,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
         homeActivityStore
             ?.also { store ->
                 store.updateRuntimeIntegrations(
                     localWriteThrough = localWriteThrough,
                     onUnreadCountsChanged = onUnreadCountsChanged,
-                    scope = scope
+                    scope = scope,
+                    diagnosticsLogger = diagnosticsLogger
                 )
                 return store
             }
@@ -83,7 +85,8 @@ internal class SlockSharedStoreProvider private constructor(
             localWriteThrough = localWriteThrough,
             activityStateCache = activityStateCache,
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
-            scope = scope
+            scope = scope,
+            diagnosticsLogger = diagnosticsLogger ?: {}
         ).also { homeActivityStore = it }
     }
 

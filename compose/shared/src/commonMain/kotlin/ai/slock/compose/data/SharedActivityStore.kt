@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
 
@@ -37,7 +38,8 @@ class SharedActivityStore(
     localWriteThrough: ComposeLocalWriteThrough? = null,
     private val activityStateCache: SharedActivityStateCache? = null,
     onUnreadCountsChanged: () -> Unit = {},
-    scope: CoroutineScope
+    scope: CoroutineScope,
+    private var diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -52,7 +54,8 @@ class SharedActivityStore(
     fun updateRuntimeIntegrations(
         localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
-        scope: CoroutineScope? = null
+        scope: CoroutineScope? = null,
+        diagnosticsLogger: ((String) -> Unit)? = null
     ) {
         if (localWriteThrough != null) {
             this.localWriteThrough = localWriteThrough
@@ -62,6 +65,9 @@ class SharedActivityStore(
         }
         if (scope != null) {
             this.scope = scope
+        }
+        if (diagnosticsLogger != null) {
+            this.diagnosticsLogger = diagnosticsLogger
         }
     }
 
@@ -128,6 +134,7 @@ class SharedActivityStore(
         loadJob?.cancel()
         loadJob =
             scope.launch {
+                val startedAt = TimeSource.Monotonic.markNow()
                 val previous = _state.value
                 val filter = previous.selectedFilter
                 _state.value =
@@ -140,8 +147,28 @@ class SharedActivityStore(
                         loadMoreErrorCode = null
                     )
                 try {
-                    val session = authStore.readSession() ?: return@launch setLoadError("unauthenticated", append = !refresh)
-                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setLoadError("server_missing", append = !refresh)
+                    val session = authStore.readSession()
+                        ?: return@launch setLoadError("unauthenticated", append = !refresh).also {
+                            logActivityLoad(
+                                result = "error",
+                                code = "unauthenticated",
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            )
+                        }
+                    val serverId = session.currentServerId?.let(::ServerId)
+                        ?: return@launch setLoadError("server_missing", append = !refresh).also {
+                            logActivityLoad(
+                                result = "error",
+                                code = "server_missing",
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            )
+                        }
                     val userId = session.user.id
                     val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         ?: return@launch setLoadError("server_missing", append = !refresh)
@@ -177,12 +204,42 @@ class SharedActivityStore(
                         senderProfiles = senderProfiles,
                         userId = userId
                     )
+                    logActivityLoad(
+                        result = result.activityDiagnosticsResult(),
+                        code = null,
+                        refresh = refresh,
+                        append = !refresh,
+                        filter = filter,
+                        durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
                     setLoadError("activity_network", append = !refresh)
+                    logActivityLoad(
+                        result = "exception",
+                        code = "activity_network",
+                        refresh = refresh,
+                        append = !refresh,
+                        filter = filter,
+                        durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                    )
                 }
             }
+    }
+
+    private fun logActivityLoad(
+        result: String,
+        code: String?,
+        refresh: Boolean,
+        append: Boolean,
+        filter: InboxFilter,
+        durationMs: Long
+    ) {
+        diagnosticsLogger(
+            "store_load domain=activity refresh=$refresh append=$append filter=${filter.name} " +
+                "result=$result code=${code.orEmpty()} durationMs=$durationMs"
+        )
     }
 
     private fun applyLoadResult(
@@ -751,6 +808,14 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
                 scope == RealtimeRefreshScope.Machines ||
                 scope == RealtimeRefreshScope.Settings
         else -> false
+    }
+
+private fun DataResult<InboxSnapshot>.activityDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content items=${data.items.size} unread=${data.totalUnreadCount}"
+        is DataResult.Empty -> "empty code=${reason.name}"
+        is DataResult.Error -> "error code=${error.code}"
+        is DataResult.NoPermission -> "no_permission code=${blocker.code}"
     }
 
 data class SharedActivitySenderProfile(

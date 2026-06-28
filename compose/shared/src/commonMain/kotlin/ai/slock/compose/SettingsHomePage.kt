@@ -1587,7 +1587,8 @@ private fun SlockAppShellContent() {
                 memberRepository = memberRepository,
                 activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                scope = appShellCoroutineScope
+                scope = appShellCoroutineScope,
+                diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
             )
         }
     val appShellComputersStore =
@@ -1665,7 +1666,8 @@ private fun SlockAppShellContent() {
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
-                timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) }
+                timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
+                diagnosticsLogger = { message -> bridge.log("shared_home_search_saved $message") }
             )
         }
     val homeShellStore =
@@ -1721,7 +1723,10 @@ private fun SlockAppShellContent() {
     var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "shared-settings") {
-            SharedSettingsViewModel(settingsDataSource)
+            SharedSettingsViewModel(
+                settingsDataSource,
+                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
+            )
         }
     val settingsState by settingsViewModel.state.collectAsState()
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
