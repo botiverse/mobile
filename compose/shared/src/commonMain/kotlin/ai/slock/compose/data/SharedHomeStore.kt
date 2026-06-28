@@ -303,7 +303,7 @@ class SharedHomeStore(
         when (event) {
             is RealtimeRefreshRequired -> {
                 if (event.scope == RealtimeRefreshScope.Announcements) {
-                    loadNotifications()
+                    Unit
                 } else if (event.updatesHomeSnapshot()) {
                     hiddenHomeSnapshotDirty = true
                     markHomeRealtimeDirty(serverId, "refresh:${event.scope}")
@@ -423,7 +423,7 @@ class SharedHomeStore(
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
         when (event.scope) {
             RealtimeRefreshScope.Announcements -> {
-                loadNotifications()
+                diagnosticsLogger("home_realtime_refresh_ignore scope=${event.scope} reason=${event.reason}")
             }
             RealtimeRefreshScope.Agents -> {
                 diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")

@@ -67,15 +67,23 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadNotificationsRequestsAnnouncementAndMachineSourcesConcurrently() = runBlocking {
-        val announcementsApi = ConcurrentAnnouncementsApi()
-        val computersApi = ConcurrentComputersApi(announcementsApi.announcementsStarted)
-        announcementsApi.machinesStarted = computersApi.machinesStarted
+    fun loadNotificationsDoesNotRequestActiveAnnouncements() = runBlocking {
+        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
-                announcementsApi = announcementsApi,
+                announcementsApi =
+                    object : SlockAnnouncementsRemindersApi {
+                        override suspend fun activeAnnouncements(): HomeNetworkResponse =
+                            error("Home notification center must not request account announcements")
+
+                        override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
+                            error("unused")
+
+                        override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
+                            error("unused")
+                    },
                 computersApi = computersApi,
                 parseHome = { _, session ->
                     DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
@@ -85,7 +93,7 @@ class HomeDataSourceTest {
         val result = withTimeout(1_000L) { source.loadNotifications() }
 
         val notifications = (result as DataResult.Content).data
-        assertEquals(setOf("announcement-1", "machine-offline:machine-1"), notifications.map { it.id }.toSet())
+        assertEquals(listOf("machine-offline:machine-1"), notifications.map { it.id })
     }
 
     @Test

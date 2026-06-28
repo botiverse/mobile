@@ -200,22 +200,8 @@ class SharedHomeDataSource(
         return readCachedHome(serverId)
     }
 
-    suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> = coroutineScope {
-        val announcementResult = async { loadAnnouncementNotifications() }
-        val machineResult = async { loadMachineNotifications() }
-        mergeHomeNotificationResults(announcementResult.await(), machineResult.await())
-    }
-
-    private suspend fun loadAnnouncementNotifications(): DataResult<List<SharedHomeNotification>> {
-        val client = typedAnnouncementsApi
-            ?: return DataResult.Content(emptyList())
-        return when (val result = client.activeAnnouncements()) {
-            is DataResult.Content -> DataResult.Content(result.data.items.mapNotNull { it.toSharedHomeNotification() })
-            is DataResult.Empty -> DataResult.Content(emptyList())
-            is DataResult.Error -> DataResult.Error(result.error)
-            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
-        }
-    }
+    suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> =
+        loadMachineNotifications()
 
     private suspend fun loadMachineNotifications(): DataResult<List<SharedHomeNotification>> {
         val client = typedComputersApi
@@ -239,33 +225,6 @@ class SharedHomeDataSource(
         val client = typedAnnouncementsApi
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         return client.dismissAnnouncement(id)
-    }
-}
-
-private fun mergeHomeNotificationResults(
-    first: DataResult<List<SharedHomeNotification>>,
-    second: DataResult<List<SharedHomeNotification>>
-): DataResult<List<SharedHomeNotification>> {
-    val merged = mutableListOf<SharedHomeNotification>()
-    var sawContent = false
-    var firstNoPermission: DataResult.NoPermission? = null
-    var firstError: DataResult.Error? = null
-    listOf(first, second).forEach { result ->
-        when (result) {
-            is DataResult.Content -> {
-                sawContent = true
-                merged += result.data
-            }
-            is DataResult.Empty -> sawContent = true
-            is DataResult.Error -> if (firstError == null) firstError = result
-            is DataResult.NoPermission -> if (firstNoPermission == null) firstNoPermission = result
-        }
-    }
-    return when {
-        sawContent -> DataResult.Content(merged)
-        firstNoPermission != null -> firstNoPermission
-        firstError != null -> firstError
-        else -> DataResult.Content(emptyList())
     }
 }
 
@@ -328,25 +287,6 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedH
             targetId = offlineMachines.first().id,
             kind = SharedHomeNotificationKind.Warning
         )
-    )
-}
-
-private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification? {
-    val visibleTitle = title.trim()
-    val visibleBody = body.trim()
-    if (visibleTitle.isBlank() && visibleBody.isBlank()) return null
-    return SharedHomeNotification(
-        id = id,
-        title = visibleTitle,
-        body = visibleBody,
-        actionLabel = actionLabel,
-        targetId = targetId,
-        kind =
-            when (kind) {
-                AnnouncementKind.Warning -> SharedHomeNotificationKind.Warning
-                AnnouncementKind.Info -> SharedHomeNotificationKind.Info
-                AnnouncementKind.Error -> SharedHomeNotificationKind.Error
-            }
     )
 }
 

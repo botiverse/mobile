@@ -619,7 +619,7 @@ class SharedHomeStoreTest {
         )
 
         assertEquals(emptyList(), api.calls)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), announcementsApi.calls)
         assertEquals(listOf("GET machines:server-1"), computersApi.calls)
         assertContains(logs, "home_realtime_refresh_lightweight scope=Machines reason=machine:status")
         scope.cancel()
@@ -1500,7 +1500,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun startLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
+    fun startDoesNotSurfaceActiveAnnouncementsInHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
@@ -1511,20 +1511,13 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
 
-        val notification = store.state.value.notifications.single()
-        assertEquals("announcement-1", notification.id)
-        assertEquals("Upgrade available", notification.title)
-        assertEquals("Install the newest desktop daemon.", notification.body)
-        // The server `Announcement` contract has no severity / actionLabel — see
-        // packages/shared/src/index.ts. The home store maps every announcement
-        // to the neutral `Info` notification kind by design.
-        assertEquals(SharedHomeNotificationKind.Info, notification.kind)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), store.state.value.notifications)
+        assertEquals(emptyList(), announcementsApi.calls)
         scope.cancel()
     }
 
     @Test
-    fun startDropsBlankActiveAnnouncementsFromHomeNotifications() = runBlocking {
+    fun startDoesNotRequestBlankActiveAnnouncementsForHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi =
             RecordingAnnouncementsApi(
@@ -1552,7 +1545,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
 
         assertEquals(emptyList(), store.state.value.notifications)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), announcementsApi.calls)
         scope.cancel()
     }
 
@@ -1584,13 +1577,13 @@ class SharedHomeStoreTest {
         assertEquals("View", notification.actionLabel)
         assertEquals("machine-1", notification.targetId)
         assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), announcementsApi.calls)
         assertEquals(listOf("GET machines:server-1"), computersApi.calls)
         scope.cancel()
     }
 
     @Test
-    fun cachedHomeStartStillLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
+    fun cachedHomeStartDoesNotLoadActiveAnnouncementsIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(ServerId("server-1")))
@@ -1611,14 +1604,13 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
 
-        val notification = store.state.value.notifications.single()
-        assertEquals("announcement-1", notification.id)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), store.state.value.notifications)
+        assertEquals(emptyList(), announcementsApi.calls)
         scope.cancel()
     }
 
     @Test
-    fun realtimeAnnouncementRefreshesHomeNotifications() = runBlocking {
+    fun realtimeAnnouncementDoesNotRefreshHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
@@ -1654,31 +1646,8 @@ class SharedHomeStoreTest {
             )
         )
 
-        val notification = store.state.value.notifications.single()
-        assertEquals("announcement-2", notification.id)
-        assertEquals("Realtime notice", notification.title)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun dismissNotificationRemovesFromStateAndCallsSharedApi() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val announcementsApi = RecordingAnnouncementsApi()
-        val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
-            scope = scope
-        )
-        store.accept(SharedHomeIntent.Start)
-
-        store.accept(SharedHomeIntent.DismissNotification("announcement-1"))
-
         assertEquals(emptyList(), store.state.value.notifications)
-        assertEquals(
-            listOf("GET announcements/active", "POST announcements/announcement-1/dismiss"),
-            announcementsApi.calls
-        )
+        assertEquals(emptyList(), announcementsApi.calls)
         scope.cancel()
     }
 
@@ -1702,7 +1671,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.DismissNotification("machine-offline:machine-1"))
 
         assertEquals(emptyList(), store.state.value.notifications)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(emptyList(), announcementsApi.calls)
         scope.cancel()
     }
 
