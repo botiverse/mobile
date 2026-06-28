@@ -21,7 +21,6 @@ class AuthTokenRefresher(
     private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, message) }
 ) {
     private val gson = Gson()
-    private val mutex = Mutex()
 
     suspend fun refreshIfExpiringSoon(clearOnUnauthorized: Boolean = true): AuthSession? {
         val current = store.readSession() ?: return null
@@ -38,7 +37,7 @@ class AuthTokenRefresher(
         failedAccessToken: String?,
         clearOnUnauthorized: Boolean = true
     ): AuthSession? =
-        mutex.withLock {
+        processRefreshMutex.withLock {
             val current = store.readSession() ?: return@withLock null
             if (
                 failedAccessToken != null &&
@@ -50,7 +49,21 @@ class AuthTokenRefresher(
             }
             if (current.refreshToken.isBlank()) {
                 warningLogger("refresh_skip reason=missing_refresh_token")
-                store.clearSession()
+                if (clearOnUnauthorized) {
+                    store.clearSession()
+                } else {
+                    warningLogger("refresh_missing_refresh_token_session_preserved")
+                }
+                return@withLock null
+            }
+            if (
+                !clearOnUnauthorized &&
+                recentPreservedUnauthorizedFailure?.matches(
+                    current,
+                    nowMillis = clockMillis()
+                ) == true
+            ) {
+                warningLogger("refresh_skip reason=recent_unauthorized_session_preserved")
                 return@withLock null
             }
 
@@ -65,7 +78,14 @@ class AuthTokenRefresher(
                             if (code == 401 || code == 403) {
                                 if (clearOnUnauthorized) {
                                     store.clearSession()
+                                    recentPreservedUnauthorizedFailure = null
                                 } else {
+                                    recentPreservedUnauthorizedFailure =
+                                        PreservedUnauthorizedFailure(
+                                            accessToken = current.accessToken,
+                                            refreshToken = current.refreshToken,
+                                            failedAtMillis = clockMillis()
+                                        )
                                     warningLogger("refresh_unauthorized_session_preserved")
                                 }
                             }
@@ -77,6 +97,9 @@ class AuthTokenRefresher(
                     refreshToken = refreshed.refreshToken
                 )
                 store.saveSession(updated)
+                if (recentPreservedUnauthorizedFailure?.matchesTokens(current) == true) {
+                    recentPreservedUnauthorizedFailure = null
+                }
                 logger("refresh_success")
                 updated
             } catch (cancellation: CancellationException) {
@@ -109,5 +132,24 @@ class AuthTokenRefresher(
     private companion object {
         const val TAG = "SlockAuth"
         const val DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS = 60_000L
+
+        val processRefreshMutex = Mutex()
+        var recentPreservedUnauthorizedFailure: PreservedUnauthorizedFailure? = null
     }
 }
+
+private data class PreservedUnauthorizedFailure(
+    val accessToken: String,
+    val refreshToken: String,
+    val failedAtMillis: Long
+) {
+    fun matches(session: AuthSession, nowMillis: Long): Boolean =
+        matchesTokens(session) &&
+            nowMillis - failedAtMillis in 0..PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS
+
+    fun matchesTokens(session: AuthSession): Boolean =
+        accessToken == session.accessToken &&
+            refreshToken == session.refreshToken
+}
+
+private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L

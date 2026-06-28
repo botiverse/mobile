@@ -8,8 +8,6 @@ internal class SlockNetworkAuthMiddleware(
     private val sessionStore: SlockAuthSessionStore,
     private val authApi: SlockAuthApi
 ) {
-    private val refreshMutex = Mutex()
-
     suspend fun request(
         serverIdOverride: ServerId? = null,
         block: suspend (SlockAuthenticatedRequestContext) -> HomeNetworkResponse
@@ -26,18 +24,15 @@ internal class SlockNetworkAuthMiddleware(
 
         val refreshed = refreshSessionIfCurrent(session)
         if (refreshed == null) {
-            clearSessionIfAccessToken(session.accessToken)
             return first.asSessionExpired()
         }
         val retryServerId = (serverIdOverride?.value ?: refreshed.currentServerId).orEmpty()
         if (refreshed.accessToken.isBlank() || retryServerId.isBlank()) {
-            clearSessionIfAccessToken(refreshed.accessToken)
             return first.asSessionExpired()
         }
 
         val retry = block(refreshed.toRequestContext(retryServerId))
         if (retry.requiresTokenRefresh()) {
-            clearSessionIfAccessToken(refreshed.accessToken)
             return retry.asSessionExpired()
         }
         return retry
@@ -64,19 +59,16 @@ internal class SlockNetworkAuthMiddleware(
             }
         }
 
-    private suspend fun clearSessionIfAccessToken(failedAccessToken: String?) {
-        val current = sessionStore.readSession()
-        if (failedAccessToken == null || current?.accessToken == failedAccessToken) {
-            sessionStore.clearSession()
-        }
-    }
-
     private fun StoredAuthSession.toRequestContext(serverId: String): SlockAuthenticatedRequestContext =
         SlockAuthenticatedRequestContext(
             accessToken = accessToken,
             authorization = "Bearer $accessToken",
             serverId = serverId
         )
+
+    private companion object {
+        val refreshMutex = Mutex()
+    }
 }
 
 internal data class SlockAuthenticatedRequestContext(
