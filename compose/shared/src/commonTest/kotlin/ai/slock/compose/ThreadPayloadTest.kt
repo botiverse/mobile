@@ -673,6 +673,27 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
+            7,
+            threadMessagesLazyItemCount(
+                originStatus = "content",
+                showHistoryBoundary = true,
+                messagesCount = 3,
+                canLoadMoreAfter = true,
+                showBottomScrollPadding = true
+            )
+        )
+        assertEquals(
+            3,
+            threadMessagesLazyItemCount(
+                originStatus = "content",
+                showHistoryBoundary = false,
+                messagesCount = 0,
+                canLoadMoreAfter = false,
+                showReplyEmptyState = true,
+                showBottomScrollPadding = true
+            )
+        )
+        assertEquals(
             3,
             sharedListBeyondBoundsItemCount(
                 threadMessagesLazyItemCount(
@@ -703,6 +724,27 @@ class ThreadPayloadTest {
                 messages = (0 until 3).map { index -> testThreadMessage("reply-$index") }
             ).latestMessageListItemIndex()
         )
+    }
+
+    @Test
+    fun threadBottomScrollPaddingAnchorsToLastLazyRow() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                originStatus = "content",
+                messages = (0 until 3).map { index -> testThreadMessage("reply-$index") },
+                canLoadMoreAfter = true
+            )
+        val lazyItemCount =
+            threadMessagesLazyItemCount(
+                originStatus = payload.originStatus,
+                showHistoryBoundary = payload.messages.isNotEmpty(),
+                messagesCount = payload.messages.size,
+                canLoadMoreAfter = payload.canLoadMoreAfter,
+                showBottomScrollPadding = true
+            )
+
+        assertEquals(4, payload.latestMessageListItemIndex())
+        assertEquals(6, payload.toThreadTimelineSlice().bottomScrollPaddingListItemIndex(lazyItemCount))
     }
 
     @Test

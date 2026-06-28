@@ -6977,6 +6977,24 @@ private fun ThreadMessagesList(
             timelineSlice.focusedMessageIndex()
         }
     val renderPayload = timelineSlice
+    val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
+    val lazyItemCount =
+        remember(
+            renderPayload.originStatus,
+            renderPayload.canLoadMoreBefore,
+            renderPayload.messages.size,
+            renderPayload.canLoadMoreAfter,
+            showReplyEmptyState
+        ) {
+            threadMessagesLazyItemCount(
+                originStatus = renderPayload.originStatus,
+                showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
+                messagesCount = renderPayload.messages.size,
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                showReplyEmptyState = showReplyEmptyState,
+                showBottomScrollPadding = true
+            )
+        }
     // Bottom-anchor signature: only the fields the anchor logic actually
     // reads. The previous remember keys listed the full payload message
     // list reference) which invalidated the cache on any list
@@ -6984,9 +7002,10 @@ private fun ThreadMessagesList(
     // is keyed on the content fields the underlying functions read.
     val latestItemIndex = remember(
         renderPayload.originStatus,
-        renderPayload.messages.size
+        renderPayload.messages.size,
+        lazyItemCount
     ) {
-        renderPayload.latestMessageListItemIndex()
+        renderPayload.bottomScrollPaddingListItemIndex(lazyItemCount)
     }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex =
@@ -7124,22 +7143,6 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
-    val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
-    val lazyItemCount =
-        remember(
-            renderPayload.originStatus,
-            renderPayload.canLoadMoreBefore,
-            renderPayload.messages.size,
-            renderPayload.canLoadMoreAfter,
-            showReplyEmptyState
-        ) {
-            threadMessagesLazyItemCount(
-                originStatus = renderPayload.originStatus,
-                showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
-                messagesCount = renderPayload.messages.size,
-                canLoadMoreAfter = renderPayload.canLoadMoreAfter
-            ) + if (showReplyEmptyState) 1 else 0
-        }
     LaunchedEffect(
         threadInstanceKey,
         shareSelectionCaptureActive,
@@ -7737,6 +7740,13 @@ private fun ThreadMessagesList(
                     )
                 }
             }
+            item(key = ThreadBottomScrollPaddingListItemKey) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(ThreadBottomScrollPaddingHeight)
+                )
+            }
         }
         if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
@@ -7862,6 +7872,8 @@ private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
+private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
+private val ThreadBottomScrollPaddingHeight = 72.dp
 internal data class ThreadInlineActionSpec(
     val label: String,
     val event: String,
@@ -7921,12 +7933,16 @@ internal fun threadMessagesLazyItemCount(
     originStatus: String,
     showHistoryBoundary: Boolean,
     messagesCount: Int,
-    canLoadMoreAfter: Boolean
+    canLoadMoreAfter: Boolean,
+    showReplyEmptyState: Boolean = false,
+    showBottomScrollPadding: Boolean = false
 ): Int =
     (if (originStatus != "none") 1 else 0) +
         (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
-        (if (canLoadMoreAfter) 1 else 0)
+        (if (canLoadMoreAfter) 1 else 0) +
+        (if (showReplyEmptyState) 1 else 0) +
+        (if (showBottomScrollPadding) 1 else 0)
 
 internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0)
