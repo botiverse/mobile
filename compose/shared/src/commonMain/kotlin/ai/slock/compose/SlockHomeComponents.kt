@@ -244,6 +244,7 @@ internal data class SlockHomePayload(
     val applyTopSafeArea: Boolean = true,
     val activitySelected: Boolean = false,
     val channelSortMode: String = "manual",
+    val dmOrder: List<String> = emptyList(),
     val dmSortMode: String = "manual",
     val pinnedChannelIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
@@ -331,6 +332,7 @@ private fun SlockHomePageContent() {
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
         channelSortMode = payload.channelSortMode,
+        dmOrder = payload.dmOrder,
         dmSortMode = payload.dmSortMode,
         pinnedChannelIds = payload.pinnedChannelIds,
         pinnedOrder = payload.pinnedOrder,
@@ -556,6 +558,7 @@ internal fun SlockStructuralHomeShell(
     searchSelected: Boolean = false,
     savedSelected: Boolean = false,
     channelSortMode: String = "manual",
+    dmOrder: List<String> = emptyList(),
     dmSortMode: String = "manual",
     pinnedChannelIds: List<String> = emptyList(),
     pinnedOrder: List<String> = emptyList(),
@@ -643,8 +646,9 @@ internal fun SlockStructuralHomeShell(
         channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name }
     }
     val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
-    val displayedDirectMessages = remember(directMessages, directMessageSortMode, hiddenDmIdSet) {
+    val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet) {
         directMessages
+            .orderedBySidebarIds(dmOrder)
             .filter { dm -> dm.id !in hiddenDmIdSet || dm.unreadCount > 0 }
             .sortedForSidebar(directMessageSortMode) { it.name }
     }
@@ -1344,6 +1348,23 @@ internal fun List<SlockHomeConversationItem>.sortedForSidebar(
         SlockSidebarSortMode.Az ->
             sortedWith(compareBy<SlockHomeConversationItem> { label(it).trim().lowercase() }.thenBy { it.id })
     }
+
+internal fun List<SlockHomeConversationItem>.orderedBySidebarIds(
+    order: List<String>
+): List<SlockHomeConversationItem> {
+    if (order.isEmpty() || isEmpty()) return this
+    val byId = associateBy { it.id }
+    val ordered = LinkedHashMap<String, SlockHomeConversationItem>()
+    order.forEach { id ->
+        byId[id]?.let { ordered[it.id] = it }
+    }
+    forEach { item ->
+        if (!ordered.containsKey(item.id)) {
+            ordered[item.id] = item
+        }
+    }
+    return ordered.values.toList()
+}
 
 /**
  * Reconstruct the Pinned section from raw `pinnedChannelIds` and `pinnedOrder`

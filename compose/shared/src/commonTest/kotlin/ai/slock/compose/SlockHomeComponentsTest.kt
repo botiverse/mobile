@@ -494,6 +494,24 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun sidebarDmManualOrderFollowsServerOrderAndAppendsNewRows() {
+        val directMessages =
+            listOf(
+                SlockHomeConversationItem(id = "dm-a", name = "Alpha"),
+                SlockHomeConversationItem(id = "dm-b", name = "Beta"),
+                SlockHomeConversationItem(id = "dm-c", name = "Charlie"),
+                SlockHomeConversationItem(id = "dm-d", name = "Delta")
+            )
+
+        val ordered =
+            directMessages
+                .orderedBySidebarIds(listOf("dm-c", "missing", "dm-a", "dm-c"))
+                .sortedForSidebar(SlockSidebarSortMode.Manual) { it.name }
+
+        assertEquals(listOf("dm-c", "dm-a", "dm-b", "dm-d"), ordered.map { it.id })
+    }
+
+    @Test
     fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
         val agents =
             listOf(

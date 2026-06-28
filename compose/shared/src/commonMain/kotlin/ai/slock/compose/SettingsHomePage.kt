@@ -9570,6 +9570,8 @@ private fun SharedHomeScreen(
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = notificationItems,
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
+                dmOrder = snapshot.sidebarOrder?.dmOrder.orEmpty(),
+                dmSortMode = snapshot.sidebarOrder?.dmSortMode ?: "manual",
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
