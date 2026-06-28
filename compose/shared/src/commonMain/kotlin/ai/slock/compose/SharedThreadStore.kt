@@ -996,6 +996,9 @@ internal class SharedThreadDataSource(
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentUrl(attachmentId, disposition)
 
+    suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
+        api.attachmentHtmlPreviewUrl(attachmentId)
+
     suspend fun fetchFilesPayload(
         basePayload: KuiklyThreadScreenPayload,
         cursor: String? = null,

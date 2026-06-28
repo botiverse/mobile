@@ -5976,6 +5976,9 @@ class SharedThreadStoreTest {
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
 
+        override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId/html"}""")
+
         override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"comments":[],"threadChannelId":"comments-$attachmentId"}""")
 

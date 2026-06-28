@@ -494,8 +494,14 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             fileName = name.ifBlank { path.ifBlank { externalFileName } },
             mimeType = externalMimeType
         )
+    val wantsHtml =
+        slockFilePreviewIsHtmlAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
     val wantsText =
         !wantsMarkdown &&
+            !wantsHtml &&
             slockFilePreviewIsTextLikeAttachment(
                 fileName = name.ifBlank { path.ifBlank { externalFileName } },
                 mimeType = externalMimeType
@@ -504,6 +510,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
+        wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
             copy(
@@ -528,6 +535,31 @@ private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
         imageUrl = imageUrl,
         message = if (imageUrl == null) "Image preview is unavailable." else "",
         error = if (imageUrl == null) "image_preview_unavailable" else null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadHtmlAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentHtmlPreviewUrl(attachmentId)) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load HTML preview.",
+            error = "html_preview_url_failed"
+        )
+    return copy(
+        kind = "html",
+        title = "HTML preview",
+        content = "",
+        imageUrl = null,
+        videoUrl = null,
+        externalUrl = target,
+        message = "",
+        error = null
     )
 }
 
@@ -718,6 +750,14 @@ internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: St
         normalizedMime.equals("text/x-markdown", ignoreCase = true) ||
         fileName.endsWith(".md", ignoreCase = true) ||
         fileName.endsWith(".markdown", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    val normalizedName = fileName.substringBefore('?').substringBefore('#')
+    return normalizedMime.equals("text/html", ignoreCase = true) ||
+        normalizedName.endsWith(".html", ignoreCase = true) ||
+        normalizedName.endsWith(".htm", ignoreCase = true)
 }
 
 internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: String): Boolean {
@@ -963,6 +1003,32 @@ internal fun SlockFilePreviewPayloadContent(
                         onToggleDownload = onToggleDownload,
                         onStopDownload = onStopDownload,
                         modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md)
+                    )
+                }
+            }
+        "html" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                val previewUrl = payload.externalUrl.orEmpty()
+                if (previewUrl.isNotBlank()) {
+                    SlockSandboxWebView(
+                        url = previewUrl,
+                        allowScripts = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    SlockFilePreviewMessage(
+                        iconName = SlockLucideIconName.TriangleAlert,
+                        title = "Preview unavailable",
+                        detail = payload.message.ifBlank { "Unable to load HTML preview." },
+                        modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md)
                     )
                 }
             }

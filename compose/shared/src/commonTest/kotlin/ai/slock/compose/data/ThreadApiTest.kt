@@ -409,6 +409,9 @@ class ThreadApiTest {
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentUrlBody)
 
+        override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = attachmentUrlBody)
+
         override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentCommentsBody)
 

@@ -55,6 +55,7 @@ internal interface SlockThreadApi {
         resolutionIds: List<String>
     ): ThreadApiResult<List<PendingMentionActionExecuteResult>>
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
+    suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
     suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
@@ -137,6 +138,17 @@ internal class SlockThreadApiClient(
         transport.attachmentUrl(attachmentId, disposition)
             .mapThreadBody(
                 contractCode = "thread_attachment_url_contract_mismatch",
+                serializer = ThreadAttachmentUrlResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
+                val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
+                ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
+            }
+
+    override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
+        transport.attachmentHtmlPreviewUrl(attachmentId)
+            .mapThreadBody(
+                contractCode = "thread_attachment_html_preview_url_contract_mismatch",
                 serializer = ThreadAttachmentUrlResponseDto.serializer(),
                 diagnosticsLogger = diagnosticsLogger
             ) { wire ->
@@ -276,6 +288,12 @@ internal class NetworkSlockThreadApi(
             priority = DataRequestPriority.Visible,
             path = "attachments/${attachmentId.trim()}/url",
             query = listOfNotNull(disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition" to it })
+        )
+
+    override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "attachments/${attachmentId.trim()}/html-preview-url"
         )
 
     override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =

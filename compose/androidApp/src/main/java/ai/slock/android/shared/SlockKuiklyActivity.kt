@@ -594,6 +594,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             SlockKuiklyPageRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockKuiklyPageRenderView(context, this) }
         )
+        kuiklyRenderExport.renderViewExport(
+            SlockSandboxWebViewRenderView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockSandboxWebViewRenderView(context) }
+        )
     }
 
     private fun createPageSpec(): SlockKuiklyPageSpec {

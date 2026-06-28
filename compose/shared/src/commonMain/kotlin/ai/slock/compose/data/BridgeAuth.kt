@@ -360,6 +360,7 @@ internal interface SharedThreadNetworkApi {
     ): HomeNetworkResponse
     suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse
+    suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse
     suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse
     suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse

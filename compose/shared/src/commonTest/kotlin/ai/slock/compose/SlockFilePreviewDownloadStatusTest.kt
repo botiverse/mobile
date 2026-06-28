@@ -213,6 +213,14 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun htmlClassifierUsesSandboxPreviewContract() {
+        assertEquals(true, slockFilePreviewIsHtmlAttachment(fileName = "report.html", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsHtmlAttachment(fileName = "report.htm?token=1", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsHtmlAttachment(fileName = "report.bin", mimeType = "text/html; charset=utf-8"))
+        assertEquals(false, slockFilePreviewIsHtmlAttachment(fileName = "notes.txt", mimeType = "text/plain"))
+    }
+
+    @Test
     fun videoTimeLabelIncludesStateAndDuration() {
         assertEquals(
             "Playing · 0:12 / 1:05",
