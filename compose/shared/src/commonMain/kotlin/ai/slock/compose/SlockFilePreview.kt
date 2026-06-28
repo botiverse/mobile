@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -50,6 +51,8 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -98,7 +101,18 @@ internal data class SlockFilePreviewPayload(
     val externalMimeType: String = "",
     val source: String = "",
     val attachmentId: String = "",
-    val agentId: String = ""
+    val agentId: String = "",
+    val imageGallery: List<SlockFilePreviewGalleryImage> = emptyList(),
+    val imageGalleryIndex: Int = 0
+)
+
+@Serializable
+internal data class SlockFilePreviewGalleryImage(
+    val attachmentId: String,
+    val name: String = "",
+    val mimeType: String = "",
+    val sizeLabel: String = "",
+    val thumbnailUrl: String? = null
 )
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -335,6 +349,15 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    fun selectImageGalleryIndex(index: Int) {
+        payload.withImageGalleryIndex(index)?.let { nextPayload ->
+            payload = nextPayload
+            downloadStatus = "idle"
+            downloadMessage = ""
+            downloadProgress = null
+            activeDownloadId = null
+        }
+    }
     SlockFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -387,6 +410,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             onPauseDownload = { requestDownloadControl("pause") },
             onResumeDownload = { requestDownloadControl("resume") },
             onStopDownload = { requestDownloadControl("stop") },
+            onImageGalleryIndexChange = ::selectImageGalleryIndex,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -408,7 +432,11 @@ internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
 }
 
-internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kind: String): SlockFilePreviewPayload =
+internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
+    kind: String,
+    imageGallery: List<KuiklyThreadAttachmentItem> = emptyList(),
+    imageGalleryIndex: Int = 0
+): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = "loading",
         title = when (kind) {
@@ -425,7 +453,9 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kin
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,
-        attachmentId = id
+        attachmentId = id,
+        imageGallery = imageGallery.map { it.toSlockFilePreviewGalleryImage() },
+        imageGalleryIndex = imageGalleryIndex.coerceAtLeast(0)
     )
 
 internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
@@ -803,6 +833,7 @@ internal fun SlockFilePreviewPayloadContent(
     onPauseDownload: (() -> Unit)? = null,
     onResumeDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
+    onImageGalleryIndexChange: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -850,47 +881,59 @@ internal fun SlockFilePreviewPayloadContent(
                 )
             }
         "image" ->
-            if (payload.imageUrl != null) {
-                SlockFilePreviewDownloadStatusOverlay(
-                    statusLabel = downloadStatusLabel,
-                    showProgress = downloadInProgress,
-                    progressPercent = downloadProgressPercent,
-                    downloadPaused = downloadPaused,
-                    onToggleDownload = onToggleDownload,
-                    onStopDownload = onStopDownload,
-                    modifier = modifier.fillMaxSize()
-                ) {
-                    SlockFilePreviewImagePanel(
-                        source = payload.imageUrl,
-                        contentDescription = payload.name.ifBlank { payload.path },
-                        modifier = Modifier.fillMaxSize(),
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        borderWidth = 0.dp
+            SlockFilePreviewImageGallerySurface(
+                payload = payload,
+                onImageGalleryIndexChange = onImageGalleryIndexChange,
+                modifier = modifier.fillMaxSize()
+            ) {
+                if (payload.imageUrl != null) {
+                    SlockFilePreviewDownloadStatusOverlay(
+                        statusLabel = downloadStatusLabel,
+                        showProgress = downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        SlockFilePreviewImagePanel(
+                            source = payload.imageUrl,
+                            contentDescription = payload.name.ifBlank { payload.path },
+                            modifier = Modifier.fillMaxSize(),
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            borderWidth = 0.dp
+                        )
+                    }
+                } else {
+                    SlockFilePreviewGenericCard(
+                        iconName = SlockLucideIconName.Image,
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        message = payload.message.ifBlank { "Image preview is unavailable." },
+                        statusLabel = downloadStatusLabel,
+                        showProgress = downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                        actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                        actionEnabled = true,
+                        onAction = onDownload,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md)
                     )
                 }
-            } else {
-                SlockFilePreviewGenericCard(
-                    iconName = SlockLucideIconName.Image,
-                    name = payload.name.ifBlank { payload.path },
-                    meta = payload.meta,
-                    message = payload.message.ifBlank { "Image preview is unavailable." },
-                    statusLabel = downloadStatusLabel,
-                    showProgress = downloadInProgress,
-                    progressPercent = downloadProgressPercent,
-                    actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
-                    actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
-                    actionEnabled = true,
-                    onAction = onDownload,
-                    downloadPaused = downloadPaused,
-                    onToggleDownload = onToggleDownload,
-                    onStopDownload = onStopDownload,
-                    modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
-                )
             }
         "loading" -> {
-            SlockFilePreviewLoadingIndicator(
+            SlockFilePreviewImageGallerySurface(
+                payload = payload,
+                onImageGalleryIndexChange = onImageGalleryIndexChange,
                 modifier = modifier.fillMaxSize()
-            )
+            ) {
+                SlockFilePreviewLoadingIndicator(
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         "error" ->
             SlockFilePreviewMessage(
@@ -920,6 +963,59 @@ internal fun SlockFilePreviewPayloadContent(
     }
 }
 
+@Composable
+private fun SlockFilePreviewImageGallerySurface(
+    payload: SlockFilePreviewPayload,
+    onImageGalleryIndexChange: ((Int) -> Unit)?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val progressLabel = payload.imageGalleryProgressLabel()
+    val swipeThresholdPx =
+        with(LocalDensity.current) {
+            56.dp.toPx()
+        }
+    val galleryModifier =
+        if (progressLabel != null && onImageGalleryIndexChange != null) {
+            Modifier.pointerInput(payload.imageGalleryIndex, payload.imageGallery.size) {
+                var dragDistance = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dragDistance = 0f },
+                    onDragEnd = {
+                        payload.nextImageGalleryIndex(dragDistance, swipeThresholdPx)?.let(onImageGalleryIndexChange)
+                    },
+                    onDragCancel = { dragDistance = 0f }
+                ) { _, dragAmount ->
+                    dragDistance += dragAmount
+                }
+            }
+        } else {
+            Modifier
+        }
+    Box(modifier = modifier.then(galleryModifier)) {
+        content()
+        if (progressLabel != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = progressLabel,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
 private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
     when (kind) {
         "markdown", "text" -> SlockLucideIconName.FileText
@@ -928,6 +1024,32 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
         "error" -> SlockLucideIconName.TriangleAlert
         else -> slockFilePreviewFileIconName(this)
     }
+
+internal fun SlockFilePreviewPayload.imageGalleryProgressLabel(): String? {
+    val size = imageGallery.size
+    if (size <= 1) return null
+    val index = imageGalleryIndex.coerceIn(0, size - 1)
+    return "${index + 1}/$size"
+}
+
+internal fun SlockFilePreviewPayload.withImageGalleryIndex(index: Int): SlockFilePreviewPayload? {
+    if (imageGallery.isEmpty()) return null
+    val nextIndex = index.coerceIn(0, imageGallery.lastIndex)
+    val nextImage = imageGallery.getOrNull(nextIndex) ?: return null
+    return nextImage.toPreviewPayload(previous = this, imageGalleryIndex = nextIndex)
+}
+
+internal fun SlockFilePreviewPayload.nextImageGalleryIndex(
+    dragDistancePx: Float,
+    thresholdPx: Float
+): Int? {
+    if (imageGallery.size <= 1) return null
+    return when {
+        dragDistancePx <= -thresholdPx && imageGalleryIndex < imageGallery.lastIndex -> imageGalleryIndex + 1
+        dragDistancePx >= thresholdPx && imageGalleryIndex > 0 -> imageGalleryIndex - 1
+        else -> null
+    }
+}
 
 private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
     val source =
@@ -955,6 +1077,42 @@ private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
 private fun String.slockFilePreviewFileName(): String {
     val normalized = trim().replace('\\', '/')
     return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { "File" } }
+}
+
+private fun KuiklyThreadAttachmentItem.toSlockFilePreviewGalleryImage(): SlockFilePreviewGalleryImage =
+    SlockFilePreviewGalleryImage(
+        attachmentId = id,
+        name = name,
+        mimeType = mimeType,
+        sizeLabel = sizeLabel,
+        thumbnailUrl = thumbnailUrl
+    )
+
+private fun SlockFilePreviewGalleryImage.toPreviewPayload(
+    previous: SlockFilePreviewPayload,
+    imageGalleryIndex: Int
+): SlockFilePreviewPayload {
+    val title = name.ifBlank { "Attachment" }
+    val meta = listOf(sizeLabel, mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+    return previous.copy(
+        kind = "loading",
+        title = "Image preview",
+        subtitle = title,
+        name = title,
+        path = title,
+        meta = meta,
+        content = "",
+        markdown = false,
+        imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
+        message = SlockFilePreviewLoadingLabel,
+        error = null,
+        externalUrl = null,
+        externalFileName = title.ifBlank { "attachment-${attachmentId.take(8)}" },
+        externalMimeType = mimeType,
+        source = SlockFilePreviewSourceThreadAttachment,
+        attachmentId = attachmentId,
+        imageGalleryIndex = imageGalleryIndex
+    )
 }
 
 @Composable

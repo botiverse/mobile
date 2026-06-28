@@ -2809,7 +2809,13 @@ internal fun SharedThreadRouteContent(
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
         imagePreviewState = null
-        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "image"))
+        pager.openSlockFilePreviewPage(
+            attachment.toThreadAttachmentLazyPreviewPayload(
+                kind = "image",
+                imageGallery = group.images,
+                imageGalleryIndex = currentIndex
+            )
+        )
     }
     fun selectImagePreviewIndex(index: Int) {
         val preview = imagePreviewState ?: return

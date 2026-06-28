@@ -211,4 +211,76 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertEquals(SlockLucideIconName.FileSpreadsheet, icon)
     }
+
+    @Test
+    fun imageGalleryProgressLabelUsesOneBasedCurrentIndex() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(attachmentId = "att-1"),
+                        SlockFilePreviewGalleryImage(attachmentId = "att-2"),
+                        SlockFilePreviewGalleryImage(attachmentId = "att-3")
+                    ),
+                imageGalleryIndex = 1
+            )
+
+        assertEquals("2/3", payload.imageGalleryProgressLabel())
+    }
+
+    @Test
+    fun imageGallerySwipeChoosesPreviousAndNextIndex() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(attachmentId = "att-1"),
+                        SlockFilePreviewGalleryImage(attachmentId = "att-2"),
+                        SlockFilePreviewGalleryImage(attachmentId = "att-3")
+                    ),
+                imageGalleryIndex = 1
+            )
+
+        assertEquals(2, payload.nextImageGalleryIndex(dragDistancePx = -80f, thresholdPx = 56f))
+        assertEquals(0, payload.nextImageGalleryIndex(dragDistancePx = 80f, thresholdPx = 56f))
+        assertEquals(null, payload.nextImageGalleryIndex(dragDistancePx = 20f, thresholdPx = 56f))
+    }
+
+    @Test
+    fun imageGalleryIndexChangeRebuildsPayloadForSelectedAttachment() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                attachmentId = "att-1",
+                name = "one.png",
+                externalMimeType = "image/png",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "att-1",
+                            name = "one.png",
+                            mimeType = "image/png",
+                            sizeLabel = "1 KB",
+                            thumbnailUrl = "thumb-one"
+                        ),
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "att-2",
+                            name = "two.png",
+                            mimeType = "image/png",
+                            sizeLabel = "2 KB",
+                            thumbnailUrl = "thumb-two"
+                        )
+                    )
+            )
+
+        val next = payload.withImageGalleryIndex(1)
+
+        assertEquals("att-2", next?.attachmentId)
+        assertEquals("two.png", next?.name)
+        assertEquals("2 KB · image/png", next?.meta)
+        assertEquals("thumb-two", next?.imageUrl)
+        assertEquals("2/2", next?.imageGalleryProgressLabel())
+    }
 }
