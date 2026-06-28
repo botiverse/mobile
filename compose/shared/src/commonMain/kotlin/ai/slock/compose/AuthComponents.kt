@@ -74,6 +74,7 @@ private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val AuthTopBarBrandWidth = 175.dp
 private val AuthTopBarBrandHeight = 43.dp
 private const val RaftLogoAssetSource = "assets://lucide/raft-logo.svg"
+private const val SlockIconAssetSource = "assets://lucide/slock-icon.svg"
 
 private fun Modifier.authStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -181,12 +182,17 @@ private fun AuthTopBar(
 
 @Composable
 private fun AuthSmallBrand(modifier: Modifier = Modifier) {
-    SlockCachedImage(
-        source = RaftLogoAssetSource,
-        contentDescription = null,
+    Box(
         modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight),
-        contentScale = ContentScale.FillBounds
-    )
+        contentAlignment = Alignment.Center
+    ) {
+        SlockCachedImage(
+            source = RaftLogoAssetSource,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
+            contentScale = ContentScale.Fit
+        )
+    }
 }
 
 @Composable
@@ -215,9 +221,10 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
 @Composable
 internal fun AuthCenterMark(modifier: Modifier = Modifier) {
     SlockCachedImage(
-        source = SlockIconPngDataUri,
+        source = SlockIconAssetSource,
         contentDescription = null,
-        modifier = modifier.width(44.dp).height(41.dp)
+        modifier = modifier.width(48.dp).height(44.dp),
+        contentScale = ContentScale.Fit
     )
 }
 
