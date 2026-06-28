@@ -5,6 +5,13 @@
 
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+static NSString *const SlockDiagnosticsLogDirName = @"Slock/diagnostics";
+static NSString *const SlockDiagnosticsLogFileName = @"slock-diagnostics.jsonl";
+static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
+static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
+static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
+static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
+static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
 
 static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
     if ([value isKindOfClass:NSDictionary.class]) {
@@ -113,6 +120,260 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
     }
 }
 
+static NSMutableArray<NSDictionary *> *SlockDiagnosticsMemoryEntries(void) {
+    static NSMutableArray<NSDictionary *> *entries;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        entries = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryEntryLimit];
+    });
+    return entries;
+}
+
+static dispatch_queue_t SlockDiagnosticsWriterQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("ai.slock.ios.diagnostics.writer", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+static NSString *SlockDiagnosticsTimestamp(void) {
+    static NSDateFormatter *formatter;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ";
+    });
+    @synchronized (formatter) {
+        return [formatter stringFromDate:[NSDate date]];
+    }
+}
+
+static NSString *SlockDiagnosticsDirectoryPath(void) {
+    NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *base = urls.firstObject ?: NSTemporaryDirectory();
+    return [base stringByAppendingPathComponent:SlockDiagnosticsLogDirName];
+}
+
+static NSString *SlockDiagnosticsActiveLogPath(void) {
+    return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsLogFileName];
+}
+
+static NSString *SlockDiagnosticsClippedString(NSString *value, NSUInteger maxLength) {
+    if (value.length <= maxLength) {
+        return value ?: @"";
+    }
+    return [value substringToIndex:maxLength];
+}
+
+static NSString *SlockDiagnosticsEventName(NSString *message) {
+    NSString *event = message ?: @"";
+    NSRange range = [event rangeOfString:@" "];
+    if (range.location != NSNotFound) {
+        event = [event substringToIndex:range.location];
+    }
+    return SlockDiagnosticsClippedString(event, 96);
+}
+
+static NSString *SlockDiagnosticsJsonLine(NSDictionary *entry) {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:entry options:0 error:nil];
+    if (!data) {
+        return @"{}";
+    }
+    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"{}";
+}
+
+static void SlockDiagnosticsRemember(NSDictionary *entry) {
+    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
+    @synchronized (entries) {
+        while (entries.count >= SlockDiagnosticsMemoryEntryLimit) {
+            [entries removeObjectAtIndex:0];
+        }
+        [entries addObject:entry];
+    }
+}
+
+static NSArray<NSDictionary *> *SlockDiagnosticsSnapshotMemoryEntries(void) {
+    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
+    @synchronized (entries) {
+        return [entries copy];
+    }
+}
+
+static NSArray<NSString *> *SlockDiagnosticsLogFiles(void) {
+    NSString *dir = SlockDiagnosticsDirectoryPath();
+    NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    for (NSString *name in names) {
+        if (![name hasPrefix:SlockDiagnosticsLogFileName]) {
+            continue;
+        }
+        NSString *path = [dir stringByAppendingPathComponent:name];
+        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+        if ([attributes[NSFileSize] unsignedLongLongValue] > 0) {
+            [paths addObject:path];
+        }
+    }
+    [paths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        NSDate *leftDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:left error:nil] fileModificationDate] ?: NSDate.distantPast;
+        NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate] ?: NSDate.distantPast;
+        return [rightDate compare:leftDate];
+    }];
+    return paths;
+}
+
+static void SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:activePath error:nil];
+    if ([attributes[NSFileSize] unsignedLongLongValue] < SlockDiagnosticsLogMaxBytes) {
+        return;
+    }
+    NSString *dir = [activePath stringByDeletingLastPathComponent];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    for (NSInteger index = (NSInteger)SlockDiagnosticsLogMaxFiles - 1; index >= 1; index--) {
+        NSString *source = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", SlockDiagnosticsLogFileName, (long)index]];
+        NSString *target = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", SlockDiagnosticsLogFileName, (long)index + 1]];
+        if (![fileManager fileExistsAtPath:source]) {
+            continue;
+        }
+        if ((NSUInteger)index == SlockDiagnosticsLogMaxFiles - 1) {
+            [fileManager removeItemAtPath:source error:nil];
+        } else {
+            [fileManager removeItemAtPath:target error:nil];
+            [fileManager moveItemAtPath:source toPath:target error:nil];
+        }
+    }
+    NSString *rotated = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.1", SlockDiagnosticsLogFileName]];
+    [fileManager removeItemAtPath:rotated error:nil];
+    [fileManager moveItemAtPath:activePath toPath:rotated error:nil];
+}
+
+static void SlockDiagnosticsAppendEntry(NSDictionary *entry) {
+    dispatch_async(SlockDiagnosticsWriterQueue(), ^{
+        NSString *dir = SlockDiagnosticsDirectoryPath();
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *activePath = SlockDiagnosticsActiveLogPath();
+        SlockDiagnosticsRotateLogsIfNeeded(activePath);
+        NSString *line = [SlockDiagnosticsJsonLine(entry) stringByAppendingString:@"\n"];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+        if (![fileManager fileExistsAtPath:activePath]) {
+            [data writeToFile:activePath atomically:YES];
+            return;
+        }
+        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:activePath];
+        [handle seekToEndOfFile];
+        [handle writeData:data];
+        [handle closeFile];
+    });
+}
+
+static void SlockDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
+    NSString *safeTag = SlockDiagnosticsClippedString(SlockBridgeSanitizedLogString(tag ?: @""), 48);
+    NSString *safeMessage = SlockBridgeSanitizedLogString(message ?: @"");
+    if (safeTag.length == 0 || safeMessage.length == 0) {
+        return;
+    }
+    NSString *normalizedLevel = [[level ?: @"info" lowercaseString] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![@[@"debug", @"info", @"warn", @"error"] containsObject:normalizedLevel]) {
+        normalizedLevel = @"info";
+    }
+    BOOL truncated = safeMessage.length > SlockDiagnosticsMessageMaxChars;
+    NSDictionary *entry = @{
+        @"ts" : SlockDiagnosticsTimestamp(),
+        @"level" : normalizedLevel,
+        @"tag" : safeTag,
+        @"event" : SlockDiagnosticsEventName(safeMessage),
+        @"message" : SlockDiagnosticsClippedString(safeMessage, SlockDiagnosticsMessageMaxChars),
+        @"thread" : NSThread.currentThread.name.length > 0 ? NSThread.currentThread.name : ([NSThread isMainThread] ? @"main" : @"background"),
+        @"seq" : @((long long)(NSDate.date.timeIntervalSince1970 * 1000000.0)),
+        @"dropped" : @0,
+        @"truncated" : @(truncated)
+    };
+    SlockDiagnosticsRemember(entry);
+    SlockDiagnosticsAppendEntry(entry);
+}
+
+static NSString *SlockDiagnosticsExportRecentJsonl(NSUInteger maxChars) {
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    for (NSDictionary *entry in SlockDiagnosticsSnapshotMemoryEntries()) {
+        [lines addObject:SlockDiagnosticsJsonLine(entry)];
+    }
+    NSString *text = [lines componentsJoinedByString:@"\n"];
+    if (text.length > maxChars) {
+        return [text substringFromIndex:text.length - maxChars];
+    }
+    return text;
+}
+
+static NSString *SlockDiagnosticsReadTail(NSString *path, NSUInteger maxChars) {
+    NSData *data = [NSData dataWithContentsOfFile:path] ?: [NSData data];
+    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    text = SlockBridgeSanitizedLogString(text);
+    if (text.length > maxChars) {
+        return [text substringFromIndex:text.length - maxChars];
+    }
+    return text;
+}
+
+static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
+    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{});
+    NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:@"App-owned recent diagnostics\n"];
+    [text appendFormat:@"Files: %lu\n", (unsigned long)files.count];
+    NSString *memoryJsonl = SlockDiagnosticsExportRecentJsonl(maxChars / 2);
+    if (memoryJsonl.length > 0) {
+        [text appendString:@"\n### recent-memory.jsonl\n"];
+        [text appendString:memoryJsonl];
+        [text appendString:@"\n"];
+    }
+    NSUInteger fileBudget = MAX((NSInteger)maxChars - (NSInteger)text.length, 1000);
+    NSUInteger fileCount = MIN(files.count, 6);
+    for (NSUInteger index = 0; index < fileCount; index++) {
+        NSString *path = files[index];
+        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+        [text appendFormat:@"\n### %@ (%llu bytes)\n", path.lastPathComponent, [attributes[NSFileSize] unsignedLongLongValue]];
+        [text appendString:SlockDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
+    }
+    if (text.length > maxChars) {
+        return [text substringFromIndex:text.length - maxChars];
+    }
+    return text;
+}
+
+static void SlockDiagnosticsClear(void) {
+    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
+    @synchronized (entries) {
+        [entries removeAllObjects];
+    }
+    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{
+        NSString *dir = SlockDiagnosticsDirectoryPath();
+        NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+        for (NSString *name in names) {
+            if ([name hasPrefix:SlockDiagnosticsLogFileName]) {
+                [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
+            }
+        }
+    });
+}
+
+static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
+    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel"];
+    for (NSString *key in keys) {
+        NSString *value = SlockBridgeString(about[key]);
+        if (value.length > 0) {
+            [text appendFormat:@"%@: %@\n", key, value];
+        }
+    }
+    [text appendString:@"\niOS diagnostics\n"];
+    [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
+    return text;
+}
+
 // 扩展桥接接口
 /*
  * @brief Native暴露接口到kotlin侧，提供kotlin侧调用native能力
@@ -152,6 +413,7 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
         tag = SlockBridgeDefaultLogTag;
     }
     NSLog(@"[%@][%@] %@", tag, level, content);
+    SlockDiagnosticsRecord(level, tag, content);
 }
 
 - (void)openPage:(NSDictionary *)args {
@@ -480,22 +742,39 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
         };
     }
     if ([action isEqualToString:@"loadDiagnostics"]) {
+        NSString *recentText = SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars);
         return @{
             @"status" : @"ok",
             @"entries" : @[
                 @{
                     @"timestampLabel" : @"",
                     @"tag" : @"iOS",
-                    @"message" : @"iOS P0 host diagnostics are local console logs only."
+                    @"message" : recentText.length > 0 ? recentText : @"No local diagnostics log files are currently available."
                 }
             ]
         };
     }
-    if ([action isEqualToString:@"setRecompositionProfilerEnabled"] ||
-        [action isEqualToString:@"copyDiagnostics"] ||
-        [action isEqualToString:@"shareDiagnostics"] ||
-        [action isEqualToString:@"clearDiagnostics"]) {
-        NSLog(@"[%@][info] settingsCapability %@ handled as local no-op", SlockBridgeDefaultLogTag, action);
+    if ([action isEqualToString:@"setRecompositionProfilerEnabled"]) {
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", [NSString stringWithFormat:@"recomposition_profiler_enabled=%@", SlockBridgeBool(params[@"enabled"]) ? @"true" : @"false"]);
+        return @{ @"status" : @"ok" };
+    }
+    if ([action isEqualToString:@"copyDiagnostics"]) {
+        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
+        SlockBridgeRunOnMain(^{
+            UIPasteboard.generalPasteboard.string = exportText;
+        });
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
+        return @{ @"status" : @"ok" };
+    }
+    if ([action isEqualToString:@"shareDiagnostics"]) {
+        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
+        [self slock_shareItems:@[ exportText ]];
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
+        return @{ @"status" : @"ok" };
+    }
+    if ([action isEqualToString:@"clearDiagnostics"]) {
+        SlockDiagnosticsClear();
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
@@ -517,9 +796,28 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
             @"message" : @"Notifications are out of scope for iOS P0 host bridge"
         };
     }
-    if ([action isEqualToString:@"prepareDiagnosticsFeedback"] ||
-        [action isEqualToString:@"sendFeedback"] ||
-        [action isEqualToString:@"clearStorage"]) {
+    if ([action isEqualToString:@"prepareDiagnosticsFeedback"]) {
+        return [self slock_prepareDiagnosticsFeedbackDraft];
+    }
+    if ([action isEqualToString:@"sendFeedback"]) {
+        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
+        NSString *message = SlockBridgeString(draft[@"message"]);
+        NSString *path = SlockBridgeString(draft[@"filePath"]);
+        NSMutableArray *items = [NSMutableArray array];
+        if (message.length > 0) {
+            [items addObject:message];
+        }
+        if (path.length > 0) {
+            NSURL *url = [NSURL fileURLWithPath:path];
+            if (url) {
+                [items addObject:url];
+            }
+        }
+        [self slock_shareItems:items];
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_send_feedback");
+        return @{ @"status" : @"ok" };
+    }
+    if ([action isEqualToString:@"clearStorage"]) {
         return [self slock_unsupportedResultWithCode:@"settings_capability_unsupported"
                                              message:[NSString stringWithFormat:@"%@ is not wired on iOS P0", action]];
     }
@@ -547,6 +845,50 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
         UINavigationController *presentedNavigationController =
             [[UINavigationController alloc] initWithRootViewController:renderViewController];
         [controller presentViewController:presentedNavigationController animated:YES completion:nil];
+    });
+}
+
+- (NSDictionary *)slock_prepareDiagnosticsFeedbackDraft {
+    NSDictionary *about = [self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
+    NSString *summaryText = SlockDiagnosticsBuildExportText(about);
+    NSString *fileName = [NSString stringWithFormat:@"slock-feedback-%lld.txt", (long long)(NSDate.date.timeIntervalSince1970 * 1000.0)];
+    NSString *dir = SlockDiagnosticsDirectoryPath();
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *path = [dir stringByAppendingPathComponent:fileName];
+    [summaryText writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    NSData *data = [summaryText dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    NSString *bodyBase64 = [data base64EncodedStringWithOptions:0];
+    NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
+    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", [NSString stringWithFormat:@"diagnostics_feedback_prepared file=%@ bytes=%lu", fileName, (unsigned long)data.length]);
+    return @{
+        @"status" : @"ok",
+        @"message" : message,
+        @"fileName" : fileName,
+        @"mimeType" : @"text/plain",
+        @"sizeBytes" : @(data.length),
+        @"bodyBase64" : bodyBase64,
+        @"filePath" : path
+    };
+}
+
+- (void)slock_shareItems:(NSArray *)items {
+    if (items.count == 0) {
+        return;
+    }
+    SlockBridgeRunOnMain(^{
+        UIViewController *controller = [self slock_currentViewController];
+        if (!controller) {
+            NSLog(@"[%@][warn] share skipped missing controller", SlockBridgeDefaultLogTag);
+            return;
+        }
+        UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
+        UIPopoverPresentationController *popover = activityController.popoverPresentationController;
+        if (popover) {
+            popover.sourceView = controller.view;
+            popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
+            popover.permittedArrowDirections = 0;
+        }
+        [controller presentViewController:activityController animated:YES completion:nil];
     });
 }
 

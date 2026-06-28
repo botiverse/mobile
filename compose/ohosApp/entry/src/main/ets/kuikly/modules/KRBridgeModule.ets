@@ -280,7 +280,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const contentValue = payload['content'];
     const content = typeof contentValue === 'string' ? contentValue : JSON.stringify(params);
     const level = this.parseBridgeLogLevel(payload['level']);
-    SlockOhosDiagnostics.record('KuiklyRender', content);
+    const tagValue = payload['tag'];
+    const tag = typeof tagValue === 'string' && tagValue.length > 0 ? tagValue : 'KuiklyRender';
+    SlockOhosDiagnostics.record(tag, content, Date.now(), level);
     if (this.shouldMirrorBridgeLogLevel(level)) {
       this.mirrorBridgeLogToConsole(level, content);
     }
