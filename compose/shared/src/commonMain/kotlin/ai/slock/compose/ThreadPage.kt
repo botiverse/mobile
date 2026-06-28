@@ -65,8 +65,10 @@ import ai.slock.compose.data.SharedTasksScope
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.PermissionBlocker
 import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.PendingMentionActionExecuteResult
+import ai.slock.compose.data.TaskFilter
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
@@ -1058,6 +1060,92 @@ private fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) {
 
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
+
+private sealed interface MarkdownTaskNumberOpenResult {
+    data class Found(val task: TaskSummary, val payload: KuiklyThreadScreenPayload) : MarkdownTaskNumberOpenResult
+    data object NotFound : MarkdownTaskNumberOpenResult
+    data object Ambiguous : MarkdownTaskNumberOpenResult
+    data object AuthRequired : MarkdownTaskNumberOpenResult
+    data object Failed : MarkdownTaskNumberOpenResult
+}
+
+private suspend fun openMarkdownTaskNumberPayload(
+    serverId: ServerId,
+    taskNumber: Int,
+    currentPayload: KuiklyThreadScreenPayload,
+    currentTaskChannelId: ChannelId?,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?
+): MarkdownTaskNumberOpenResult {
+    val snapshot =
+        when (
+            val result =
+                tasksDataSource.loadTasks(
+                    serverId = serverId,
+                    filter = TaskFilter(),
+                    priority = DataRequestPriority.Foreground
+                )
+        ) {
+            is DataResult.Content -> result.data
+            is DataResult.Empty -> return MarkdownTaskNumberOpenResult.NotFound
+            is DataResult.Error -> return MarkdownTaskNumberOpenResult.Failed
+            is DataResult.NoPermission -> return MarkdownTaskNumberOpenResult.AuthRequired
+        }
+    tasksDataStore?.publishSnapshot(serverId.value, SharedTasksScope.Server, snapshot)
+    val matches = snapshot.tasks.filter { task -> task.taskNumber == taskNumber }
+    val selected =
+        when (matches.size) {
+            0 -> return MarkdownTaskNumberOpenResult.NotFound
+            1 -> matches.single()
+            else -> {
+                val currentChannelMatches =
+                    currentTaskChannelId?.let { channelId ->
+                        matches.filter { task -> task.channelId == channelId }
+                    }.orEmpty()
+                if (currentChannelMatches.size == 1) {
+                    currentChannelMatches.single()
+                } else {
+                    return MarkdownTaskNumberOpenResult.Ambiguous
+                }
+            }
+        }
+    val payload =
+        currentPayload.markdownTaskNumberLaunchPayload(selected)
+            ?: return MarkdownTaskNumberOpenResult.Failed
+    tasksDataStore?.upsertTask(serverId.value, selected)
+    return MarkdownTaskNumberOpenResult.Found(selected, payload)
+}
+
+internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: TaskSummary): KuiklyThreadScreenPayload? {
+    val parentChannelId = task.channelId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val parentMessageId =
+        task.parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ?: task.messageId?.value?.takeIf { it.isNotBlank() }
+            ?: return null
+    val threadChannelId = task.threadId?.value?.takeIf { it.isNotBlank() }
+    val instanceId =
+        threadChannelId?.let { "shared-shell-thread-$it" }
+            ?: "shared-shell-thread-$parentChannelId-$parentMessageId"
+    return WireThreadLaunchPayload(
+        instanceId = instanceId,
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        threadId = threadChannelId,
+        sourceThreadId = threadChannelId,
+        streamChannelId = threadChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+        originParentMessageId = parentMessageId,
+        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        navigationLabel = "Back",
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
+        localOffsetMinutes = localOffsetMinutes,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat
+    ).toInitialPayload(instanceId)
+}
 
 internal fun KuiklyThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
     showTaskStatusActions &&
@@ -3629,6 +3717,50 @@ internal fun SharedThreadRouteContent(
                     )
                     onOpenThreadPayload(loadingPayload)
                 }
+                action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
+                    val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
+                    if (taskNumber == null || currentServerId.isNullOrBlank()) {
+                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        when (
+                            val result =
+                                openMarkdownTaskNumberPayload(
+                                    serverId = ServerId(currentServerId),
+                                    taskNumber = taskNumber,
+                                    currentPayload = renderedThread,
+                                    currentTaskChannelId = taskChannelId,
+                                    tasksDataSource = tasksDataSource,
+                                    tasksDataStore = tasksDataStore
+                                )
+                        ) {
+                            is MarkdownTaskNumberOpenResult.Found -> {
+                                bridge.log(
+                                    "thread_markdown_task_open taskNumber=$taskNumber taskId=${result.task.id.value} " +
+                                        "parentChannelId=${result.payload.parentChannelId.orEmpty()} " +
+                                        "parentMessageId=${result.payload.parentMessageId.orEmpty()} " +
+                                        "threadId=${result.payload.streamChannelId.orEmpty()}"
+                                )
+                                onOpenThreadPayload(result.payload)
+                            }
+                            MarkdownTaskNumberOpenResult.Ambiguous -> {
+                                bridge.toast("Multiple tasks match #$taskNumber")
+                            }
+                            MarkdownTaskNumberOpenResult.NotFound -> {
+                                bridge.toast("Unable to open #$taskNumber")
+                            }
+                            MarkdownTaskNumberOpenResult.AuthRequired -> {
+                                routeAuthRequired(
+                                    DataResult.NoPermission(PermissionBlocker(code = "tasks_401"))
+                                )
+                            }
+                            MarkdownTaskNumberOpenResult.Failed -> {
+                                bridge.toast("Unable to open #$taskNumber")
+                            }
+                        }
+                    }
+                }
                 action == "openCommentHost" && !itemId.isNullOrBlank() -> {
                     val commentRef =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.commentRef
@@ -5943,7 +6075,7 @@ private fun ThreadPageContent(
                 if (!taskId.isNullOrBlank()) {
                     onThreadEvent("openTask", taskId, null, null)
                 } else {
-                    onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
+                    onThreadEvent("openMarkdownTaskNumber", tag.label, null, null)
                 }
             }
             ThreadMarkdownTagKind.Channel -> {
