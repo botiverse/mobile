@@ -9560,7 +9560,6 @@ private fun SharedHomeScreen(
                 channels = channelItems,
                 directMessages = directMessageItems,
                 selectedChannelId = selectedConversationId,
-                serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = homeActivityUnreadCount,
                 inboxTotalCount = homeActivitySidebarTotalCount(
                     activityUnreadCount = homeActivityUnreadCount,

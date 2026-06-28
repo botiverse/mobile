@@ -234,7 +234,6 @@ internal data class SlockHomePayload(
     val channels: List<SlockHomeConversationItem> = emptyList(),
     val directMessages: List<SlockHomeConversationItem> = emptyList(),
     val selectedChannelId: String? = null,
-    val serverUnreadCount: Int = 0,
     val inboxUnreadCount: Int = 0,
     val savedCount: Int = 0,
     val notifications: List<SlockHomeNotificationItem> = emptyList(),
@@ -315,7 +314,6 @@ private fun SlockHomePageContent() {
         channels = payload.channels,
         directMessages = payload.directMessages,
         selectedChannelId = payload.selectedChannelId,
-        serverUnreadCount = payload.serverUnreadCount,
         inboxUnreadCount = payload.inboxUnreadCount,
         savedCount = payload.savedCount,
         notifications = payload.notifications,
@@ -462,7 +460,7 @@ internal fun HomeTitlebarVisualScreen() {
     Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
         HomeTitlebar(
             serverName = "Raft Design",
-            serverUnreadCount = 24,
+            hasOtherServerUnread = true,
             notifications = visualHomeNotifications(),
             refreshing = false,
             topSafeArea = 0.dp,
@@ -523,7 +521,6 @@ internal fun SlockStructuralHomeShell(
     directMessages: List<SlockHomeConversationItem> = emptyList(),
     selectedChannelId: String? = null,
     selectedConversationSection: SlockHomeConversationSection? = null,
-    serverUnreadCount: Int = 0,
     inboxUnreadCount: Int = 0,
     inboxTotalCount: Int = 0,
     savedCount: Int = 0,
@@ -642,6 +639,10 @@ internal fun SlockStructuralHomeShell(
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.unreadCount > 0 } }
     val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.unreadCount > 0 } }
     val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.unreadCount > 0 } }
+    val serverSwitcherHasOtherUnread =
+        remember(currentServerId, servers) {
+            homeServerSwitcherHasOtherUnread(currentServerId, servers)
+        }
     val sidebarSelection =
         homeSidebarSelection(
             selectedChannelId = selectedChannelId,
@@ -717,7 +718,7 @@ internal fun SlockStructuralHomeShell(
                 traceMarkdownSection(SlockHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
                     HomeTitlebar(
                         serverName = currentServerName,
-                        serverUnreadCount = serverUnreadCount,
+                        hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         notifications = notifications,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
@@ -1196,6 +1197,14 @@ internal fun homeActivitySidebarTotalCount(
 ): Int =
     activityTotalCount.takeIf { activityUnreadCount <= 0 && it > 0 } ?: 0
 
+internal fun homeServerSwitcherHasOtherUnread(
+    currentServerId: String,
+    servers: List<SlockServerSwitcherItem>
+): Boolean =
+    servers.any { server ->
+        server.id != currentServerId && server.unreadCount > 0
+    }
+
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,
     val conversationId: String? = null,
@@ -1395,7 +1404,7 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
 @Composable
 private fun HomeTitlebar(
     serverName: String,
-    serverUnreadCount: Int,
+    hasOtherServerUnread: Boolean,
     notifications: List<SlockHomeNotificationItem>,
     refreshing: Boolean,
     topSafeArea: Dp,
@@ -1419,7 +1428,7 @@ private fun HomeTitlebar(
                     text = serverName,
                     showDropdown = true,
                     tilted = true,
-                    unread = serverUnreadCount > 0,
+                    unread = hasOtherServerUnread,
                     textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
                 )
             }

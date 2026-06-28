@@ -65,6 +65,30 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerSwitcherUnreadDotOnlyTracksOtherServers() {
+        assertFalse(
+            homeServerSwitcherHasOtherUnread(
+                currentServerId = "server-1",
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 8),
+                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 0)
+                    )
+            )
+        )
+        assertTrue(
+            homeServerSwitcherHasOtherUnread(
+                currentServerId = "server-1",
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 0),
+                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 3)
+                    )
+            )
+        )
+    }
+
+    @Test
     fun homeSavedCountFormatsOverflow() {
         assertEquals(null, formatHomeSavedCount(0))
         assertEquals(null, formatHomeSavedCount(-1))
