@@ -1231,10 +1231,17 @@ private fun ThreadPageScreen() {
         pager.addPagerEventObserver(observer)
         onDispose { pager.removePagerEventObserver(observer) }
     }
-    val payload = remember(payloadText, instanceId) {
-        parseThreadScreenPayload(
+    val payloadTrace = remember(payloadText, instanceId) {
+        parseThreadScreenPayloadWithTrace(
             payload = payloadText,
             instanceId = instanceId
+        )
+    }
+    val payload = payloadTrace.payload
+    LaunchedEffect(payloadText, instanceId) {
+        bridge.log(
+            "thread_launch_payload_parse source=pageData result=${payloadTrace.result} " +
+                "responseBytes=${payloadTrace.responseBytes} durationMs=${payloadTrace.durationMs} dispatcher=caller"
         )
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }

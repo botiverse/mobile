@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 internal const val THREAD_PAGE = "compose_thread"
 
@@ -211,14 +212,36 @@ internal fun parseThreadScreenPayload(
     payload: String,
     instanceId: String
 ): KuiklyThreadScreenPayload {
+    return parseThreadScreenPayloadWithTrace(payload, instanceId).payload
+}
+
+internal fun parseThreadScreenPayloadWithTrace(
+    payload: String,
+    instanceId: String
+): ThreadLaunchPayloadParseTrace {
+    val startedAt = TimeSource.Monotonic.markNow()
     val source = payload.trim().takeIf { it.isNotEmpty() } ?: "{}"
-    parseThreadLaunchPayload(source, instanceId)?.let { return it }
-    return KuiklyThreadScreenPayload(
-        instanceId = instanceId,
-        status = "error",
-        errorCode = "payload_parse_failed"
+    val parsed = parseThreadLaunchPayload(source, instanceId)
+    val resultPayload =
+        parsed ?: KuiklyThreadScreenPayload(
+            instanceId = instanceId,
+            status = "error",
+            errorCode = "payload_parse_failed"
+        )
+    return ThreadLaunchPayloadParseTrace(
+        payload = resultPayload,
+        durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+        responseBytes = source.encodeToByteArray().size,
+        result = if (parsed != null) "success" else "failure"
     )
 }
+
+internal data class ThreadLaunchPayloadParseTrace(
+    val payload: KuiklyThreadScreenPayload,
+    val durationMs: Long,
+    val responseBytes: Int,
+    val result: String
+)
 
 internal fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =
     runCatching {

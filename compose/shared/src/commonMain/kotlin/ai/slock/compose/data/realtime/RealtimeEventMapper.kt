@@ -52,6 +52,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlin.time.TimeSource
 
 /**
  * Decodes raw Socket.IO payloads into typed [RealtimeEvent]s.
@@ -70,7 +71,9 @@ import kotlinx.serialization.json.contentOrNull
  * Input is a JSON string. Platform glue (Android Socket.IO `JSONObject`,
  * iOS dictionaries, etc.) must stringify the payload before calling [map].
  */
-class RealtimeEventMapper {
+class RealtimeEventMapper(
+    private val diagnosticsLogger: (String) -> Unit = {}
+) {
 
     /**
      * Single entry point for all platforms.
@@ -88,9 +91,29 @@ class RealtimeEventMapper {
      * Returns `null` for anything we can't decode into a known event.
      */
     fun map(eventName: String, payload: Any?): RealtimeEvent? {
-        val element = payload.toJsonObjectOrNull() ?: return null
-        return mapElement(eventName, element)
+        val startedAt = TimeSource.Monotonic.markNow()
+        val element = payload.toJsonObjectOrNull()
+        val event = element?.let { mapElement(eventName, it) }
+        diagnosticsLogger(
+            "realtime_payload_parse eventName=$eventName payloadType=${payload.realtimePayloadType()} " +
+                "mapped=${if (event != null) "typed" else ""} result=${if (event != null) "success" else "ignored"} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
+        )
+        return event
     }
+
+    private fun Any?.realtimePayloadType(): String =
+        when (this) {
+            null -> "null"
+            is String -> "String"
+            is JsonObject -> "JsonObject"
+            is JsonElement -> "JsonElement"
+            is Map<*, *> -> "Map"
+            is List<*> -> "List"
+            is Number -> "Number"
+            is Boolean -> "Boolean"
+            else -> "Other"
+        }
 
     private fun Any?.toJsonObjectOrNull(): JsonObject? {
         val element = when (this) {

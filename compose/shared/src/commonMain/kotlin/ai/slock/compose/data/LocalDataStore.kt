@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 interface ComposeLocalDataStore {
     fun observeSession(): Flow<SessionSnapshot?>
@@ -105,7 +106,8 @@ class InMemoryComposeLocalDataStore : ComposeLocalDataStore {
 
 class RelationalComposeLocalDataStore(
     private val store: SlockRelationalStore,
-    private val clock: () -> Long = { 0L }
+    private val clock: () -> Long = { 0L },
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : ComposeLocalDataStore {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -118,7 +120,7 @@ class RelationalComposeLocalDataStore(
 
     override suspend fun readSession(): SessionSnapshot? =
         readSnapshot(SESSION_SCOPE, SESSION_ID)?.let { encoded ->
-            runCatching { json.decodeFromString<SessionSnapshot>(encoded) }.getOrNull()
+            decodeLocalSnapshot("session", encoded) { json.decodeFromString<SessionSnapshot>(encoded) }
         }
 
     override suspend fun writeSession(session: SessionSnapshot?) {
@@ -134,7 +136,7 @@ class RelationalComposeLocalDataStore(
 
     override suspend fun readHome(serverId: ServerId): HomeSnapshot? =
         readSnapshot(HOME_SCOPE, serverId.value)?.let { encoded ->
-            runCatching { json.decodeFromString<HomeSnapshot>(encoded) }.getOrNull()
+            decodeLocalSnapshot("home", encoded) { json.decodeFromString<HomeSnapshot>(encoded) }
         }
 
     override suspend fun writeHome(snapshot: HomeSnapshot) {
@@ -146,7 +148,7 @@ class RelationalComposeLocalDataStore(
 
     override suspend fun readThread(threadId: ThreadId): ThreadSnapshot? =
         readSnapshot(THREAD_SCOPE, threadId.value)?.let { encoded ->
-            runCatching { json.decodeFromString<ThreadSnapshot>(encoded) }.getOrNull()
+            decodeLocalSnapshot("thread", encoded) { json.decodeFromString<ThreadSnapshot>(encoded) }
         }
 
     override suspend fun writeThread(snapshot: ThreadSnapshot) {
@@ -158,8 +160,18 @@ class RelationalComposeLocalDataStore(
 
     override suspend fun readUnread(serverId: ServerId): ChannelUnreadSnapshot? =
         readSnapshot(UNREAD_SCOPE, serverId.value)?.let { encoded ->
-            runCatching { json.decodeFromString<ChannelUnreadSnapshot>(encoded) }.getOrNull()
+            decodeLocalSnapshot("unread", encoded) { json.decodeFromString<ChannelUnreadSnapshot>(encoded) }
         }
+
+    private inline fun <T> decodeLocalSnapshot(source: String, encoded: String, decoder: () -> T): T? {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val result = runCatching(decoder)
+        diagnosticsLogger(
+            "local_cache_decode source=$source result=${if (result.isSuccess) "success" else "failure"} " +
+                "responseBytes=${encoded.encodeToByteArray().size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
+        )
+        return result.getOrNull()
+    }
 
     override suspend fun writeUnread(snapshot: ChannelUnreadSnapshot) {
         writeSnapshot(UNREAD_SCOPE, snapshot.server.id.value, json.encodeToString(snapshot))

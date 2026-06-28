@@ -90,6 +90,7 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.roundToInt
+import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -287,10 +288,17 @@ private fun SlockHomePageContent() {
         pager.addPagerEventObserver(observer)
         onDispose { pager.removePagerEventObserver(observer) }
     }
-    val payload = rememberHomePayload(
+    val payloadTrace = rememberHomePayloadTrace(
         payloadText,
         instanceId
     )
+    val payload = payloadTrace.payload
+    LaunchedEffect(payloadText, instanceId) {
+        bridge.log(
+            "home_launch_payload_parse source=pageData result=${payloadTrace.result} " +
+                "responseBytes=${payloadTrace.responseBytes} durationMs=${payloadTrace.durationMs} dispatcher=caller"
+        )
+    }
     LaunchedEffect(payload.instanceId, payload.channels.size, payload.directMessages.size) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
@@ -502,14 +510,28 @@ private fun visualHomeNotifications(): List<SlockHomeNotificationItem> =
     )
 
 @Composable
-private fun rememberHomePayload(payload: String, instanceId: String): SlockHomePayload =
+private fun rememberHomePayloadTrace(payload: String, instanceId: String): HomePayloadParseTrace =
     remember(payload, instanceId) {
-        runCatching {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val parsed = runCatching {
             Json { ignoreUnknownKeys = true }
                 .decodeFromString(SlockHomePayload.serializer(), payload)
                 .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { SlockHomePayload(instanceId = instanceId) }
+        }
+        HomePayloadParseTrace(
+            payload = parsed.getOrElse { SlockHomePayload(instanceId = instanceId) },
+            durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+            responseBytes = payload.encodeToByteArray().size,
+            result = if (parsed.isSuccess) "success" else "failure"
+        )
     }
+
+private data class HomePayloadParseTrace(
+    val payload: SlockHomePayload,
+    val durationMs: Long,
+    val responseBytes: Int,
+    val result: String
+)
 
 @Composable
 internal fun SlockStructuralHomeShell(

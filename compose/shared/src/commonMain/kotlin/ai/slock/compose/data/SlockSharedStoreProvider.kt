@@ -121,7 +121,11 @@ internal class SlockSharedStoreProvider private constructor(
         fun create(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
-            val localDataStore = RelationalComposeLocalDataStore(relationalStore)
+            val localDataStore =
+                RelationalComposeLocalDataStore(
+                    store = relationalStore,
+                    diagnosticsLogger = { message -> bridge.log("local_cache $message") }
+                )
             val tasksDataStore = SharedTasksDataStore()
             val conversationDirectoryStore =
                 SharedConversationDirectoryStore(

@@ -61,6 +61,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.TimeSource
 
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
@@ -355,13 +356,20 @@ internal fun ThreadComposerScreen() {
         pager.addPagerEventObserver(observer)
         onDispose { pager.removePagerEventObserver(observer) }
     }
-    val payload =
-        rememberThreadComposerPayload(
+    val payloadTrace =
+        rememberThreadComposerPayloadTrace(
             payload = payloadText,
             fallbackPageData = params.toString(),
             instanceId = instanceId,
             visualFixture = visualFixture
         )
+    val payload = payloadTrace.payload
+    LaunchedEffect(payloadText, instanceId, visualFixture) {
+        bridge.log(
+            "thread_composer_launch_payload_parse source=${payloadTrace.source} result=${payloadTrace.result} " +
+                "responseBytes=${payloadTrace.responseBytes} durationMs=${payloadTrace.durationMs} dispatcher=caller"
+        )
+    }
     LaunchedEffect(payload.instanceId, payload.syncNonce) {
         bridge.log(
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
@@ -395,20 +403,26 @@ internal fun ThreadComposerScreen() {
 }
 
 @Composable
-private fun rememberThreadComposerPayload(
+private fun rememberThreadComposerPayloadTrace(
     payload: String,
     fallbackPageData: String,
     instanceId: String,
     visualFixture: String
-): KuiklyThreadComposerPayload =
+): ThreadComposerPayloadParseTrace =
     remember(payload, fallbackPageData, instanceId, visualFixture) {
         visualFixture.takeIf { it.isNotBlank() }?.let { fixture ->
-            threadComposerVisualFixture(fixture, instanceId)
-        } ?: parseThreadComposerPayload(
-                payload = payload,
-                fallbackPageData = fallbackPageData,
-                instanceId = instanceId
+            ThreadComposerPayloadParseTrace(
+                payload = threadComposerVisualFixture(fixture, instanceId),
+                durationMs = 0,
+                responseBytes = fixture.encodeToByteArray().size,
+                result = "visual_fixture",
+                source = "visualFixture"
             )
+        } ?: parseThreadComposerPayloadWithTrace(
+            payload = payload,
+            fallbackPageData = fallbackPageData,
+            instanceId = instanceId
+        )
     }
 
 internal fun parseThreadComposerPayload(
@@ -430,6 +444,32 @@ internal fun parseThreadComposerPayload(
         rejectAsFailure = true
     )
 }
+
+private fun parseThreadComposerPayloadWithTrace(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): ThreadComposerPayloadParseTrace {
+    val startedAt = TimeSource.Monotonic.markNow()
+    val primaryPayload = payload.trim()
+    val source = if (primaryPayload.isEmpty()) fallbackPageData else primaryPayload
+    val parsed = parseThreadComposerPayload(payload, fallbackPageData, instanceId)
+    return ThreadComposerPayloadParseTrace(
+        payload = parsed,
+        durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+        responseBytes = source.encodeToByteArray().size,
+        result = if (parsed.composerMode == "failed") "failure" else "success",
+        source = if (primaryPayload.isEmpty()) "fallbackPageData" else "payload"
+    )
+}
+
+private data class ThreadComposerPayloadParseTrace(
+    val payload: KuiklyThreadComposerPayload,
+    val durationMs: Long,
+    val responseBytes: Int,
+    val result: String,
+    val source: String
+)
 
 private fun failedThreadComposerPayload(instanceId: String): KuiklyThreadComposerPayload =
     KuiklyThreadComposerPayload(

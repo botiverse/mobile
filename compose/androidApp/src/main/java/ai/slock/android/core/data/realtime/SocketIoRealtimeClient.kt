@@ -36,6 +36,7 @@ import com.google.gson.JsonObject
 import java.util.Timer
 import java.util.TimerTask
 import org.json.JSONObject
+import kotlin.time.TimeSource
 
 class SocketIoRealtimeClient(
     private val transport: RealtimeSocketTransport,
@@ -251,7 +252,13 @@ class SocketIoRealtimeClient(
                     )
                     return@on
                 }
+                val mapStartedAt = TimeSource.Monotonic.markNow()
                 val event = eventMapper.map(eventName, payload)
+                logger(
+                    "event_map_parse eventName=$eventName payloadType=${payload?.javaClass?.simpleName.orEmpty()} " +
+                        "mapped=${event?.realtimeDiagnosticName().orEmpty()} result=${if (event != null) "success" else "ignored"} " +
+                        "durationMs=${mapStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
+                )
                 logger(
                     "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                 )

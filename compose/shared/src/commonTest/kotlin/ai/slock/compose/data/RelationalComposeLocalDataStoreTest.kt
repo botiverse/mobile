@@ -13,11 +13,17 @@ import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class RelationalComposeLocalDataStoreTest {
     @Test
     fun persistsThreadSnapshotInRelationalStore() = runBlocking {
-        val localStore = RelationalComposeLocalDataStore(SnapshotRelationalStore())
+        val logs = mutableListOf<String>()
+        val localStore =
+            RelationalComposeLocalDataStore(
+                store = SnapshotRelationalStore(),
+                diagnosticsLogger = logs::add
+            )
         val snapshot =
             ThreadSnapshot(
                 conversation =
@@ -46,6 +52,13 @@ class RelationalComposeLocalDataStoreTest {
         assertEquals("general", restored?.conversation?.name)
         assertEquals("cached body", restored?.messages?.single()?.body)
         assertEquals("Artin", restored?.messages?.single()?.author?.displayName)
+        assertTrue(
+            logs.any {
+                it.contains("local_cache_decode source=thread result=success") &&
+                    it.contains("durationMs=") &&
+                    it.contains("dispatcher=caller")
+            }
+        )
     }
 
     private class SnapshotRelationalStore : SlockRelationalStore {

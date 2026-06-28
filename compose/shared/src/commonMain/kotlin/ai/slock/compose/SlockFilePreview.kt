@@ -66,6 +66,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
@@ -132,20 +133,37 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         }
     val coroutineScope = rememberCoroutineScope()
-    var payload by remember(pager.pageData.params.toString()) {
-        mutableStateOf(
-            pager.pageData.params.optString("payload")
-                .takeIf { it.isNotBlank() }
-                ?.let { source ->
-                    runCatching { SlockFilePreviewJson.decodeFromString(SlockFilePreviewPayload.serializer(), source) }
-                        .getOrNull()
-                } ?: SlockFilePreviewPayload(
+    val launchPayloadTrace =
+        remember(pager.pageData.params.toString()) {
+            val source = pager.pageData.params.optString("payload")
+            val startedAt = TimeSource.Monotonic.markNow()
+            val parsed =
+                source
+                    .takeIf { it.isNotBlank() }
+                    ?.let {
+                        runCatching { SlockFilePreviewJson.decodeFromString(SlockFilePreviewPayload.serializer(), it) }
+                    }
+            FilePreviewLaunchPayloadTrace(
+                payload =
+                    parsed?.getOrNull() ?: SlockFilePreviewPayload(
                 title = "Preview unavailable",
                 subtitle = "File preview",
                 message = "Preview payload could not be loaded.",
                 error = "payload_parse_failed"
+                    ),
+                responseBytes = source.encodeToByteArray().size,
+                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                result = if (parsed?.isSuccess == true) "success" else "failure"
             )
+        }
+    LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
+        bridge.log(
+            "file_preview_launch_payload_parse source=pageData result=${launchPayloadTrace.result} " +
+                "responseBytes=${launchPayloadTrace.responseBytes} durationMs=${launchPayloadTrace.durationMs} dispatcher=caller"
         )
+    }
+    var payload by remember(launchPayloadTrace.payload) {
+        mutableStateOf(launchPayloadTrace.payload)
     }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
@@ -373,6 +391,13 @@ private fun SlockFilePreviewStandalonePageContent() {
         )
     }
 }
+
+private data class FilePreviewLaunchPayloadTrace(
+    val payload: SlockFilePreviewPayload,
+    val responseBytes: Int,
+    val durationMs: Long,
+    val result: String
+)
 
 internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
     val pageData =
