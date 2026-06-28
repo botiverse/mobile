@@ -4,6 +4,7 @@ import android.content.Context
 import ai.slock.compose.data.SlockAuthApi
 import ai.slock.compose.data.SlockAuthApiClient
 import ai.slock.compose.data.SlockAuthTransport
+import ai.slock.compose.data.SharedKtorSlockAuthTransport
 import ai.slock.compose.data.SLOCK_API_BASE_URL
 
 object AndroidAuthApiFactory {
@@ -16,7 +17,7 @@ object AndroidAuthApiFactory {
         AndroidApiServerEnvironmentStore(context).current().socketBaseUrl
 
     fun createAuthTransport(baseUrl: String = BASE_URL): SlockAuthTransport =
-        KtorAuthApi(baseUrl)
+        SharedKtorSlockAuthTransport(baseUrl)
 
     fun createAuthTransport(context: Context): SlockAuthTransport =
         createAuthTransport(currentBaseUrl(context))

@@ -322,11 +322,20 @@ internal class SharedKtorSlockNetworkClient(
     }
 }
 
-internal class SharedKtorSlockAuthTransport(
-    private val baseUrl: String = SLOCK_API_BASE_URL,
-    private val httpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Foreground),
+class SharedKtorSlockAuthTransport(
+    private val baseUrl: String,
+    private val httpClient: HttpClient,
     private val warningLogger: (String) -> Unit = {}
 ) : SlockAuthTransport {
+    constructor(
+        baseUrl: String = SLOCK_API_BASE_URL,
+        warningLogger: (String) -> Unit = {}
+    ) : this(
+        baseUrl = baseUrl,
+        httpClient = createSlockKtorHttpClient(SlockRequestPriority.Foreground),
+        warningLogger = warningLogger
+    )
+
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 

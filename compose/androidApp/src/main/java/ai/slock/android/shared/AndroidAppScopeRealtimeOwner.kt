@@ -5,18 +5,22 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
-import ai.slock.compose.model.Message
-import ai.slock.compose.model.ServerId
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
+import ai.slock.compose.data.SharedAuthTokenProvider
+import ai.slock.compose.data.SharedKtorSlockAuthTransport
+import ai.slock.compose.data.SlockAuthApiClient
 import ai.slock.compose.data.SlockHostNetworkNotifyContract
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopePolicy
 import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
 import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -131,11 +135,12 @@ internal object AndroidAppScopeRealtimeOwner {
         val appContext = context.applicationContext
         val runtime = bootstrapRealtime(appContext)
         val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+        val tokenProvider = appContext.sharedRealtimeAuthTokenProvider(sessionStore)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
-                    var session = sessionStore.readSession()
+                    var session = tokenProvider.currentSession(refreshIfExpiringSoon = true)
                     var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockDiagnosticsLogger.w(
@@ -144,7 +149,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         )
                         if (missingSelectedServerRetryCount < 1) {
                             delay(1500L)
-                            session = sessionStore.readSession()
+                            session = tokenProvider.currentSession(refreshIfExpiringSoon = true)
                             serverId = session?.currentServerId?.let(::ServerId)
                             if (serverId == null) {
                                 SlockDiagnosticsLogger.w(
@@ -416,4 +421,22 @@ internal object AndroidAppScopeRealtimeOwner {
         Background
     }
 
+    private fun Context.sharedRealtimeAuthTokenProvider(
+        sessionStore: KuiklyMMKVAuthSessionStore
+    ): SharedAuthTokenProvider {
+        val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(this)
+        return SharedAuthTokenProvider(
+            sessionStore = sessionStore,
+            authApi =
+                SlockAuthApiClient(
+                    SharedKtorSlockAuthTransport(
+                        baseUrl = apiBaseUrl,
+                        warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                    )
+                ),
+            clockMillis = { System.currentTimeMillis() },
+            logger = { message -> SlockDiagnosticsLogger.d(LOG_TAG, message) },
+            warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+        )
+    }
 }

@@ -2,7 +2,6 @@ package ai.slock.android.shared
 
 import android.content.Context
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
@@ -12,6 +11,9 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SharedAuthTokenProvider
+import ai.slock.compose.data.SharedKtorSlockAuthTransport
+import ai.slock.compose.data.SlockAuthApiClient
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
@@ -137,7 +139,20 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 SessionRealtimeRepository(
                     store = sessionStore,
                     client = client,
-                    tokenRefresher = AuthTokenRefresher(sessionStore, AndroidAuthApiFactory.createAuthApi(apiBaseUrl))
+                    tokenProvider =
+                        SharedAuthTokenProvider(
+                            sessionStore = sessionStore,
+                            authApi =
+                                SlockAuthApiClient(
+                                    SharedKtorSlockAuthTransport(
+                                        baseUrl = apiBaseUrl,
+                                        warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                                    )
+                                ),
+                            clockMillis = { System.currentTimeMillis() },
+                            logger = { message -> SlockDiagnosticsLogger.d(LOG_TAG, message) },
+                            warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                        )
                 )
             return AndroidAppScopeRealtimeHostContext(
                 appContext = appContext,

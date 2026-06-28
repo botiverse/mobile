@@ -1,13 +1,13 @@
 package ai.slock.android.core.data.network
 
 import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.compose.data.KtorSlockNetworkClient
+import ai.slock.compose.data.SharedAuthTokenProvider
+import ai.slock.compose.data.SharedKtorSlockAuthTransport
+import ai.slock.compose.data.SlockAuthApiClient
 import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.compose.network.AuthenticatedKtorTransport
-import ai.slock.compose.network.AuthTokenProvider
-import ai.slock.compose.network.AuthTokens
 import ai.slock.compose.network.HttpClientConfig
 import ai.slock.compose.network.SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
 import ai.slock.compose.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
@@ -20,12 +20,7 @@ import ai.slock.compose.network.createPriorityHttpClient
 object RealSlockNetworkClientFactory {
     fun create(
         store: AuthSessionStore,
-        baseUrl: String = AndroidAuthApiFactory.BASE_URL,
-        tokenRefresher: AuthTokenRefresher =
-            AuthTokenRefresher(
-                store = store,
-                api = AndroidAuthApiFactory.createAuthApi(baseUrl)
-            )
+        baseUrl: String = AndroidAuthApiFactory.BASE_URL
     ): SlockNetworkClient {
         val logger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message)
@@ -67,9 +62,17 @@ object RealSlockNetworkClientFactory {
                 authTransport =
                     AuthenticatedKtorTransport(
                         tokenProvider =
-                            AndroidAuthTokenProvider(
-                                store = store,
-                                tokenRefresher = tokenRefresher,
+                            SharedAuthTokenProvider(
+                                sessionStore = store,
+                                authApi =
+                                    SlockAuthApiClient(
+                                        SharedKtorSlockAuthTransport(
+                                            baseUrl = baseUrl,
+                                            warningLogger = warningLogger
+                                        )
+                                    ),
+                                clockMillis = { System.currentTimeMillis() },
+                                logger = { message -> logger("auth_$message") },
                                 warningLogger = warningLogger
                             ),
                         logger = { message -> logger("compose_$message") }
@@ -87,33 +90,4 @@ object RealSlockNetworkClientFactory {
     }
 
     private const val TAG = "SlockNetworkClient"
-}
-
-private class AndroidAuthTokenProvider(
-    private val store: AuthSessionStore,
-    private val tokenRefresher: AuthTokenRefresher,
-    private val warningLogger: (String) -> Unit
-) : AuthTokenProvider {
-    override suspend fun currentTokens(): AuthTokens? =
-        tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)?.toNetworkAuthTokens()
-
-    override suspend fun refreshTokens(failedAccessToken: String): AuthTokens? =
-        tokenRefresher
-            .refreshIfCurrent(failedAccessToken = failedAccessToken, clearOnUnauthorized = false)
-            ?.toNetworkAuthTokens()
-
-    override suspend fun onUnauthorized(failedAccessToken: String?) {
-        val current = store.readSession()
-        if (failedAccessToken == null || current?.accessToken == failedAccessToken) {
-            warningLogger("auth_unauthorized_clear_session")
-            store.clearSession()
-        }
-    }
-
-    private fun ai.slock.compose.data.StoredAuthSession.toNetworkAuthTokens(): AuthTokens =
-        AuthTokens(
-            accessToken = accessToken,
-            refreshToken = refreshToken.takeIf { it.isNotBlank() },
-            selectedServerId = currentServerId
-        )
 }

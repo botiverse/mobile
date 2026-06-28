@@ -4,6 +4,7 @@ import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class SlockNetworkAuthMiddlewareTest {
     @Test
@@ -34,7 +35,7 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun preservesSessionWhenRefreshTokenFails() = runBlocking {
+    fun clearsSessionWhenRefreshTokenIsUnauthorized() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
         val middleware =
             SlockNetworkAuthMiddleware(
@@ -52,8 +53,7 @@ class SlockNetworkAuthMiddlewareTest {
             middleware.request { HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""") }
 
         assertEquals(401, response.code)
-        assertEquals("expired-access", store.readSession()?.accessToken)
-        assertEquals("refresh-token", store.readSession()?.refreshToken)
+        assertNull(store.readSession())
     }
 
     @Test

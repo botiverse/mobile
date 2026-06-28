@@ -1,13 +1,18 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 internal class SlockNetworkAuthMiddleware(
     private val sessionStore: SlockAuthSessionStore,
-    private val authApi: SlockAuthApi
+    authApi: SlockAuthApi
 ) {
+    private val tokenProvider =
+        SharedAuthTokenProvider(
+            sessionStore = sessionStore,
+            authApi = authApi,
+            clockMillis = { defaultNowMillis() }
+        )
+
     suspend fun request(
         serverIdOverride: ServerId? = null,
         block: suspend (SlockAuthenticatedRequestContext) -> HomeNetworkResponse
@@ -22,7 +27,7 @@ internal class SlockNetworkAuthMiddleware(
         val first = block(session.toRequestContext(serverId))
         if (!first.requiresTokenRefresh()) return first
 
-        val refreshed = refreshSessionIfCurrent(session)
+        val refreshed = tokenProvider.refreshSession(session.accessToken)
         if (refreshed == null) {
             return first.asSessionExpired()
         }
@@ -38,27 +43,6 @@ internal class SlockNetworkAuthMiddleware(
         return retry
     }
 
-    private suspend fun refreshSessionIfCurrent(failedSession: StoredAuthSession): StoredAuthSession? =
-        refreshMutex.withLock {
-            val current = sessionStore.readSession() ?: return@withLock null
-            if (current.accessToken != failedSession.accessToken) {
-                return@withLock current.takeIf { it.accessToken.isNotBlank() }
-            }
-            val refreshToken = current.refreshToken.takeIf { it.isNotBlank() } ?: return@withLock null
-            when (val refreshed = authApi.refresh(refreshToken)) {
-                is AuthApiResult.Success -> {
-                    val next =
-                        current.copy(
-                            accessToken = refreshed.data.accessToken,
-                            refreshToken = refreshed.data.refreshToken
-                        )
-                    sessionStore.saveSession(next)
-                    next
-                }
-                is AuthApiResult.Failure -> null
-            }
-        }
-
     private fun StoredAuthSession.toRequestContext(serverId: String): SlockAuthenticatedRequestContext =
         SlockAuthenticatedRequestContext(
             accessToken = accessToken,
@@ -66,9 +50,6 @@ internal class SlockNetworkAuthMiddleware(
             serverId = serverId
         )
 
-    private companion object {
-        val refreshMutex = Mutex()
-    }
 }
 
 internal data class SlockAuthenticatedRequestContext(

@@ -1,11 +1,11 @@
 package ai.slock.android.core.data.realtime
 
 import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.PermissionBlocker
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SharedAuthTokenProvider
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.model.ChannelId
@@ -16,20 +16,17 @@ import kotlinx.coroutines.runBlocking
 class SessionRealtimeRepository(
     private val store: AuthSessionStore,
     private val client: SocketIoRealtimeClient,
-    private val tokenRefresher: AuthTokenRefresher? = null
+    private val tokenProvider: SharedAuthTokenProvider? = null
 ) : RealtimeRepository {
     init {
-        if (tokenRefresher != null) {
+        if (tokenProvider != null) {
             client.setAuthRefreshProvider { reason ->
                 runBlocking {
                     val refreshed =
                         if (reason == "connect_error") {
-                            tokenRefresher.refreshIfCurrent(
-                                failedAccessToken = store.readSession()?.accessToken,
-                                clearOnUnauthorized = false
-                            )
+                            tokenProvider.refreshSession(failedAccessToken = store.readSession()?.accessToken)
                         } else {
-                            tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
+                            tokenProvider.currentSession(refreshIfExpiringSoon = true)
                         }
                     refreshed?.toRealtimeAuthForSelectedServer()
                 }
@@ -38,10 +35,10 @@ class SessionRealtimeRepository(
     }
 
     override suspend fun connect(serverId: ServerId, lastSeq: Long): DataResult<Unit> {
-        val session = if (tokenRefresher != null) {
+        val session = if (tokenProvider != null) {
             store.readSession()
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-            tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
+            tokenProvider.currentSession(refreshIfExpiringSoon = true)
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_refresh_failed", requiredCapability = "auth_session"))
         } else {
             store.readSession()

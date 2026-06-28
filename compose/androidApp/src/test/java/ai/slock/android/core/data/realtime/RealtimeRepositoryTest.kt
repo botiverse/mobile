@@ -4,7 +4,6 @@ import ai.slock.compose.data.StoredAuthServer as AuthServer
 import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.compose.data.StoredAuthUser as AuthUser
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.AuthApiResult
 import ai.slock.compose.data.AuthLoginResponse
 import ai.slock.compose.data.AuthRefreshResponse
@@ -14,6 +13,7 @@ import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SharedAuthTokenProvider
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
@@ -88,9 +88,10 @@ class RealtimeRepositoryTest {
         val repository = SessionRealtimeRepository(
             store = store,
             client = SocketIoRealtimeClient(transport),
-            tokenRefresher = AuthTokenRefresher(
-                store = store,
-                api = FakeAuthApi(),
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = FakeAuthApi(),
+                clockMillis = { 0L },
                 logger = {},
                 warningLogger = {}
             )
@@ -110,15 +111,16 @@ class RealtimeRepositoryTest {
         val repository = SessionRealtimeRepository(
             store = store,
             client = SocketIoRealtimeClient(transport),
-            tokenRefresher = AuthTokenRefresher(
-                store = store,
-                api = FakeAuthApi(
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = FakeAuthApi(
                     responses =
                         listOf(
                             AuthRefreshResponse("socket-first-access", "socket-first-refresh"),
                             AuthRefreshResponse("socket-retry-access", "socket-retry-refresh")
                         )
                 ),
+                clockMillis = { 0L },
                 logger = {},
                 warningLogger = {}
             )
@@ -140,9 +142,10 @@ class RealtimeRepositoryTest {
         val repository = SessionRealtimeRepository(
             store = store,
             client = SocketIoRealtimeClient(transport),
-            tokenRefresher = AuthTokenRefresher(
-                store = store,
-                api = FakeAuthApi(refreshFailure = CancellationException("cancelled")),
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = FakeAuthApi(refreshFailure = CancellationException("cancelled")),
+                clockMillis = { 0L },
                 logger = {},
                 warningLogger = {}
             )
