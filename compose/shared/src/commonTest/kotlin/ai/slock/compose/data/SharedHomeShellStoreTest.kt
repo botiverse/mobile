@@ -169,7 +169,7 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun realtimeForwardsActivityOnlyWhenPrimaryOrActivityVisible() {
+    fun realtimeForwardsActivityOnlyWhenActivityVisible() {
         val fixture = fixture()
         val store = fixture.store
         val event = SyncResumeResponse(messages = emptyList(), currentSeq = 1L, hasMore = false)
@@ -196,7 +196,6 @@ class SharedHomeShellStoreTest {
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeEvent(event),
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.ApplyRealtimeEvent(event)
             ),
@@ -206,7 +205,7 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun threadUpdatedRealtimeStillRefreshesActivityWhenHomeIsVisible() {
+    fun threadUpdatedRealtimeDoesNotRefreshActivityWhenOnlyHomeIsVisible() {
         val fixture = fixture()
         val store = fixture.store
         val event =
@@ -229,12 +228,7 @@ class SharedHomeShellStoreTest {
             ),
             fixture.homeIntents
         )
-        assertEquals(
-            listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeEvent(event)
-            ),
-            fixture.activityIntents
-        )
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
         fixture.cancel()
     }
 

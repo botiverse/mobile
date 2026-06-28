@@ -160,7 +160,7 @@ class SharedHomeShellStore(
     private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
         dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
         val current = _state.value
-        if (current.primarySurfaceVisible || current.destination == SharedHomeShellDestinationActivity) {
+        if (current.destination == SharedHomeShellDestinationActivity) {
             dispatchActivity(SharedActivityIntent.ApplyRealtimeEvent(event))
         }
     }
