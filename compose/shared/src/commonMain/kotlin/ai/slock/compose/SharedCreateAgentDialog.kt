@@ -1190,7 +1190,7 @@ private fun CreateAgentSectionLabelWithAction(
 @Composable
 private fun SlockCreateAgentSpinnerIcon() {
     SlockLucideIcon(
-        SlockLucideIconName.Loader,
+        SlockLucideIconName.LoaderCircle,
         modifier = Modifier.size(13.dp),
         color = SlockColor.TextMutedGrayArgb,
         spinning = true

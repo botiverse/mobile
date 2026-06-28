@@ -8884,7 +8884,7 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
-            SlockLucideIconName.Loader,
+            SlockLucideIconName.LoaderCircle,
             modifier = Modifier.size(14.dp),
             color = SlockColor.TextMutedGrayArgb,
             spinning = true

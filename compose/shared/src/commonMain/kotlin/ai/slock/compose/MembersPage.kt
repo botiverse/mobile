@@ -3784,7 +3784,7 @@ private fun MembersAgentAvatarChoiceGrid(
                 )
             } else {
                 SlockLucideIcon(
-                    if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
+                    if (uploading) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Upload,
                     modifier = Modifier.size(16.dp),
                     color = "#99000000",
                     spinning = uploading
@@ -7446,7 +7446,7 @@ private fun SlockSpinnerIcon(
     color: String = SlockColor.TextBlackArgb
 ) {
     SlockLucideIcon(
-        SlockLucideIconName.Loader,
+        SlockLucideIconName.LoaderCircle,
         modifier = Modifier.size(size),
         color = color,
         spinning = true

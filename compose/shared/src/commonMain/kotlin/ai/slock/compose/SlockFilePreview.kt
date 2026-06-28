@@ -899,7 +899,7 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
     when (kind) {
         "markdown", "text" -> SlockLucideIconName.FileText
         "image" -> SlockLucideIconName.Image
-        "loading" -> SlockLucideIconName.Loader
+        "loading" -> SlockLucideIconName.LoaderCircle
         "error" -> SlockLucideIconName.TriangleAlert
         else -> slockFilePreviewFileIconName(this)
     }

@@ -276,7 +276,7 @@ private fun ThreadFileRow(
                 onClick = openSourceIfIdle
             )
             ThreadFileIconActionButton(
-                iconName = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                iconName = if (isOpening) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Download,
                 enabled = !isOpening,
                 onClick = downloadIfIdle
             )
@@ -375,7 +375,7 @@ private fun ThreadFileIconActionButton(
         enabled = enabled,
         size = 28.dp,
         iconSize = 14.dp,
-        iconSpinning = iconName == SlockLucideIconName.Loader
+        iconSpinning = iconName == SlockLucideIconName.LoaderCircle
     )
 }
 
