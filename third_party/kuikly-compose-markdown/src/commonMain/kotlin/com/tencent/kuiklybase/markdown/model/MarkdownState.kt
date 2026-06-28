@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.tencent.kuiklybase.markdown.utils.lookupLinkDefinition
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,7 +59,7 @@ suspend fun prepareMarkdownContent(content: String, lookupLinks: Boolean = true)
         return true
     }
     val parsed =
-        withContext(Dispatchers.Default) {
+        withContext(SlockMarkdownParseDispatcher) {
             val flavour = GFMFlavourDescriptor()
             parseMarkdownContent(
                 content = content,
@@ -130,7 +129,7 @@ class MarkdownState internal constructor(
 
 
     /**
-     * Parses the markdown content asynchronously using the Default dispatcher.
+     * Parses the markdown content asynchronously using the MarkdownParse dispatcher.
      * When a result is available it will be emitted to the [state] flow.
      */
     suspend fun parse(): Boolean {
@@ -142,7 +141,7 @@ class MarkdownState internal constructor(
         }
         val parsed =
             try {
-                withContext(Dispatchers.Default) {
+                withContext(SlockMarkdownParseDispatcher) {
                     mutex.withLock {
                         parseContent(content)
                     }
@@ -262,7 +261,7 @@ private object MarkdownParseResultCache {
      * Thread-safety note: this cache is shared across visible MarkdownState rows,
      * so callers must only access it from the Kuikly/Compose coroutine thread.
      * Expensive parse work may run off-thread, but cache lookup and mutation must
-     * stay off Dispatchers.Default.
+     * stay outside the parse dispatcher.
      *
      * We deliberately do NOT wrap the body in `synchronized(...)` here because:
      * 1. JVM `synchronized(Any)` does not exist on Kotlin/Native (OHOS target) —

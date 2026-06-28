@@ -27,6 +27,7 @@ import com.tencent.kuiklybase.markdown.model.NoOpImageTransformerImpl
 import com.tencent.kuiklybase.markdown.model.NoOpTextProvider
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
+import com.tencent.kuiklybase.markdown.model.SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -97,7 +98,8 @@ fun Markdown(
         if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
             slockMarkdownLogSubTrace(
                 "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
-                    "bodyLength=${content.length} cacheHit=$cacheHit"
+                    "bodyLength=${content.length} cacheHit=$cacheHit " +
+                    "dispatcher=$SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL"
             )
         }
     }
