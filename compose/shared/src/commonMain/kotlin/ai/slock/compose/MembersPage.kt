@@ -106,6 +106,7 @@ import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -114,6 +115,7 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -136,6 +138,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -160,6 +163,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 const val MEMBERS_PAGE = "compose_members"
@@ -221,20 +225,43 @@ private val MembersAgentDetailTab.persistedOrderKey: String
             else -> name.lowercase()
         }
 
+internal val MembersAgentDetailTab.serverOrderKey: String
+    get() =
+        when (this) {
+            MembersAgentDetailTab.Dms -> "chat"
+            MembersAgentDetailTab.Apps -> "integrations"
+            else -> name.lowercase()
+        }
+
+internal fun List<MembersAgentDetailTab>.toMembersAgentPanelTabOrderWireKeys(): List<String> =
+    map { it.serverOrderKey }
+
+internal fun List<MembersAgentDetailTab>.membersMoveTab(
+    fromIndex: Int,
+    toIndex: Int
+): List<MembersAgentDetailTab> {
+    if (fromIndex !in indices || toIndex !in indices || fromIndex == toIndex) return this
+    val mutable = toMutableList()
+    val item = mutable.removeAt(fromIndex)
+    mutable.add(toIndex, item)
+    return mutable
+}
+
 private fun String.toMembersAgentTabOrderKey(): String =
     trim().lowercase()
         .replace("-", "_")
         .let { key ->
             when (key) {
-                "agent_dms", "agentdms", "dm", "direct_messages", "directmessages" -> "dms"
+                "chat", "channels", "agent_dms", "agentdms", "dm", "direct_messages", "directmessages" -> "dms"
                 "integrations", "connected_apps", "connectedapps", "app_logins", "applogins" -> "apps"
                 else -> key
             }
         }
 
 private fun String?.toMembersAgentDetailTabOrNull(): MembersAgentDetailTab? {
-    val normalized = this?.trim()?.lowercase()?.replace("-", "_") ?: return null
+    val normalized = this?.toMembersAgentTabOrderKey() ?: return null
     return MembersAgentDetailTab.entries.firstOrNull { tab ->
+        tab.persistedOrderKey == normalized ||
         tab.name.lowercase() == normalized || tab.label.lowercase().replace(" ", "_") == normalized
     }
 }
@@ -1013,6 +1040,7 @@ private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
     val authStore: SlockAuthSessionStore,
     val memberRepository: MemberRepository,
+    val settingsRepository: ai.slock.compose.data.SettingsServerManagementRepository,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore,
     val serverMembersStore: ai.slock.compose.data.SharedServerMembersStore,
@@ -1212,6 +1240,28 @@ private class MemberDetailRouteProvider(
         bridge.toast("Copied agent diagnostics")
     }
 
+    suspend fun loadAgentPanelTabOrder(): DataResult<List<String>> =
+        when (val result = settingsRepository.getServerSidebarOrder()) {
+            is DataResult.Content -> DataResult.Content(result.data.agentPanelTabOrder)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+
+    suspend fun updateAgentPanelTabOrder(tabs: List<MembersAgentDetailTab>): DataResult<List<String>> =
+        when (
+            val result = settingsRepository.updateServerSidebarOrder(
+                ai.slock.compose.data.SettingsServerSidebarOrderUpdateRequest(
+                    agentPanelTabOrder = tabs.toMembersAgentPanelTabOrderWireKeys()
+                )
+            )
+        ) {
+            is DataResult.Content -> DataResult.Content(result.data.agentPanelTabOrder)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+
     suspend fun reportIssue(diagnostics: String): Boolean {
         bridge.log("agent_diagnostics_report ${diagnostics.toMemberDetailDiagnosticsLine()}")
         val ok = settingsCapabilities.sendFeedback()
@@ -1236,6 +1286,14 @@ private fun rememberMemberDetailRouteProvider(
                 logger = { message -> bridge.log("member_detail_repository $message") }
             )
         }
+    val settingsRepository: ai.slock.compose.data.SettingsServerManagementRepository =
+        remember(networkClient, authStore) {
+            ai.slock.compose.data.RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("member_detail_settings_repository $message") }
+            )
+        }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val agentDetailStore = sharedStores.agentDetailStore
     val serverMembersStore = sharedStores.serverMembersStore
@@ -1245,11 +1303,12 @@ private fun rememberMemberDetailRouteProvider(
             diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
         )
     }
-    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore, serverMembersStore, agentsApiClient) {
+    return remember(bridge, authStore, memberRepository, settingsRepository, settingsCapabilities, agentDetailStore, serverMembersStore, agentsApiClient) {
         MemberDetailRouteProvider(
             bridge = bridge,
             authStore = authStore,
             memberRepository = memberRepository,
+            settingsRepository = settingsRepository,
             settingsCapabilities = settingsCapabilities,
             agentDetailStore = agentDetailStore,
             serverMembersStore = serverMembersStore,
@@ -1271,8 +1330,12 @@ private fun MemberDetailPageContent() {
         return
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
+    val routeScope = rememberCoroutineScope()
     var routeState by remember(payload.memberId) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
+    }
+    var agentPanelTabOrder by remember(payload.memberId, payload.agentPanelTabOrder) {
+        mutableStateOf(payload.agentPanelTabOrder)
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
@@ -1314,6 +1377,18 @@ private fun MemberDetailPageContent() {
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Background)
+    }
+    LaunchedEffect(provider, payload.memberId, statusLookupServerId, expectedKind) {
+        statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (expectedKind == MemberKind.Human) return@LaunchedEffect
+        when (val result = provider.loadAgentPanelTabOrder()) {
+            is DataResult.Content -> agentPanelTabOrder = result.data
+            is DataResult.Empty -> Unit
+            is DataResult.Error ->
+                bridge.log("member_detail_agent_tab_order_load_failed code=${result.error.code}")
+            is DataResult.NoPermission ->
+                bridge.log("member_detail_agent_tab_order_load_blocked code=${result.blocker.code}")
+        }
     }
 
     when (val current = routeState) {
@@ -1434,7 +1509,31 @@ private fun MemberDetailPageContent() {
                     timeContext = timeContext,
                     sharedAgentDetailStore = provider.agentDetailStore,
                     initialAgentTab = initialAgentTab,
-                    agentPanelTabOrder = payload.agentPanelTabOrder,
+                    agentPanelTabOrder = agentPanelTabOrder,
+                    onAgentPanelTabOrderChange = { orderedTabs ->
+                        val previousOrder = agentPanelTabOrder
+                        val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
+                        if (nextOrder != previousOrder) {
+                            agentPanelTabOrder = nextOrder
+                            routeScope.launch {
+                                when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
+                                    is DataResult.Content -> agentPanelTabOrder = result.data
+                                    is DataResult.Empty -> {
+                                        agentPanelTabOrder = previousOrder
+                                        bridge.toast("Unable to save tab order")
+                                    }
+                                    is DataResult.Error -> {
+                                        agentPanelTabOrder = previousOrder
+                                        bridge.toast("Failed to save tab order: ${result.error.code}")
+                                    }
+                                    is DataResult.NoPermission -> {
+                                        agentPanelTabOrder = previousOrder
+                                        bridge.toast("You do not have permission to update tab order.")
+                                    }
+                                }
+                            }
+                        }
+                    },
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     agentsApiClient = provider.agentsApiClient
@@ -2205,6 +2304,7 @@ private fun MembersDetailContent(
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
     agentPanelTabOrder: List<String> = emptyList(),
+    onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     // #89: forwarded to the Permissions tab so it can call
@@ -2556,7 +2656,8 @@ private fun MembersDetailContent(
                 MembersAgentTabBar(
                     tabs = visibleTabs,
                     selectedTab = selectedTab,
-                    onSelectedTabChange = { selectedTab = it }
+                    onSelectedTabChange = { selectedTab = it },
+                    onReorderTabs = onAgentPanelTabOrderChange
                 )
             }
             if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
@@ -3354,17 +3455,88 @@ private fun MembersAgentTabBar(
     tabs: List<MembersAgentDetailTab>,
     selectedTab: MembersAgentDetailTab,
     onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
+    onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    SlockTopTabBar(
-        items = tabs.map { it.toSlockTabSpec().toTopTabBarItem() },
-        selectedKey = selectedTab.name,
-        onSelectedKeyChange = { key ->
-            tabs.firstOrNull { it.name == key }?.let(onSelectedTabChange)
-        },
-        modifier = modifier,
-        itemKeyPrefix = "members-agent-tab"
-    )
+    var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
+    var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
+    var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(SlockTopTabBarDefaults.Height)
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        LazyRow(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
+                val tab = tabs[index]
+                val spec = tab.toSlockTabSpec()
+                val selected = tab == selectedTab
+                val dragging = tab == draggedTab
+                Row(
+                    modifier = Modifier
+                        .width(spec.width)
+                        .fillMaxHeight()
+                        .background(
+                            when {
+                                dragging -> SlockColor.AccentCyan
+                                selected -> SlockColor.BrandYellow
+                                else -> SlockColor.SurfaceWhite
+                            }
+                        )
+                        .clickable { onSelectedTabChange(tab) }
+                        .pointerInput(tabs, tab, onReorderTabs) {
+                            if (onReorderTabs == null) return@pointerInput
+                            val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggedTab = tab
+                                    dragStartIndex = index
+                                    dragOffsetX = 0f
+                                },
+                                onDragEnd = {
+                                    val fromIndex = dragStartIndex
+                                    val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
+                                        .coerceIn(0, tabs.lastIndex)
+                                    if (fromIndex in tabs.indices && toIndex != fromIndex) {
+                                        onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
+                                    }
+                                    draggedTab = null
+                                    dragStartIndex = -1
+                                    dragOffsetX = 0f
+                                },
+                                onDragCancel = {
+                                    draggedTab = null
+                                    dragStartIndex = -1
+                                    dragOffsetX = 0f
+                                }
+                            ) { _, dragAmount ->
+                                dragOffsetX += dragAmount.x
+                            }
+                        }
+                        .padding(horizontal = SlockSpacing.Sm + SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
+                ) {
+                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
+                    Text(
+                        text = spec.label,
+                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .height(SlockTopTabBarDefaults.Height - SlockStroke.Default)
+                        .width(SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
+                )
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
 }
 
 private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
