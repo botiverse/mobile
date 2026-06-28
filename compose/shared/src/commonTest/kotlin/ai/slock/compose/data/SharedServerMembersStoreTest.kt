@@ -81,7 +81,7 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun applyPresencePatchesCachedAgentRoster() {
+    fun applyPresenceUpdatesStatusResolverWithoutRewritingCachedRoster() {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
         store.seed(
@@ -104,9 +104,42 @@ class SharedServerMembersStoreTest {
         )
 
         val members = store.state.value.entryFor(ServerId("server-1"))?.members.orEmpty()
-        assertEquals(AgentStatus.Thinking, members.single { it.id.value == "agent-1" }.agentStatus)
-        assertEquals(AgentStatus.Thinking.presence, members.single { it.id.value == "agent-1" }.presence)
+        assertEquals(AgentStatus.Online, members.single { it.id.value == "agent-1" }.agentStatus)
+        assertEquals(Presence.Offline, members.single { it.id.value == "agent-1" }.presence)
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
         assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
+    }
+
+    @Test
+    fun applyPresenceIgnoresSameVisibleStatusWithNewerSeq() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working,
+                statusLabel = "working",
+                serverSeq = 1L
+            )
+        )
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working,
+                statusLabel = "working",
+                serverSeq = 2L
+            )
+        )
+
+        assertEquals(1L, store.state.value.presenceFor("agent-1")?.serverSeq)
     }
 
     @Test
@@ -172,7 +205,7 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun applyPresencePatchesChannelMemberSliceBeforeFullRosterLoads() = runBlocking {
+    fun applyPresenceUpdatesStatusResolverWithoutRewritingChannelMemberSlice() = runBlocking {
         val repository = FakeMemberRepository()
         repository.channelMembersByChannel["channel-1"] =
             listOf(
@@ -199,8 +232,8 @@ class SharedServerMembersStoreTest {
                 .channelMemberSlice(ServerId("server-1"), ChannelId("channel-1"))
                 .members
                 .single()
-        assertEquals(AgentStatus.Thinking, member.agentStatus)
-        assertEquals(AgentStatus.Thinking.presence, member.presence)
+        assertEquals(AgentStatus.Online, member.agentStatus)
+        assertEquals(Presence.Active, member.presence)
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
             store.state.value.memberStatus(ServerId("server-1"), "agent-1")

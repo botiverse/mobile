@@ -276,14 +276,15 @@ internal class SharedRealtimeDomainEventOwner(
         }
         if (event is MemberPresenceUpdated && event.kind == ai.slock.compose.model.MemberKind.Agent) {
             activeSinks?.applyAgentActivity?.invoke(event)
-            activeSinks?.requestMemberDetailRefresh?.invoke()
         } else if (event.refreshesMemberDetail()) {
             activeSinks?.requestMemberDetailRefresh?.invoke()
         }
         activeSinks?.emitRouteMarker?.invoke(event)
-        activeSinks?.log?.invoke(
-            "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
-        )
+        if (event !is MemberPresenceUpdated) {
+            activeSinks?.log?.invoke(
+                "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+            )
+        }
     }
 
     private fun rememberAcceptedKey(key: String): Boolean {

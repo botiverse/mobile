@@ -69,7 +69,7 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun agentPresenceUpdatesActivityAndMemberDetailSinks() {
+    fun agentPresenceUpdatesActivitySinkWithoutRefreshingMemberDetail() {
         val owner = SharedRealtimeDomainEventOwner()
         val activityEvents = mutableListOf<MemberPresenceUpdated>()
         var refreshRequests = 0
@@ -89,7 +89,7 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", event, source = "app_shell")
 
         assertEquals(listOf(event), activityEvents)
-        assertEquals(1, refreshRequests)
+        assertEquals(0, refreshRequests)
     }
 
     @Test

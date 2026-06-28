@@ -310,71 +310,13 @@ class SharedServerMembersStore(
         if (memberId.isBlank()) return
         val current = _state.value
         val previousFact = current.presenceByMemberId[memberId]
+        if (!event.shouldReplacePresenceFact(previousFact)) return
+        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
         val nextPresenceFacts =
-            if (event.shouldReplacePresenceFact(previousFact)) {
-                current.presenceByMemberId + (memberId to event)
-            } else {
-                current.presenceByMemberId
-            }
-        var changed = false
-        val nextEntries =
-            current.entriesByServerId.mapValues { (_, entry) ->
-                var entryChanged = false
-                val nextMembers =
-                    entry.members.map { member ->
-                        if (member.kind == MemberKind.Agent && member.id.value == memberId) {
-                            entryChanged = true
-                            member.copy(
-                                presence = event.presence,
-                                agentStatus = event.agentStatus ?: member.agentStatus
-                            )
-                        } else {
-                            member
-                        }
-                    }
-                if (entryChanged) {
-                    changed = true
-                    entry.copy(members = nextMembers)
-                } else {
-                    entry
-                }
-            }
-        var channelChanged = false
-        val nextChannelSlices =
-            current.channelMemberSlices.mapValues { (_, slice) ->
-                var sliceChanged = false
-                val nextMembers =
-                    slice.members.map { member ->
-                        if (member.kind == MemberKind.Agent && member.id.value == memberId) {
-                            sliceChanged = true
-                            member.copy(
-                                presence = event.presence,
-                                agentStatus = event.agentStatus ?: member.agentStatus
-                            )
-                        } else {
-                            member
-                        }
-                    }
-                if (sliceChanged) {
-                    channelChanged = true
-                    slice.copy(members = nextMembers)
-                } else {
-                    slice
-                }
-            }
-        val factChanged = nextPresenceFacts != current.presenceByMemberId
-        if (!changed && !channelChanged && !factChanged) return
-        logger(
-            "shared_server_members_presence_apply memberId=$memberId " +
-                "presence=${event.presence} agentStatus=${event.agentStatus?.name.orEmpty()} " +
-                "statusLabel=${event.statusLabel.orEmpty()} serverSeq=${event.serverSeq ?: -1L} " +
-                "factChanged=$factChanged rosterChanged=$changed channelSliceChanged=$channelChanged"
-        )
+            current.presenceByMemberId + (memberId to event)
         _state.value =
             current.copy(
-                entriesByServerId = nextEntries,
-                presenceByMemberId = nextPresenceFacts,
-                channelMemberSlices = nextChannelSlices
+                presenceByMemberId = nextPresenceFacts
             )
     }
 
@@ -911,6 +853,12 @@ private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPres
         serverSeq != null && previous.serverSeq == null -> true
         else -> true
     }
+
+private fun MemberPresenceUpdated.hasSameVisiblePresenceAs(previous: MemberPresenceUpdated): Boolean =
+    presence == previous.presence &&
+        agentStatus == previous.agentStatus &&
+        statusLabel == previous.statusLabel &&
+        kind == previous.kind
 
 private fun String?.normalizedServerMembersId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }

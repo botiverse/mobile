@@ -12880,7 +12880,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =
-    this !is Heartbeat
+    this !is Heartbeat && this !is MemberPresenceUpdated
 
 internal fun decodeSharedShellRealtimeEvent(
     eventData: JSONObject,
