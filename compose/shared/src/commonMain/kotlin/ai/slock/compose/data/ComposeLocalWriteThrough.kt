@@ -29,43 +29,68 @@ import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
+import kotlin.time.TimeSource
 
 class ComposeLocalWriteThrough(
     private val store: ComposeLocalDataStore,
     private val logger: (String) -> Unit = {}
 ) {
-    suspend fun readHomeSnapshot(serverId: ServerId): HomeSnapshot? =
-        store.readHome(serverId).also { snapshot ->
+    suspend fun readHomeSnapshot(serverId: ServerId): HomeSnapshot? {
+        val startedAt = TimeSource.Monotonic.markNow()
+        return store.readHome(serverId).also { snapshot ->
             logger(
-                "read_home serverId=${serverId.value} hit=${snapshot != null} channels=${snapshot?.channels?.size ?: 0} directMessages=${snapshot?.directMessages?.size ?: 0}"
+                "store_hydrate domain=home source=local_read serverId=${serverId.value} " +
+                    "hit=${snapshot != null} channels=${snapshot?.channels?.size ?: 0} " +
+                    "directMessages=${snapshot?.directMessages?.size ?: 0} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
         }
+    }
 
-    suspend fun readThreadSnapshot(threadId: ThreadId): ThreadSnapshot? =
-        store.readThread(threadId).also { snapshot ->
+    suspend fun readThreadSnapshot(threadId: ThreadId): ThreadSnapshot? {
+        val startedAt = TimeSource.Monotonic.markNow()
+        return store.readThread(threadId).also { snapshot ->
             logger(
-                "read_thread threadId=${threadId.value} hit=${snapshot != null} messages=${snapshot?.messages?.size ?: 0} tasks=${snapshot?.tasks?.size ?: 0}"
+                "store_hydrate domain=thread source=local_read threadId=${threadId.value} " +
+                    "hit=${snapshot != null} messages=${snapshot?.messages?.size ?: 0} " +
+                    "tasks=${snapshot?.tasks?.size ?: 0} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
         }
+    }
 
     suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {
-            logger("write_home_skip source=$source reason=${result.localWriteSkipReason()}")
+            logger(
+                "store_merge_skip domain=home source=$source reason=${result.localWriteSkipReason()} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             return false
         }
+        val readStartedAt = TimeSource.Monotonic.markNow()
         val previous = store.readHome(snapshot.server.id)
+        val readMs = readStartedAt.elapsedNow().inWholeMilliseconds
+        val mergeStartedAt = TimeSource.Monotonic.markNow()
         val updatedSnapshot =
             snapshot
                 .withStoredDirectMessageMetadata(previous)
                 .preserveStableRowsFrom(previous)
+        val mergeMs = mergeStartedAt.elapsedNow().inWholeMilliseconds
         if (updatedSnapshot == previous) {
-            logger("write_home_skip source=$source reason=unchanged serverId=${snapshot.server.id.value}")
+            logger(
+                "store_merge_skip domain=home source=$source reason=unchanged serverId=${snapshot.server.id.value} " +
+                    "readMs=$readMs mergeMs=$mergeMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             return false
         }
+        val writeStartedAt = TimeSource.Monotonic.markNow()
         store.writeHome(updatedSnapshot)
+        val writeMs = writeStartedAt.elapsedNow().inWholeMilliseconds
         logger(
-            "write_home source=$source serverId=${snapshot.server.id.value} channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size}"
+            "store_merge domain=home source=$source serverId=${snapshot.server.id.value} " +
+                "channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size} " +
+                "readMs=$readMs mergeMs=$mergeMs writeMs=$writeMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
         return true
     }
@@ -110,30 +135,50 @@ class ComposeLocalWriteThrough(
     }
 
     suspend fun writeUnreadCounts(result: DataResult<ChannelUnreadSnapshot>, source: String) {
+        val startedAt = TimeSource.Monotonic.markNow()
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {
-            logger("write_home_unread_skip source=$source reason=${result.localWriteSkipReason()}")
+            logger(
+                "store_merge_skip domain=home_unread source=$source reason=${result.localWriteSkipReason()} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
             return
         }
+        val unreadWriteStartedAt = TimeSource.Monotonic.markNow()
         store.writeUnread(snapshot)
-        store.readHome(snapshot.server.id)?.let { home ->
+        val unreadWriteMs = unreadWriteStartedAt.elapsedNow().inWholeMilliseconds
+        var homeReadMs = 0L
+        var homeMergeMs = 0L
+        var homeWriteMs = 0L
+        val homeReadStartedAt = TimeSource.Monotonic.markNow()
+        val home = store.readHome(snapshot.server.id)
+        homeReadMs = homeReadStartedAt.elapsedNow().inWholeMilliseconds
+        home?.let { homeSnapshot ->
+            val homeMergeStartedAt = TimeSource.Monotonic.markNow()
             val updatedHome =
-                home.copy(
-                    channels = home.channels.map { it.withUnreadCounts(snapshot.unreadCounts) },
+                homeSnapshot.copy(
+                    channels = homeSnapshot.channels.map { it.withUnreadCounts(snapshot.unreadCounts) },
                     directMessages =
-                        home.directMessages.map { it.withUnreadCounts(snapshot.unreadCounts) },
+                        homeSnapshot.directMessages.map { it.withUnreadCounts(snapshot.unreadCounts) },
                     unreadTotal = snapshot.totalUnreadCount
-                ).preserveStableRowsFrom(home)
-            if (updatedHome != home) {
+                ).preserveStableRowsFrom(homeSnapshot)
+            homeMergeMs = homeMergeStartedAt.elapsedNow().inWholeMilliseconds
+            if (updatedHome != homeSnapshot) {
+                val homeWriteStartedAt = TimeSource.Monotonic.markNow()
                 store.writeHome(updatedHome)
+                homeWriteMs = homeWriteStartedAt.elapsedNow().inWholeMilliseconds
             }
         }
         logger(
-            "write_home_unread source=$source serverId=${snapshot.server.id.value} counts=${snapshot.unreadCounts.size} total=${snapshot.totalUnreadCount}"
+            "store_merge domain=home_unread source=$source serverId=${snapshot.server.id.value} " +
+                "counts=${snapshot.unreadCounts.size} total=${snapshot.totalUnreadCount} " +
+                "unreadWriteMs=$unreadWriteMs homeReadMs=$homeReadMs homeMergeMs=$homeMergeMs " +
+                "homeWriteMs=$homeWriteMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
     }
 
     suspend fun clearConversationUnread(channelId: ChannelId, source: String, serverId: ServerId? = null) {
+        val startedAt = TimeSource.Monotonic.markNow()
         store.clearChannelUnread(channelId)
         serverId?.let { id ->
             store.readHome(id)?.let { home ->
@@ -143,10 +188,14 @@ class ComposeLocalWriteThrough(
                 }
             }
         }
-        logger("clear_home_unread source=$source channelId=${channelId.value}")
+        logger(
+            "store_merge domain=home_unread source=$source operation=clear_channel channelId=${channelId.value} " +
+                "serverId=${serverId?.value.orEmpty()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
     }
 
     suspend fun clearServerUnread(serverId: ServerId, source: String) {
+        val startedAt = TimeSource.Monotonic.markNow()
         store.readUnread(serverId)?.let { unread ->
             val updatedUnread =
                 unread.copy(
@@ -163,7 +212,10 @@ class ComposeLocalWriteThrough(
                 store.writeHome(updatedHome)
             }
         }
-        logger("clear_home_unread_all source=$source serverId=${serverId.value}")
+        logger(
+            "store_merge domain=home_unread source=$source operation=clear_server serverId=${serverId.value} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
     }
 
     suspend fun writeRealtimeEvent(
@@ -178,6 +230,7 @@ class ComposeLocalWriteThrough(
         events: List<RealtimeEvent>,
         activeConversationId: String? = null
     ): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
         if (events.isEmpty()) return false
         val newMessages = mutableListOf<Message>()
         val updatedMessages = mutableListOf<Message>()
@@ -205,6 +258,11 @@ class ComposeLocalWriteThrough(
         if (updatedMessages.isNotEmpty()) {
             wrote = writeRealtimeMessages(serverId, updatedMessages, incrementUnread = false, activeConversationId) || wrote
         }
+        logger(
+            "store_merge domain=realtime source=events serverId=${serverId.value} events=${events.size} " +
+                "newMessages=${newMessages.size} updatedMessages=${updatedMessages.size} wrote=$wrote " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
         return wrote
     }
 
@@ -215,12 +273,15 @@ class ComposeLocalWriteThrough(
         fallbackHeader: ConversationSummary? = null,
         fallbackParentMessage: Message? = null
     ): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
         val snapshotStreamChannelId = snapshot.conversation.writeThroughCanonicalChannelId()
+        val readStartedAt = TimeSource.Monotonic.markNow()
         val storedConversation =
             store.readThread(snapshot.conversation.threadId)?.conversation
                 ?: fallbackThreadId
                     ?.takeIf { it == snapshot.conversation.threadId || it.value == snapshotStreamChannelId.value }
                     ?.let { store.readThread(it)?.conversation }
+        val readMs = readStartedAt.elapsedNow().inWholeMilliseconds
         val fallbackProof =
             ThreadFallbackProof.resolve(
                 snapshotConversation = snapshot.conversation,
@@ -297,6 +358,12 @@ class ComposeLocalWriteThrough(
                     alias = true
                 )
             } ?: false
+        logger(
+            "store_merge domain=thread source=$source threadId=${updatedSnapshot.conversation.threadId.value} " +
+                "streamChannelId=${streamChannelId.value} messages=${updatedSnapshot.messages.size} " +
+                "tasks=${updatedSnapshot.tasks.size} wrote=$wroteThread aliasWrote=$wroteAlias " +
+                "readMs=$readMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
         return wroteThread || wroteAlias
     }
 
@@ -308,25 +375,34 @@ class ComposeLocalWriteThrough(
         hasParent: Boolean,
         alias: Boolean = false
     ): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val readStartedAt = TimeSource.Monotonic.markNow()
         val existingSnapshot = store.readThread(snapshot.conversation.threadId)
+        val readMs = readStartedAt.elapsedNow().inWholeMilliseconds
+        val mergeStartedAt = TimeSource.Monotonic.markNow()
         val patch = snapshot.reduceThreadSnapshotFrom(existingSnapshot)
+        val mergeMs = mergeStartedAt.elapsedNow().inWholeMilliseconds
         if (!patch.changed) {
             logger(
-                "write_thread_skip source=$source reason=unchanged threadId=${snapshot.conversation.threadId.value} " +
+                "store_merge_skip domain=thread source=$source reason=unchanged threadId=${snapshot.conversation.threadId.value} " +
                     "selectorMessages=${patch.selector.messageIds.size} selectorTasks=${patch.selector.taskIds.size} " +
-                    "lastSeq=${patch.selector.lastSeq} alias=$alias"
+                    "lastSeq=${patch.selector.lastSeq} alias=$alias readMs=$readMs mergeMs=$mergeMs " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
             return false
         }
+        val writeStartedAt = TimeSource.Monotonic.markNow()
         store.writeThread(patch.snapshot)
+        val writeMs = writeStartedAt.elapsedNow().inWholeMilliseconds
         logger(
-            "thread_patch source=$source threadId=${snapshot.conversation.threadId.value} " +
+            "store_merge_patch domain=thread source=$source threadId=${snapshot.conversation.threadId.value} " +
                 "streamChannelId=${streamChannelId.value} timelineChanged=${patch.timelineChanged} " +
                 "changedMessages=${patch.changedMessageIds.size} changedMessageIds=${patch.changedMessageIds.logIds { it.value }} " +
                 "changedTasks=${patch.changedTaskIds.size} changedTaskIds=${patch.changedTaskIds.logIds { it.value }} " +
                 "originChanged=${patch.originChanged} selectorMessages=${patch.selector.messageIds.size} " +
                 "selectorTasks=${patch.selector.taskIds.size} lastSeq=${patch.selector.lastSeq} " +
-                "rawMessages=$rawMessageCount parent=$hasParent alias=$alias"
+                "rawMessages=$rawMessageCount parent=$hasParent alias=$alias readMs=$readMs mergeMs=$mergeMs " +
+                "writeMs=$writeMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
         return true
     }
@@ -337,11 +413,14 @@ class ComposeLocalWriteThrough(
         incrementUnread: Boolean,
         activeConversationId: String?
     ): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
         if (messages.isEmpty()) return false
         var wroteHome = false
         var wroteThread = false
+        var streamCount = 0
         messages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
             .forEach { (streamChannelId, streamMessages) ->
+                streamCount += 1
                 val threadId = ThreadId(streamChannelId.value)
                 val existing = store.readThread(threadId)
                 val existingMessageIds = existing?.messages.orEmpty().map { it.id }.toSet()
@@ -401,6 +480,11 @@ class ComposeLocalWriteThrough(
                         activeConversationId = activeConversationId
                     ) || wroteHome
             }
+        logger(
+            "store_merge domain=realtime_messages serverId=${serverId.value} streams=$streamCount " +
+                "messages=${messages.size} incrementUnread=$incrementUnread wroteThread=$wroteThread wroteHome=$wroteHome " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
         return wroteHome || wroteThread
     }
 
@@ -412,6 +496,7 @@ class ComposeLocalWriteThrough(
         incrementUnread: Boolean,
         activeConversationId: String?
     ): Boolean {
+        val startedAt = TimeSource.Monotonic.markNow()
         val home = store.readHome(serverId) ?: return false
         val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return false
         var totalUnreadIncrement = 0
@@ -460,6 +545,11 @@ class ComposeLocalWriteThrough(
             )
         if (updatedHome == home) return false
         store.writeHome(updatedHome)
+        logger(
+            "store_merge domain=home_preview source=realtime_message serverId=${serverId.value} " +
+                "streamChannelId=${streamChannelId.value} messages=${messages.size} unreadCandidates=${unreadCandidateMessages.size} " +
+                "unreadIncrement=$totalUnreadIncrement durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
         return true
     }
 }
