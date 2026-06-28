@@ -7,4 +7,5 @@ target 'iosApp' do
   pod 'shared', :path => '../shared'
 
   pod 'SDWebImage'
+  pod 'Socket.IO-Client-Swift', '~> 16.1'
 end
