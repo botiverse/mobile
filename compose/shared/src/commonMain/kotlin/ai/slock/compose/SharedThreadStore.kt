@@ -1916,9 +1916,10 @@ internal sealed interface SharedThreadIntent {
 internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
     private val scope: CoroutineScope,
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload()
 ) {
-    private val _state = MutableStateFlow(SharedThreadState())
+    private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
@@ -3029,11 +3030,17 @@ internal class SharedThreadStore(
 
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
+    private val initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     private val diagnosticsLogger: ((String) -> Unit)? = null
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedThreadStore(dataSource = dataSource, scope = viewModelScope, diagnosticsLogger = diagnosticsLogger)
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = viewModelScope,
+                diagnosticsLogger = diagnosticsLogger,
+                initialPayload = initialPayload
+            )
         }
     private val store: SharedThreadStore by storeDelegate
     val state: StateFlow<SharedThreadState>

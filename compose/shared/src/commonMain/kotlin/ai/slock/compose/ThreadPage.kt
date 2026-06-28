@@ -1977,7 +1977,11 @@ internal fun SharedThreadRouteContent(
     }
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
-            SharedThreadViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
+            SharedThreadViewModel(
+                dataSource = dataSource,
+                initialPayload = initialPayload,
+                diagnosticsLogger = { bridge.log(it) }
+            )
         }
     val payload by remember(threadViewModel) {
         threadViewModel.payloadFlow()

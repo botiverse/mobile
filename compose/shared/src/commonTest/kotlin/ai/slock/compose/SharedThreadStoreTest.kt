@@ -246,6 +246,35 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun storeInitialPayloadKeepsRouteIdentityBeforeStartDispatch() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val routePayload =
+            basePayload().copy(
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1"
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = routePayload
+            )
+
+        val payload = store.state.value.payload
+        val identity = payload.resolveThreadRouteIdentity()
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals("channel:channel-1", identity.instanceKey)
+        assertEquals("channel-1", store.state.value.timelineSlice.sourceThreadId)
+        scope.cancel()
+    }
+
+    @Test
     fun unresolvedReplyStartDoesNotRenderPreviousResolvedReplyTimeline() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
