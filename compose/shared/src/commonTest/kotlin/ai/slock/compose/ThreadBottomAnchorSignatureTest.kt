@@ -818,4 +818,59 @@ class ThreadBottomAnchorSignatureTest {
         assertNotEquals(prepared.threadActionCardSignature(), executed.threadActionCardSignature())
         assertNotEquals(prepared.threadActionCard(), executed.threadActionCard())
     }
+
+    @Test
+    fun rowDerivedSignatures_ignoreUnrelatedMessageChromeChanges() {
+        val metadata =
+            mapOf(
+                "actionCard.kind" to "action-card",
+                "actionCard.type" to "channel:create",
+                "actionCard.state" to "prepared"
+            )
+        val base =
+            message(
+                "m1",
+                body = "original body",
+                metadata = metadata
+            ).copy(
+                authorId = "user-1",
+                authorName = "User 1",
+                timestampLabel = "2026-06-28T01:00:00.000Z"
+            )
+        val chromeOnlyChange =
+            base.copy(
+                body = "edited body",
+                avatarWireValue = "https://example.com/avatar.png",
+                replyCount = 3,
+                unreadReplyCount = 1,
+                isSaved = true
+            )
+
+        assertEquals(base.threadActionCardSignature(), chromeOnlyChange.threadActionCardSignature())
+        assertEquals(base.threadCompactAuthorSignature(), chromeOnlyChange.threadCompactAuthorSignature())
+    }
+
+    @Test
+    fun compactAuthorSignature_changesWhenGroupingInputsChange() {
+        val base =
+            message("m1")
+                .copy(
+                    authorId = "user-1",
+                    authorName = "User 1",
+                    timestampLabel = "2026-06-28T01:00:00.000Z"
+                )
+
+        assertNotEquals(
+            base.threadCompactAuthorSignature(),
+            base.copy(authorId = "user-2").threadCompactAuthorSignature()
+        )
+        assertNotEquals(
+            base.threadCompactAuthorSignature(),
+            base.copy(timestampLabel = "2026-06-28T01:06:00.000Z").threadCompactAuthorSignature()
+        )
+        assertNotEquals(
+            base.threadCompactAuthorSignature(),
+            base.copy(messageType = "System").threadCompactAuthorSignature()
+        )
+    }
 }

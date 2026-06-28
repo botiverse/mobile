@@ -219,6 +219,8 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
+private val ThreadMessageBodyTextStyle =
+    SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
 
 private data class ThreadMembersProjection(
     val membersCount: Int,
@@ -7482,14 +7484,19 @@ private fun ThreadMessagesList(
                 SideEffect {
                     firstViewportProbe.recordComposedMessage(message.id, absoluteMessageIndex)
                 }
-                val messagePerformanceKey = threadMessagePerformanceKey(message.id, absoluteMessageIndex)
+                val messagePerformanceKey =
+                    remember(message.id, absoluteMessageIndex) {
+                        threadMessagePerformanceKey(message.id, absoluteMessageIndex)
+                    }
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val previousCompactAuthorSignature = previousMessage?.threadCompactAuthorSignature()
+                val messageCompactAuthorSignature = message.threadCompactAuthorSignature()
                 val suppressRepeatedAuthor =
                     remember(
                         renderPayload.compactConsecutiveMessages,
                         renderConfig.timeContext.localOffsetMinutes,
-                        message,
-                        previousMessage
+                        previousCompactAuthorSignature,
+                        messageCompactAuthorSignature
                     ) {
                         renderPayload.compactConsecutiveMessages &&
                             shouldSuppressCompactThreadAuthor(
@@ -7507,7 +7514,7 @@ private fun ThreadMessagesList(
                     }
                 val actionCard =
                     if (isRichContentEnabled) {
-                        remember(actionCardSignature, messagePerformanceKey) {
+                        remember(actionCardSignature) {
                             val startedAt = TimeSource.Monotonic.markNow()
                             message.threadActionCard()
                                 .also { card ->
@@ -7943,6 +7950,19 @@ internal fun KuiklyThreadMessageItem.threadActionCardSignature(): ThreadMessageA
 
 internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
     actionCardFromMessageMetadata(metadata)
+
+internal data class ThreadCompactAuthorSignature(
+    val isSystemMessage: Boolean,
+    val authorIdentityKey: String,
+    val timestampLabel: String
+)
+
+internal fun KuiklyThreadMessageItem.threadCompactAuthorSignature(): ThreadCompactAuthorSignature =
+    ThreadCompactAuthorSignature(
+        isSystemMessage = isSystemMessage(),
+        authorIdentityKey = authorIdentityKey(),
+        timestampLabel = timestampLabel
+    )
 
 internal fun KuiklyThreadScreenPayload.threadActionMessage(
     messageId: String,
@@ -8636,6 +8656,10 @@ private fun ThreadMessageCard(
         richContentEnabled &&
             !message.hasLocalSendState() &&
             message.hasThreadFooterMeta(replyMetadata, hasReplyDraft)
+    val messagePerformanceKey =
+        remember(message.id, messageIndex) {
+            threadMessagePerformanceKey(message.id, messageIndex)
+        }
     Box(
         modifier =
             Modifier
@@ -8756,7 +8780,7 @@ private fun ThreadMessageCard(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                performanceKey = messagePerformanceKey,
                                 diagnosticsLogger = diagnosticsLogger,
                                 onCommit = { onCommitActionCard(message.id) }
                             )
@@ -8780,19 +8804,19 @@ private fun ThreadMessageCard(
                                 if (richContentEnabled) {
                                     SlockMarkdownBody(
                                         body = message.body,
-                                        textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                        textStyle = ThreadMessageBodyTextStyle,
                                         highlightedMentions = highlightedMentions,
                                         knownChannelNames = knownMarkdownChannelNames,
                                         resolveTagLabel = resolveMarkdownTagLabel,
                                         onOpenTag = onOpenMarkdownTag,
                                         onOpenUrl = onOpenMarkdownUrl,
-                                        performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                        performanceKey = messagePerformanceKey,
                                         performanceLogger = diagnosticsLogger
                                     )
                                 } else {
                                     Text(
                                         text = message.body,
-                                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                        style = ThreadMessageBodyTextStyle,
                                         color = SlockColor.TextBlack
                                     )
                                 }
