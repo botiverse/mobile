@@ -1,9 +1,11 @@
 package ai.slock.android.shared
 
+import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
@@ -13,7 +15,7 @@ import kotlin.math.abs
 
 class SlockMarkdownRerenderConnectedTest {
     @Test
-    fun inlineMarkdownChipsRenderAfterRepeatedUpdatesInSameSlot() {
+    fun inlineMarkdownChipsRenderAcrossLazyColumnRows() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
@@ -28,26 +30,45 @@ class SlockMarkdownRerenderConnectedTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            instrumentation.waitForIdleSync()
-            Thread.sleep(1_200)
-            instrumentation.waitForIdleSync()
-
-            val screenshot = captureActivityBitmap(scenario)
-            val pinkPixels = screenshot.countPixelsNear(ChannelChipPink)
-            val yellowPixels = screenshot.countPixelsNear(HighlightedMentionYellow)
-            val pinkRows = screenshot.countVerticalColorClusters(ChannelChipPink)
-            val yellowRows = screenshot.countVerticalColorClusters(HighlightedMentionYellow)
-            screenshot.recycle()
+            val result =
+                waitForMarkdownChipRows(
+                    scenario = scenario,
+                    instrumentation = instrumentation,
+                    minRows = MinVisibleChipRows
+                )
 
             assertTrue(
-                "Expected repeated #markdown专修 channel chips in the LazyColumn; pinkPixels=$pinkPixels pinkRows=$pinkRows",
-                pinkRows >= 8
+                "Expected repeated #markdown专修 channel chips in the LazyColumn; bestScan=$result",
+                result.pinkRows >= MinVisibleChipRows
             )
             assertTrue(
-                "Expected repeated highlighted @artin mention chips in the LazyColumn; yellowPixels=$yellowPixels yellowRows=$yellowRows",
-                yellowRows >= 8
+                "Expected repeated highlighted @artin mention chips in the LazyColumn; bestScan=$result",
+                result.yellowRows >= MinVisibleChipRows
             )
         }
+    }
+
+    private fun waitForMarkdownChipRows(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        instrumentation: Instrumentation,
+        minRows: Int
+    ): MarkdownChipScanResult {
+        val deadline = SystemClock.uptimeMillis() + RenderTimeoutMs
+        var best = MarkdownChipScanResult()
+        do {
+            instrumentation.waitForIdleSync()
+            val screenshot = captureActivityBitmap(scenario)
+            val current = screenshot.scanMarkdownChipRows()
+            screenshot.recycle()
+            if (current.pinkRows >= minRows && current.yellowRows >= minRows) {
+                return current
+            }
+            if (current.score > best.score) {
+                best = current
+            }
+            SystemClock.sleep(PollIntervalMs)
+        } while (SystemClock.uptimeMillis() < deadline)
+        return best
     }
 
     private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
@@ -64,17 +85,13 @@ class SlockMarkdownRerenderConnectedTest {
         return requireNotNull(bitmap) { "Unable to capture markdown rerender screenshot" }
     }
 
-    private fun Bitmap.countPixelsNear(target: Int, tolerance: Int = 18): Int {
-        val row = IntArray(width)
-        var count = 0
-        for (y in 0 until height) {
-            getPixels(row, 0, width, 0, y, width, 1)
-            for (pixel in row) {
-                if (pixel.isNear(target, tolerance)) count++
-            }
-        }
-        return count
-    }
+    private fun Bitmap.scanMarkdownChipRows(): MarkdownChipScanResult =
+        MarkdownChipScanResult(
+            pinkPixels = countPixelsNear(ChannelChipPink),
+            yellowPixels = countPixelsNear(HighlightedMentionYellow),
+            pinkRows = countVerticalColorClusters(ChannelChipPink),
+            yellowRows = countVerticalColorClusters(HighlightedMentionYellow)
+        )
 
     private fun Bitmap.countVerticalColorClusters(
         target: Int,
@@ -107,12 +124,37 @@ class SlockMarkdownRerenderConnectedTest {
         return clusters
     }
 
+    private fun Bitmap.countPixelsNear(target: Int, tolerance: Int = 18): Int {
+        val row = IntArray(width)
+        var count = 0
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (pixel in row) {
+                if (pixel.isNear(target, tolerance)) count++
+            }
+        }
+        return count
+    }
+
     private fun Int.isNear(target: Int, tolerance: Int): Boolean =
         abs(Color.red(this) - Color.red(target)) <= tolerance &&
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
             abs(Color.blue(this) - Color.blue(target)) <= tolerance
 
+    private data class MarkdownChipScanResult(
+        val pinkPixels: Int = 0,
+        val yellowPixels: Int = 0,
+        val pinkRows: Int = 0,
+        val yellowRows: Int = 0
+    ) {
+        val score: Int
+            get() = pinkRows + yellowRows
+    }
+
     private companion object {
+        private const val MinVisibleChipRows = 8
+        private const val RenderTimeoutMs = 4_000L
+        private const val PollIntervalMs = 120L
         private val ChannelChipPink = Color.rgb(254, 216, 229)
         private val HighlightedMentionYellow = Color.rgb(255, 212, 64)
     }
