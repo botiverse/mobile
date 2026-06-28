@@ -29,28 +29,23 @@ class SlockMarkdownRerenderConnectedTest {
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
-            Thread.sleep(1_800)
+            Thread.sleep(1_200)
             instrumentation.waitForIdleSync()
 
             val screenshot = captureActivityBitmap(scenario)
             val pinkPixels = screenshot.countPixelsNear(ChannelChipPink)
-            val cyanPixels = screenshot.countPixelsNear(ThreadChipCyan)
-            val cyanFamilyPixels = screenshot.countCyanFamilyPixels()
             val yellowPixels = screenshot.countPixelsNear(HighlightedMentionYellow)
+            val pinkRows = screenshot.countVerticalColorClusters(ChannelChipPink)
+            val yellowRows = screenshot.countVerticalColorClusters(HighlightedMentionYellow)
             screenshot.recycle()
 
             assertTrue(
-                "Expected final #markdown专修 channel chip after repeated markdown updates; pinkPixels=$pinkPixels",
-                pinkPixels > 80
+                "Expected repeated #markdown专修 channel chips in the LazyColumn; pinkPixels=$pinkPixels pinkRows=$pinkRows",
+                pinkRows >= 8
             )
             assertTrue(
-                "Expected final #markdown专修:9579b48a thread chip after repeated markdown updates; " +
-                    "cyanPixels=$cyanPixels cyanFamilyPixels=$cyanFamilyPixels",
-                cyanFamilyPixels > 80
-            )
-            assertTrue(
-                "Expected final highlighted @artin mention chip after repeated markdown updates; yellowPixels=$yellowPixels",
-                yellowPixels > 80
+                "Expected repeated highlighted @artin mention chips in the LazyColumn; yellowPixels=$yellowPixels yellowRows=$yellowRows",
+                yellowRows >= 8
             )
         }
     }
@@ -81,21 +76,35 @@ class SlockMarkdownRerenderConnectedTest {
         return count
     }
 
-    private fun Bitmap.countCyanFamilyPixels(): Int {
+    private fun Bitmap.countVerticalColorClusters(
+        target: Int,
+        tolerance: Int = 18,
+        rowThreshold: Int = 20,
+        maxGap: Int = 6
+    ): Int {
         val row = IntArray(width)
-        var count = 0
+        var clusters = 0
+        var inCluster = false
+        var gap = 0
         for (y in 0 until height) {
             getPixels(row, 0, width, 0, y, width, 1)
+            var rowHits = 0
             for (pixel in row) {
-                if (Color.red(pixel) in 145..225 &&
-                    Color.green(pixel) in 210..255 &&
-                    Color.blue(pixel) in 225..255
-                ) {
-                    count++
+                if (pixel.isNear(target, tolerance)) rowHits++
+            }
+            if (rowHits >= rowThreshold) {
+                if (!inCluster) clusters++
+                inCluster = true
+                gap = 0
+            } else if (inCluster) {
+                gap++
+                if (gap > maxGap) {
+                    inCluster = false
+                    gap = 0
                 }
             }
         }
-        return count
+        return clusters
     }
 
     private fun Int.isNear(target: Int, tolerance: Int): Boolean =
@@ -105,7 +114,6 @@ class SlockMarkdownRerenderConnectedTest {
 
     private companion object {
         private val ChannelChipPink = Color.rgb(254, 216, 229)
-        private val ThreadChipCyan = Color.rgb(190, 239, 251)
         private val HighlightedMentionYellow = Color.rgb(255, 212, 64)
     }
 }

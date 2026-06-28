@@ -1303,6 +1303,21 @@ fun SlockMarkdownBody(
         val inlineContent = remember(annotator) {
             annotator.inlineContent?.invoke().orEmpty()
         }
+        if (performanceKey != null && tokenPlan.tagTokens().isNotEmpty()) {
+            val placeholderIds = renderedText.fontResolvedText.slockMarkdownInlineContentIds()
+            val inlineContentIds = inlineContent.keys
+            val missingInlineContentIds = placeholderIds - inlineContentIds
+            val missingPlaceholderIds = inlineContentIds - placeholderIds
+            if (placeholderIds.isEmpty() || missingInlineContentIds.isNotEmpty() || missingPlaceholderIds.isNotEmpty()) {
+                performanceLogger(
+                    "thread_markdown_inline_content_mismatch key=$performanceKey " +
+                        "contentLength=${content.length} tagTokens=${tokenPlan.tagTokens().size} " +
+                        "placeholderIds=${placeholderIds.sorted()} inlineContentIds=${inlineContentIds.sorted()} " +
+                        "missingInlineContentIds=${missingInlineContentIds.sorted()} " +
+                        "missingPlaceholderIds=${missingPlaceholderIds.sorted()}"
+                )
+            }
+        }
         val renderDurationMs = renderStartedAt.elapsedNow().inWholeMilliseconds
         if (performanceKey != null && shouldLogSlockMarkdownPerformance(renderDurationMs)) {
             performanceLogger(
