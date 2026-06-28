@@ -587,10 +587,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             renderViewExportCreator = { context -> SlockPixelAvatarRenderView(context) }
         )
         kuiklyRenderExport.renderViewExport(
-            SlockLogoBadgeChromeRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockLogoBadgeChromeRenderView(context) }
-        )
-        kuiklyRenderExport.renderViewExport(
             SlockKuiklyPageRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockKuiklyPageRenderView(context, this) }
         )

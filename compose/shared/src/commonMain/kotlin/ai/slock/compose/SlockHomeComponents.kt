@@ -68,9 +68,6 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.Path
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
@@ -119,7 +116,6 @@ private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
-private val HomeTiltedBadgeSlant = 3.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
@@ -1555,24 +1551,13 @@ private fun SlockRotatedLogoBadge(
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
-    if (isSlockNativeLogoBadgeChromeSupported()) {
-        SlockNativeRotatedLogoBadge(
-            text = text,
-            modifier = modifier,
-            showDropdown = showDropdown,
-            unread = unread,
-            textStyle = textStyle
-        )
-        return
-    }
-
     Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
-        RectangleBadgeChrome(
+        RectBadgeChrome(
             color = SlockColor.ShadowBlack,
             borderColor = Color.Transparent,
             modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
         )
-        RectangleBadgeChrome(
+        RectBadgeChrome(
             color = SlockColor.TextBlack,
             borderColor = SlockColor.BorderBlack,
             modifier = Modifier.matchParentSize()
@@ -1593,81 +1578,18 @@ private fun SlockRotatedLogoBadge(
 }
 
 @Composable
-private fun SlockNativeRotatedLogoBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    showDropdown: Boolean = false,
-    unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
-) {
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-        SlockNativeLogoBadgeChrome(
-            fillColor = SlockColor.TextBlackArgb,
-            borderColor = SlockColor.BorderBlackArgb,
-            shadowColor = SlockColor.ShadowBlackArgb,
-            strokeWidth = SlockStroke.Default,
-            shadowOffset = HomeSmallShadowOffset,
-            rotationDegrees = -2f,
-            modifier = Modifier.matchParentSize()
-        )
-        com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier =
-                Modifier
-                    .rotate(-2f)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-            if (showDropdown) {
-                Spacer(Modifier.width(4.dp))
-                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
-            }
-        }
-        if (unread) {
-            Box(Modifier.matchParentSize().rotate(-2f)) {
-                ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
-            }
-        }
-    }
-}
-
-@Composable
-private fun RectangleBadgeChrome(
+private fun RectBadgeChrome(
     color: Color,
     borderColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val strokeWidth = SlockStroke.Default.toPx()
-        drawRect(color = color, style = Fill)
-        if (borderColor != Color.Transparent) {
-            drawRect(color = borderColor, style = Stroke(width = strokeWidth))
+    val borderedModifier =
+        if (borderColor == Color.Transparent) {
+            modifier.background(color)
+        } else {
+            modifier.background(color).border(SlockStroke.Default, borderColor)
         }
-    }
-}
-
-@Composable
-private fun SlantedBadgeChrome(
-    color: Color,
-    borderColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val slant = HomeTiltedBadgeSlant.toPx()
-        val strokeWidth = SlockStroke.Default.toPx()
-        val path =
-            Path().apply {
-                moveTo(slant, 0f)
-                lineTo(size.width, 0f)
-                lineTo(size.width - slant, size.height)
-                lineTo(0f, size.height)
-                close()
-            }
-        drawPath(path = path, color = color, style = Fill)
-        if (borderColor != Color.Transparent) {
-            drawPath(path = path, color = borderColor, style = Stroke(width = strokeWidth))
-        }
-    }
+    Box(borderedModifier)
 }
 
 @Composable
