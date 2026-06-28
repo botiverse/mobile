@@ -532,7 +532,7 @@ class SlockHomeComponentsTest {
                 testMember("agent-3", MemberKind.Agent, permissionBadges = listOf("computer:linux"))
             )
         assertEquals(
-            11,
+            12,
             membersLazyItemCount(
                 agents = agents,
                 humansCount = 2,
@@ -541,7 +541,7 @@ class SlockHomeComponentsTest {
             )
         )
         assertEquals(
-            4,
+            5,
             membersLazyItemCount(
                 agents = agents,
                 humansCount = 2,
