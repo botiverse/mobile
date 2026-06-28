@@ -414,10 +414,22 @@ class SharedHomeSearchSavedStore(
     private suspend fun loadServerMembers(
         serverId: ServerId,
         priority: DataRequestPriority
-    ): DataResult<MemberSnapshot> =
-        serverMembersStore?.loadMembers(serverId, priority)
-            ?: memberRepository?.getMembers(priority, serverId)
+    ): DataResult<MemberSnapshot> {
+        val store = serverMembersStore
+        if (store != null) {
+            return when (val result = store.loadMembers(serverId, priority)) {
+                is DataResult.Content ->
+                    store.cachedSnapshot(serverId)
+                        ?.let { DataResult.Content(it) }
+                        ?: DataResult.Empty(EmptyReason.NoMembers)
+                is DataResult.Empty -> DataResult.Empty(result.reason)
+                is DataResult.Error -> DataResult.Error(result.error)
+                is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+            }
+        }
+        return memberRepository?.getMembers(priority, serverId)
             ?: DataResult.Error(ScreenError(code = "members_unavailable", retryable = false))
+    }
 
     private fun applySavedResult(
         result: DataResult<SavedSnapshot>,

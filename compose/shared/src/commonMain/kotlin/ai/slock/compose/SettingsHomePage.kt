@@ -2240,7 +2240,7 @@ private fun SlockAppShellContent() {
                 }
                 createChannelMembers =
                     when (val result = sharedStores.serverMembersStore.loadMembers(ServerId(serverId), DataRequestPriority.Visible)) {
-                        is DataResult.Content -> result.data.members
+                        is DataResult.Content -> sharedStores.serverMembersStore.cachedSnapshot(ServerId(serverId))?.members.orEmpty()
                         is DataResult.Empty,
                         is DataResult.Error,
                         is DataResult.NoPermission -> emptyList()
@@ -8906,7 +8906,9 @@ private fun SharedMembersScreen(
                 when (response) {
                     is DataResult.Content -> {
                         val content =
-                            SharedMembersUiState.Content(response.data.server, response.data.members, session.user.id)
+                            serverMembersStore.cachedSnapshot(ServerId(serverId))?.let { snapshot ->
+                                SharedMembersUiState.Content(snapshot.server, snapshot.members, session.user.id)
+                            } ?: SharedMembersUiState.Content(server, emptyList(), session.user.id)
                         onContentLoaded(content)
                         content
                     }

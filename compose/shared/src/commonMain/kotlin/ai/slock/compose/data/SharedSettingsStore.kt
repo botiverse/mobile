@@ -534,7 +534,7 @@ class SharedSettingsDataSource(
         when (val result = store.loadMembers(ServerId(cleanServerId), priority = DataRequestPriority.Background, force = force)) {
             is DataResult.Content ->
                 diagnosticsLogger?.invoke(
-                    "settings_member_status_refresh_result serverId=$cleanServerId result=content members=${result.data.members.size}"
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=content members=${store.cachedSnapshot(ServerId(cleanServerId))?.members.orEmpty().size}"
                 )
             is DataResult.Empty ->
                 diagnosticsLogger?.invoke(

@@ -143,7 +143,7 @@ class SharedHomeDataSource(
         when (val result = store.loadMembers(serverId, priority = priority, force = true)) {
             is DataResult.Content ->
                 diagnosticsLogger(
-                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=content members=${result.data.members.size}"
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=content members=${store.cachedSnapshot(serverId)?.members.orEmpty().size}"
                 )
             is DataResult.Empty ->
                 diagnosticsLogger(

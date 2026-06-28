@@ -33,11 +33,17 @@ internal class SharedMembersDataSource(
     suspend fun loadServerMembers(
         serverId: String
     ): DataResult<List<ai.slock.compose.model.MemberProfile>> {
-        return when (
-            val result =
-                serverMembersStore?.loadMembers(ai.slock.compose.model.ServerId(serverId), DataRequestPriority.Foreground)
-                    ?: memberRepository.getMembers(DataRequestPriority.Foreground, ai.slock.compose.model.ServerId(serverId))
-        ) {
+        val server = ai.slock.compose.model.ServerId(serverId)
+        val store = serverMembersStore
+        if (store != null) {
+            return when (val result = store.loadMembers(server, DataRequestPriority.Foreground)) {
+                is DataResult.Content -> DataResult.Content(store.cachedSnapshot(server)?.members.orEmpty())
+                is DataResult.Empty -> DataResult.Empty(result.reason)
+                is DataResult.Error -> result
+                is DataResult.NoPermission -> result
+            }
+        }
+        return when (val result = memberRepository.getMembers(DataRequestPriority.Foreground, server)) {
             is DataResult.Content -> DataResult.Content(result.data.members)
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> result

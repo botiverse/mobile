@@ -350,14 +350,14 @@ class SharedServerMembersStore(
         serverId: ServerId,
         priority: DataRequestPriority = DataRequestPriority.Visible,
         force: Boolean = false
-    ): DataResult<MemberSnapshot> {
+    ): DataResult<Unit> {
         val key = serverId.value.trim()
         if (key.isBlank()) {
             return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
         }
-        cachedLoadedSnapshot(key, force)?.let { return DataResult.Content(it) }
+        cachedLoadedSnapshot(key, force)?.let { return DataResult.Content(Unit) }
         return mutex.withLock {
-            cachedLoadedSnapshot(key, force)?.let { return@withLock DataResult.Content(it) }
+            cachedLoadedSnapshot(key, force)?.let { return@withLock DataResult.Content(Unit) }
             val previous = _state.value.entriesByServerId[key]
             putEntry(
                 key,
@@ -400,7 +400,7 @@ class SharedServerMembersStore(
                     logger(
                         "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
                     )
-                    return@withLock DataResult.Content(snapshot)
+                    return@withLock DataResult.Content(Unit)
                 }
                 is DataResult.Empty -> {
                     putEntry(
@@ -424,7 +424,7 @@ class SharedServerMembersStore(
                     logger("shared_server_members_load_result serverId=$key result=no_permission code=${result.blocker.code}")
                 }
             }
-            result
+            result.map { Unit }
         }
     }
 
@@ -613,6 +613,7 @@ class SharedServerMembersStore(
             }
         when (result) {
             is DataResult.Content -> {
+                val serverMembers = cachedSnapshot(ServerId(serverId))?.members.orEmpty()
                 val channelMembers =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
@@ -622,9 +623,9 @@ class SharedServerMembersStore(
                     }.orEmpty()
                 val suggestions =
                     if (mentionChannelId == null) {
-                        result.data.members.toServerMembersMemberSuggestions()
+                        serverMembers.toServerMembersMemberSuggestions()
                     } else {
-                        result.data.members.toServerMembersMemberSuggestions(
+                        serverMembers.toServerMembersMemberSuggestions(
                             localServerId = serverId,
                             inMentionChannelIds = channelMembers.map { it.id.value }.toSet()
                         ).mergeServerMembersMentionChannelSuggestions(

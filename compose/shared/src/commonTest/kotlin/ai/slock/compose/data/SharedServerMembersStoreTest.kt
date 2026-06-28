@@ -19,10 +19,10 @@ class SharedServerMembersStoreTest {
         val first = store.loadMembers(ServerId("server-1"))
         val second = store.loadMembers(ServerId("server-1"))
 
-        assertIs<DataResult.Content<MemberSnapshot>>(first)
-        assertIs<DataResult.Content<MemberSnapshot>>(second)
+        assertIs<DataResult.Content<Unit>>(first)
+        assertIs<DataResult.Content<Unit>>(second)
         assertEquals(1, repository.getMembersCalls)
-        assertEquals(listOf("u1"), second.data.members.map { it.id.value })
+        assertEquals(listOf("u1"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
         assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
     }
 
@@ -35,9 +35,9 @@ class SharedServerMembersStoreTest {
         repository.membersByServer["server-1"] = listOf(member("u2", "Mina"))
         val result = store.loadMembers(ServerId("server-1"), force = true)
 
-        assertIs<DataResult.Content<MemberSnapshot>>(result)
+        assertIs<DataResult.Content<Unit>>(result)
         assertEquals(2, repository.getMembersCalls)
-        assertEquals(listOf("u2"), result.data.members.map { it.id.value })
+        assertEquals(listOf("u2"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
     }
 
     @Test
@@ -48,9 +48,9 @@ class SharedServerMembersStoreTest {
         store.seed(MemberSnapshot(server("server-1"), listOf(member("u3", "Nina"))))
         val result = store.loadMembers(ServerId("server-1"))
 
-        assertIs<DataResult.Content<MemberSnapshot>>(result)
+        assertIs<DataResult.Content<Unit>>(result)
         assertEquals(0, repository.getMembersCalls)
-        assertEquals(listOf("u3"), result.data.members.map { it.id.value })
+        assertEquals(listOf("u3"), store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().map { it.id.value })
     }
 
     @Test
@@ -129,9 +129,10 @@ class SharedServerMembersStoreTest {
 
         val result = store.loadMembers(ServerId("server-1"))
 
-        assertIs<DataResult.Content<MemberSnapshot>>(result)
-        assertEquals(AgentStatus.Working, result.data.members.single { it.id.value == "agent-1" }.agentStatus)
-        assertEquals(AgentStatus.Working.presence, result.data.members.single { it.id.value == "agent-1" }.presence)
+        assertIs<DataResult.Content<Unit>>(result)
+        val agent = store.cachedSnapshot(ServerId("server-1"))?.members.orEmpty().single { it.id.value == "agent-1" }
+        assertEquals(AgentStatus.Working, agent.agentStatus)
+        assertEquals(AgentStatus.Working.presence, agent.presence)
     }
 
     @Test
