@@ -479,7 +479,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                                 "errorBodyText" to (throwable.message ?: "Attachment read failed")
                                         )
                                     }
-                    pending.callback?.invoke(result)
+                    runOnUiThread {
+                        SlockDiagnosticsLogger.record(
+                                "SlockKuiklyAttachment",
+                                "picker_callback_deliver code=${result["code"]} thread=${Thread.currentThread().name}"
+                        )
+                        pending.callback?.invoke(result)
+                    }
                 }
     }
 

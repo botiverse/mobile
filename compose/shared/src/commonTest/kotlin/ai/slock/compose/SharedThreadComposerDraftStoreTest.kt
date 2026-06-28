@@ -332,6 +332,69 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun uploadedFileDoesNotBlockNextPickedImageAttachment() {
+        val store = SharedThreadComposerDraftStore()
+        val localFile =
+            SharedThreadComposerAttachment(
+                id = "picked-file-1",
+                fileName = "notes.pdf",
+                sizeLabel = "24 KB",
+                mimeType = "application/pdf",
+                status = "uploading"
+            )
+        val uploadedFile =
+            SharedThreadComposerAttachment(
+                id = "remote-file-1",
+                fileName = "notes.pdf",
+                sizeLabel = "24 KB",
+                mimeType = "application/pdf",
+                status = "ready"
+            )
+        val localImage =
+            SharedThreadComposerAttachment(
+                id = "picked-image-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+        val uploadedImage =
+            SharedThreadComposerAttachment(
+                id = "remote-image-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "ready"
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localFile)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(uploadedFile),
+                replacedAttachmentIds = setOf(localFile.id),
+                replacedAttachmentIdsByUploadedId = mapOf(uploadedFile.id to localFile.id)
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localImage)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(uploadedImage),
+                replacedAttachmentIds = setOf(localImage.id),
+                replacedAttachmentIdsByUploadedId = mapOf(uploadedImage.id to localImage.id)
+            )
+        )
+
+        assertEquals(
+            listOf(localFile, uploadedFile, localImage, uploadedImage),
+            store.state.value.uploadedAttachments
+        )
+        assertEquals(
+            setOf(localFile.id, localImage.id),
+            store.state.value.removedAttachmentIds
+        )
+    }
+
+    @Test
     fun removedLocalPendingAttachmentDoesNotReturnWhenUploadCompletes() {
         val store = SharedThreadComposerDraftStore()
         val localRemoved =
