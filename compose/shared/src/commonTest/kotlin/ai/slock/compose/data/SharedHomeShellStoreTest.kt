@@ -82,7 +82,7 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun foregroundRefreshTargetsVisibleDestinationAndHomeBadgeSummaries() {
+    fun foregroundRefreshTargetsVisibleDestinationOnly() {
         val fixture = fixture()
         val store = fixture.store
 
@@ -97,7 +97,6 @@ class SharedHomeShellStoreTest {
         assertEquals(listOf<SharedHomeIntent>(SharedHomeIntent.ForegroundRefresh), fixture.homeIntents)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(
-                SharedHomeSearchSavedIntent.RefreshSaved,
                 SharedHomeSearchSavedIntent.OpenSaved,
                 SharedHomeSearchSavedIntent.RefreshSaved,
                 SharedHomeSearchSavedIntent.OpenSearch
@@ -106,7 +105,6 @@ class SharedHomeShellStoreTest {
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.Refresh,
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.Refresh
             ),

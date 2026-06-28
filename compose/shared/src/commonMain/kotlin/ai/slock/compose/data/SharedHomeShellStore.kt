@@ -147,10 +147,7 @@ class SharedHomeShellStore(
 
     private fun refreshVisibleHomeDestination() {
         when (_state.value.destination) {
-            null -> {
-                dispatchHome(SharedHomeIntent.ForegroundRefresh)
-                refreshBadgeSummaries()
-            }
+            null -> dispatchHome(SharedHomeIntent.ForegroundRefresh)
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
             SharedHomeShellDestinationSearch -> Unit
