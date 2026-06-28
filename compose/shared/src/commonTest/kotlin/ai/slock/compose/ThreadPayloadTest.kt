@@ -4305,6 +4305,45 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun markdownTaskNumberLaunchPayloadUsesTaskIdentityOnly() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                alignOwnMessagesRight = true,
+                compactConsecutiveMessages = true,
+                localOffsetMinutes = 480,
+                todayEpochDay = 20260628,
+                nowEpochMillis = 1_782_690_000_000,
+                timeFormat = SlockTimeFormat12Hour
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("task-482"),
+                title = "markdown clicks",
+                status = TaskStatus.InProgress,
+                taskNumber = 482,
+                messageId = MessageId("message-482"),
+                parentMessageId = MessageId("message-482"),
+                channelId = ChannelId("channel-dialog"),
+                threadId = ThreadId("thread-482"),
+                updatedAtLabel = "now"
+            )
+
+        val launchPayload = payload.markdownTaskNumberLaunchPayload(task)
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
+        assertEquals("channel-dialog", launchPayload?.parentChannelId)
+        assertEquals("message-482", launchPayload?.parentMessageId)
+        assertEquals("thread-482", launchPayload?.streamChannelId)
+        assertEquals("thread-482", launchPayload?.sourceThreadId)
+        assertEquals(true, launchPayload?.alignOwnMessagesRight)
+        assertEquals(true, launchPayload?.compactConsecutiveMessages)
+        assertEquals(SlockTimeFormat12Hour, launchPayload?.timeFormat)
+        assertEquals(emptyList<KuiklyThreadMessageItem>(), launchPayload?.messages)
+        assertEquals(emptyList<KuiklyThreadMemberItem>(), launchPayload?.members)
+        assertEquals("loading", launchPayload?.status)
+    }
+
+    @Test
     fun linkedTaskProjectionIsOnlyAuthoritativeAfterTasksLoadSettles() {
         val references =
             KuiklyThreadScreenPayload(
