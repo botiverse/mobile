@@ -7059,13 +7059,15 @@ private fun AgentCreatorSummary.toMemberProfile(): MemberProfile? {
 private fun AgentCreatedSummary.toMemberProfile(): MemberProfile {
     val display = displayName?.takeIf { it.isNotBlank() } ?: name.ifBlank { id }
     val status = AgentStatus.fromWireValue(status)
+    val avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() }
     return MemberProfile(
         id = MemberId(id),
         displayName = display,
         handle = name.takeIf { it.isNotBlank() } ?: id,
         kind = MemberKind.Agent,
-        avatarUrl = avatarUrl,
-        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarUrl = avatarWireValue,
+        gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
+        avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = display.take(1).uppercase(),
         presence = status?.presence ?: Presence.Offline,
         agentStatus = status,
@@ -7187,6 +7189,7 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
         description = summary?.description?.takeIf { it.isNotBlank() },
         roleDescription = summary?.runtime?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
+        gravatarHash = summary?.gravatarHash?.takeIf { it.isNotBlank() },
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence = status.presence,
@@ -7211,7 +7214,8 @@ private fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfil
             description = member.description?.takeIf { it.isNotBlank() },
             status = member.agentStatus?.label ?: summary?.status,
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
+            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl,
+            gravatarHash = member.gravatarHash ?: summary?.gravatarHash
         )
     return copy(summary = nextSummary)
 }

@@ -97,7 +97,8 @@ class MemberAgentParserTest {
                 "id": "agent-active",
                 "name": "active",
                 "displayName": "Active Agent",
-                "status": "online"
+                "status": "online",
+                "gravatarHash": "agenthash"
               },
               {
                 "id": "agent-deleted",
@@ -112,6 +113,7 @@ class MemberAgentParserTest {
 
         val profiles = assertNotNull(members)
         assertEquals(listOf("agent-active"), profiles.map { it.id.value })
+        assertEquals("agenthash", profiles.single().gravatarHash)
     }
 
     @Test

@@ -21,6 +21,7 @@ class SettingsRepositoryDataSourceTest {
                               "email": "user@slock.ai",
                               "name": "slock-user",
                               "displayName": "Slock User",
+                              "gravatarHash": "settingshash",
                               "emailVerified": true
                             }
                         """.trimIndent()
@@ -33,6 +34,7 @@ class SettingsRepositoryDataSourceTest {
         val snapshot = result.data
         assertEquals("Slock User", snapshot.profile.displayName)
         assertEquals("slock-user", snapshot.profile.handle)
+        assertEquals("settingshash", snapshot.profile.gravatarHash)
         assertEquals(true, snapshot.profile.verified)
         assertEquals("Owner", snapshot.profile.roleLabel)
         assertEquals("Email password", snapshot.connectedAccounts.single().provider)

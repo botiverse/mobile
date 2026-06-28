@@ -17,6 +17,7 @@ import ai.slock.compose.data.SharedSettingsDestination
 import ai.slock.compose.data.SharedSettingsIntent
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -127,6 +128,7 @@ internal data class KuiklySettingsAccountProfile(
     val email: String = "",
     val avatarLabel: String = "",
     val avatarUrl: String? = null,
+    val gravatarHash: String? = null,
     val verified: Boolean = false,
     val roleLabel: String = ""
 )
@@ -429,7 +431,9 @@ private fun SettingsProfileAvatar(
                 .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
         contentAlignment = Alignment.Center
     ) {
-        val avatarWireValue = profile.avatarUrl?.takeIf { it.isNotBlank() }
+        val avatarWireValue =
+            profile.avatarUrl?.takeIf { it.isNotBlank() }
+                ?: profile.gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         SlockAvatar(
             avatarWireValue = avatarWireValue,
             label = profile.avatarLabel,

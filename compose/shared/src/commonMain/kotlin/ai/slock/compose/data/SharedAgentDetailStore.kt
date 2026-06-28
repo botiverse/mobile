@@ -452,6 +452,7 @@ private fun MemberProfile.toAgentDetailSeed(): AgentDetailSnapshot {
             status = status,
             runtime = roleDescription,
             avatarUrl = avatar?.wireValue ?: avatarUrl,
+            gravatarHash = gravatarHash,
             activity = status,
             activityDetail = description,
             machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },

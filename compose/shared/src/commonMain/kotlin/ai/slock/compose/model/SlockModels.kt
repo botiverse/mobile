@@ -220,6 +220,7 @@ data class AgentProfile(
     val description: String? = null,
     val roleDescription: String? = null,
     val avatarUrl: String? = null,
+    val gravatarHash: String? = null,
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,

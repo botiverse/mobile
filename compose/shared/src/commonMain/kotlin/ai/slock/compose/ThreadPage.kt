@@ -631,7 +631,8 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
                 displayName = label,
                 status = agentStatus?.label,
                 runtime = roleDescription,
-                avatarUrl = avatarWireValue
+                avatarUrl = avatarWireValue,
+                gravatarHash = gravatarHash
             ),
         directMessages = emptyList(),
         reminders = emptyList(),

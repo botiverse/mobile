@@ -186,6 +186,7 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         description = description,
         roleDescription = roleDescription,
         avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash,
         avatar = avatar,
         avatarLabel = avatarLabel,
         presence = presence,

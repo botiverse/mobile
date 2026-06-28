@@ -6794,6 +6794,7 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
                 email = profile.email,
                 avatarLabel = profile.avatarLabel,
                 avatarUrl = profile.avatarUrl,
+                gravatarHash = profile.gravatarHash,
                 verified = profile.verified,
                 roleLabel = profile.roleLabel.orEmpty()
             ),
@@ -6830,6 +6831,7 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
                 email = user?.email.orEmpty(),
                 avatarLabel = displayName.take(2).uppercase(),
                 avatarUrl = user?.avatarUrl,
+                gravatarHash = user?.gravatarHash,
                 verified = user?.emailVerified == true,
                 roleLabel = session?.currentServerSummary()?.role.orEmpty()
             ),

@@ -338,6 +338,7 @@ internal data class AgentSummary(
     val machineName: String?,
     val daemonVersion: String?,
     val avatarUrl: String?,
+    val gravatarHash: String?,
     val creatorId: String?,
     val creatorType: String?,
     val creator: AgentCreatorSummary?,
@@ -432,6 +433,7 @@ private data class AgentWireDto(
     val executionMode: String? = null,
     val machineId: String? = null,
     val avatarUrl: String? = null,
+    val gravatarHash: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
     val creator: AgentCreatorWireDto? = null,
@@ -472,6 +474,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         machineName = currentProfile?.machineName,
         daemonVersion = daemonVersion ?: currentProfile?.daemonVersion,
         avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash,
         creatorId = creatorId,
         creatorType = creatorType,
         creator = creator?.toDomain(),
@@ -512,6 +515,7 @@ private data class AgentCreatedWireDto(
     val name: String? = null,
     val displayName: String? = null,
     val avatarUrl: String? = null,
+    val gravatarHash: String? = null,
     val runtime: String? = null,
     val status: String? = null
 ) {
@@ -523,6 +527,7 @@ private data class AgentCreatedWireDto(
             name = name ?: resolvedName,
             displayName = displayName,
             avatarUrl = avatarUrl,
+            gravatarHash = gravatarHash,
             runtime = runtime,
             status = status
         )

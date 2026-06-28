@@ -900,6 +900,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         machineName = machineName,
         daemonVersion = daemonVersion,
         avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash,
         creatorId = creatorId,
         creatorType = creatorType,
         creator = creator,

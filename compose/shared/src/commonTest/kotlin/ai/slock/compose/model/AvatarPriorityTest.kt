@@ -134,4 +134,24 @@ class AvatarPriorityTest {
         )
     }
 
+    @Test
+    fun agentProfileMemberProjectionPreservesGravatarFallback() {
+        val agent =
+            AgentProfile(
+                id = MemberId("agent-1"),
+                userId = "agent-1",
+                displayName = "Agent One",
+                handle = "agent-one",
+                gravatarHash = "agenthash"
+            )
+
+        val member = agent.toMemberProfile()
+
+        assertEquals("agenthash", member.gravatarHash)
+        assertEquals(
+            "https://www.gravatar.com/avatar/agenthash?s=52&d=404",
+            member.avatarWireValueForRenderedAvatar()
+        )
+    }
+
 }
