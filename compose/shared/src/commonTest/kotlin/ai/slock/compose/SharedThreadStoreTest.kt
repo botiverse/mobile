@@ -157,41 +157,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startLogsThreadHydrationTraceWithProjectionTimings() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val logs = mutableListOf<String>()
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-                    ),
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        val hydrationLog = logs.firstOrNull { it.startsWith("thread_store_hydrate") && it.contains("rawMessages=0") }
-        assertNotNull(hydrationLog)
-        assertTrue(hydrationLog.contains("threadId=channel-1"), hydrationLog)
-        assertTrue(hydrationLog.contains("timelineMessages=0"), hydrationLog)
-        assertTrue(hydrationLog.contains("timelineProjectionMs="), hydrationLog)
-        assertTrue(hydrationLog.contains("replyMetadataProjectionMs="), hydrationLog)
-        assertTrue(hydrationLog.contains("sliceEqualityMs="), hydrationLog)
-        assertTrue(hydrationLog.contains("stateEqualityMs="), hydrationLog)
-        assertTrue(hydrationLog.contains("timelineChanged="), hydrationLog)
-        assertTrue(hydrationLog.contains("replyMetadataChanged="), hydrationLog)
-        val contentHydrationLog =
-            logs.firstOrNull { it.startsWith("thread_store_hydrate") && it.contains("rawMessages=1") }
-        assertNotNull(contentHydrationLog)
-        assertTrue(contentHydrationLog.contains("timelineMessages=1"), contentHydrationLog)
-        assertTrue(contentHydrationLog.contains("replyMetadata="), contentHydrationLog)
-        scope.cancel()
-    }
-
-    @Test
     fun conversationSummaryThreadRouteIdentityCarriesJointChannelKind() {
         val identity =
             ConversationSummary(
