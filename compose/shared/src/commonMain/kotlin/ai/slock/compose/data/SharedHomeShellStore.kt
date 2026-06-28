@@ -72,8 +72,8 @@ class SharedHomeShellStore(
                     val nextServerId = home.activeHomeServerId()
                     observedHomeServerId = nextServerId ?: previousServerId
                     _state.value = _state.value.copy(home = home)
-                    if (previousServerId != null && nextServerId != null && previousServerId != nextServerId) {
-                        refreshBadgeSummaries(clearBeforeRefresh = true)
+                    if (nextServerId != null && previousServerId != nextServerId) {
+                        refreshBadgeSummaries(clearBeforeRefresh = previousServerId != null)
                     }
                 }
             },

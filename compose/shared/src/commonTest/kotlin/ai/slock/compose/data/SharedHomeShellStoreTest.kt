@@ -152,6 +152,20 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun homeFirstServerLoadRefreshesHomeBadgeSummariesWithoutClearing() {
+        val fixture = fixture()
+
+        fixture.homeState.value = homeStateForServer("server-1")
+
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
+            fixture.searchSavedIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun realtimeForwardsActivityOnlyWhenPrimaryOrActivityVisible() {
         val fixture = fixture()
         val store = fixture.store
