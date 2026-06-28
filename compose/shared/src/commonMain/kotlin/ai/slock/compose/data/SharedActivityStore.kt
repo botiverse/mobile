@@ -47,6 +47,7 @@ class SharedActivityStore(
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var scope: CoroutineScope = scope
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
+    private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
 
     fun updateRuntimeIntegrations(
         localWriteThrough: ComposeLocalWriteThrough? = null,
@@ -88,6 +89,7 @@ class SharedActivityStore(
     fun reset() {
         clear()
         unreadClearOverrides = emptyMap()
+        doneOverrides = emptyMap()
         _state.value = SharedActivityState()
     }
 
@@ -197,6 +199,7 @@ class SharedActivityStore(
                     val pageItems =
                         result.data.items
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
+                            .reconcileLocallyDoneItems()
                     val items =
                         if (append) {
                             (current.items + pageItems.items).distinctBy { it.key }
@@ -210,11 +213,17 @@ class SharedActivityStore(
                                     items = items,
                                     totalCount =
                                         if (current.selectedFilter == InboxFilter.Unread) {
-                                            maxOf(0, result.data.totalCount - pageItems.removedUnreadRows)
+                                            maxOf(0, result.data.totalCount - pageItems.removedUnreadRows - pageItems.removedDoneRows)
                                         } else {
-                                            result.data.totalCount
+                                            maxOf(0, result.data.totalCount - pageItems.removedDoneRows)
                                         },
-                                    totalUnreadCount = maxOf(0, result.data.totalUnreadCount - pageItems.suppressedUnreadCount),
+                                    totalUnreadCount =
+                                        maxOf(
+                                            0,
+                                            result.data.totalUnreadCount -
+                                                pageItems.suppressedUnreadCount -
+                                                pageItems.suppressedDoneUnreadCount
+                                        ),
                                     hasMore = result.data.hasMore,
                                     nextOffset = result.data.nextOffset
                                 ),
@@ -312,12 +321,14 @@ class SharedActivityStore(
     private fun markDone(item: InboxItem) {
         val previous = _state.value
         if (previous.snapshot == null) return
+        rememberDone(item)
         if (item.kind == InboxItemKind.MentionAction) {
             removeItemOptimistically(item)
             return
         }
         val targetChannelId = item.activityActionChannelId()
         if (targetChannelId == null) {
+            forgetDone(item.key)
             refreshAfterFailure(previous, "activity_thread_channel_missing")
             return
         }
@@ -330,7 +341,10 @@ class SharedActivityStore(
                     inboxRepository.markDone(targetChannelId)
                 }
             if (result !is DataResult.Content && result !is DataResult.Empty) {
+                forgetDone(item.key)
                 refreshAfterFailure(previous, "activity_mark_done_failed")
+            } else {
+                onUnreadCountsChanged()
             }
         }
     }
@@ -520,6 +534,18 @@ class SharedActivityStore(
         }
     }
 
+    private fun rememberDone(item: InboxItem) {
+        doneOverrides =
+            doneOverrides +
+                (item.key to ActivityDoneOverride(item.activityUnreadAnchor()))
+    }
+
+    private fun forgetDone(key: String) {
+        if (key in doneOverrides) {
+            doneOverrides = doneOverrides - key
+        }
+    }
+
     private fun List<InboxItem>.reconcileLocallyClearedUnreadItems(filter: InboxFilter): ActivityUnreadReconcileResult {
         if (unreadClearOverrides.isEmpty()) {
             return ActivityUnreadReconcileResult(items = this)
@@ -563,16 +589,68 @@ class SharedActivityStore(
             removedUnreadRows = removedUnreadRows
         )
     }
+
+    private fun ActivityUnreadReconcileResult.reconcileLocallyDoneItems(): ActivityReconcileResult {
+        if (doneOverrides.isEmpty()) {
+            return ActivityReconcileResult(
+                items = items,
+                suppressedUnreadCount = suppressedUnreadCount,
+                removedUnreadRows = removedUnreadRows
+            )
+        }
+        val nextOverrides = doneOverrides.toMutableMap()
+        val reconciled = mutableListOf<InboxItem>()
+        var suppressedDoneUnreadCount = 0
+        var removedDoneRows = 0
+        for (item in items) {
+            val override = nextOverrides[item.key]
+            if (override == null) {
+                reconciled += item
+                continue
+            }
+            val incomingAnchor = item.activityUnreadAnchor()
+            val staleDone =
+                override.activityAnchor == null ||
+                    incomingAnchor == override.activityAnchor
+            if (staleDone) {
+                suppressedDoneUnreadCount += item.unreadCount
+                removedDoneRows += 1
+            } else {
+                nextOverrides.remove(item.key)
+                reconciled += item
+            }
+        }
+        doneOverrides = nextOverrides
+        return ActivityReconcileResult(
+            items = reconciled,
+            suppressedUnreadCount = suppressedUnreadCount,
+            removedUnreadRows = removedUnreadRows,
+            suppressedDoneUnreadCount = suppressedDoneUnreadCount,
+            removedDoneRows = removedDoneRows
+        )
+    }
 }
 
 private data class ActivityUnreadClearOverride(
     val unreadAnchor: MessageId?
 )
 
+private data class ActivityDoneOverride(
+    val activityAnchor: MessageId?
+)
+
 private data class ActivityUnreadReconcileResult(
     val items: List<InboxItem>,
     val suppressedUnreadCount: Int = 0,
     val removedUnreadRows: Int = 0
+)
+
+private data class ActivityReconcileResult(
+    val items: List<InboxItem>,
+    val suppressedUnreadCount: Int = 0,
+    val removedUnreadRows: Int = 0,
+    val suppressedDoneUnreadCount: Int = 0,
+    val removedDoneRows: Int = 0
 )
 
 data class SharedActivityState(

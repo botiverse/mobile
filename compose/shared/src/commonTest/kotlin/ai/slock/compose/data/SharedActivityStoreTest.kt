@@ -568,6 +568,51 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun staleActivityRefreshAfterMarkDoneDoesNotRestoreRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val row = activityItem("channel-1", unreadCount = 1)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(row), totalCount = 1, totalUnreadCount = 1))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        inbox.completeNextSnapshot(snapshot(listOf(row), totalCount = 1, totalUnreadCount = 1))
+
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun markDoneAllowsLaterActivityWithDifferentAnchor() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val row = activityItem("channel-1", unreadCount = 1)
+        val laterRow =
+            row.copy(
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("first-channel-1-new"),
+                latestActivityMessageId = MessageId("latest-channel-1-new")
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(row), totalCount = 1, totalUnreadCount = 1))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        inbox.completeNextSnapshot(snapshot(listOf(laterRow), totalCount = 1, totalUnreadCount = 1))
+
+        val visible = store.state.value.items.single()
+        assertEquals(MessageId("first-channel-1-new"), visible.firstUnreadMessageId)
+        assertEquals(1, store.state.value.totalCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun threadActionsRequireExplicitThreadChannelId() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val row = threadItem(channelId = "parent-or-compat", threadChannelId = null, unreadCount = 1)
