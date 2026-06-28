@@ -1397,6 +1397,14 @@ private fun MemberDetailPageContent() {
                         provider.bridge.settingsEvent(payload.instanceId, "removeMember", member.id.value)
                     },
                     onOpenUrl = { provider.bridge.openUrl(it) },
+                    onOpenReminderMessage = { permalink ->
+                        pager.openMembersReminderMessage(
+                            permalink = permalink,
+                            timeContext = timeContext,
+                            onOpenExternal = { provider.bridge.openUrl(it) },
+                            onUnavailableAction = { provider.bridge.toast(it) }
+                        )
+                    },
                     agentDetailActions = agentDetailActions,
                     onUpdateAgentProfile = { request ->
                         agentDetailActions.updateAgentProfile(request)
@@ -1450,6 +1458,14 @@ private fun MemberDetailPageContent() {
                     provider.bridge.settingsEvent(payload.instanceId, "removeMember", current.member.id.value)
                 },
                 onOpenUrl = { provider.bridge.openUrl(it) },
+                onOpenReminderMessage = { permalink ->
+                    pager.openMembersReminderMessage(
+                        permalink = permalink,
+                        timeContext = timeContext,
+                        onOpenExternal = { provider.bridge.openUrl(it) },
+                        onUnavailableAction = { provider.bridge.toast(it) }
+                    )
+                },
                 onUpdateAgentProfile = null,
                 onUploadAgentAvatar = null,
                 onAgentLifecycleAction = null,
@@ -1599,6 +1615,76 @@ internal fun MembersAgentDetailVisualContent() {
 }
 
 private fun readCurrentServerId(): String? = null
+
+private fun Pager.openMembersReminderMessage(
+    permalink: String,
+    timeContext: SlockTimeContext,
+    onOpenExternal: (String) -> Unit,
+    onUnavailableAction: (String) -> Unit
+) {
+    val target = permalink.toSlockThreadWebLinkTarget()
+    if (target == null) {
+        onOpenExternal(permalink)
+        return
+    }
+    val messageId = target.messageId?.takeIf { it.isNotBlank() }
+    if (messageId == null) {
+        onUnavailableAction("Unable to open reminder message")
+        return
+    }
+    val launchPayload =
+        target.toMembersReminderThreadLaunchPayload(
+            messageId = messageId,
+            timeContext = timeContext
+        )
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+}
+
+private fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
+    messageId: String,
+    timeContext: SlockTimeContext
+): WireThreadLaunchPayload {
+    val isDm = routeKind == KuiklyThreadSurfaceKind.DirectMessage
+    val parentMessageId = threadParentMessageId?.takeIf { it.isNotBlank() }
+    val instanceId = "members-reminder-${channelId}-${messageId}"
+    if (parentMessageId != null) {
+        return WireThreadLaunchPayload(
+            instanceId = instanceId,
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            channelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
+            parentChannelId = channelId,
+            parentMessageId = parentMessageId,
+            parentSurfaceKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
+            parentChannelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
+            originParentMessageId = parentMessageId,
+            focusedMessageId = messageId,
+            localOffsetMinutes = timeContext.localOffsetMinutes,
+            todayEpochDay = timeContext.todayEpochDay,
+            nowEpochMillis = timeContext.nowEpochMillis,
+            timeFormat = timeContext.timeFormat
+        )
+    }
+    val surfaceKind =
+        if (isDm) {
+            KuiklyThreadSurfaceKind.DirectMessage
+        } else {
+            KuiklyThreadSurfaceKind.Channel
+        }
+    return WireThreadLaunchPayload(
+        instanceId = instanceId,
+        surfaceKind = surfaceKind,
+        channelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
+        threadId = channelId.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        sourceThreadId = channelId,
+        streamChannelId = channelId,
+        focusedMessageId = messageId,
+        localOffsetMinutes = timeContext.localOffsetMinutes,
+        todayEpochDay = timeContext.todayEpochDay,
+        nowEpochMillis = timeContext.nowEpochMillis,
+        timeFormat = timeContext.timeFormat
+    )
+}
 
 internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     if (isBlank()) return KuiklyMembersPayload()
@@ -2103,6 +2189,7 @@ private fun MembersDetailContent(
     onCopyMemberId: () -> Unit,
     onRemoveMember: (() -> Unit)? = null,
     onOpenUrl: (String) -> Unit,
+    onOpenReminderMessage: (String) -> Unit = {},
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
@@ -2583,6 +2670,7 @@ private fun MembersDetailContent(
                                     MembersAgentRemindersTab(
                                         detail = detail,
                                         timeContext = timeContext,
+                                        onOpenMessageRef = onOpenReminderMessage,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Workspace ->
@@ -5550,6 +5638,7 @@ private fun String?.membersDmRelativeTime(): String {
 private fun MembersAgentRemindersTab(
     detail: AgentDetailSnapshot?,
     timeContext: SlockTimeContext,
+    onOpenMessageRef: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val rows = detail?.reminders.orEmpty()
@@ -5568,7 +5657,7 @@ private fun MembersAgentRemindersTab(
             )
         } else {
             rows.take(8).forEach { reminder ->
-                MembersAgentReminderCard(reminder, timeContext)
+                MembersAgentReminderCard(reminder, timeContext, onOpenMessageRef)
             }
         }
     }
@@ -5577,7 +5666,8 @@ private fun MembersAgentRemindersTab(
 @Composable
 private fun MembersAgentReminderCard(
     reminder: AgentReminderSummary,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    onOpenMessageRef: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -5636,11 +5726,18 @@ private fun MembersAgentReminderCard(
             )
         }
         reminder.messageRef?.takeIf { it.isNotBlank() }?.let { messageRef ->
+            val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
             MembersAgentReminderChip(
                 iconName = SlockLucideIconName.Link2,
                 text = messageRef,
                 background = SlockColor.SurfaceWhite,
-                textColor = SlockColor.TextBlack.copy(alpha = 0.7f)
+                textColor =
+                    if (permalink != null) {
+                        SlockColor.TextBlack
+                    } else {
+                        SlockColor.TextBlack.copy(alpha = 0.7f)
+                    },
+                onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
             )
         }
     }
@@ -5651,10 +5748,17 @@ private fun MembersAgentReminderChip(
     iconName: SlockLucideIconName,
     text: String,
     background: Color,
-    textColor: Color
+    textColor: Color,
+    onClick: (() -> Unit)? = null
 ) {
+    val interactionModifier =
+        if (onClick != null) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        }
     Row(
-        modifier = Modifier
+        modifier = interactionModifier
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(background)
             .padding(horizontal = 6.dp, vertical = 2.dp),

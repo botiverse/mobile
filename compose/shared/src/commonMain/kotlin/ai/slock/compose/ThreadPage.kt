@@ -878,7 +878,9 @@ private fun KuiklyThreadScreenPayload.taskStatusLabel(taskId: String): String? =
 
 internal data class SlockThreadWebLinkTarget(
     val channelId: String,
-    val messageId: String? = null
+    val messageId: String? = null,
+    val routeKind: String = KuiklyThreadSurfaceKind.Channel,
+    val threadParentMessageId: String? = null
 )
 
 @Serializable
@@ -4579,20 +4581,66 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     val withoutScheme = trimmed.substring(schemeEnd + 3)
     val pathStart = withoutScheme.indexOf('/')
     val host = if (pathStart >= 0) withoutScheme.substring(0, pathStart) else withoutScheme
-    if (host.substringBefore(':').lowercase() !in setOf("app.slock.ai", "app.raft.build")) return null
+    if (host.substringBefore(':').lowercase() !in setOf("app.slock.ai", "staging.slock.ai", "app.raft.build")) return null
     val pathAndQuery = if (pathStart >= 0) withoutScheme.substring(pathStart) else ""
     val path = pathAndQuery.substringBefore('?')
     val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")
     val segments = path.split('/').filter { it.isNotBlank() }
-    val channelIndex = segments.indexOf("channel")
-    val channelId = segments.getOrNull(channelIndex + 1)?.takeIf { it.isNotBlank() } ?: return null
-    val messageId =
-        query.split('&')
-            .firstNotNullOfOrNull { part ->
-                val pieces = part.split('=', limit = 2)
-                pieces.getOrNull(1)?.takeIf { pieces.firstOrNull() == "msg" && it.isNotBlank() }
+    val routeIndex = segments.indexOfFirst {
+        val segment = it.lowercase()
+        segment == "channel" || segment == "dm"
+    }
+    if (routeIndex < 0) return null
+    val routeKind = segments.getOrNull(routeIndex)?.lowercase()
+        ?.takeIf { it == "channel" || it == "dm" }
+        ?: return null
+    val channelId = segments.getOrNull(routeIndex + 1)?.takeIf { it.isNotBlank() } ?: return null
+    val threadParam = query.queryParamValue("thread")
+    val threadParentMessageId =
+        threadParam?.split(':', limit = 2)
+            ?.takeIf { it.size == 2 && it[0] == channelId && it[1].isNotBlank() }
+            ?.get(1)
+            ?: if (threadParam == null) {
+                null
+            } else {
+                return null
             }
-    return SlockThreadWebLinkTarget(channelId = channelId, messageId = messageId)
+    val messageId = query.queryParamValue("msg")?.takeIf { it.isNotBlank() } ?: threadParentMessageId
+    return SlockThreadWebLinkTarget(
+        channelId = channelId,
+        messageId = messageId,
+        routeKind = routeKind,
+        threadParentMessageId = threadParentMessageId
+    )
+}
+
+private fun String.queryParamValue(name: String): String? =
+    split('&')
+        .firstNotNullOfOrNull { part ->
+            val pieces = part.split('=', limit = 2)
+            pieces.getOrNull(1)?.takeIf { pieces.firstOrNull() == name && it.isNotBlank() }
+        }
+        ?.slockPercentDecode()
+
+private fun String.slockPercentDecode(): String {
+    if ('%' !in this && '+' !in this) return this
+    val builder = StringBuilder(length)
+    var index = 0
+    while (index < length) {
+        val char = this[index]
+        if (char == '%' && index + 2 < length) {
+            val hex = substring(index + 1, index + 3)
+            val decoded = hex.toIntOrNull(16)
+            if (decoded != null) {
+                builder.append(decoded.toChar())
+                index += 3
+                continue
+            }
+        }
+        builder.append(if (char == '+') ' ' else char)
+        index += 1
+    }
+    return builder.toString()
 }
 
 internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {

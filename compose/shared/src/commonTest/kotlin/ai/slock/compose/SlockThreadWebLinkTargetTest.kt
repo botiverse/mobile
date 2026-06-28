@@ -22,6 +22,53 @@ class SlockThreadWebLinkTargetTest {
     }
 
     @Test
+    fun parsesWorkspaceChannelLink() {
+        val target =
+            "https://app.slock.ai/s/botiverse/channel/channel-123?msg=message-456"
+                .toSlockThreadWebLinkTarget()
+
+        assertEquals("channel-123", target?.channelId)
+        assertEquals("message-456", target?.messageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, target?.routeKind)
+        assertNull(target?.threadParentMessageId)
+    }
+
+    @Test
+    fun parsesWorkspaceDmLink() {
+        val target =
+            "https://app.slock.ai/s/botiverse/dm/dm-123?msg=message-456"
+                .toSlockThreadWebLinkTarget()
+
+        assertEquals("dm-123", target?.channelId)
+        assertEquals("message-456", target?.messageId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, target?.routeKind)
+        assertNull(target?.threadParentMessageId)
+    }
+
+    @Test
+    fun parsesWorkspaceThreadLink() {
+        val target =
+            "https://staging.slock.ai/s/botiverse/channel/channel-123?thread=channel-123%3Aparent-789&msg=reply-456"
+                .toSlockThreadWebLinkTarget()
+
+        assertEquals("channel-123", target?.channelId)
+        assertEquals("reply-456", target?.messageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, target?.routeKind)
+        assertEquals("parent-789", target?.threadParentMessageId)
+    }
+
+    @Test
+    fun parsesThreadOnlyLinkAsParentMessageTarget() {
+        val target =
+            "https://app.slock.ai/s/botiverse/channel/channel-123?thread=channel-123%3Aparent-789"
+                .toSlockThreadWebLinkTarget()
+
+        assertEquals("channel-123", target?.channelId)
+        assertEquals("parent-789", target?.messageId)
+        assertEquals("parent-789", target?.threadParentMessageId)
+    }
+
+    @Test
     fun parsesSlockChannelLinkWithoutMessage() {
         val target = "http://app.slock.ai/channel/channel-123".toSlockThreadWebLinkTarget()
 
