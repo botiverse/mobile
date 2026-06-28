@@ -6,7 +6,7 @@ import kotlin.test.assertNull
 
 class AvatarPriorityTest {
     @Test
-    fun agentAvatarPriorityRejectsGravatarAndKeepsPixelOrUploadedAvatar() {
+    fun agentAvatarPriorityKeepsExplicitAvatarThenGravatarThenRobotFallback() {
         val pixelAvatar =
             resolveAvatarSlot(
                 kind = MemberKind.Agent,
@@ -15,7 +15,7 @@ class AvatarPriorityTest {
                 gravatarHash = "hash"
             )
         assertEquals("pixel:tree", pixelAvatar.displayAvatarWireValue)
-        assertNull(pixelAvatar.gravatarHash)
+        assertEquals("hash", pixelAvatar.gravatarHash)
         assertEquals("pixel:robot", pixelAvatar.fallbackAvatarWireValue)
         assertEquals("pixel:tree", pixelAvatar.effectiveAvatarWireValue)
 
@@ -43,16 +43,38 @@ class AvatarPriorityTest {
                 avatarWireValue = "https://www.gravatar.com/avatar/hash?s=52&d=404",
                 gravatarHash = "hash"
             )
-        assertNull(gravatarAvatar.displayAvatarWireValue)
-        assertNull(gravatarAvatar.gravatarHash)
+        assertEquals("https://www.gravatar.com/avatar/hash?s=52&d=404", gravatarAvatar.displayAvatarWireValue)
+        assertEquals("hash", gravatarAvatar.gravatarHash)
         assertEquals("pixel:robot", gravatarAvatar.fallbackAvatarWireValue)
-        assertEquals("pixel:robot", gravatarAvatar.effectiveAvatarWireValue)
+        assertEquals("https://www.gravatar.com/avatar/hash?s=52&d=404", gravatarAvatar.effectiveAvatarWireValue)
+        assertEquals(
+            "https://www.gravatar.com/avatar/hash?s=52&d=404",
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Agent,
+                id = "agent-1",
+                avatarWireValue = "https://www.gravatar.com/avatar/hash?s=52&d=404"
+            )
+        )
+
+        val gravatarHashOnly =
+            resolveAvatarSlot(
+                kind = MemberKind.Agent,
+                id = "agent-1",
+                avatarWireValue = null,
+                gravatarHash = "hash"
+            )
+        assertNull(gravatarHashOnly.displayAvatarWireValue)
+        assertEquals("hash", gravatarHashOnly.gravatarHash)
+        assertEquals("pixel:robot", gravatarHashOnly.fallbackAvatarWireValue)
+        assertEquals("https://www.gravatar.com/avatar/hash?s=52&d=404", gravatarHashOnly.effectiveAvatarWireValue)
+
         assertEquals(
             "pixel:robot",
             avatarWireValueForAvatarSlot(
                 kind = MemberKind.Agent,
                 id = "agent-1",
-                avatarWireValue = "https://www.gravatar.com/avatar/hash?s=52&d=404"
+                avatarWireValue = null,
+                gravatarHash = null
             )
         )
     }

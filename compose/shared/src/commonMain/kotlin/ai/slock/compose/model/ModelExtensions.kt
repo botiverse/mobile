@@ -274,18 +274,18 @@ fun resolveAvatarSlot(
         avatarWireValue
             ?.takeIf { it.isNotBlank() }
             ?: avatarUrl?.takeIf { it.isNotBlank() }
+    val cleanGravatarHash = gravatarHash?.takeIf { it.isNotBlank() }
     if (kind != MemberKind.Agent) {
         return AvatarSlotResolution(
             displayAvatarWireValue = wireValue,
-            gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
+            gravatarHash = cleanGravatarHash,
             fallbackAvatarWireValue = null
         )
     }
-    val fallback = agentAvatarFallbackWireValue(id)
     return AvatarSlotResolution(
-        displayAvatarWireValue = wireValue?.takeIf { it.isAgentAvatarWireValue() },
-        gravatarHash = null,
-        fallbackAvatarWireValue = fallback
+        displayAvatarWireValue = wireValue,
+        gravatarHash = cleanGravatarHash,
+        fallbackAvatarWireValue = agentAvatarFallbackWireValue(id)
     )
 }
 
@@ -298,11 +298,6 @@ fun String.isGravatarAvatarWireValue(): Boolean =
 fun String.isAgentFallbackAvatarWireValue(): Boolean =
     equals(agentAvatarFallbackWireValue(""), ignoreCase = true) ||
         startsWith("random:", ignoreCase = true)
-
-private fun String.isAgentAvatarWireValue(): Boolean =
-    startsWith("pixel:") ||
-        startsWith("random:") ||
-        ((startsWith("http://") || startsWith("https://")) && !isGravatarAvatarWireValue())
 
 // Gravatar helpers
 fun String.toGravatarAvatarUrl(): String =

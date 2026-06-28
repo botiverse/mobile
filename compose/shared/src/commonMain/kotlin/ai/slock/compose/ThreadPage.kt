@@ -99,6 +99,7 @@ import ai.slock.compose.model.formatSlockTimestampEpochMillis
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.resolveAvatarSlot
+import ai.slock.compose.model.toGravatarAvatarUrl
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ServerId
@@ -1870,6 +1871,7 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
+                    gravatarUrl = message.threadAvatarGravatarUrl(),
                     status = null
                 )
                 Column(
@@ -8529,6 +8531,7 @@ private fun ThreadMessageCard(
     val avatarWireValue =
         rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
             ?: message.resolvedThreadAvatarWireValue()
+    val avatarGravatarUrl = message.threadAvatarGravatarUrl()
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
@@ -8586,6 +8589,7 @@ private fun ThreadMessageCard(
                         timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
+                        gravatarUrl = avatarGravatarUrl,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
@@ -8768,6 +8772,7 @@ private fun ThreadMessageCard(
                         timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
+                        gravatarUrl = avatarGravatarUrl,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
@@ -9279,6 +9284,12 @@ internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     }
     return effectiveAvatarWireValue
 }
+
+internal fun KuiklyThreadMessageItem.threadAvatarGravatarUrl(): String? =
+    gravatarHash
+        ?.takeIf { threadAuthorBadgeLabel() == null }
+        ?.takeIf { it.isNotBlank() }
+        ?.toGravatarAvatarUrl()
 
 private fun String.isLikelyThreadAgentId(): Boolean =
     startsWith("agent", ignoreCase = true) ||
@@ -10579,6 +10590,7 @@ private fun ThreadMessageAvatarSlot(
     timestampLabel: String,
     avatarLabel: String,
     avatarWireValue: String?,
+    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
     muted: Boolean = false,
@@ -10600,6 +10612,7 @@ private fun ThreadMessageAvatarSlot(
                 ThreadMessageAvatar(
                     avatarLabel = avatarLabel,
                     avatarWireValue = avatarWireValue,
+                    gravatarUrl = gravatarUrl,
                     status = status,
                     statusPulsing = statusPulsing,
                     muted = muted,
@@ -10629,6 +10642,7 @@ private fun ThreadMessageAvatarSlot(
 private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
+    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
     muted: Boolean = false,
@@ -10665,7 +10679,8 @@ private fun ThreadMessageAvatar(
                     label = avatarLabel,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 40.dp,
-                    borderWidth = SlockStroke.Default
+                    borderWidth = SlockStroke.Default,
+                    gravatarUrl = gravatarUrl
                 )
                 if (muted) {
                     Box(
@@ -10684,6 +10699,7 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
+    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true
 ) {
@@ -10707,7 +10723,8 @@ private fun ThreadMessageStaticAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 40.dp,
-                borderWidth = SlockStroke.Default
+                borderWidth = SlockStroke.Default,
+                gravatarUrl = gravatarUrl
             )
         }
     }
