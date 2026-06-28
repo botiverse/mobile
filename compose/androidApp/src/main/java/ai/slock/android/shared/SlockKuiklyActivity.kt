@@ -31,6 +31,7 @@ import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import android.util.DisplayMetrics
 import android.util.LruCache
 import android.util.Log
 import android.view.KeyEvent
@@ -297,14 +298,21 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
     }
 
+    override fun useHostDisplayMetrics(): Boolean = true
+
     private fun installSlockInputFontBridge(container: ViewGroup) {
+        SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
         val listener =
                 ViewTreeObserver.OnGlobalLayoutListener {
                     container.applySlockInputTypeface()
+                    SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
                 }
         inputFontLayoutListener = listener
         container.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        container.post { container.applySlockInputTypeface() }
+        container.post {
+            container.applySlockInputTypeface()
+            SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
+        }
     }
 
     private fun removeSlockInputFontBridge() {
@@ -1033,6 +1041,8 @@ private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter 
 }
 
 internal object SlockKuiklyFontAdapter : IKRFontAdapter {
+    private const val DESIGN_WIDTH_DP = 393f
+
     private data class SlockFontSpec(
             val fontRes: Int,
             val weight: Int
@@ -1040,6 +1050,8 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     private var context: Context? = null
     private var inputTypeface: Typeface? = null
+    @Volatile
+    private var hostDisplayMetrics: DisplayMetrics? = null
     private val typefaceCache = mutableMapOf<Int, Typeface>()
 
     fun init(context: Context) {
@@ -1050,6 +1062,24 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
         inputTypeface?.let { return it }
         return resolveTypeface("space_grotesk_regular", context)
                 ?.also { inputTypeface = it }
+    }
+
+    fun updateHostDisplayMetrics(container: View) {
+        val context = container.context ?: return
+        val widthPx = when {
+            container.width > 0 -> container.width
+            context.resources.displayMetrics.widthPixels > 0 -> context.resources.displayMetrics.widthPixels
+            else -> return
+        }
+        val density = (widthPx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return
+        val sourceMetrics = context.resources.displayMetrics
+        hostDisplayMetrics = DisplayMetrics().apply {
+            setTo(sourceMetrics)
+            this.widthPixels = widthPx
+            this.density = density
+            this.scaledDensity = density
+            this.densityDpi = (density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
+        }
     }
 
     fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
@@ -1101,6 +1131,15 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
         val currentContext = context
         result(currentContext?.let { resolveTypeface(fontFamily, it) })
+    }
+
+    override fun scaleFontSize(fontSize: Float): Float = fontSize
+
+    override fun getDisplayMetrics(useHostDisplayMetrics: Boolean?): DisplayMetrics? {
+        if (useHostDisplayMetrics != true) {
+            return null
+        }
+        return hostDisplayMetrics ?: context?.resources?.displayMetrics
     }
 }
 
