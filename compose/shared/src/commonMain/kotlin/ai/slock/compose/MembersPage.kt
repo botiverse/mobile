@@ -131,6 +131,8 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -855,6 +857,21 @@ internal fun MembersPageContent() {
         remember(sharedStores.serverMembersStore, serverId) {
             slockMemberAvatarResolver(sharedStores.serverMembersStore, serverId)
         }
+    val membersRefreshing = serverMembersEntry.status == ai.slock.compose.data.SharedServerMembersLoadStatus.InFlight
+    val refreshMembers: () -> Unit = remember(sharedStores.serverMembersStore, serverId) {
+        {
+            val cleanServerId = serverId.trim()
+            if (cleanServerId.isNotBlank()) {
+                scope.launch {
+                    sharedStores.serverMembersStore.refreshMembers(
+                        ServerId(cleanServerId),
+                        DataRequestPriority.Foreground,
+                        force = true
+                    )
+                }
+            }
+        }
+    }
     LaunchedEffect(sharedStores.serverMembersStore, serverId) {
         val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.serverMembersStore.refreshMembers(ServerId(cleanServerId), DataRequestPriority.Background)
@@ -1005,6 +1022,8 @@ internal fun MembersPageContent() {
 
     MembersRouteContent(
         payload = payload.copy(members = localMembers),
+        refreshing = membersRefreshing,
+        onRefresh = refreshMembers,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
             val pageData = payload.toMemberDetailPageData(member.id.value, member.kind)
@@ -1986,11 +2005,13 @@ internal fun MembersRouteContent(
     agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
-    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
         payload = payload,
         refreshing = refreshing,
+        onRefresh = onRefresh,
         onAddHuman = onAddHuman,
         onOpenMember = onOpenMemberDetail,
         agentStatusResolver = agentStatusResolver,
@@ -2044,7 +2065,8 @@ internal fun MembersListContent(
     agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
-    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    onRefresh: () -> Unit = {}
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -2091,6 +2113,14 @@ internal fun MembersListContent(
             )
         }
     }
+    var pullRefreshActive by remember(payload.instanceId) { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (!refreshing) {
+            pullRefreshActive = false
+        }
+    }
+    val pullRefreshing = refreshing && pullRefreshActive
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
 
     Column(
         modifier = Modifier
@@ -2104,6 +2134,20 @@ internal fun MembersListContent(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
+            pullToRefreshItem(
+                state = pullToRefreshState,
+                scrollState = listState,
+                onRefresh = {
+                    pullRefreshActive = true
+                    onRefresh()
+                },
+                content = { pullProgress, isRefreshing, _ ->
+                    SlockRaftPullRefreshIndicator(
+                        pullProgress = pullProgress,
+                        isRefreshing = isRefreshing
+                    )
+                }
+            )
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 SlockCollapsibleSectionHeader(
@@ -2287,7 +2331,8 @@ internal fun membersLazyItemCount(
     humansExpanded: Boolean
 ): Int {
     val fixedItems =
-        1 + // top spacer
+        1 + // pull refresh indicator
+            1 + // top spacer
             1 + // agents header
             1 + // humans header
             1 // bottom spacer
