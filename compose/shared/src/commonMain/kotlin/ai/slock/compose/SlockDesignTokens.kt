@@ -31,6 +31,8 @@ internal object SlockColor {
     const val BrandYellowArgb = "#FFFFD440"
     const val TextBlackArgb = "#FF000000"
     const val TextMutedGrayArgb = "#FF737373"
+    const val BorderBlackArgb = "#FF000000"
+    const val ShadowBlackArgb = "#FF141111"
 }
 
 internal object SlockSpacing {
