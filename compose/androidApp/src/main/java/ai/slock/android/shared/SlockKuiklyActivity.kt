@@ -1079,11 +1079,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             context.resources.displayMetrics.widthPixels > 0 -> context.resources.displayMetrics.widthPixels
             else -> return
         }
-        val density = (widthPx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return
+        val heightPx = when {
+            container.height > 0 -> container.height
+            context.resources.displayMetrics.heightPixels > 0 -> context.resources.displayMetrics.heightPixels
+            else -> widthPx
+        }
+        val designEdgePx = minOf(widthPx, heightPx).takeIf { it > 0 } ?: return
+        val density = (designEdgePx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return
         val sourceMetrics = context.resources.displayMetrics
         hostDisplayMetrics = DisplayMetrics().apply {
             setTo(sourceMetrics)
             this.widthPixels = widthPx
+            this.heightPixels = heightPx
             this.density = density
             this.scaledDensity = density
             this.densityDpi = (density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
