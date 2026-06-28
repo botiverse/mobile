@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.UnsafeNumber::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.UnsafeNumber::class)
 
 package ai.slock.compose.data
 

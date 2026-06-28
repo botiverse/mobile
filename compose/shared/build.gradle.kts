@@ -1,6 +1,6 @@
 plugins {
     kotlin("multiplatform")
-//    kotlin("native.cocoapods")
+    kotlin("native.cocoapods")
     kotlin("plugin.serialization")
     id("com.android.library")
     id("com.google.devtools.ksp")
@@ -46,24 +46,25 @@ kotlin {
         publishLibraryVariants("release")
     }
 
-//    iosX64()
-//    iosArm64()
-//    iosSimulatorArm64()
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
 
-//    cocoapods {
-//        summary = "Some description for the Shared Module"
-//        homepage = "Link to the Shared Module homepage"
-//        version = "1.0"
-//        ios.deploymentTarget = "14.1"
-//        podfile = project.file("../iosApp/Podfile")
-//        framework {
-//            baseName = "shared"
-//            freeCompilerArgs = freeCompilerArgs + getCommonCompilerArgs()
-//            isStatic = true
-//            license = "MIT"
-//        }
-//        extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
-//    }
+    cocoapods {
+        summary = "Some description for the Shared Module"
+        homepage = "Link to the Shared Module homepage"
+        version = "1.0"
+        ios.deploymentTarget = "14.1"
+        podfile = project.file("../iosApp/Podfile")
+        framework {
+            baseName = "shared"
+            freeCompilerArgs = freeCompilerArgs + getCommonCompilerArgs()
+            isStatic = true
+            license = "MIT"
+        }
+        extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
+        extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
+    }
 
     sourceSets {
         val commonMain by getting {
@@ -109,26 +110,27 @@ kotlin {
             }
         }
 
-//        val iosX64Main by getting
-//        val iosArm64Main by getting
-//        val iosSimulatorArm64Main by getting
-//        val iosMain by creating {
-//            dependsOn(commonMain)
-//            iosX64Main.dependsOn(this)
-//            iosArm64Main.dependsOn(this)
-//            iosSimulatorArm64Main.dependsOn(this)
-//        }
-//        val iosX64Test by getting
-//        val iosArm64Test by getting
-//        val iosSimulatorArm64Test by getting
-//        val iosTest by creating {
-//            dependsOn(commonTest)
-//            iosX64Test.dependsOn(this)
-//            iosArm64Test.dependsOn(this)
-//            iosSimulatorArm64Test.dependsOn(this)
-//        }
-        findByName("iosMain")?.dependencies {
-            implementation("app.cash.sqldelight:native-driver:2.1.0")
+        val iosX64Main by getting
+        val iosArm64Main by getting
+        val iosSimulatorArm64Main by getting
+        val iosMain by creating {
+            dependsOn(commonMain)
+            iosX64Main.dependsOn(this)
+            iosArm64Main.dependsOn(this)
+            iosSimulatorArm64Main.dependsOn(this)
+            dependencies {
+                implementation("io.ktor:ktor-client-darwin:2.3.7")
+                implementation("app.cash.sqldelight:native-driver:2.1.0")
+            }
+        }
+        val iosX64Test by getting
+        val iosArm64Test by getting
+        val iosSimulatorArm64Test by getting
+        val iosTest by creating {
+            dependsOn(commonTest)
+            iosX64Test.dependsOn(this)
+            iosArm64Test.dependsOn(this)
+            iosSimulatorArm64Test.dependsOn(this)
         }
     }
 }
@@ -192,6 +194,19 @@ tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKot
     dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
 }
 
+tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
+    val generatedResourcesTask =
+        when (name) {
+            "kspKotlinIosArm64" -> "generateMRiosArm64Main"
+            "kspKotlinIosSimulatorArm64" -> "generateMRiosSimulatorArm64Main"
+            "kspKotlinIosX64" -> "generateMRiosX64Main"
+            else -> null
+        }
+    if (generatedResourcesTask != null) {
+        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainSlockDatabaseInterface")
+    }
+}
+
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
     dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
 }
@@ -214,12 +229,23 @@ tasks.matching { task ->
     dependsOn("generateMRandroidMain")
 }
 
+gradle.taskGraph.whenReady {
+    tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
+        // The bundled TMM resource plugin attaches PackResourcesToKLibAction after task
+        // configuration. It expects file-backed KLIBs, while Kotlin 2.1 produces directory
+        // KLIBs here, so leave Kotlin compilation intact and drop only the late wrapper.
+        actions.removeIf { action ->
+            action.javaClass.name == "org.gradle.api.internal.AbstractTask\$TaskActionWrapper"
+        }
+    }
+}
+
 dependencies {
     compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
         add("kspAndroid", this)
-//        add("kspIosArm64", this)
-//        add("kspIosX64", this)
-//        add("kspIosSimulatorArm64", this)
+        add("kspIosArm64", this)
+        add("kspIosX64", this)
+        add("kspIosSimulatorArm64", this)
     }
 }
 
