@@ -11,6 +11,7 @@ import ai.slock.compose.data.SettingsComputerDetailSnapshot
 import ai.slock.compose.data.SettingsComputerRenameRequest
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
+import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SharedSettingsActionState
 import ai.slock.compose.data.SharedSettingsDestination
@@ -24,6 +25,7 @@ import ai.slock.compose.SlockLucideIconName
 import ai.slock.compose.SlockLucideIcon
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.SlockTimeFormat24Hour
+import ai.slock.compose.model.Presence
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -261,6 +263,19 @@ private fun SettingsComputerDetailScreen() {
         return
     }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    var currentServerId by remember(environment.authDataSource) { mutableStateOf<String?>(null) }
+    LaunchedEffect(environment.authDataSource) {
+        currentServerId =
+            when (val session = environment.authDataSource.currentSession()) {
+                is SharedAuthResult.Success -> session.data.currentServerId
+                is SharedAuthResult.Failure,
+                SharedAuthResult.Unauthenticated -> null
+            }
+    }
+    val agentStatusResolver =
+        remember(environment.serverMembersStore, currentServerId) {
+            slockAgentStatusResolver(environment.serverMembersStore, currentServerId)
+        }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-computer-detail-${computerId.ifBlank { "missing" }}") {
             SharedSettingsViewModel(environment.dataSource)
@@ -278,6 +293,7 @@ private fun SettingsComputerDetailScreen() {
         SettingsComputerDetailContent(
             payload = settingsState.computerDetail.toComputerDetailPayload(computerId, timeContext),
             actionState = settingsState.actionState?.toComputerActionState(),
+            agentStatusResolver = agentStatusResolver,
             bottomContentPadding = SlockSpacing.Lg
         ) { action, itemId ->
             handleSettingsComputerDetailAction(
@@ -466,6 +482,7 @@ internal fun SettingsComputersContent(
 internal fun SettingsComputerDetailContent(
     payload: KuiklySettingsComputerDetailPayload,
     actionState: KuiklySettingsComputerActionState? = null,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
@@ -527,11 +544,16 @@ internal fun SettingsComputerDetailContent(
             item { SettingsEmptyMessage("No agents", "Agents running on this computer will show up here.") }
         } else {
             items(payload.agents.size, key = { index -> "agent-$index-${payload.agents[index].id}" }) { index ->
+                val agent = payload.agents[index]
+                val status =
+                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, agent.id)
+                        ?: agent.settingsAgentFallbackStatusState()
                 SettingsAgentCard(
-                    item = payload.agents[index],
+                    item = agent,
+                    status = status,
                     onClick =
                         if (payload.canOpenAgents) {
-                            { onEvent("openAgent", payload.agents[index].id) }
+                            { onEvent("openAgent", agent.id) }
                         } else {
                             null
                         }
@@ -1333,7 +1355,11 @@ private fun SettingsWorkspaceCard(item: KuiklySettingsWorkspaceItem) {
 }
 
 @Composable
-private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: (() -> Unit)?) {
+private fun SettingsAgentCard(
+    item: KuiklySettingsAgentItem,
+    status: SlockAgentStatusIndicatorState,
+    onClick: (() -> Unit)?
+) {
     Row(
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
@@ -1343,11 +1369,11 @@ private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: (() -> Uni
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SettingsAgentAvatar(item)
+        SettingsAgentAvatar(status)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.displayName?.takeIf { it.isNotBlank() } ?: item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                item.statusLabel?.takeIf { it.isNotBlank() }?.let { SmallPill(it) }
+                item.settingsAgentStatusDisplayLabel(status).takeIf { it.isNotBlank() }?.let { SmallPill(it) }
             }
             listOf(item.handle, item.ownerLabel, item.presenceLabel).filterNotNull().filter { it.isNotBlank() }.joinToString("  ").takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1622,23 +1648,37 @@ private fun OnlineDot(online: Boolean) {
 }
 
 @Composable
-private fun SettingsAgentAvatar(item: KuiklySettingsAgentItem) {
+private fun SettingsAgentAvatar(status: SlockAgentStatusIndicatorState) {
     SlockAvatarWithStatus(
-        statusColor = item.settingsAgentStatusColor(),
+        statusColor = status.color,
         avatarSize = 42.dp,
-        statusSize = 10.dp
+        statusSize = 10.dp,
+        statusPulsing = status.pulsing
     ) {
         IconBox(SlockLucideIconName.Bot, SlockColor.AccentCyan)
     }
 }
 
-private fun KuiklySettingsAgentItem.settingsAgentStatusColor(): Color =
-    when ((statusLabel ?: presenceLabel).orEmpty().trim().lowercase()) {
-        "online", "active", "connected", "working", "running", "thinking" -> SlockColor.AccentLime
-        "idle", "away", "busy" -> SlockColor.BrandYellow
-        "error", "failed", "failure" -> SlockColor.AccentRed
-        "offline", "disconnected", "not connected", "inactive" -> SlockColor.EmptyStateGray
-        else -> SlockColor.BrandYellow
+internal fun KuiklySettingsAgentItem.settingsAgentFallbackStatusState(): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        statusValue = statusLabel,
+        fallbackPresence = presenceLabel.toSettingsAgentPresenceFallback()
+    )
+
+private fun KuiklySettingsAgentItem.settingsAgentStatusDisplayLabel(
+    status: SlockAgentStatusIndicatorState
+): String =
+    status.status?.label
+        ?: statusLabel?.takeIf { it.isNotBlank() }
+        ?: presenceLabel?.takeIf { it.isNotBlank() }
+        ?: "Offline"
+
+private fun String?.toSettingsAgentPresenceFallback(): Presence =
+    when (this?.trim()?.lowercase()) {
+        "online", "active", "connected" -> Presence.Active
+        "idle", "away", "busy" -> Presence.Away
+        "offline", "disconnected", "not connected", "inactive" -> Presence.Offline
+        else -> Presence.Offline
     }
 
 @Composable

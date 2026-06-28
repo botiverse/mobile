@@ -266,6 +266,54 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun seedProfilesCannotOverrideRealtimePresenceFactStatus() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent One").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+
+        store.seedProfiles(
+            serverId = ServerId("server-1"),
+            server = server("server-1"),
+            profiles =
+                listOf(
+                    member("agent-1", "Agent One").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Idle,
+                        presence = Presence.Away
+                    )
+                )
+        )
+
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
+        assertEquals(
+            AgentStatus.Working,
+            store.state.value.entryFor(ServerId("server-1"))?.members?.single()?.agentStatus
+        )
+    }
+
+    @Test
     fun memberProfileFlowEmitsOnlyForTargetProfileChanges() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)

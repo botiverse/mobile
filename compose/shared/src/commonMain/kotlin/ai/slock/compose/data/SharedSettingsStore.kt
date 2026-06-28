@@ -403,6 +403,7 @@ class SharedSettingsDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
     private val computersSource: SharedSettingsComputersSource? = null,
+    private val serverMembersStore: SharedServerMembersStore? = null,
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
@@ -503,23 +504,51 @@ class SharedSettingsDataSource(
                 )
             } else {
                 null
-            }
-        return when (sharedComputer) {
-            is DataResult.Content ->
-                settingsRepository?.getComputerDetailForComputer(sharedComputer.data)
-                    ?: DataResult.Content(
-                        SettingsComputerDetailSnapshot(
-                            computer = sharedComputer.data,
-                            workspaces = emptyList(),
-                            agents = emptyList(),
-                            sections = emptyList()
+        }
+        val result =
+            when (sharedComputer) {
+                is DataResult.Content ->
+                    settingsRepository?.getComputerDetailForComputer(sharedComputer.data)
+                        ?: DataResult.Content(
+                            SettingsComputerDetailSnapshot(
+                                computer = sharedComputer.data,
+                                workspaces = emptyList(),
+                                agents = emptyList(),
+                                sections = emptyList()
+                            )
                         )
-                    )
-            is DataResult.Empty -> DataResult.Empty(sharedComputer.reason)
-            is DataResult.Error -> DataResult.Error(sharedComputer.error)
-            is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
-            null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        }.withComputerManageGate(session.canManageCurrentServer())
+                is DataResult.Empty -> DataResult.Empty(sharedComputer.reason)
+                is DataResult.Error -> DataResult.Error(sharedComputer.error)
+                is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
+                null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            }.withComputerManageGate(session.canManageCurrentServer())
+        if (result is DataResult.Content && serverId != null) {
+            refreshServerMembersForSettingsStatus(serverId, force = forceComputers)
+        }
+        return result
+    }
+
+    private suspend fun refreshServerMembersForSettingsStatus(serverId: String, force: Boolean) {
+        val store = serverMembersStore ?: return
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        when (val result = store.loadMembers(ServerId(cleanServerId), priority = DataRequestPriority.Background, force = force)) {
+            is DataResult.Content ->
+                diagnosticsLogger?.invoke(
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=content members=${result.data.members.size}"
+                )
+            is DataResult.Empty ->
+                diagnosticsLogger?.invoke(
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=empty reason=${result.reason}"
+                )
+            is DataResult.Error ->
+                diagnosticsLogger?.invoke(
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=error code=${result.error.code}"
+                )
+            is DataResult.NoPermission ->
+                diagnosticsLogger?.invoke(
+                    "settings_member_status_refresh_result serverId=$cleanServerId result=no_permission code=${result.blocker.code}"
+                )
+        }
     }
 
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =

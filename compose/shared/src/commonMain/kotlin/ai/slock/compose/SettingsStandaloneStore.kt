@@ -12,6 +12,7 @@ import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
 import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedServerMembersStore
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsEffect
 import ai.slock.compose.data.SharedSettingsIntent
@@ -31,6 +32,7 @@ import com.tencent.kuikly.core.pager.Pager
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
     val authDataSource: SharedAuthDataSource,
+    val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities
 )
 
@@ -70,6 +72,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                         warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
                     ),
                 computersSource = computersStore,
+                serverMembersStore = sharedStores.serverMembersStore,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository =
                     PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
@@ -82,10 +85,11 @@ internal fun rememberStandaloneSettingsEnvironment(
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
             )
         }
-    return remember(dataSource, authDataSource, settingsCapabilities) {
+    return remember(dataSource, authDataSource, sharedStores.serverMembersStore, settingsCapabilities) {
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
             authDataSource = authDataSource,
+            serverMembersStore = sharedStores.serverMembersStore,
             settingsCapabilities = settingsCapabilities
         )
     }

@@ -1627,6 +1627,7 @@ private fun SlockAppShellContent() {
                 sessionStore = authStore,
                 settingsRepository = settingsRepository,
                 computersSource = appShellComputersStore,
+                serverMembersStore = sharedStores.serverMembersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,

@@ -136,8 +136,30 @@ class SharedHomeDataSource(
     suspend fun refreshAgentDirectMessageStatuses(
         snapshot: HomeSnapshot,
         priority: DataRequestPriority = DataRequestPriority.Background
-    ): AgentDirectMessageStatusPatch =
-        AgentDirectMessageStatusPatch(snapshot, changed = false)
+    ): AgentDirectMessageStatusPatch {
+        val store = serverMembersStore
+            ?: return AgentDirectMessageStatusPatch(snapshot, changed = false)
+        val serverId = snapshot.server.id
+        when (val result = store.loadMembers(serverId, priority = priority, force = true)) {
+            is DataResult.Content ->
+                diagnosticsLogger(
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=content members=${result.data.members.size}"
+                )
+            is DataResult.Empty ->
+                diagnosticsLogger(
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=empty reason=${result.reason}"
+                )
+            is DataResult.Error ->
+                diagnosticsLogger(
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=error code=${result.error.code}"
+                )
+            is DataResult.NoPermission ->
+                diagnosticsLogger(
+                    "home_agent_status_refresh_result serverId=${serverId.value} source=member_store result=no_permission code=${result.blocker.code}"
+                )
+        }
+        return AgentDirectMessageStatusPatch(snapshot, changed = false)
+    }
 
     suspend fun writeHomeSnapshot(snapshot: HomeSnapshot, source: String): Boolean =
         localWriteThrough?.writeHomeResult(DataResult.Content(snapshot), source) ?: false

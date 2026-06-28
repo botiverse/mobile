@@ -727,10 +727,11 @@ class SharedHomeStore(
         request: HomeServerSwitchState,
         snapshot: HomeSnapshot
     ) {
-        if (snapshot.directMessages.none { it.isAgentDirectMessage }) return
+        if (snapshot.directMessages.none { it.isAgentDirectMessage } && !dataSource.projectsAgentStatusFromMemberStore) return
         if (dataSource.projectsAgentStatusFromMemberStore) {
-            diagnosticsLogger("home_agent_status_refresh_skip reason=member_store_projection")
-            return
+            diagnosticsLogger("home_agent_status_refresh_start source=member_store_projection")
+        } else {
+            diagnosticsLogger("home_agent_status_refresh_start source=legacy_direct_message_patch")
         }
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob =
