@@ -1524,6 +1524,39 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun startDropsBlankActiveAnnouncementsFromHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi =
+            RecordingAnnouncementsApi(
+                activeBody =
+                    """
+                    {
+                      "announcements": [
+                        {
+                          "id": "announcement-blank",
+                          "title": "   ",
+                          "pages": [
+                            { "body": "   " }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertEquals(emptyList(), store.state.value.notifications)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun startLoadsOfflineMachinesIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")

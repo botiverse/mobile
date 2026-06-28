@@ -1681,9 +1681,10 @@ private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
 
 @Composable
 private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
-    if (notifications.isEmpty()) return
+    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
+    if (visibleNotifications.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
-    val activeKind = notifications.first().kind
+    val activeKind = visibleNotifications.first().kind
     Box(modifier = modifier) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
             Box(
@@ -1704,9 +1705,14 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
-        if (expanded) HomeNotificationPopover(notifications, onView, onDismiss, Modifier.align(Alignment.TopEnd).offset(y = 44.dp))
+        if (expanded) HomeNotificationPopover(visibleNotifications, onView, onDismiss, Modifier.align(Alignment.TopEnd).offset(y = 44.dp))
     }
 }
+
+internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<SlockHomeNotificationItem> =
+    filter { notification ->
+        notification.title.isNotBlank() || notification.body.isNotBlank()
+    }
 
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {

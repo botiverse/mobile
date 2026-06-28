@@ -210,7 +210,7 @@ class SharedHomeDataSource(
         val client = typedAnnouncementsApi
             ?: return DataResult.Content(emptyList())
         return when (val result = client.activeAnnouncements()) {
-            is DataResult.Content -> DataResult.Content(result.data.items.map { it.toSharedHomeNotification() })
+            is DataResult.Content -> DataResult.Content(result.data.items.mapNotNull { it.toSharedHomeNotification() })
             is DataResult.Empty -> DataResult.Content(emptyList())
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -331,11 +331,14 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedH
     )
 }
 
-private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification =
-    SharedHomeNotification(
+private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification? {
+    val visibleTitle = title.trim()
+    val visibleBody = body.trim()
+    if (visibleTitle.isBlank() && visibleBody.isBlank()) return null
+    return SharedHomeNotification(
         id = id,
-        title = title,
-        body = body,
+        title = visibleTitle,
+        body = visibleBody,
         actionLabel = actionLabel,
         targetId = targetId,
         kind =
@@ -345,6 +348,7 @@ private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification 
                 AnnouncementKind.Error -> SharedHomeNotificationKind.Error
             }
     )
+}
 
 /**
  * Typed Home/Channels/DM boundary.

@@ -512,6 +512,18 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun visibleHomeNotificationsDropBlankItems() {
+        val notifications =
+            listOf(
+                SlockHomeNotificationItem(id = "blank", title = "   ", body = ""),
+                SlockHomeNotificationItem(id = "body", title = "", body = "Visible body"),
+                SlockHomeNotificationItem(id = "title", title = "Visible title", body = "")
+            )
+
+        assertEquals(listOf("body", "title"), notifications.visibleHomeNotifications().map { it.id })
+    }
+
+    @Test
     fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
         val agents =
             listOf(
