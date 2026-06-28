@@ -8867,6 +8867,7 @@ private fun ThreadMessageCard(
                                         highlightedMentions = highlightedMentions,
                                         knownChannelNames = knownMarkdownChannelNames,
                                         resolveTagLabel = resolveMarkdownTagLabel,
+                                        inlineContentScope = message.id,
                                         onOpenTag = onOpenMarkdownTag,
                                         onOpenUrl = onOpenMarkdownUrl,
                                         performanceKey = messagePerformanceKey,
