@@ -14,7 +14,7 @@ application:
 | Layer | Project root | Module | Role |
 |---|---|---|---|
 | Outer Android | `Slock/` | `:app` | Production app host (MainActivity, auth, network, realtime, UI, SQLDelight, tests) |
-| Inner KMP | `Slock/compose/` | `:shared` | Cross-platform business logic (commonMain + androidMain/ohosArm64Main/jsMain) |
+| Inner KMP | `Slock/compose/` | `:shared` | Cross-platform business logic (commonMain + androidMain/ohosArm64Main) |
 | Inner KMP | `Slock/compose/` | `:androidApp` | Thin Kuikly dev shell — barely used in production |
 
 The outer `:app` consumes `:shared` as a **MavenLocal artifact**
@@ -45,7 +45,7 @@ for docs, scripts, `.agents/`, submodules, and non-Gradle project assets.
 Slock/                          ← git repo root (no longer a Gradle project root)
 ├── compose/                    ← **NEW single Gradle project root**
 │   ├── gradlew                 ← sole Gradle wrapper entry point
-│   ├── settings.gradle.kts     ← includes :androidApp, :shared, :miniApp
+│   ├── settings.gradle.kts     ← includes :androidApp, :shared
 │   ├── build.gradle.kts        ← root build config (plugins, tasks)
 │   ├── buildSrc/
 │   ├── gradle/
@@ -64,8 +64,7 @@ Slock/                          ← git repo root (no longer a Gradle project ro
 │   │       └── connectedTest/               ← outer connectedTest variant
 │   ├── shared/                              ← unchanged
 │   ├── ohosApp/                             ← unchanged
-│   ├── iosApp/                              ← unchanged
-│   └── miniApp/                             ← unchanged
+│   └── iosApp/                              ← unchanged
 ├── .agents/                    ← unchanged
 ├── docs/                       ← unchanged (updated references)
 ├── scripts/                    ← updated paths
@@ -232,7 +231,7 @@ Kotlin 2.3.20, AGP 8.13.2.
    - `kuikly-core-render-android = { module = "com.tencent.kuikly-open:core-render-android", version.ref = "kuiklyAndroid" }`
 3. **Add KMP deps**: Ktor, kotlinx-serialization, kotlinx-coroutines, sqldelight
 4. **Keep `buildSrc/KotlinBuildVar.kt` for Phase 1 unless all references are migrated
-   together**. The compose root buildscript, shared builds, OHOS build, and miniApp
+   together**. The compose root buildscript, shared builds, and OHOS build
    currently use `Version`/`BuildPlugin`. Version catalogs cannot compute
    `"${kuikly}-${kotlin}"` dynamically, so either keep `buildSrc` or replace it with
    explicit full artifact versions everywhere in one commit.
@@ -298,8 +297,8 @@ Update all build/validation instructions:
 - **`compose/shared/`**: No changes needed. It already compiles for Android as a library.
 - **`compose/ohosApp/`**: Unchanged.
 - **`compose/iosApp/`**: Unchanged.
-- **`compose/miniApp/`**: Unchanged except for Kuikly version source if `buildSrc`
-  is removed.
+- **Mini app target**: Removed from the KMP project; do not include or validate
+  `:miniApp` in the compose Gradle build.
 - **`compose/h5App/`**: Deleted/not retained. Remove the include from
   `compose/settings.gradle.kts` and remove H5 from validation/docs/scripts.
 - **`third_party/`**: All submodules unchanged.
@@ -503,7 +502,7 @@ outer `.idea/`.
 - [ ] `compose/gradle/libs.versions.toml` exists and is complete
 - [ ] Kuikly version source is single and explicit (`buildSrc` kept intentionally or all
       `Version`/`BuildPlugin` references migrated)
-- [ ] `compose/settings.gradle.kts` includes `:androidApp`, `:shared`, `:miniApp`
+- [ ] `compose/settings.gradle.kts` includes `:androidApp`, `:shared`
 - [ ] `compose/settings.gradle.kts` does not include `:h5App`
 - [ ] `compose/build.gradle.kts` plugins use version catalog
 - [ ] `compose/build.gradle.kts` root verification tasks use `../docs` / `../scripts`
@@ -547,8 +546,8 @@ outer `.idea/`.
    **Decision**: Keep `compose/` as subdirectory, keep gradlew there. Repo root
    becomes a "meta" directory with docs, scripts, `.agents/`, `third_party/`.
 
-3. **H5/Mini App targets**: MiniApp exists and should be kept. H5 is intentionally not
-   retained; remove `include(":h5App")` and any H5-specific validation/docs/scripts.
+3. **H5/Mini App targets**: H5 and MiniApp are intentionally not retained; remove their
+   includes and any target-specific validation/docs/scripts.
 
 4. **Version catalog vs buildSrc**: Currently compose uses `buildSrc` for Kuikly versions.
    Should we keep both or consolidate entirely to version catalog?

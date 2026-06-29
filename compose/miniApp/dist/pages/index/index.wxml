@@ -1,2 +1,0 @@
-<import src="../../base.wxml"/>
-<template is="kuikly_tmpl" data="{{root:root}}" />
