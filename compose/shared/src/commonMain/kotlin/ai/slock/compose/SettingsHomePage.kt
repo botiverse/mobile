@@ -1887,9 +1887,20 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
     }
 
-    LaunchedEffect(homeState.content) {
+    LaunchedEffect(homeState.content, authGateState) {
         val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
         if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
+        val cachedSession = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+        if (!shouldApplyHomeAuthErrorGate(error, authGateState, cachedSession)) {
+            bridge.logWarn(
+                "app_shell_home_auth_error_gate_skip code=$error " +
+                    "gate=${authGateState.authGateDiagnosticsName()} hasCachedSession=${cachedSession != null}"
+            )
+            if (authGateState == SharedAuthGateState.AuthRequired && cachedSession != null) {
+                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+            }
+            return@LaunchedEffect
+        }
         bridge.logWarn("app_shell_home_auth_error_gate code=$error")
         authGateMessage = "Sign in to continue."
         authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
@@ -12630,6 +12641,26 @@ private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange)
         beforeIso = context.nowEpochMillis?.let(::slockEpochMillisUtcIso)
     )
 }
+
+internal fun shouldApplyHomeAuthErrorGate(
+    errorCode: String?,
+    authGateState: SharedAuthGateState,
+    cachedSession: StoredAuthSession?
+): Boolean {
+    if (!ScreenError(errorCode.orEmpty(), retryable = false).isAuthSessionError()) return false
+    if (authGateState == SharedAuthGateState.Restoring) return false
+    if (cachedSession != null) return false
+    return true
+}
+
+private fun SharedAuthGateState.authGateDiagnosticsName(): String =
+    when (this) {
+        SharedAuthGateState.Restoring -> "restoring"
+        SharedAuthGateState.AuthRequired -> "auth_required"
+        is SharedAuthGateState.ServerRequired -> "server_required"
+        is SharedAuthGateState.Ready -> "ready"
+        is SharedAuthGateState.Error -> "error"
+    }
 
 internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
