@@ -94,6 +94,7 @@ internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
     activityStateCache: SharedActivityStateCache? = null,
+    routeVisibleTick: Int = 0,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -166,6 +167,11 @@ internal fun SharedHomeActivityScreen(
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
+    LaunchedEffect(routeVisibleTick) {
+        if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+    }
     SharedActivityPanelContent(
         state = state,
         onOpenMessage = onOpenMessage,
@@ -179,6 +185,9 @@ internal fun SharedHomeActivityScreen(
         modifier = modifier
     )
 }
+
+internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
+    routeVisibleTick > 0
 
 @Composable
 internal fun SharedHomeActivityScreen(

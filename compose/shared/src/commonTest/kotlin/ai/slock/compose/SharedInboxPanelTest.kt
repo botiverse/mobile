@@ -22,6 +22,12 @@ import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
     @Test
+    fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
+        assertEquals(false, activityPageDidAppearShouldRefresh(0))
+        assertEquals(true, activityPageDidAppearShouldRefresh(1))
+    }
+
+    @Test
     fun activityPendingUpdateIncrementCountsPrependedRowsWhenAwayFromTop() {
         val items =
             listOf(

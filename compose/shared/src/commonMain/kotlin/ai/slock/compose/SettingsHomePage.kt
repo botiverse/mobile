@@ -611,9 +611,21 @@ internal class ComposeHomeSavedPage : ai.slock.compose.base.BasePager() {
 
 @Page(HOME_ACTIVITY_PAGE, supportInLocal = true)
 internal class ComposeHomeActivityPage : ai.slock.compose.base.BasePager() {
+    private var pageVisibleTick by mutableStateOf(0)
+    private var consumedInitialPageAppearance = false
+
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationActivity) }
+        setContent { HomeSecondaryRouterContent(HomeDestinationActivity, pageVisibleTick) }
+    }
+
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        if (!consumedInitialPageAppearance) {
+            consumedInitialPageAppearance = true
+            return
+        }
+        pageVisibleTick += 1
     }
 }
 
@@ -700,7 +712,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
 }
 
 @Composable
-private fun HomeSecondaryRouterContent(destination: String) {
+private fun HomeSecondaryRouterContent(destination: String, routeVisibleTick: Int = 0) {
     val environment = rememberHomeSecondaryRouteEnvironment()
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
@@ -709,7 +721,7 @@ private fun HomeSecondaryRouterContent(destination: String) {
         active = true
     )
     when (retainedDestination) {
-        HomeDestinationActivity -> HomeActivityRouterContent(environment)
+        HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
         HomeDestinationSearch -> HomeSearchRouterContent(environment)
         HomeDestinationSaved -> HomeSavedRouterContent(environment)
         else -> SlockCenteredLoading(message = "Opening...")
@@ -717,13 +729,17 @@ private fun HomeSecondaryRouterContent(destination: String) {
 }
 
 @Composable
-private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment) {
+private fun HomeActivityRouterContent(
+    environment: HomeSecondaryRouteEnvironment,
+    routeVisibleTick: Int = 0
+) {
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
         activityStateCache = environment.activityStateCache,
+        routeVisibleTick = routeVisibleTick,
         onOpenMessage = { request ->
             environment.pager.openStandaloneHomeMessageRequest(
                 bridge = environment.bridge,
@@ -948,9 +964,21 @@ internal class ComposeAuthChooseServerPage : ai.slock.compose.base.BasePager() {
 
 @Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeSlockAppShellPage : ai.slock.compose.base.BasePager() {
+    private var pageVisibleTick by mutableStateOf(0)
+    private var consumedInitialPageAppearance = false
+
     override fun willInit() {
         super.willInit()
-        setContent { SlockAppShellContent() }
+        setContent { SlockAppShellContent(pageVisibleTick) }
+    }
+
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        if (!consumedInitialPageAppearance) {
+            consumedInitialPageAppearance = true
+            return
+        }
+        pageVisibleTick += 1
     }
 }
 
@@ -1269,6 +1297,17 @@ internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Bo
         else -> false
     }
 
+internal fun appShellPageDidAppearShouldRefresh(pageVisibleTick: Int): Boolean =
+    pageVisibleTick > 0
+
+private fun String.toHomeSecondaryOpenIntent(): SharedHomeShellIntent =
+    when (retainedHomeSecondaryDestination(this)) {
+        HomeDestinationActivity -> SharedHomeShellIntent.OpenActivity
+        HomeDestinationSaved -> SharedHomeShellIntent.OpenSaved
+        HomeDestinationSearch -> SharedHomeShellIntent.OpenSearch
+        else -> SharedHomeShellIntent.CloseSecondaryDestination
+    }
+
 internal fun homeSecondaryPerformanceRoute(destination: String): String =
     when (retainedHomeSecondaryDestination(destination)) {
         HomeDestinationActivity -> "kuikly_home_activity"
@@ -1391,7 +1430,7 @@ private fun retainedAppShellPaneModifier(active: Boolean, keepLayoutWhenInactive
     }
 
 @Composable
-private fun SlockAppShellContent() {
+private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
@@ -1791,6 +1830,39 @@ private fun SlockAppShellContent() {
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
 
+    fun refreshVisibleAppShellRoute(reason: String) {
+        if (latestReadySession == null) return
+        bridge.log(
+            "app_shell_visible_refresh reason=$reason tab=${latestSelectedTab} " +
+                "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+        )
+        when (retainedAppShellSelectedTab(latestSelectedTab)) {
+            "home" ->
+                if (homeDestinationRefreshesOnLifecycleResume(latestSelectedHomeDestination)) {
+                    when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
+                        null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch ->
+                            homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+                    }
+                }
+            "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
+            "members" -> {
+                membersListRefreshKey += 1
+                membersAgentDetailRefreshKey += 1
+            }
+            "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+        }
+    }
+
+    LaunchedEffect(pageVisibleTick) {
+        if (appShellPageDidAppearShouldRefresh(pageVisibleTick)) {
+            if (latestSelectedHomeDestination != null) {
+                homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+            } else {
+                refreshVisibleAppShellRoute("page_did_appear")
+            }
+        }
+    }
+
     fun resetAppShellSessionState() {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
@@ -2156,6 +2228,7 @@ private fun SlockAppShellContent() {
 
     fun openHomeSecondaryDestination(destination: String) {
         retainedHomeSecondaryDestination(destination)?.let { retainedDestination ->
+            homeShellStore.dispatch(retainedDestination.toHomeSecondaryOpenIntent())
             pager.openHomeSecondaryPage(retainedDestination, threadTimeContext)
         }
     }
@@ -2458,25 +2531,7 @@ private fun SlockAppShellContent() {
                         (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
                         latestReadySession != null
                     ) {
-                        bridge.log(
-                            "app_shell_resume_refresh tab=${latestSelectedTab} " +
-                                "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
-                        )
-                        when (retainedAppShellSelectedTab(latestSelectedTab)) {
-                            "home" ->
-                                if (homeDestinationRefreshesOnLifecycleResume(latestSelectedHomeDestination)) {
-                                    when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
-                                        null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch ->
-                                            homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-                                    }
-                                }
-                            "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
-                            "members" -> {
-                                membersListRefreshKey += 1
-                                membersAgentDetailRefreshKey += 1
-                            }
-                            "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
-                        }
+                        refreshVisibleAppShellRoute("app_lifecycle_$event")
                     }
                     return@addListener
                 }

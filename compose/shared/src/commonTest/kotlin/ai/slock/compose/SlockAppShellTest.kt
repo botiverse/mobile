@@ -317,6 +317,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellPageDidAppearRefreshesOnlyAfterInitialAppearance() {
+        assertEquals(false, appShellPageDidAppearShouldRefresh(0))
+        assertEquals(true, appShellPageDidAppearShouldRefresh(1))
+    }
+
+    @Test
     fun searchSurfaceDoesNotRefreshOnLifecycleResume() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
