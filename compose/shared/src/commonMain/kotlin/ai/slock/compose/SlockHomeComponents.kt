@@ -477,8 +477,7 @@ internal fun HomeTitlebarVisualScreen() {
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
-            onView = {},
-            onDismiss = {}
+            onNotificationToggle = {}
         )
     }
 }
@@ -743,6 +742,13 @@ internal fun SlockStructuralHomeShell(
         contentRefreshing = contentRefreshing,
         pullRefreshing = pullRefreshing
     )
+    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
+    var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
+    LaunchedEffect(visibleNotifications.size) {
+        if (visibleNotifications.isEmpty()) {
+            notificationCenterExpanded = false
+        }
+    }
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
@@ -763,12 +769,11 @@ internal fun SlockStructuralHomeShell(
                     HomeTitlebar(
                         serverName = currentServerName,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
-                        notifications = notifications,
+                        notifications = visibleNotifications,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClick,
-                        onView = onNotificationView,
-                        onDismiss = onNotificationDismiss
+                        onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -1058,6 +1063,19 @@ internal fun SlockStructuralHomeShell(
                         top = homeServerSwitcherPanelTopOffset(topSafeArea),
                         start = SlockSpacing.Lg
                     )
+                )
+            }
+            if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {
+                HomeNotificationPopover(
+                    visibleNotifications,
+                    onNotificationView,
+                    onNotificationDismiss,
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            top = homeNotificationPopoverTopOffset(topSafeArea),
+                            end = SlockSpacing.Md
+                        )
                 )
             }
             activeSortMenu?.let { section ->
@@ -1484,8 +1502,7 @@ private fun HomeTitlebar(
     refreshing: Boolean,
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
-    onView: (SlockHomeNotificationItem) -> Unit,
-    onDismiss: (SlockHomeNotificationItem) -> Unit
+    onNotificationToggle: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
@@ -1511,7 +1528,10 @@ private fun HomeTitlebar(
             if (refreshing) {
                 SlockHeaderRefreshIndicator()
             }
-            HomeNotificationCenter(notifications, onView, onDismiss)
+            HomeNotificationCenter(
+                notifications = notifications,
+                onToggle = onNotificationToggle
+            )
         }
     }
 }
@@ -1621,10 +1641,9 @@ private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
+private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem>, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
     if (visibleNotifications.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
     val activeKind = visibleNotifications.first().kind
     Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
@@ -1639,29 +1658,21 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
                     .size(HomeNotificationTriggerSize)
                     .background(activeKind.notificationColor())
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable { expanded = !expanded },
+                    .clickable { onToggle() },
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(SlockLucideIconName.TriangleAlert, Modifier.size(16.dp))
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
-        if (expanded) {
-            HomeNotificationPopover(
-                visibleNotifications,
-                onView,
-                onDismiss,
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(y = HomeNotificationPopoverOffsetY)
-            )
-        }
     }
 }
 
 private val HomeNotificationTriggerSize = 32.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
-internal val HomeNotificationPopoverOffsetY = 44.dp
+private val HomeNotificationPopoverTopGap = 4.dp
+internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
+    topSafeArea + SlockSize.PageHeaderHeight + HomeNotificationPopoverTopGap
 
 internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<SlockHomeNotificationItem> =
     filter { notification ->

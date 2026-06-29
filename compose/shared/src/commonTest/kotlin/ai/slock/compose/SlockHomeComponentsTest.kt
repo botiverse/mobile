@@ -553,8 +553,9 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun notificationPopoverIsOffsetOutsideFixedTriggerSlot() {
-        assertEquals(44.dp, HomeNotificationPopoverOffsetY)
+    fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
+        assertEquals(66.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
+        assertEquals(90.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
     }
 
     @Test
