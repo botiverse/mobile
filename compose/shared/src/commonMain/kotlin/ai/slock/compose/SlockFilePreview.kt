@@ -1117,7 +1117,7 @@ internal fun SlockFilePreviewPayloadContent(
                 iconName = slockFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
                 meta = payload.meta,
-                message = payload.message.ifBlank { "No preview is available for this file type." },
+                message = slockFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null),
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
@@ -1572,6 +1572,12 @@ internal fun slockFilePreviewPrimaryActionLabel(payload: SlockFilePreviewPayload
         !cached -> "Download"
         payload.isAndroidPackageArchive() -> "Install"
         else -> "Open"
+    }
+
+internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPayload, downloadable: Boolean): String =
+    when {
+        downloadable -> "Download this file to open it with another app."
+        else -> payload.message.ifBlank { "No preview is available for this file type." }
     }
 
 internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =

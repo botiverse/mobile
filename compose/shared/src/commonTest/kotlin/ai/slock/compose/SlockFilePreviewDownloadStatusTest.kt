@@ -179,6 +179,36 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun unsupportedDownloadableFilesShowDownloadEntryMessage() {
+        val label =
+            slockFilePreviewUnsupportedFileMessage(
+                SlockFilePreviewPayload(
+                    kind = "unsupported",
+                    externalFileName = "archive.zip",
+                    message = "No preview is available for this file type."
+                ),
+                downloadable = true
+            )
+
+        assertEquals("Download this file to open it with another app.", label)
+    }
+
+    @Test
+    fun unsupportedNonDownloadableFilesKeepPreviewMessage() {
+        val label =
+            slockFilePreviewUnsupportedFileMessage(
+                SlockFilePreviewPayload(
+                    kind = "unsupported",
+                    externalFileName = "archive.zip",
+                    message = "Preview unavailable from workspace"
+                ),
+                downloadable = false
+            )
+
+        assertEquals("Preview unavailable from workspace", label)
+    }
+
+    @Test
     fun fileIconUsesPackageForApk() {
         val icon =
             slockFilePreviewFileIconName(
