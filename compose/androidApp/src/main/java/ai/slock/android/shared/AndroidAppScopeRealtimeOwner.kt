@@ -32,6 +32,7 @@ import org.json.JSONObject
 
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
+    private const val ForegroundReconnectAfterBackgroundMillis = 5L * 60L * 1000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -39,6 +40,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
     private var realtimeConnectJob: Job? = null
     private var appVisibility: AppVisibility = AppVisibility.Background
+    private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
     private var hostNetworkOnline: Boolean? = null
@@ -86,12 +88,33 @@ internal object AndroidAppScopeRealtimeOwner {
         context: Context,
         source: String = "unknown"
     ) {
+        val shownAtMillis = System.currentTimeMillis()
+        val hiddenAtMillis = lastHiddenAtMillis
+        lastHiddenAtMillis = null
         appVisibility = AppVisibility.Foreground
         realtimeRuntime?.onAppShown()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
+        if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
+            val runtime = realtimeRuntime
+            val ownedSession = runtime?.ownedSession()
+            if (runtime != null && ownedSession != null) {
+                SlockDiagnosticsLogger.d(
+                    LOG_TAG,
+                    "foreground_reconnect_request reason=long_background source=$source " +
+                        "backgroundMs=${shownAtMillis - (hiddenAtMillis ?: shownAtMillis)} " +
+                        "serverId=${ownedSession.serverId.value}"
+                )
+                connectFromStoredSession(
+                    context = context.applicationContext,
+                    requestedLastSeq = runtime.lastSeq,
+                    forceReconnect = true
+                )
+                return
+            }
+        }
         healthCheckRealtimeConnection(
             context = context.applicationContext,
             allowBackground = true,
@@ -101,6 +124,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun onAppHidden(source: String = "unknown") {
         appVisibility = AppVisibility.Background
+        lastHiddenAtMillis = System.currentTimeMillis()
         realtimeRuntime?.onAppHidden()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
@@ -150,13 +174,19 @@ internal object AndroidAppScopeRealtimeOwner {
         context: Context,
         requestedLastSeq: Long = 0L
     ) {
-        connectFromStoredSession(context, requestedLastSeq, missingSelectedServerRetryCount = 0)
+        connectFromStoredSession(
+            context = context,
+            requestedLastSeq = requestedLastSeq,
+            missingSelectedServerRetryCount = 0,
+            forceReconnect = false
+        )
     }
 
     private fun connectFromStoredSession(
         context: Context,
         requestedLastSeq: Long,
-        missingSelectedServerRetryCount: Int
+        missingSelectedServerRetryCount: Int = 0,
+        forceReconnect: Boolean = false
     ) {
         val appContext = context.applicationContext
         val runtime = bootstrapRealtime(appContext)
@@ -208,7 +238,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
-                            forceReconnect = false
+                            forceReconnect = forceReconnect
                         )
                 } finally {
                     realtimeConnectJob = null
@@ -450,6 +480,15 @@ internal object AndroidAppScopeRealtimeOwner {
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
         AndroidAppScopeRealtimeHostContext.backgroundUnreadNotificationConversationKind(message)
+
+    internal fun shouldForceReconnectAfterLongBackground(
+        hiddenAtMillis: Long?,
+        shownAtMillis: Long
+    ): Boolean {
+        val hiddenAt = hiddenAtMillis ?: return false
+        if (shownAtMillis <= hiddenAt) return false
+        return shownAtMillis - hiddenAt >= ForegroundReconnectAfterBackgroundMillis
+    }
 
     private enum class AppVisibility {
         Foreground,

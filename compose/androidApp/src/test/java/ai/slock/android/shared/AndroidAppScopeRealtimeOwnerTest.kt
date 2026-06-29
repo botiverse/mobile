@@ -71,6 +71,36 @@ class AndroidAppScopeRealtimeOwnerTest {
         )
     }
 
+    @Test
+    fun foregroundReconnectAfterLongBackgroundUsesFiveMinuteThreshold() {
+        val hiddenAt = 1_000L
+
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldForceReconnectAfterLongBackground(
+                hiddenAtMillis = null,
+                shownAtMillis = hiddenAt + 10_000L
+            )
+        )
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldForceReconnectAfterLongBackground(
+                hiddenAtMillis = hiddenAt,
+                shownAtMillis = hiddenAt
+            )
+        )
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldForceReconnectAfterLongBackground(
+                hiddenAtMillis = hiddenAt,
+                shownAtMillis = hiddenAt + 299_999L
+            )
+        )
+        assertTrue(
+            AndroidAppScopeRealtimeOwner.shouldForceReconnectAfterLongBackground(
+                hiddenAtMillis = hiddenAt,
+                shownAtMillis = hiddenAt + 300_000L
+            )
+        )
+    }
+
     private fun message(
         channelId: String? = null,
         threadChannelId: String? = null,
