@@ -1554,11 +1554,11 @@ private fun ThreadPageScreen() {
                 }
             }
         },
-        onOpenMemberProfile = { currentPayload, timelineSlice, memberId ->
+        onOpenMemberProfile = { currentPayload, timelineSlice, memberId, selectedMemberKind ->
             val authorProfile =
                 timelineSlice.findThreadAuthorProfile(memberId)
                     ?: currentPayload.findThreadAuthorProfile(memberId)
-            val pageData = currentPayload.toThreadMemberDetailPageData(memberId, authorProfile?.kind)
+            val pageData = currentPayload.toThreadMemberDetailPageData(memberId, selectedMemberKind ?: authorProfile?.kind)
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
                 bridge.logWarn(
@@ -1750,7 +1750,7 @@ internal fun ThreadHeaderVisualScreen() {
             payload = payload,
             onBack = {},
             onOpenInChannel = {},
-            onOpenMemberProfile = {},
+            onOpenMemberProfile = { _, _ -> },
             onShowMembers = {},
             onShowSettings = {}
         )
@@ -1858,6 +1858,7 @@ internal fun ChannelMembersPanelVisualScreen() {
             removeMemberErrorCode = null,
             onDismiss = {},
             onAddMember = {},
+            onOpenMember = {},
             onRemoveMember = {}
         )
     }
@@ -1890,6 +1891,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
             removeMemberErrorCode = null,
             onDismiss = {},
             onAddMember = {},
+            onOpenMember = {},
             onRemoveMember = {}
         )
         ThreadAddMemberModal(
@@ -2085,7 +2087,7 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String) -> Unit = { _, _, _ -> }
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?) -> Unit = { _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
@@ -3335,7 +3337,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
-            onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, memberId) },
+            onOpenMemberProfile = { memberId, memberKind -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, memberId, memberKind) },
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
@@ -5938,7 +5940,7 @@ private fun ThreadPageContent(
     onFilesAuthRequired: (String?) -> Unit,
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
-    onOpenMemberProfile: (String) -> Unit,
+    onOpenMemberProfile: (String, MemberKind?) -> Unit,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -6168,7 +6170,7 @@ private fun ThreadPageContent(
                         knownMarkdownChannelNames = knownMarkdownChannelNames,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         onThreadEvent = onThreadEvent,
-                        onOpenMember = onOpenMemberProfile,
+                        onOpenMember = { memberId -> onOpenMemberProfile(memberId, null) },
                         onMentionAuthor = { handle ->
                             if (showComposerForSelectedTab) {
                                 composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
@@ -6370,6 +6372,9 @@ private fun ThreadPageContent(
                 onAddMember = {
                     activeModal = "addMember"
                 },
+                onOpenMember = { member ->
+                    onOpenMemberProfile(member.id, member.threadMemberKind())
+                },
                 removeMemberStatus = payload.removeMemberStatus,
                 removingMemberId = payload.removingMemberId,
                 removeMemberErrorCode = payload.removeMemberErrorCode,
@@ -6389,6 +6394,9 @@ private fun ThreadPageContent(
                     onDismiss = { activeModal = null },
                     onAddMember = {
                         activeModal = "addMember"
+                    },
+                    onOpenMember = { member ->
+                        onOpenMemberProfile(member.id, member.threadMemberKind())
                     },
                     removeMemberStatus = payload.removeMemberStatus,
                     removingMemberId = payload.removingMemberId,
@@ -6462,7 +6470,7 @@ private fun ThreadPageHeader(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
-    onOpenMemberProfile: (String) -> Unit,
+    onOpenMemberProfile: (String, MemberKind?) -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
@@ -6494,7 +6502,7 @@ private fun ThreadPageHeader(
                     onClick =
                         headerDisplay.dmPeerMemberId
                             ?.takeIf { it.isNotBlank() }
-                            ?.let { memberId -> { onOpenMemberProfile(memberId) } }
+                            ?.let { memberId -> { onOpenMemberProfile(memberId, null) } }
                 )
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)
@@ -12108,6 +12116,7 @@ private fun ThreadMembersModal(
     removeMemberErrorCode: String?,
     onDismiss: () -> Unit,
     onAddMember: () -> Unit,
+    onOpenMember: (KuiklyThreadMemberItem) -> Unit,
     onRemoveMember: (String) -> Unit
 ) {
     // Memoize the agents/humans partition so recomposition that does
@@ -12172,7 +12181,8 @@ private fun ThreadMembersModal(
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
-                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null
+                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
+                                onClick = { onOpenMember(member) }
                             )
                         }
                     }
@@ -12195,7 +12205,8 @@ private fun ThreadMembersModal(
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
-                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null
+                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
+                                onClick = { onOpenMember(member) }
                             )
                         }
                     }
