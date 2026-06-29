@@ -364,6 +364,30 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun repeatedActivityReplyOpenUpdatesFocusedMessageForSameThread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("reply body", id = "reply-2", channelId = "thread-m1")
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val firstRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(focusedMessageId = "reply-1")
+        val secondRoute = firstRoute.copy(focusedMessageId = "reply-2")
+
+        store.accept(SharedThreadIntent.Start(firstRoute))
+        store.accept(SharedThreadIntent.Start(secondRoute))
+
+        assertEquals("reply-2", store.state.value.payload.focusedMessageId)
+        assertEquals(listOf("thread-m1", "thread-m1"), api.channelIds)
+        scope.cancel()
+    }
+
+    @Test
     fun routeContextDoesNotOverrideCanonicalCacheMembershipState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
