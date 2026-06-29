@@ -68,4 +68,25 @@ class MainActivityLaunchTest {
         assertTrue(shouldClearTaskForSharedShell("android.intent.action.MAIN", null, null))
         assertEquals("launcher", slockLaunchSource("android.intent.action.MAIN", null, null))
     }
+
+    @Test
+    fun appShellPageDataIntentDoesNotClearExistingTask() {
+        assertFalse(
+            shouldClearTaskForSharedShell(
+                action = null,
+                dataScheme = null,
+                dataHost = null,
+                appShellPageData = true
+            )
+        )
+        assertEquals(
+            "app_shell_intent",
+            slockLaunchSource(
+                action = null,
+                dataScheme = null,
+                dataHost = null,
+                appShellPageData = true
+            )
+        )
+    }
 }

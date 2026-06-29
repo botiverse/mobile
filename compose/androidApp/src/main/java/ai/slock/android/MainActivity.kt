@@ -154,30 +154,46 @@ class MainActivity : ComponentActivity() {
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =
-    shouldClearTaskForSharedShell(this?.action, this?.data?.scheme, this?.data?.host)
+    shouldClearTaskForSharedShell(
+        action = this?.action,
+        dataScheme = this?.data?.scheme,
+        dataHost = this?.data?.host,
+        appShellPageData = this.isAppShellPageDataIntent()
+    )
 
 internal fun Intent?.slockLaunchSource(): String =
-    slockLaunchSource(this?.action, this?.data?.scheme, this?.data?.host)
+    slockLaunchSource(
+        action = this?.action,
+        dataScheme = this?.data?.scheme,
+        dataHost = this?.data?.host,
+        appShellPageData = this.isAppShellPageDataIntent()
+    )
 
 internal fun shouldClearTaskForSharedShell(
     action: String?,
     dataScheme: String?,
-    dataHost: String?
+    dataHost: String?,
+    appShellPageData: Boolean = false
 ): Boolean =
-    !isSlockAppWebViewIntent(action, dataScheme, dataHost)
+    !appShellPageData && !isSlockAppWebViewIntent(action, dataScheme, dataHost)
 
 internal fun slockLaunchSource(
     action: String?,
     dataScheme: String?,
-    dataHost: String?
+    dataHost: String?,
+    appShellPageData: Boolean = false
 ): String =
     when {
+        appShellPageData -> "app_shell_intent"
         action == null -> "missing"
         isSlockAppWebViewIntent(action, dataScheme, dataHost) -> "app_web_view"
         action == Intent.ACTION_VIEW -> "external_view"
         action == Intent.ACTION_MAIN -> "launcher"
         else -> action.ifBlank { "unknown" }
     }
+
+private fun Intent?.isAppShellPageDataIntent(): Boolean =
+    this?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME) == SlockKuiklyActivity.PAGE_APP_SHELL
 
 private fun isSlockAppWebViewIntent(action: String?, dataScheme: String?, dataHost: String?): Boolean =
     action == Intent.ACTION_VIEW && isSlockAppWebLink(dataScheme, dataHost)
