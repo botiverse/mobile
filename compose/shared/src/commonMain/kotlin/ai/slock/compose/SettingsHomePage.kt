@@ -160,6 +160,7 @@ import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.RealSearchRepository
 import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.SettingsRepository
+import ai.slock.compose.data.SettingsServerManagementRepository
 import ai.slock.compose.data.SharedMembersDataSource
 import ai.slock.compose.data.SearchIsoBounds
 import ai.slock.compose.data.SearchSort
@@ -176,6 +177,7 @@ import ai.slock.compose.data.SharedActivityStateCache
 import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
+import ai.slock.compose.data.SharedAgentPanelTabOrderStore
 import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.data.SharedConversationDirectorySource
 import ai.slock.compose.data.SharedConversationDirectoryStore
@@ -2695,6 +2697,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
                             agentDetailStore = sharedStores.agentDetailStore,
+                            agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
                             serverMembersStore = sharedStores.serverMembersStore,
                             membersRefreshKey = membersListRefreshKey,
                             initialContent =
@@ -8961,6 +8964,7 @@ private fun SharedMembersScreen(
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
     agentDetailStore: SharedAgentDetailStore,
+    agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     serverMembersStore: SharedServerMembersStore,
     membersRefreshKey: Int,
     initialContent: SharedMembersUiState.Content?,
@@ -8976,6 +8980,40 @@ private fun SharedMembersScreen(
     }
     var refreshing by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
+    val routeScope = rememberCoroutineScope()
+    val agentPanelTabOrderState by agentPanelTabOrderStore.state.collectAsState()
+    val settingsServerManagementRepository = settingsRepository as? SettingsServerManagementRepository
+    suspend fun loadAgentPanelTabOrderForSharedMembers(): List<String>? {
+        val repository = settingsServerManagementRepository ?: return null
+        return when (val result = repository.getServerSidebarOrder()) {
+            is DataResult.Content -> result.data.agentPanelTabOrder
+            is DataResult.Empty -> null
+            is DataResult.Error -> {
+                bridge.log("shared_members_agent_tab_order_load_failed code=${result.error.code}")
+                null
+            }
+            is DataResult.NoPermission -> {
+                bridge.log("shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
+                null
+            }
+        }
+    }
+    LaunchedEffect(agentPanelTabOrderStore, currentServerId) {
+        agentPanelTabOrderStore.bindServer(currentServerId)
+    }
+    LaunchedEffect(
+        settingsServerManagementRepository,
+        agentPanelTabOrderStore,
+        currentServerId,
+        agentPanelTabOrderState.serverId,
+        agentPanelTabOrderState.loaded
+    ) {
+        if (currentServerId.isNullOrBlank()) return@LaunchedEffect
+        if (agentPanelTabOrderState.serverId == currentServerId && agentPanelTabOrderState.loaded) return@LaunchedEffect
+        loadAgentPanelTabOrderForSharedMembers()?.let { order ->
+            agentPanelTabOrderStore.applyLoaded(currentServerId, order)
+        }
+    }
 
     LaunchedEffect(membersRefreshKey, currentServerId) {
         var previousContent: SharedMembersUiState.Content? = null
@@ -9045,9 +9083,15 @@ private fun SharedMembersScreen(
                 code = current.code
             )
         is SharedMembersUiState.Content -> {
-            val membersPayload = buildHostMembersPayload(current.server, timeContext)
-            val renderMembersPayload = membersPayload.copy(members = current.members)
             val serverId = current.server.id.value
+            val agentPanelTabOrder =
+                if (agentPanelTabOrderState.serverId == serverId) {
+                    agentPanelTabOrderState.order
+                } else {
+                    emptyList()
+                }
+            val membersPayload = buildHostMembersPayload(current.server, timeContext, agentPanelTabOrder)
+            val renderMembersPayload = membersPayload.copy(members = current.members)
             val agentStatusResolver =
                 remember(serverMembersStore, serverId) {
                     slockAgentStatusResolver(serverMembersStore, serverId)
@@ -9197,14 +9241,28 @@ private fun SharedMembersScreen(
                 onAddHuman = { loadInviteJoinLink() },
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
-                    val pageData = membersPayload.toMemberDetailPageData(member.id.value, member.kind)
-                    if (pageData == null) {
-                        bridge.toast("Unable to open profile")
-                        bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
-                    } else {
-                        agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
-                        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                            .openPage(MEMBER_DETAIL_PAGE, pageData)
+                    routeScope.launch {
+                        val launchPayload =
+                            if (
+                                member.kind == MemberKind.Agent &&
+                                    (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                            ) {
+                                loadAgentPanelTabOrderForSharedMembers()
+                                    ?.also { order -> agentPanelTabOrderStore.applyLoaded(serverId, order) }
+                                    ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                                    ?: membersPayload
+                            } else {
+                                membersPayload
+                            }
+                        val pageData = launchPayload.toMemberDetailPageData(member.id.value, member.kind)
+                        if (pageData == null) {
+                            bridge.toast("Unable to open profile")
+                            bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                        } else {
+                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                                .openPage(MEMBER_DETAIL_PAGE, pageData)
+                        }
                     }
                 },
                 canCreateAgents = membersPayload.canCreateAgents,

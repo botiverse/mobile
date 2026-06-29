@@ -36,6 +36,7 @@ internal class SlockSharedStoreProvider private constructor(
     val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
+    val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
     val conversationDirectoryStore: SharedConversationDirectoryStore,
     val serverMembersStore: SharedServerMembersStore,
@@ -186,6 +187,7 @@ internal class SlockSharedStoreProvider private constructor(
                 agentDetailStore = SharedAgentDetailStore(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
                 ),
+                agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
                 tasksDataStore = tasksDataStore,
                 conversationDirectoryStore = conversationDirectoryStore,
                 serverMembersStore =

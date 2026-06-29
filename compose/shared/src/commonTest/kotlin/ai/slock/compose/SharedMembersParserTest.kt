@@ -179,6 +179,7 @@ class SharedMembersParserTest {
                     )
                 ),
                 initialAgentTab = "activity",
+                agentPanelTabOrder = listOf("activity", "profile"),
                 localOffsetMinutes = 480,
                 todayEpochDay = 20624,
                 nowEpochMillis = 1782240000000,
@@ -196,6 +197,7 @@ class SharedMembersParserTest {
         assertEquals("20624", pageData.optString("todayEpochDay"))
         assertEquals("1782240000000", pageData.optString("nowEpochMillis"))
         assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+        assertEquals(listOf("activity", "profile"), pageData.toKuiklyMemberDetailPayload().agentPanelTabOrder)
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("selectedMemberId"))
     }
@@ -234,6 +236,10 @@ class SharedMembersParserTest {
         assertEquals(false, buildHostMembersPayload(restrictedServer, null).canCreateAgents)
         assertEquals(true, buildHostMembersPayload(adminServer, null).canCreateAgents)
         assertEquals(emptyList<MemberProfile>(), buildHostMembersPayload(adminServer, null).members)
+        assertEquals(
+            listOf("activity", "profile"),
+            buildHostMembersPayload(adminServer, null, agentPanelTabOrder = listOf("activity", "profile")).agentPanelTabOrder
+        )
     }
 
     @Test

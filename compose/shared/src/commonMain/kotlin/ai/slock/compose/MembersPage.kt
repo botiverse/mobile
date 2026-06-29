@@ -47,6 +47,7 @@ import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailLoadStatus
 import ai.slock.compose.data.SharedAgentDetailState
 import ai.slock.compose.data.SharedAgentDetailStore
+import ai.slock.compose.data.SharedAgentPanelTabOrderStore
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.RealMemberRepository
@@ -812,18 +813,21 @@ internal fun MembersPageContent() {
             logger = { message -> bridge.log("members_create_agent $message") }
         )
     }
-    val membersDataSource = remember(networkClient, authStore) {
+    val settingsRepository = remember(networkClient, authStore) {
+        ai.slock.compose.data.RealSettingsRepository(
+            sessionStore = authStore,
+            networkClient = networkClient,
+            logger = { message -> bridge.log("members_settings_repository $message") }
+        )
+    }
+    val membersDataSource = remember(networkClient, authStore, settingsRepository) {
         ai.slock.compose.data.SharedMembersDataSource(
             memberRepository = ai.slock.compose.data.RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
                 logger = { message -> bridge.log("members_member_repository $message") }
             ),
-            settingsRepository = ai.slock.compose.data.RealSettingsRepository(
-                sessionStore = authStore,
-                networkClient = networkClient,
-                logger = { message -> bridge.log("members_settings_repository $message") }
-            ),
+            settingsRepository = settingsRepository,
             serverMembersStore = sharedStores.serverMembersStore
         )
     }
@@ -837,6 +841,37 @@ internal fun MembersPageContent() {
         activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
+    val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
+    val agentPanelTabOrderState by agentPanelTabOrderStore.state.collectAsState()
+    suspend fun loadAgentPanelTabOrderForMembersPage(): List<String>? =
+        when (val result = settingsRepository.getServerSidebarOrder()) {
+            is DataResult.Content -> result.data.agentPanelTabOrder
+            is DataResult.Empty -> null
+            is DataResult.Error -> {
+                bridge.log("members_agent_tab_order_load_failed code=${result.error.code}")
+                null
+            }
+            is DataResult.NoPermission -> {
+                bridge.log("members_agent_tab_order_load_blocked code=${result.blocker.code}")
+                null
+            }
+        }
+    LaunchedEffect(agentPanelTabOrderStore, serverId, payload.agentPanelTabOrder) {
+        agentPanelTabOrderStore.bindServer(serverId, payload.agentPanelTabOrder)
+    }
+    LaunchedEffect(
+        settingsRepository,
+        agentPanelTabOrderStore,
+        serverId,
+        agentPanelTabOrderState.serverId,
+        agentPanelTabOrderState.loaded
+    ) {
+        if (serverId.trim().isBlank()) return@LaunchedEffect
+        if (agentPanelTabOrderState.serverId == serverId && agentPanelTabOrderState.loaded) return@LaunchedEffect
+        loadAgentPanelTabOrderForMembersPage()?.let { order ->
+            agentPanelTabOrderStore.applyLoaded(serverId, order)
+        }
+    }
     val serverMembersEntry by remember(sharedStores.serverMembersStore, serverId) {
         val cleanServerId = serverId.trim()
         if (cleanServerId.isBlank()) {
@@ -1031,20 +1066,39 @@ internal fun MembersPageContent() {
             }
         }
 
+    val agentPanelTabOrder =
+        if (agentPanelTabOrderState.serverId == serverId) {
+            agentPanelTabOrderState.order
+        } else {
+            payload.agentPanelTabOrder
+        }
+    val membersPayload = payload.copy(members = localMembers, agentPanelTabOrder = agentPanelTabOrder)
+
     MembersRouteContent(
-        payload = payload.copy(members = localMembers),
+        payload = membersPayload,
         refreshing = membersRefreshing,
         onRefresh = refreshMembers,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
-            val pageData = payload.toMemberDetailPageData(member.id.value, member.kind)
-            if (pageData == null) {
-                bridge.toast("Unable to open profile")
-                bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
-            } else {
-                sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
-                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                    .openPage(MEMBER_DETAIL_PAGE, pageData)
+            scope.launch {
+                val launchPayload =
+                    if (member.kind == MemberKind.Agent && (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)) {
+                        loadAgentPanelTabOrderForMembersPage()
+                            ?.also { order -> agentPanelTabOrderStore.applyLoaded(serverId, order) }
+                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                            ?: membersPayload
+                    } else {
+                        membersPayload
+                    }
+                val pageData = launchPayload.toMemberDetailPageData(member.id.value, member.kind)
+                if (pageData == null) {
+                    bridge.toast("Unable to open profile")
+                    bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
+                } else {
+                    sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                        .openPage(MEMBER_DETAIL_PAGE, pageData)
+                }
             }
         },
         agentStatusResolver = agentStatusResolver,
@@ -1099,6 +1153,7 @@ private class MemberDetailRouteProvider(
     val settingsRepository: ai.slock.compose.data.SettingsServerManagementRepository,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore,
+    val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: ai.slock.compose.data.SharedServerMembersStore,
     val agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null
 ) {
@@ -1352,6 +1407,7 @@ private fun rememberMemberDetailRouteProvider(
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val agentDetailStore = sharedStores.agentDetailStore
+    val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = sharedStores.serverMembersStore
     val agentsApiClient = remember(networkClient) {
         ai.slock.compose.data.SlockAgentsApiClient(
@@ -1359,7 +1415,17 @@ private fun rememberMemberDetailRouteProvider(
             diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
         )
     }
-    return remember(bridge, authStore, memberRepository, settingsRepository, settingsCapabilities, agentDetailStore, serverMembersStore, agentsApiClient) {
+    return remember(
+        bridge,
+        authStore,
+        memberRepository,
+        settingsRepository,
+        settingsCapabilities,
+        agentDetailStore,
+        agentPanelTabOrderStore,
+        serverMembersStore,
+        agentsApiClient
+    ) {
         MemberDetailRouteProvider(
             bridge = bridge,
             authStore = authStore,
@@ -1367,6 +1433,7 @@ private fun rememberMemberDetailRouteProvider(
             settingsRepository = settingsRepository,
             settingsCapabilities = settingsCapabilities,
             agentDetailStore = agentDetailStore,
+            agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
             agentsApiClient = agentsApiClient
         )
@@ -1390,11 +1457,9 @@ private fun MemberDetailPageContent() {
     var routeState by remember(payload.memberId) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
     }
-    var agentPanelTabOrder by remember(payload.memberId, payload.agentPanelTabOrder) {
-        mutableStateOf(payload.agentPanelTabOrder)
-    }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
+    val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val selectedMemberId = remember(payload.memberId) {
         payload.memberId.trim().takeIf { it.isNotBlank() }?.let(::MemberId)
     }
@@ -1416,6 +1481,15 @@ private fun MemberDetailPageContent() {
             is MemberDetailRouteState.Agent -> current.server.id.value
             else -> null
         }
+    LaunchedEffect(provider.agentPanelTabOrderStore, statusLookupServerId, payload.agentPanelTabOrder) {
+        provider.agentPanelTabOrderStore.bindServer(statusLookupServerId, payload.agentPanelTabOrder)
+    }
+    val agentPanelTabOrder =
+        if (agentPanelTabOrderState.serverId == statusLookupServerId) {
+            agentPanelTabOrderState.order
+        } else {
+            payload.agentPanelTabOrder
+        }
     val agentStatusResolver =
         remember(provider.serverMembersStore, statusLookupServerId) {
             slockAgentStatusResolver(provider.serverMembersStore, statusLookupServerId)
@@ -1434,11 +1508,21 @@ private fun MemberDetailPageContent() {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
-    LaunchedEffect(provider, payload.memberId, statusLookupServerId, expectedKind) {
+    LaunchedEffect(
+        provider,
+        payload.memberId,
+        statusLookupServerId,
+        expectedKind,
+        agentPanelTabOrderState.serverId,
+        agentPanelTabOrderState.loaded
+    ) {
         statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (expectedKind == MemberKind.Human) return@LaunchedEffect
+        if (agentPanelTabOrderState.serverId == statusLookupServerId && agentPanelTabOrderState.loaded) {
+            return@LaunchedEffect
+        }
         when (val result = provider.loadAgentPanelTabOrder()) {
-            is DataResult.Content -> agentPanelTabOrder = result.data
+            is DataResult.Content -> provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, result.data)
             is DataResult.Empty -> Unit
             is DataResult.Error ->
                 bridge.log("member_detail_agent_tab_order_load_failed code=${result.error.code}")
@@ -1570,20 +1654,21 @@ private fun MemberDetailPageContent() {
                         val previousOrder = agentPanelTabOrder
                         val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
                         if (nextOrder != previousOrder) {
-                            agentPanelTabOrder = nextOrder
+                            provider.agentPanelTabOrderStore.applyOptimistic(statusLookupServerId, nextOrder)
                             routeScope.launch {
                                 when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
-                                    is DataResult.Content -> agentPanelTabOrder = result.data
+                                    is DataResult.Content ->
+                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, result.data)
                                     is DataResult.Empty -> {
-                                        agentPanelTabOrder = previousOrder
+                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
                                         bridge.toast("Unable to save tab order")
                                     }
                                     is DataResult.Error -> {
-                                        agentPanelTabOrder = previousOrder
+                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
                                         bridge.toast("Failed to save tab order: ${result.error.code}")
                                     }
                                     is DataResult.NoPermission -> {
-                                        agentPanelTabOrder = previousOrder
+                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
                                         bridge.toast("You do not have permission to update tab order.")
                                     }
                                 }
