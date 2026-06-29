@@ -873,6 +873,16 @@ private data class ThreadCreateAgentActionDialogState(
     val errorCode: String? = null
 )
 
+private data class ThreadMarkdownTaskCandidateModalState(
+    val taskNumber: Int,
+    val candidates: List<TaskSummary>
+)
+
+private data class ThreadMarkdownMentionOpenTarget(
+    val memberId: String,
+    val memberKind: MemberKind
+)
+
 internal data class ThreadImageAttachmentGroup(
     val images: List<KuiklyThreadAttachmentItem>,
     val currentIndex: Int
@@ -951,14 +961,40 @@ internal data class ThreadSettingsActionUi(
     val destructive: Boolean
 )
 
+private fun String.normalizedThreadMentionLookupKey(): String =
+    trim().removePrefix("@").trim().lowercase()
+
+private fun KuiklyThreadMemberItem.matchesThreadMentionLookupKey(key: String): Boolean =
+    id.equals(key, ignoreCase = true) ||
+        handle.removePrefix("@").equals(key, ignoreCase = true) ||
+        displayName.equals(key, ignoreCase = true)
+
+private fun MemberProfile.matchesThreadMentionLookupKey(key: String): Boolean =
+    id.value.equals(key, ignoreCase = true) ||
+        handle.removePrefix("@").equals(key, ignoreCase = true) ||
+        displayName.equals(key, ignoreCase = true)
+
 private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdownTag): KuiklyThreadMemberItem? {
-    val key = tag.label.removePrefix("@").trim().lowercase()
+    val key = tag.label.normalizedThreadMentionLookupKey()
     if (key.isBlank()) return null
-    return members.firstOrNull { member ->
-        member.id.equals(key, ignoreCase = true) ||
-            member.handle.removePrefix("@").equals(key, ignoreCase = true) ||
-            member.displayName.equals(key, ignoreCase = true)
+    return members.firstOrNull { member -> member.matchesThreadMentionLookupKey(key) }
+}
+
+private fun KuiklyThreadScreenPayload.resolveMarkdownMentionOpenTarget(
+    label: String,
+    serverMembers: List<MemberProfile>
+): ThreadMarkdownMentionOpenTarget? {
+    val key = label.normalizedThreadMentionLookupKey()
+    if (key.isBlank()) return null
+    findMarkdownMentionMember(ThreadMarkdownTag(label, ThreadMarkdownTagKind.UserMention))?.let { member ->
+        return ThreadMarkdownMentionOpenTarget(member.id, member.threadMemberKind())
     }
+    val matches =
+        serverMembers
+            .filter { member -> member.matchesThreadMentionLookupKey(key) }
+            .distinctBy { member -> member.id.value.trim() }
+    val match = matches.singleOrNull() ?: return null
+    return ThreadMarkdownMentionOpenTarget(match.id.value, match.kind)
 }
 
 internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
@@ -1070,8 +1106,8 @@ internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
 
 private sealed interface MarkdownTaskNumberOpenResult {
     data class Found(val task: TaskSummary, val payload: KuiklyThreadScreenPayload) : MarkdownTaskNumberOpenResult
+    data class Ambiguous(val taskNumber: Int, val candidates: List<TaskSummary>) : MarkdownTaskNumberOpenResult
     data object NotFound : MarkdownTaskNumberOpenResult
-    data object Ambiguous : MarkdownTaskNumberOpenResult
     data object AuthRequired : MarkdownTaskNumberOpenResult
     data object Failed : MarkdownTaskNumberOpenResult
 }
@@ -1112,7 +1148,10 @@ private suspend fun openMarkdownTaskNumberPayload(
                 if (currentChannelMatches.size == 1) {
                     currentChannelMatches.single()
                 } else {
-                    return MarkdownTaskNumberOpenResult.Ambiguous
+                    return MarkdownTaskNumberOpenResult.Ambiguous(
+                        taskNumber = taskNumber,
+                        candidates = matches.threadMarkdownTaskCandidates(currentTaskChannelId)
+                    )
                 }
             }
         }
@@ -1122,6 +1161,16 @@ private suspend fun openMarkdownTaskNumberPayload(
     tasksDataStore?.upsertTask(serverId.value, selected)
     return MarkdownTaskNumberOpenResult.Found(selected, payload)
 }
+
+private fun List<TaskSummary>.threadMarkdownTaskCandidates(currentTaskChannelId: ChannelId?): List<TaskSummary> =
+    sortedWith(
+        compareByDescending<TaskSummary> { task ->
+            currentTaskChannelId != null && task.channelId == currentTaskChannelId
+        }
+            .thenBy { task -> task.channelName.orEmpty().lowercase() }
+            .thenBy { task -> task.title.lowercase() }
+            .thenBy { task -> task.id.value }
+    )
 
 internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: TaskSummary): KuiklyThreadScreenPayload? {
     val parentChannelId = task.channelId?.value?.takeIf { it.isNotBlank() } ?: return null
@@ -2288,6 +2337,9 @@ internal fun SharedThreadRouteContent(
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<KuiklyThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    var markdownTaskCandidateModalState by remember(threadInstanceKey) {
+        mutableStateOf<ThreadMarkdownTaskCandidateModalState?>(null)
+    }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
     var attachmentOpenStates by remember(threadInstanceKey) {
@@ -3741,8 +3793,12 @@ internal fun SharedThreadRouteContent(
                                 )
                                 onOpenThreadPayload(result.payload)
                             }
-                            MarkdownTaskNumberOpenResult.Ambiguous -> {
-                                bridge.toast("Multiple tasks match #$taskNumber")
+                            is MarkdownTaskNumberOpenResult.Ambiguous -> {
+                                markdownTaskCandidateModalState =
+                                    ThreadMarkdownTaskCandidateModalState(
+                                        taskNumber = result.taskNumber,
+                                        candidates = result.candidates
+                                    )
                             }
                             MarkdownTaskNumberOpenResult.NotFound -> {
                                 bridge.toast("Unable to open #$taskNumber")
@@ -3796,7 +3852,35 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
-                    bridge.toast("Unable to open ${itemId.take(32)}")
+                    val localTarget = renderedThread.resolveMarkdownMentionOpenTarget(itemId, emptyList())
+                    if (localTarget != null) {
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, localTarget.memberId, localTarget.memberKind)
+                        return@ThreadPageContent
+                    }
+                    if (serverMembersStore == null || threadMembersServerId == null) {
+                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        val result =
+                            serverMembersStore.refreshMembers(
+                                serverId = threadMembersServerId,
+                                priority = DataRequestPriority.Visible
+                            )
+                        if (result is DataResult.NoPermission && routeAuthRequired(result)) {
+                            return@launch
+                        }
+                        val target =
+                            renderedThread.resolveMarkdownMentionOpenTarget(
+                                label = itemId,
+                                serverMembers = serverMembersStore.currentServerMembers(threadMembersServerId)
+                            )
+                        if (target == null) {
+                            bridge.toast("No member found for ${itemId.take(32)}")
+                        } else {
+                            onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.memberId, target.memberKind)
+                        }
+                    }
                 }
                 action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
                     coroutineScope.launch {
@@ -4447,6 +4531,31 @@ internal fun SharedThreadRouteContent(
                 }
             }
         )
+        markdownTaskCandidateModalState?.let { modalState ->
+            ThreadMarkdownTaskCandidateModal(
+                state = modalState,
+                currentTaskChannelId = taskChannelId,
+                onDismiss = { markdownTaskCandidateModalState = null },
+                onSelect = { task ->
+                    val loadingPayload = renderedThread.markdownTaskNumberLaunchPayload(task)
+                    if (loadingPayload == null) {
+                        bridge.toast("Unable to open #${modalState.taskNumber}")
+                    } else {
+                        currentServerId?.let { serverId ->
+                            tasksDataStore?.upsertTask(serverId, task)
+                        }
+                        bridge.log(
+                            "thread_markdown_task_select taskNumber=${modalState.taskNumber} taskId=${task.id.value} " +
+                                "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                                "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
+                                "threadId=${loadingPayload.streamChannelId.orEmpty()}"
+                        )
+                        markdownTaskCandidateModalState = null
+                        onOpenThreadPayload(loadingPayload)
+                    }
+                }
+            )
+        }
         textSelectionMessage?.let { message ->
             ThreadMessageTextSelectionDialog(
                 message = message,
@@ -4579,6 +4688,103 @@ internal fun SharedThreadRouteContent(
         }
     }
 }
+
+@Composable
+private fun ThreadMarkdownTaskCandidateModal(
+    state: ThreadMarkdownTaskCandidateModalState,
+    currentTaskChannelId: ChannelId?,
+    onDismiss: () -> Unit,
+    onSelect: (TaskSummary) -> Unit
+) {
+    SlockUnifiedDialog(
+        title = "OPEN TASK #${state.taskNumber}",
+        onDismiss = onDismiss,
+        minWidth = 300.dp,
+        maxWidth = 360.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
+    ) {
+        SlockModalListShell(height = threadMarkdownTaskCandidateListHeight(state.candidates.size)) {
+            if (state.candidates.isEmpty()) {
+                item {
+                    ThreadModalEmptyState(
+                        title = "NO TASKS",
+                        detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
+                    )
+                }
+            } else {
+                items(state.candidates.size, key = { state.candidates[it].id.value }) { index ->
+                    val task = state.candidates[index]
+                    ThreadMarkdownTaskCandidateRow(
+                        task = task,
+                        currentChannel = currentTaskChannelId != null && task.channelId == currentTaskChannelId,
+                        onClick = { onSelect(task) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMarkdownTaskCandidateRow(
+    task: TaskSummary,
+    currentChannel: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (currentChannel) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = task.title.ifBlank { "Untitled task" },
+                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = task.threadMarkdownTaskCandidateSubtitle(currentChannel),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = task.status.threadMarkdownTaskStatusLabel().uppercase(),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun TaskSummary.threadMarkdownTaskCandidateSubtitle(currentChannel: Boolean): String {
+    val channel = channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: "Unknown channel"
+    return if (currentChannel) "$channel - current channel" else channel
+}
+
+private fun TaskStatus.threadMarkdownTaskStatusLabel(): String =
+    when (this) {
+        TaskStatus.Todo -> "Todo"
+        TaskStatus.InProgress -> "Doing"
+        TaskStatus.InReview -> "Review"
+        TaskStatus.Done -> "Done"
+        TaskStatus.Closed -> "Closed"
+    }
+
+private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
+    (count * 64 + 8).coerceIn(108, 288).dp
 
 @Composable
 private fun ThreadCreateAgentActionDialogHost(
