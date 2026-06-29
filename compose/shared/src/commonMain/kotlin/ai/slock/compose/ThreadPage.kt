@@ -9187,7 +9187,11 @@ private fun ThreadMessageCard(
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
-                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
+                        onClick = {
+                            if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
+                                onOpenMember(message.authorId)
+                            }
+                        },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
@@ -9245,7 +9249,9 @@ private fun ThreadMessageCard(
                                             Modifier
                                                 .widthIn(max = 220.dp)
                                                 .clickable {
-                                                    if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId)
+                                                    if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
+                                                        onOpenMember(message.authorId)
+                                                    }
                                                 }
                                     )
                                     authorBadgeLabel?.let { label ->
@@ -9372,7 +9378,11 @@ private fun ThreadMessageCard(
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
-                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
+                        onClick = {
+                            if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
+                                onOpenMember(message.authorId)
+                            }
+                        },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
@@ -9937,6 +9947,9 @@ internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
 
 internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
+
+internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(shareSelectionActive: Boolean): Boolean =
+    !shareSelectionActive && canOpenThreadAuthorProfile()
 
 internal data class ThreadAgentStatusLookup(
     private val statusByMemberId: Map<String, AgentStatus>
