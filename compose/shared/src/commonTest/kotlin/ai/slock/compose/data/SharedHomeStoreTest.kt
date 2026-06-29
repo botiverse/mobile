@@ -1979,7 +1979,8 @@ class SharedHomeStoreTest {
 
         override suspend fun getMemberProfile(
             priority: DataRequestPriority,
-            memberId: MemberId
+            memberId: MemberId,
+            serverId: ServerId?
         ): DataResult<MemberProfile> = noMembers()
 
         override suspend fun updateAgentProfile(

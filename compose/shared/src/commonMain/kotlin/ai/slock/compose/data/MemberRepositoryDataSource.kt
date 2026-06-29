@@ -248,9 +248,18 @@ class RealMemberRepository(
         return mergedResult
     }
 
-    override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId): DataResult<MemberProfile> {
-        currentContext() ?: return authRequired()
-        return getHumanProfile(priority, memberId, source = "member_profile")
+    override suspend fun getMemberProfile(
+        priority: DataRequestPriority,
+        memberId: MemberId,
+        serverId: ServerId?
+    ): DataResult<MemberProfile> {
+        val context = currentContext() ?: return authRequired()
+        return getHumanProfile(
+            priority = priority,
+            memberId = memberId,
+            serverId = serverId ?: context.server.id,
+            source = "member_profile"
+        )
     }
 
     override suspend fun updateAgentProfile(
@@ -707,12 +716,13 @@ class RealMemberRepository(
     private suspend fun getHumanProfile(
         priority: DataRequestPriority,
         memberId: MemberId,
+        serverId: ServerId,
         source: String
     ): DataResult<MemberProfile> =
         currentContext()?.let { context ->
             executeMember(
                 emptyReason = EmptyReason.NoMembers,
-                block = { networkClient.memberProfile(priority, context.server.id, memberId) },
+                block = { networkClient.memberProfile(priority, serverId, memberId) },
                 source = source,
                 mapper = { bodyText ->
                     parseSharedMemberProfile(bodyText)

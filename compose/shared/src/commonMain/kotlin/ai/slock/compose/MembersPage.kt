@@ -433,6 +433,7 @@ data class KuiklyMemberDetailPayload(
     val instanceId: String = "",
     val memberId: String = "",
     val memberKind: String = "",
+    val sourceServerId: String = "",
     val initialAgentTab: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
@@ -1181,7 +1182,8 @@ private class MemberDetailRouteProvider(
 
     suspend fun loadMember(
         memberId: String,
-        expectedKind: MemberKind?
+        expectedKind: MemberKind?,
+        sourceServerId: String? = null
     ): MemberDetailRouteState {
         val selectedMemberId = memberId.trim()
         if (selectedMemberId.isBlank()) return MemberDetailRouteState.Error("member_id_missing")
@@ -1192,8 +1194,14 @@ private class MemberDetailRouteProvider(
             return MemberDetailRouteState.Error("server_required")
         }
         val selectedId = MemberId(selectedMemberId)
+        val profileServerId =
+            sourceServerId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ServerId)
+                ?: ServerId(serverId)
         if (expectedKind == MemberKind.Human) {
-            return loadHumanMember(selectedId)
+            return loadHumanMember(selectedId, profileServerId)
         }
         val state = agentDetailStore.state.value
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
@@ -1212,7 +1220,7 @@ private class MemberDetailRouteProvider(
             }
             is DataResult.Empty -> {
                 return if (expectedKind == null) {
-                    loadHumanMember(selectedId)
+                    loadHumanMember(selectedId, profileServerId)
                 } else {
                     agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
                     MemberDetailRouteState.Error("member_not_found")
@@ -1233,11 +1241,13 @@ private class MemberDetailRouteProvider(
         }
     }
 
-    private suspend fun loadHumanMember(selectedId: MemberId): MemberDetailRouteState {
+    private suspend fun loadHumanMember(selectedId: MemberId, profileServerId: ServerId): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-        return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId)) {
-            is DataResult.Content ->
+        return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
+            is DataResult.Content -> {
+                serverMembersStore.seedProfiles(profileServerId, listOf(memberResult.data))
                 MemberDetailRouteState.Human(memberResult.data)
+            }
             is DataResult.Empty ->
                 MemberDetailRouteState.Error("member_not_found")
             is DataResult.Error ->
@@ -1499,10 +1509,10 @@ private fun MemberDetailPageContent() {
             slockMemberAvatarResolver(provider.serverMembersStore, statusLookupServerId)
         }
 
-    LaunchedEffect(payload.memberId, expectedKind, localAgentDetailRefreshKey) {
+    LaunchedEffect(payload.memberId, expectedKind, payload.sourceServerId, localAgentDetailRefreshKey) {
         val cached = provider.cachedContext(payload.memberId, expectedKind)
         routeState = cached ?: MemberDetailRouteState.Loading
-        routeState = provider.loadMember(payload.memberId, expectedKind)
+        routeState = provider.loadMember(payload.memberId, expectedKind, payload.sourceServerId)
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -1961,6 +1971,9 @@ internal fun KuiklyMembersPayload.toMemberDetailPageData(
         (selectedMemberKind ?: selectedMember?.kind)?.let {
             put("memberKind", it.toMemberDetailKindWireValue())
         }
+        selectedMember?.serverId?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
+            put("sourceServerId", it)
+        }
         initialAgentTab?.let { put("initialAgentTab", it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
@@ -1983,6 +1996,7 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
         memberKind = payload.optString("memberKind")
             .ifBlank { payload.optString("selectedMemberKind") }
             .ifBlank { payload.optString("kind") },
+        sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") },
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),

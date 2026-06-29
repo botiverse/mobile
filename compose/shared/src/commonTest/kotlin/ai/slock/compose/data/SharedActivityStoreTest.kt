@@ -853,7 +853,7 @@ class SharedActivityStoreTest {
         ): DataResult<MemberSnapshot> =
             DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Slock"), members))
 
-        override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId): DataResult<MemberProfile> =
+        override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId, serverId: ServerId?): DataResult<MemberProfile> =
             error("unused")
 
         override suspend fun updateAgentProfile(priority: DataRequestPriority, request: AgentProfileUpdateRequest): DataResult<MemberProfile> =

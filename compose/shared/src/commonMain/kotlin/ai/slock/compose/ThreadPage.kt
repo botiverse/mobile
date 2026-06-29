@@ -588,7 +588,8 @@ internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
 
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
     selectedMemberId: String,
-    selectedMemberKind: MemberKind? = null
+    selectedMemberKind: MemberKind? = null,
+    sourceServerId: String? = null
 ): JSONObject? {
     val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
     return JSONObject().apply {
@@ -596,6 +597,7 @@ internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
         put("instanceId", "thread-member-detail-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected")
         put("memberId", selected)
         selectedMemberKind?.let { put("memberKind", it.toThreadMemberDetailKindWireValue()) }
+        sourceServerId?.trim()?.takeIf { it.isNotBlank() }?.let { put("sourceServerId", it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -880,7 +882,8 @@ private data class ThreadMarkdownTaskCandidateModalState(
 
 private data class ThreadMarkdownMentionOpenTarget(
     val memberId: String,
-    val memberKind: MemberKind
+    val memberKind: MemberKind,
+    val sourceServerId: String? = null
 )
 
 internal data class ThreadImageAttachmentGroup(
@@ -987,14 +990,14 @@ private fun KuiklyThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     val key = label.normalizedThreadMentionLookupKey()
     if (key.isBlank()) return null
     findMarkdownMentionMember(ThreadMarkdownTag(label, ThreadMarkdownTagKind.UserMention))?.let { member ->
-        return ThreadMarkdownMentionOpenTarget(member.id, member.threadMemberKind())
+        return ThreadMarkdownMentionOpenTarget(member.id, member.threadMemberKind(), member.sourceServerId)
     }
     val matches =
         serverMembers
             .filter { member -> member.matchesThreadMentionLookupKey(key) }
             .distinctBy { member -> member.id.value.trim() }
     val match = matches.singleOrNull() ?: return null
-    return ThreadMarkdownMentionOpenTarget(match.id.value, match.kind)
+    return ThreadMarkdownMentionOpenTarget(match.id.value, match.kind, match.serverId?.value)
 }
 
 internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
@@ -1610,11 +1613,19 @@ private fun ThreadPageScreen() {
                 }
             }
         },
-        onOpenMemberProfile = { currentPayload, timelineSlice, memberId, selectedMemberKind ->
+        onOpenMemberProfile = { currentPayload, timelineSlice, memberId, selectedMemberKind, sourceServerId ->
             val authorProfile =
                 timelineSlice.findThreadAuthorProfile(memberId)
                     ?: currentPayload.findThreadAuthorProfile(memberId)
-            val pageData = currentPayload.toThreadMemberDetailPageData(memberId, selectedMemberKind ?: authorProfile?.kind)
+            val selectedSourceServerId =
+                sourceServerId
+                    ?: authorProfile?.serverId?.value
+                    ?: currentPayload.members.firstOrNull { it.id == memberId }?.sourceServerId
+            val pageData = currentPayload.toThreadMemberDetailPageData(
+                selectedMemberId = memberId,
+                selectedMemberKind = selectedMemberKind ?: authorProfile?.kind,
+                sourceServerId = selectedSourceServerId
+            )
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
                 bridge.logWarn(
@@ -1806,7 +1817,7 @@ internal fun ThreadHeaderVisualScreen() {
             payload = payload,
             onBack = {},
             onOpenInChannel = {},
-            onOpenMemberProfile = { _, _ -> },
+            onOpenMemberProfile = { _, _, _ -> },
             onShowMembers = {},
             onShowSettings = {}
         )
@@ -2144,7 +2155,7 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?) -> Unit = { _, _, _, _ -> }
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?, String?) -> Unit = { _, _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
@@ -3397,7 +3408,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
-            onOpenMemberProfile = { memberId, memberKind -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, memberId, memberKind) },
+            onOpenMemberProfile = { memberId, memberKind, sourceServerId -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, memberId, memberKind, sourceServerId) },
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
@@ -3854,7 +3865,7 @@ internal fun SharedThreadRouteContent(
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
                     val localTarget = renderedThread.resolveMarkdownMentionOpenTarget(itemId, emptyList())
                     if (localTarget != null) {
-                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, localTarget.memberId, localTarget.memberKind)
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, localTarget.memberId, localTarget.memberKind, localTarget.sourceServerId)
                         return@ThreadPageContent
                     }
                     if (serverMembersStore == null || threadMembersServerId == null) {
@@ -3862,23 +3873,41 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
-                        val result =
+                        val membersResult =
                             serverMembersStore.refreshMembers(
                                 serverId = threadMembersServerId,
                                 priority = DataRequestPriority.Visible
                             )
-                        if (result is DataResult.NoPermission && routeAuthRequired(result)) {
+                        if (membersResult is DataResult.NoPermission && routeAuthRequired(membersResult)) {
                             return@launch
                         }
+                        if (threadMembersChannelId != null) {
+                            val channelMembersResult =
+                                serverMembersStore.loadChannelMembers(
+                                    serverId = threadMembersServerId,
+                                    channelId = threadMembersChannelId,
+                                    priority = DataRequestPriority.Visible
+                                )
+                            if (channelMembersResult is DataResult.NoPermission && routeAuthRequired(channelMembersResult)) {
+                                return@launch
+                            }
+                        }
+                        val serverMembers =
+                            serverMembersStore.currentServerMembers(threadMembersServerId) +
+                                threadMembersChannelId
+                                    ?.let { channelId ->
+                                        serverMembersStore.currentChannelMembers(threadMembersServerId, channelId)
+                                    }
+                                    .orEmpty()
                         val target =
                             renderedThread.resolveMarkdownMentionOpenTarget(
                                 label = itemId,
-                                serverMembers = serverMembersStore.currentServerMembers(threadMembersServerId)
+                                serverMembers = serverMembers
                             )
                         if (target == null) {
                             bridge.toast("No member found for ${itemId.take(32)}")
                         } else {
-                            onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.memberId, target.memberKind)
+                            onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.memberId, target.memberKind, target.sourceServerId)
                         }
                     }
                 }
@@ -6159,7 +6188,7 @@ private fun ThreadPageContent(
     onFilesAuthRequired: (String?) -> Unit,
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
-    onOpenMemberProfile: (String, MemberKind?) -> Unit,
+    onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -6389,7 +6418,7 @@ private fun ThreadPageContent(
                         knownMarkdownChannelNames = knownMarkdownChannelNames,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         onThreadEvent = onThreadEvent,
-                        onOpenMember = { memberId -> onOpenMemberProfile(memberId, null) },
+                        onOpenMember = { memberId -> onOpenMemberProfile(memberId, null, null) },
                         onMentionAuthor = { handle ->
                             if (showComposerForSelectedTab) {
                                 composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
@@ -6592,7 +6621,7 @@ private fun ThreadPageContent(
                     activeModal = "addMember"
                 },
                 onOpenMember = { member ->
-                    onOpenMemberProfile(member.id, member.threadMemberKind())
+                    onOpenMemberProfile(member.id, member.threadMemberKind(), member.sourceServerId)
                 },
                 removeMemberStatus = payload.removeMemberStatus,
                 removingMemberId = payload.removingMemberId,
@@ -6615,7 +6644,7 @@ private fun ThreadPageContent(
                         activeModal = "addMember"
                     },
                     onOpenMember = { member ->
-                        onOpenMemberProfile(member.id, member.threadMemberKind())
+                        onOpenMemberProfile(member.id, member.threadMemberKind(), member.sourceServerId)
                     },
                     removeMemberStatus = payload.removeMemberStatus,
                     removingMemberId = payload.removingMemberId,
@@ -6689,7 +6718,7 @@ private fun ThreadPageHeader(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
-    onOpenMemberProfile: (String, MemberKind?) -> Unit,
+    onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
@@ -6721,7 +6750,7 @@ private fun ThreadPageHeader(
                     onClick =
                         headerDisplay.dmPeerMemberId
                             ?.takeIf { it.isNotBlank() }
-                            ?.let { memberId -> { onOpenMemberProfile(memberId, null) } }
+                            ?.let { memberId -> { onOpenMemberProfile(memberId, null, null) } }
                 )
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)

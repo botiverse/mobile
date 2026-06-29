@@ -219,7 +219,8 @@ interface MemberRepository {
     ): DataResult<MemberSnapshot>
     suspend fun getMemberProfile(
         priority: DataRequestPriority,
-        memberId: MemberId
+        memberId: MemberId,
+        serverId: ServerId? = null
     ): DataResult<MemberProfile>
     suspend fun updateAgentProfile(
         priority: DataRequestPriority,

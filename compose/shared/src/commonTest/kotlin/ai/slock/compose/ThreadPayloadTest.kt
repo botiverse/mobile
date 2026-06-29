@@ -4802,6 +4802,7 @@ class ThreadPayloadTest {
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("human-artin", pageData.optString("memberId"))
         assertEquals("human", pageData.optString("memberKind"))
+        assertEquals("", pageData.optString("sourceServerId"))
         assertEquals("thread-member-detail-thread-1-human-artin", pageData.optString("instanceId"))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("profile"))
@@ -4809,6 +4810,29 @@ class ThreadPayloadTest {
         assertEquals("20623", pageData.optString("todayEpochDay"))
         assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
         assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+    }
+
+    @Test
+    fun threadMemberDetailPageDataCarriesSourceServerIdentityOnly() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                sourceThreadId = "thread-source-1"
+            )
+
+        val pageData =
+            payload.toThreadMemberDetailPageData(
+                selectedMemberId = "remote-human",
+                selectedMemberKind = MemberKind.Human,
+                sourceServerId = "server-remote"
+            )!!
+
+        assertEquals("remote-human", pageData.optString("memberId"))
+        assertEquals("human", pageData.optString("memberKind"))
+        assertEquals("server-remote", pageData.optString("sourceServerId"))
+        assertEquals("", pageData.optString("members"))
+        assertEquals("", pageData.optString("profile"))
+        assertEquals("", pageData.optString("displayName"))
     }
 
     @Test
