@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
 import android.app.PendingIntent
@@ -776,7 +775,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE = "slockDiagnosticsDeepLinkResetScene"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT = "slockDiagnosticsDeepLinkExportReport"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
-        private val RAFT_WEB_APP_HOSTS = setOf("app.slock.ai", "app.raft.build")
 
         fun start(
             context: Context,
@@ -812,13 +810,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 } else {
                     JSONObject()
                 }
-
-        internal fun isRaftWebAppUrl(url: String?): Boolean =
-                runCatching {
-                    val uri = Uri.parse(url)
-                    uri.scheme.equals("https", ignoreCase = true) &&
-                            uri.host?.lowercase(Locale.US) in RAFT_WEB_APP_HOSTS
-                }.getOrDefault(false)
 
         private fun resolvedPageName(intent: Intent?): String =
                 if (intent.isDiagnosticsDeepLinkIntent()) {
@@ -2601,9 +2592,8 @@ internal class SlockKuiklyBridgeModule(
                     }
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-        val intent = viewIntent.withRaftSelfHandlersExcluded(url)
         runCatching {
-            appContext.startActivity(intent)
+            appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
             if (throwable is ActivityNotFoundException) {
                 Toast.makeText(appContext, "No app can open this link", Toast.LENGTH_SHORT)
@@ -2613,20 +2603,6 @@ internal class SlockKuiklyBridgeModule(
             }
         }
         return null
-    }
-
-    private fun Intent.withRaftSelfHandlersExcluded(url: String): Intent {
-        if (!SlockKuiklyActivity.isRaftWebAppUrl(url)) return this
-        return Intent.createChooser(this, "Open link").apply {
-            putExtra(
-                    Intent.EXTRA_EXCLUDE_COMPONENTS,
-                    arrayOf(
-                            ComponentName(appContext.packageName, "ai.slock.android.MainActivity"),
-                            ComponentName(appContext.packageName, SlockKuiklyActivity::class.java.name)
-                    )
-            )
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
     }
 
     private fun openAttachment(params: String?, callback: KuiklyRenderCallback?) {
