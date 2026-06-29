@@ -1584,8 +1584,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
     get() =
         when (this) {
-            SharedHomeIntent.Start,
-            SharedHomeIntent.ForegroundRefresh -> true
+            SharedHomeIntent.Start -> true
+            SharedHomeIntent.ForegroundRefresh -> false
             SharedHomeIntent.Refresh,
             is SharedHomeIntent.SelectServer,
             SharedHomeIntent.ToggleServerSwitcher,

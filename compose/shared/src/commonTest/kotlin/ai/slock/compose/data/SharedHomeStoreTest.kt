@@ -1472,6 +1472,63 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun dispatchForegroundRefreshReplacesInFlightHomeBackgroundRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(
+                            sampleHome(payload.serverId).copy(
+                                channels = listOf(channel("channel-network", "network"))
+                            )
+                        )
+                    }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        val blockedBackgroundRefresh = api.blockNextChannels()
+
+        store.dispatch(SharedHomeIntent.Start)
+        blockedBackgroundRefresh.awaitStarted()
+        logs.clear()
+
+        val blockedForegroundRefresh = api.blockNextChannels()
+        store.dispatch(SharedHomeIntent.ForegroundRefresh)
+        blockedForegroundRefresh.awaitStarted()
+
+        assertEquals(
+            0,
+            logs.count {
+                it.contains("home_load_debounce") &&
+                    it.contains("intent=ForegroundRefresh")
+            }
+        )
+
+        blockedForegroundRefresh.release()
+        awaitCondition {
+            val refreshedContent = store.state.value.content
+            refreshedContent is SharedHomeContentState.Content &&
+                refreshedContent.snapshot.channels.single().name == "network"
+        }
+
+        blockedBackgroundRefresh.release()
+        val refreshedContent = store.state.value.content
+        assertTrue(refreshedContent is SharedHomeContentState.Content)
+        assertEquals("network", refreshedContent.snapshot.channels.single().name)
+        scope.cancel()
+    }
+
+    @Test
     fun channelCreatedOptimisticallyAddsAndSelectsChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
