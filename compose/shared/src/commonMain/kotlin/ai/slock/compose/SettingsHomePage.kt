@@ -80,6 +80,7 @@ import ai.slock.compose.data.PersistentLocaleRepository
 import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
 import ai.slock.compose.data.AuthApiResult
 import ai.slock.compose.data.AuthLoginResponse
+import ai.slock.compose.data.AuthMobileOAuthStartResponse
 import ai.slock.compose.data.AuthRefreshResponse
 import ai.slock.compose.data.AuthSocialCompleteResponse
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
@@ -8624,6 +8625,25 @@ private class AuthChooseServerVisualApi(
         AuthApiResult.Failure(code = 400)
 
     override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun startMobileOAuth(
+        provider: String,
+        mode: String,
+        platform: String,
+        returnTarget: String,
+        codeChallenge: String,
+        authorization: String?
+    ): AuthApiResult<AuthMobileOAuthStartResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun completeMobileOAuth(
+        oauthRequestId: String,
+        handoffCode: String,
+        codeVerifier: String,
+        platform: String,
+        authorization: String?
+    ): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
