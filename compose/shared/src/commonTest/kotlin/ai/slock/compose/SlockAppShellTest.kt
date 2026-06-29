@@ -274,8 +274,9 @@ class SlockAppShellTest {
 
     @Test
     fun sharedHomeStartOnActiveSkipsFreshContentWithoutRealtimeDirty() {
-        assertEquals(true, sharedHomeShouldStartOnActive(active = true, state = SharedHomeState()))
-        assertEquals(false, sharedHomeShouldStartOnActive(active = false, state = SharedHomeState()))
+        assertEquals(true, sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = SharedHomeState()))
+        assertEquals(false, sharedHomeShouldStartOnActive(active = false, sessionReady = true, state = SharedHomeState()))
+        assertEquals(false, sharedHomeShouldStartOnActive(active = true, sessionReady = false, state = SharedHomeState()))
 
         val loadedState =
             SharedHomeState(
@@ -306,8 +307,9 @@ class SlockAppShellTest {
                     )
             )
 
-        assertEquals(false, sharedHomeShouldStartOnActive(active = true, state = loadedState))
-        assertEquals(true, sharedHomeShouldStartOnActive(active = true, state = loadedState.copy(homeRealtimeDirty = true)))
+        assertEquals(false, sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = loadedState))
+        assertEquals(true, sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = loadedState.copy(homeRealtimeDirty = true)))
+        assertEquals(false, sharedHomeShouldStartOnActive(active = true, sessionReady = false, state = loadedState.copy(homeRealtimeDirty = true)))
     }
 
     @Test

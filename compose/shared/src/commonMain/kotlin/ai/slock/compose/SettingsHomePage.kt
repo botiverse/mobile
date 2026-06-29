@@ -138,6 +138,7 @@ import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_START
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_STOP
+import ai.slock.compose.data.isAuthSessionError
 import ai.slock.compose.data.isRefreshing
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.serverConfirmationItemId
@@ -1340,8 +1341,8 @@ internal fun appShellBottomTabsVisible(
         else -> true
     }
 
-internal fun sharedHomeShouldStartOnActive(active: Boolean, state: SharedHomeState): Boolean =
-    active && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
+internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
+    active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
@@ -1882,6 +1883,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
         homeShellStore.reset()
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
+    }
+
+    LaunchedEffect(homeState.content) {
+        val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
+        if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
+        bridge.logWarn("app_shell_home_auth_error_gate code=$error")
+        authGateMessage = "Sign in to continue."
+        authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+        resetAppShellSessionState()
     }
 
     LaunchedEffect(Unit) {
@@ -2646,6 +2656,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                             bridge = bridge,
                             state = homeState,
                             active = active,
+                            sessionReady = readyServerId?.isNotBlank() == true,
                             draftPersistSlice = composerDraftPersistSlice,
                             conversationDirectoryStore = sharedStores.conversationDirectoryStore,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
@@ -9524,6 +9535,7 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
+    sessionReady: Boolean = true,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     conversationDirectoryStore: SharedConversationDirectoryStore? = null,
     activityUnreadCount: Int = 0,
@@ -9544,8 +9556,8 @@ private fun SharedHomeScreen(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
-    LaunchedEffect(active, state.content, state.homeRealtimeDirty) {
-        if (sharedHomeShouldStartOnActive(active, state)) {
+    LaunchedEffect(active, sessionReady, state.content, state.homeRealtimeDirty) {
+        if (sharedHomeShouldStartOnActive(active, sessionReady, state)) {
             onIntent(SharedHomeIntent.Start)
         }
     }

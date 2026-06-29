@@ -18,6 +18,16 @@ class SlockKuiklyNotificationLaunchTest {
     }
 
     @Test
+    fun raftWebAppUrlMatchesOnlyProductionAppLinks() {
+        assertTrue(SlockKuiklyActivity.isRaftWebAppUrl("https://app.raft.build"))
+        assertTrue(SlockKuiklyActivity.isRaftWebAppUrl("https://app.slock.ai/s/raft/channel/channel-1"))
+        assertFalse(SlockKuiklyActivity.isRaftWebAppUrl("http://app.raft.build"))
+        assertFalse(SlockKuiklyActivity.isRaftWebAppUrl("https://raft.build"))
+        assertFalse(SlockKuiklyActivity.isRaftWebAppUrl("https://staging.slock.ai"))
+        assertFalse(SlockKuiklyActivity.isRaftWebAppUrl("not a url"))
+    }
+
+    @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {
         val pageData =
             SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
