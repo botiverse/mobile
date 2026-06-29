@@ -162,20 +162,42 @@ For `force=true`, native should emit `join:channel` even if the room is already 
 
 ## Server API Needs
 
-Existing APIs are enough for status/current-state reconciliation:
+Confirmed server routes are enough for status/current-state reconciliation:
 
-- `servers/{serverId}/members`
-- `agents`
-- `servers/{serverId}/machines`
+- `GET /api/servers/{serverId}/members`
+  - Mounted behind auth, verification, and active server context.
+  - Returns the current server human roster from `serverService.getServerMembers(...)`.
+  - This endpoint is not a human online-presence feed; it is part of the roster/member projection.
+- `GET /api/agents`
+  - Mounted behind auth, verification, and `requireServer`.
+  - Returns all agents for the active server.
+  - The route already resolves each agent's current `activity` / `activityDetail` through `AgentOrchestrator.getActivity(...)`, then batch-enriches creator profile data.
+  - `getActivity(...)` uses owner-local cache, Redis replica mirror, recent durable activity hint, then derived fallback; this is the canonical bulk current-state path for agent dots/activity labels.
+- `GET /api/servers/{serverId}/machines`
+  - Returns the server machine roster enriched through `buildMachineReadModel(...)`.
+  - The read model includes `status`, `statusVersion`, daemon version, computer version, and computer-vs-daemon classification.
 
 Existing APIs are also enough for visible agent detail:
 
-- `agents/{agentId}`
-- `agents/{agentId}/activity-log?limit=50`
-- `agents/{agentId}/agent-dms`
-- `reminders?ownerAgentId=...`
+- `GET /api/agents/{agentId}`
+  - Returns one agent plus current `activity` / `activityDetail`.
+- `GET /api/agents/{agentId}/activity-log?limit=50`
+  - Single-agent durable trajectory log only.
+  - The server checks that the requester can inspect private agent surfaces; creator/admin can view, ordinary server membership is not enough.
+  - Limit is clamped to 1..200 and defaults to 50.
+- `GET /api/agents/{agentId}/agent-dms`
+  - Single-agent private detail surface with the same creator/admin gate.
+- `GET /api/reminders?ownerAgentId=...`
 
 No new API is required for Home agent status.
+
+Realtime/server-room behavior:
+
+- On socket connection, the server auto-joins `user:{userId}`, `server:{serverId}`, and all visible channel/DM rooms, then emits `rooms:joined`.
+- `sync:resume` accepts `{ lastSeq }` and replies with `sync:resume:response` containing missed messages from `messageService.syncMessages(...)`, `currentSeq`, and `hasMore`.
+- `sync:resume` is message-sequence recovery. It does not return agent presence/activity-log events.
+- `join:channel` exists and verifies access for private, joint, DM, and thread channels before joining `channel:{channelId}`.
+- `agent:activity` is broadcast to `server:{serverId}` with `agentId`, `activity`, `detail`, `timestamp`, optional `entries`, and per-agent `serverSeq`. The push is best-effort; correctness still depends on pull reconciliation.
 
 A new API would only be useful if product wants a Home-level "recent agent activity for all agents" feed without per-agent fan-out. That would be a separate server-side batch endpoint, for example:
 
