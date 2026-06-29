@@ -8832,6 +8832,7 @@ private fun ThreadMessageCard(
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
+    showInlineSaveAction: Boolean = false,
     knownMarkdownChannelNames: Set<String>? = null,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
@@ -8890,6 +8891,14 @@ private fun ThreadMessageCard(
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
+    val showInlineBookmarkAction =
+        shouldShowThreadMessageInlineBookmark(
+            showSaveAction = showSaveAction,
+            showInlineSaveAction = showInlineSaveAction,
+            richContentEnabled = richContentEnabled,
+            hasLocalSendState = message.hasLocalSendState()
+        )
+    val reserveInlineTrailingSpace = richContentEnabled && (message.isSendingLocalSend() || showInlineBookmarkAction)
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
@@ -8977,7 +8986,7 @@ private fun ThreadMessageCard(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .padding(end = if (showSaveAction && richContentEnabled) 30.dp else 0.dp)
+                                        .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
                                         .background(Color.Transparent),
                                 pressFeedback = false
                             ) {
@@ -9102,12 +9111,12 @@ private fun ThreadMessageCard(
                             }
                         }
                     }
-                    if (showSaveAction && richContentEnabled) {
+                    if (richContentEnabled) {
                         when {
                             message.isSendingLocalSend() -> {
                                 ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
                             }
-                            !message.hasLocalSendState() -> {
+                            showInlineBookmarkAction -> {
                                 ThreadMessageBookmarkButton(
                                     saved = message.isSaved,
                                     onClick = onToggleSaved,
@@ -9143,6 +9152,17 @@ private fun ThreadMessageCard(
         }
     }
 }
+
+internal fun shouldShowThreadMessageInlineBookmark(
+    showSaveAction: Boolean,
+    showInlineSaveAction: Boolean,
+    richContentEnabled: Boolean,
+    hasLocalSendState: Boolean
+): Boolean =
+    showSaveAction &&
+        showInlineSaveAction &&
+        richContentEnabled &&
+        !hasLocalSendState
 
 @Composable
 private fun ThreadMessageSelectionToggle(

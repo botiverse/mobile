@@ -5110,6 +5110,34 @@ class ThreadPayloadTest {
         assertEquals(null, files.first().fileRef)
     }
 
+    @Test
+    fun threadMessageInlineBookmarkIsHiddenByDefault() {
+        assertFalse(
+            shouldShowThreadMessageInlineBookmark(
+                showSaveAction = true,
+                showInlineSaveAction = false,
+                richContentEnabled = true,
+                hasLocalSendState = false
+            )
+        )
+        assertTrue(
+            shouldShowThreadMessageInlineBookmark(
+                showSaveAction = true,
+                showInlineSaveAction = true,
+                richContentEnabled = true,
+                hasLocalSendState = false
+            )
+        )
+        assertFalse(
+            shouldShowThreadMessageInlineBookmark(
+                showSaveAction = true,
+                showInlineSaveAction = true,
+                richContentEnabled = true,
+                hasLocalSendState = true
+            )
+        )
+    }
+
     private fun markdownChannelHomeSnapshot(vararg channels: ConversationSummary): HomeSnapshot =
         HomeSnapshot(
             server = ServerSummary(id = ServerId("server-1"), name = "Server"),
