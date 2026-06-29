@@ -19,10 +19,12 @@ object SlockFileDiagnosticsLogger {
     private const val LogFileName = "slock-diagnostics.jsonl"
     private const val LegacyLogFileName = "slock-diagnostics.log"
     private const val LogMaxBytes = 512L * 1024L
-    private const val LogMaxFiles = 4
+    private const val LogMaxFiles = 12
+    private const val LogExportMaxFiles = 12
     private const val MemoryEntryLimit = 512
     private const val MessageMaxChars = 2_048
     private const val RecentDiagnosticsMaxChars = 120_000
+    private val LogHistoryMaxAgeMs = TimeUnit.DAYS.toMillis(2)
 
     private val memoryLock = Any()
     private val fileLock = Any()
@@ -64,9 +66,7 @@ object SlockFileDiagnosticsLogger {
                 truncated = truncated
             )
         remember(entry)
-        if (normalizedLevel == "warn" || normalizedLevel == "error") {
-            executor.execute { append(entry) }
-        }
+        executor.execute { append(entry) }
     }
 
     fun hasFiles(context: Context): Boolean =
@@ -87,15 +87,23 @@ object SlockFileDiagnosticsLogger {
     }
 
     fun logFiles(context: Context): List<File> =
-        logDir(context)
+        logFilesIn(
+            dir = logDir(context),
+            nowMs = System.currentTimeMillis()
+        )
+
+    internal fun logFilesIn(dir: File, nowMs: Long): List<File> =
+        dir
             .walkTopDown()
             .filter {
                 it.isFile &&
                     it.length() > 0L &&
-                    (it.name.startsWith(LogFileName) || it.name.startsWith(LegacyLogFileName))
+                    isDiagnosticsLogFile(it) &&
+                    isRecentDiagnosticsLogFile(it, nowMs)
             }
             .toList()
             .sortedByDescending { it.lastModified() }
+            .take(LogExportMaxFiles)
 
     fun exportRecentJsonl(maxChars: Int = RecentDiagnosticsMaxChars): String =
         snapshotMemoryEntries()
@@ -108,7 +116,7 @@ object SlockFileDiagnosticsLogger {
         val header =
             buildString {
                 appendLine("App-owned recent diagnostics")
-                appendLine("Files: ${files.size}")
+                appendLine("Files: ${files.size} (last 2 days)")
             }
         val memoryJsonl = exportRecentJsonl(maxChars / 2)
         val fileBudget = (maxChars - header.length - memoryJsonl.length).coerceAtLeast(1_000)
@@ -202,6 +210,15 @@ object SlockFileDiagnosticsLogger {
         }.format(Date())
 
     private fun logDir(context: Context): File = File(context.filesDir, LogDirName)
+
+    private fun isDiagnosticsLogFile(file: File): Boolean =
+        file.name.startsWith(LogFileName) || file.name.startsWith(LegacyLogFileName)
+
+    private fun isRecentDiagnosticsLogFile(file: File, nowMs: Long): Boolean {
+        val modifiedAt = file.lastModified()
+        if (modifiedAt <= 0L) return false
+        return modifiedAt >= nowMs - LogHistoryMaxAgeMs
+    }
 
     private data class DiagnosticEntry(
         val timestamp: String,
