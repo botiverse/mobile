@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,7 +23,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        SlockDiagnosticsLogger.d("SlockBoot", "main_activity_redirect_to_shared_shell")
+        SlockDiagnosticsLogger.d(
+            "SlockBoot",
+            "main_activity_created " +
+                "source=${intent.slockLaunchSource()} " +
+                "clearTask=${intent.shouldClearTaskForSharedShell()} " +
+                "data=${intent.safeDataString()}"
+        )
         if (!handleSocialAuthCallback(intent)) {
             openSharedShell(intent)
         }
@@ -31,6 +38,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        SlockDiagnosticsLogger.d(
+            "SlockBoot",
+            "main_activity_new_intent " +
+                "source=${intent.slockLaunchSource()} " +
+                "clearTask=${intent.shouldClearTaskForSharedShell()} " +
+                "data=${intent.safeDataString()}"
+        )
         if (!handleSocialAuthCallback(intent)) {
             openSharedShell(intent)
         }
@@ -40,7 +54,7 @@ class MainActivity : ComponentActivity() {
         SlockKuiklyActivity.startAppShell(
             this,
             pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent),
-            clearTask = true
+            clearTask = launchIntent.shouldClearTaskForSharedShell()
         )
         finish()
     }
@@ -86,6 +100,45 @@ class MainActivity : ComponentActivity() {
         return true
     }
 }
+
+internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =
+    shouldClearTaskForSharedShell(this?.action, this?.data?.scheme, this?.data?.host)
+
+internal fun Intent?.slockLaunchSource(): String =
+    slockLaunchSource(this?.action, this?.data?.scheme, this?.data?.host)
+
+internal fun shouldClearTaskForSharedShell(
+    action: String?,
+    dataScheme: String?,
+    dataHost: String?
+): Boolean =
+    !isSlockAppWebViewIntent(action, dataScheme, dataHost)
+
+internal fun slockLaunchSource(
+    action: String?,
+    dataScheme: String?,
+    dataHost: String?
+): String =
+    when {
+        action == null -> "missing"
+        isSlockAppWebViewIntent(action, dataScheme, dataHost) -> "app_web_view"
+        action == Intent.ACTION_VIEW -> "external_view"
+        action == Intent.ACTION_MAIN -> "launcher"
+        else -> action.ifBlank { "unknown" }
+    }
+
+private fun isSlockAppWebViewIntent(action: String?, dataScheme: String?, dataHost: String?): Boolean =
+    action == Intent.ACTION_VIEW && isSlockAppWebLink(dataScheme, dataHost)
+
+internal fun Uri.isSlockAppWebLink(): Boolean =
+    isSlockAppWebLink(scheme, host)
+
+private fun isSlockAppWebLink(scheme: String?, host: String?): Boolean =
+    scheme.equals("https", ignoreCase = true) &&
+        host?.lowercase(Locale.US) in setOf("app.slock.ai", "app.raft.build")
+
+private fun Intent?.safeDataString(): String =
+    this?.data?.buildUpon()?.clearQuery()?.fragment(null)?.build()?.toString().orEmpty()
 
 private fun Uri.isSlockSocialAuthCallback(): Boolean =
     scheme == "https" &&
