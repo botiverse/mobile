@@ -251,6 +251,17 @@ internal fun List<MembersAgentDetailTab>.membersMoveTab(
     return mutable
 }
 
+internal fun membersAgentTabVisibleAnchorIndex(
+    tabs: List<MembersAgentDetailTab>,
+    selectedTab: MembersAgentDetailTab
+): Int {
+    val selectedIndex = tabs.indexOf(selectedTab)
+    return when {
+        selectedIndex <= 0 -> 0
+        else -> selectedIndex - 1
+    }
+}
+
 private fun String.toMembersAgentTabOrderKey(): String =
     trim().lowercase()
         .replace("-", "_")
@@ -3526,16 +3537,25 @@ private fun MembersAgentTabBar(
     onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val listState = rememberLazyListState()
     var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
     var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
+    LaunchedEffect(tabs, selectedTab) {
+        if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
+            listState.scrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockTopTabBarDefaults.Height)
             .background(SlockColor.SurfaceWhite)
     ) {
-        LazyRow(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        LazyRow(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) {
             items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
                 val tab = tabs[index]
                 val spec = tab.toSlockTabSpec()

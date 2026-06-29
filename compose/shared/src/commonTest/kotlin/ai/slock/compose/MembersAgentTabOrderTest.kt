@@ -70,4 +70,19 @@ class MembersAgentTabOrderTest {
         assertSame(tabs, tabs.membersMoveTab(fromIndex = 0, toIndex = 2))
         assertSame(tabs, tabs.membersMoveTab(fromIndex = 1, toIndex = 1))
     }
+
+    @Test
+    fun selectedAgentTabScrollAnchorKeepsPriorTabVisible() {
+        val tabs =
+            listOf(
+                MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Apps
+            )
+
+        assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Profile))
+        assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Dms))
+        assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
+    }
 }
