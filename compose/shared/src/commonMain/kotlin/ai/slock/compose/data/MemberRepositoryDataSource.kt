@@ -311,38 +311,21 @@ class RealMemberRepository(
         val skills = getAgentSkills(priority, agentId)
         val appLogins = getAgentAppLogins(priority, agentId).toAgentDetailAppLogins(agentId)
         return when {
-            summary is DataResult.Content &&
-            directMessages is DataResult.Content &&
-                reminders is DataResult.Content &&
-                activity is DataResult.Content &&
-                skills is DataResult.Content ->
+            summary is DataResult.Content ->
                 DataResult.Content(
                     AgentDetailSnapshot(
                         agentId = agentId,
                         summary = summary.data.toAgentDetailSummary(),
-                        directMessages = directMessages.data.directMessages,
-                        reminders = reminders.data.reminders,
-                        activity = activity.data.activity,
-                        skills = skills.data,
+                        directMessages = directMessages.contentOrNull()?.directMessages.orEmpty(),
+                        reminders = reminders.contentOrNull()?.reminders.orEmpty(),
+                        activity = activity.contentOrNull()?.activity.orEmpty(),
+                        skills = skills.contentOrNull() ?: AgentSkillsSnapshot(agentId = agentId),
                         appLogins = appLogins
                     )
                 )
             summary is DataResult.NoPermission -> summary
             summary is DataResult.Error -> summary
-            directMessages is DataResult.NoPermission -> directMessages
-            reminders is DataResult.NoPermission -> reminders
-            activity is DataResult.NoPermission -> activity
-            skills is DataResult.NoPermission -> skills
             summary is DataResult.Empty -> summary
-            directMessages is DataResult.Error -> directMessages
-            reminders is DataResult.Error -> reminders
-            activity is DataResult.Error -> activity
-            skills is DataResult.Error -> skills
-            summary is DataResult.Empty &&
-                directMessages is DataResult.Empty &&
-                reminders is DataResult.Empty &&
-                activity is DataResult.Empty &&
-                skills is DataResult.Empty -> DataResult.Empty(EmptyReason.NoMembers)
             else -> DataResult.Empty(EmptyReason.NoMembers)
         }
     }
@@ -776,6 +759,9 @@ class RealMemberRepository(
         }
     }
 }
+
+private fun <T> DataResult<T>.contentOrNull(): T? =
+    (this as? DataResult.Content)?.data
 
 private fun DataResult<AgentAppLoginSnapshot>.toAgentDetailAppLogins(agentId: MemberId): AgentAppLoginSnapshot =
     when (this) {

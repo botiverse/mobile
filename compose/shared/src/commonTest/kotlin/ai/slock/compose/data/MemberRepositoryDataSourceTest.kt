@@ -106,6 +106,22 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun agentDetailKeepsProfileWhenOptionalSectionFails() = runBlocking {
+        val network = FakeMemberNetworkClient().apply {
+            skillsResponse = HomeNetworkResponse(code = 503, bodyText = """{"code":"server_unavailable"}""")
+        }
+        val repository = RealMemberRepository(sampleStore(), network)
+        val agentId = MemberId("agent-1")
+
+        val detail = repository.getAgentDetail(DataRequestPriority.Visible, agentId)
+
+        assertTrue(detail is DataResult.Content)
+        assertEquals("agent-1", detail.data.summary?.id)
+        assertEquals("Noel Bot", detail.data.summary?.displayName)
+        assertEquals(emptyList(), detail.data.skills.groups)
+    }
+
+    @Test
     fun agentLifecycleDuplicateSubmitIsGuardedInRepository() = runBlocking {
         val network = FakeMemberNetworkClient()
         val repository = RealMemberRepository(sampleStore(), network)
@@ -172,6 +188,7 @@ class MemberRepositoryDataSourceTest {
             """
             [{"timestamp":1710000000,"entry":{"kind":"agent_status","activity":"working","detail":"Running task"}}]
             """.trimIndent()
+        var skillsResponse: HomeNetworkResponse? = null
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -236,6 +253,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "agents/agent-1/skills" && method == "GET" -> {
                     calls += "GET agents/agent-1/skills"
+                    skillsResponse?.let { return it }
                     ok(
                         """
                         {"global":[{"name":"docs","displayName":"Docs","description":"Reads docs"}],"workspace":[]}
