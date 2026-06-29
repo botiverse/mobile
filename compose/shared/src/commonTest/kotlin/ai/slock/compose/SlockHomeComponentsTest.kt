@@ -18,6 +18,7 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -85,6 +86,18 @@ class SlockHomeComponentsTest {
                         SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 3)
                     )
             )
+        )
+    }
+
+    @Test
+    fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
+        assertEquals(
+            SlockSize.PageHeaderHeight + 4.dp,
+            homeServerSwitcherPanelTopOffset(topSafeArea = 0.dp)
+        )
+        assertEquals(
+            24.dp + SlockSize.PageHeaderHeight + 4.dp,
+            homeServerSwitcherPanelTopOffset(topSafeArea = 24.dp)
         )
     }
 

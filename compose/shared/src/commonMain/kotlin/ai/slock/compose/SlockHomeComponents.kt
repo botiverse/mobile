@@ -116,6 +116,7 @@ private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
+private val HomeServerSwitcherTopGap = 4.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
@@ -1042,7 +1043,18 @@ internal fun SlockStructuralHomeShell(
             }
             if (serverSwitcherExpanded) {
                 HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
-                ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
+                ServerSwitcherPanel(
+                    servers,
+                    currentServerId,
+                    pendingServerId,
+                    labels,
+                    onServerSelected,
+                    onCreateServerClick,
+                    Modifier.padding(
+                        top = homeServerSwitcherPanelTopOffset(topSafeArea),
+                        start = SlockSpacing.Lg
+                    )
+                )
             }
             activeSortMenu?.let { section ->
                 SlockBaseMenuOverlay(
@@ -1243,6 +1255,9 @@ internal fun homeServerSwitcherHasOtherUnread(
     servers.any { server ->
         server.id != currentServerId && server.unreadCount > 0
     }
+
+internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
+    topSafeArea + SlockSize.PageHeaderHeight + HomeServerSwitcherTopGap
 
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,
