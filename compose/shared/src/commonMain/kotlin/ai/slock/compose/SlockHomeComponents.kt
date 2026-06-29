@@ -1626,17 +1626,17 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
     if (visibleNotifications.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
     val activeKind = visibleNotifications.first().kind
-    Box(modifier = modifier) {
+    Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(HomeNotificationTriggerSize)
                     .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
                     .background(SlockColor.ShadowBlack)
             )
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(HomeNotificationTriggerSize)
                     .background(activeKind.notificationColor())
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .clickable { expanded = !expanded },
@@ -1646,9 +1646,22 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
-        if (expanded) HomeNotificationPopover(visibleNotifications, onView, onDismiss, Modifier.align(Alignment.TopEnd).offset(y = 44.dp))
+        if (expanded) {
+            HomeNotificationPopover(
+                visibleNotifications,
+                onView,
+                onDismiss,
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = HomeNotificationPopoverOffsetY)
+            )
+        }
     }
 }
+
+private val HomeNotificationTriggerSize = 32.dp
+private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
+internal val HomeNotificationPopoverOffsetY = 44.dp
 
 internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<SlockHomeNotificationItem> =
     filter { notification ->

@@ -553,6 +553,11 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun notificationPopoverIsOffsetOutsideFixedTriggerSlot() {
+        assertEquals(44.dp, HomeNotificationPopoverOffsetY)
+    }
+
+    @Test
     fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
         val agents =
             listOf(
