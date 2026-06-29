@@ -2035,6 +2035,7 @@ private fun ThreadMessageVisualCard(
                                 highlightedMentions = highlightedMentions,
                                 knownChannelNames = knownMarkdownChannelNames,
                                 resolveTagLabel = resolveMarkdownTagLabel,
+                                inlineContentScope = message.id,
                                 onOpenTag = onOpenMarkdownTag,
                                 onOpenUrl = onOpenMarkdownUrl
                             )

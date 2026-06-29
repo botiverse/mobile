@@ -403,6 +403,45 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineFastPathKeepsCodeAndBoldWhenTagsArePresent() {
+        val body = "Ping @artin with `mimo` and **bold** in #markdown专修"
+        val tokenPlan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                highlightedMentions = setOf("artin"),
+                knownChannelNames = setOf("markdown专修"),
+                inlineContentScope = "message-mixed"
+            )
+        val annotator =
+            slockMarkdownAnnotator(
+                body,
+                highlightedMentions = setOf("artin"),
+                knownChannelNames = setOf("markdown专修"),
+                inlineContentScope = "message-mixed",
+                tokenPlan = tokenPlan
+            )
+        val annotated =
+            buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
+                .withSlockMarkdownSpanFonts(SlockType.Body)
+
+        assertEquals("Ping @artin with mimo and bold in #markdown专修", annotated.text)
+        assertEquals(
+            setOf("slock-message-mixed:5", "slock-message-mixed:40"),
+            annotated.slockMarkdownInlineContentIds()
+        )
+        assertEquals(
+            listOf("mimo"),
+            annotated
+                .getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
+                .map { annotated.text.substring(it.start, it.end) }
+        )
+        val boldStart = annotated.text.indexOf("bold")
+        val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
+        assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
+        assertEquals(FontWeight.Normal, boldSpan.item.fontWeight)
+    }
+
+    @Test
     fun markdownCodeSpansDoNotKeepExplicitMonospaceFont() {
         val annotated =
             AnnotatedString(
