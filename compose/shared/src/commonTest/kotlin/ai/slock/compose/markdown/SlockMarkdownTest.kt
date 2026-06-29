@@ -331,11 +331,12 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTextFastPathKeepsSingleParagraphMarkdownOutOfBlockRenderer() {
+    fun inlineTextFastPathKeepsOnlyPlainTaggedTextOutOfBlockRenderer() {
         assertTrue("Ping @artin in #KMP".shouldUseSlockMarkdownInlineTextFastPath())
-        assertTrue("Use `code` and **bold** text".shouldUseSlockMarkdownInlineTextFastPath())
         assertTrue("#KMP is a channel reference, not a heading".shouldUseSlockMarkdownInlineTextFastPath())
 
+        assertFalse("Use `code` and **bold** text".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("Use _emphasis_ and ~~strike~~ text".shouldUseSlockMarkdownInlineTextFastPath())
         assertFalse("Open https://raft.build".shouldUseSlockMarkdownInlineTextFastPath())
         assertFalse("# Heading".shouldUseSlockMarkdownInlineTextFastPath())
         assertFalse("### Heading".shouldUseSlockMarkdownInlineTextFastPath())

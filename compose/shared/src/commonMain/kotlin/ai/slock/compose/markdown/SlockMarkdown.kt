@@ -404,7 +404,7 @@ internal fun String.shouldUseSlockMarkdownInlineTextFastPath(): Boolean {
 }
 
 private val SlockMarkdownInlineTextFastPathBlockers =
-    setOf('\\', '\n', '\r', '[', ']', '<', '>', '|')
+    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '|')
 
 private fun String.shouldUseSlockMarkdownDirectInlineTagFastPath(): Boolean {
     if (isEmpty() || contains("://")) return false
