@@ -395,6 +395,7 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeRuntime?.let { return it }
         val hostContext = AndroidAppScopeRealtimeHostContext.create(context.applicationContext, scope)
         val runtime = bootstrapRealtime(hostContext)
+        syncRuntimeVisibility(runtime, appVisibility)
         realtimeClient = hostContext.client
         realtimeRuntime = runtime
         return runtime
@@ -490,7 +491,17 @@ internal object AndroidAppScopeRealtimeOwner {
         return shownAtMillis - hiddenAt >= ForegroundReconnectAfterBackgroundMillis
     }
 
-    private enum class AppVisibility {
+    internal fun syncRuntimeVisibility(
+        runtime: SlockRealtimeAppScopeRuntime,
+        visibility: AppVisibility
+    ) {
+        when (visibility) {
+            AppVisibility.Foreground -> runtime.onAppShown()
+            AppVisibility.Background -> runtime.onAppHidden()
+        }
+    }
+
+    internal enum class AppVisibility {
         Foreground,
         Background
     }

@@ -1,11 +1,21 @@
 package ai.slock.android.shared
 
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeConnectionState
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeConnection
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeRuntime
+import ai.slock.compose.data.realtime.SlockRealtimeAppScopeSink
+import ai.slock.compose.data.realtime.bootstrapRealtime
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ConversationKind
 import org.junit.Assert.assertEquals
@@ -101,6 +111,24 @@ class AndroidAppScopeRealtimeOwnerTest {
         )
     }
 
+    @Test
+    fun bootstrapRuntimeVisibilityFollowsCurrentAndroidOwnerVisibility() {
+        val foregroundRuntime = realtimeRuntime()
+        val backgroundRuntime = realtimeRuntime()
+
+        AndroidAppScopeRealtimeOwner.syncRuntimeVisibility(
+            foregroundRuntime,
+            AndroidAppScopeRealtimeOwner.AppVisibility.Foreground
+        )
+        AndroidAppScopeRealtimeOwner.syncRuntimeVisibility(
+            backgroundRuntime,
+            AndroidAppScopeRealtimeOwner.AppVisibility.Background
+        )
+
+        assertTrue(foregroundRuntime.isAppInForeground)
+        assertFalse(backgroundRuntime.isAppInForeground)
+    }
+
     private fun message(
         channelId: String? = null,
         threadChannelId: String? = null,
@@ -122,4 +150,41 @@ class AndroidAppScopeRealtimeOwnerTest {
             body = "Hello",
             parentMessageId = parentMessageId?.let(::MessageId)
         )
+
+    private fun realtimeRuntime(): SlockRealtimeAppScopeRuntime =
+        bootstrapRealtime(
+            connection = FakeAppScopeConnection(),
+            sink = FakeAppScopeSink(),
+            enhancedNotifyBus = null,
+            dispatch = { block -> kotlinx.coroutines.runBlocking { block() } }
+        )
+
+    private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
+        override val state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
+
+        override suspend fun connect(serverId: ServerId, accessToken: String, lastSeq: Long): DataResult<Unit> =
+            DataResult.Content(Unit)
+
+        override fun disconnect() = Unit
+
+        override fun emitRoomCommand(eventName: String, payload: String) = Unit
+
+        override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
+            RealtimeSubscription {}
+
+        override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
+            RealtimeSubscription {}
+    }
+
+    private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
+        override fun log(message: String) = Unit
+
+        override fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: String) = Unit
+
+        override suspend fun maybePostBackgroundUnreadNotification(
+            serverId: ServerId,
+            event: MessageNew,
+            isAppInForeground: Boolean
+        ) = Unit
+    }
 }
