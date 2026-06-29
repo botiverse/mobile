@@ -358,15 +358,17 @@ class AuthDataSourceTest {
         val result =
             source.startMobileOAuthLogin(
                 provider = " GitHub ",
-                returnTarget = "android",
+                appEnv = "dev",
+                returnUri = "raft-dev://oauth/callback",
                 codeChallenge = "challenge-1"
             )
 
         assertTrue(result is SharedAuthResult.Success)
         assertEquals("https://accounts.example/oauth", result.data.authorizationUrl)
-        assertEquals("request-1", result.data.oauthRequestId)
+        assertEquals("request-1", result.data.requestId)
+        assertEquals("raft-dev://oauth/callback", result.data.returnUri)
         assertEquals(
-            """{"provider":"github","mode":"login","platform":"android","returnTarget":"android","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
+            """{"provider":"github","mode":"login","platform":"android","appEnv":"dev","returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
             api.mobileOAuthStartBody
         )
     }
@@ -379,14 +381,13 @@ class AuthDataSourceTest {
 
         val result =
             source.completeMobileOAuthLogin(
-                oauthRequestId = "request-1",
-                handoffCode = "handoff-1",
+                code = "handoff-1",
                 codeVerifier = "verifier-1"
             )
 
         assertTrue(result is SharedAuthResult.Success)
         assertEquals(
-            """{"oauthRequestId":"request-1","handoffCode":"handoff-1","codeVerifier":"verifier-1","platform":"android"}""",
+            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"android"}""",
             api.mobileOAuthCompleteBody
         )
         assertEquals("Bearer access-token", api.serversAuthorization)
@@ -726,7 +727,7 @@ class AuthDataSourceTest {
         private val mobileOAuthStartResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
-                """{"authorizationUrl":"https://accounts.example/oauth","oauthRequestId":"request-1","expiresAt":"2026-06-29T00:00:00Z"}"""
+                """{"authorizationUrl":"https://accounts.example/oauth","requestId":"request-1","returnUri":"raft-dev://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
             ),
         private val mobileOAuthCompleteResponse: AuthNetworkResponse =
             AuthNetworkResponse(

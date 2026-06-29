@@ -162,7 +162,8 @@ class SharedAuthDataSource(
 
     suspend fun startMobileOAuthLogin(
         provider: String,
-        returnTarget: String,
+        appEnv: String,
+        returnUri: String,
         codeChallenge: String
     ): SharedAuthResult<AuthMobileOAuthStartResponse> {
         val normalizedProvider = provider.trim().lowercase()
@@ -172,7 +173,7 @@ class SharedAuthDataSource(
                 "This sign-in provider is not available on this device."
             )
         }
-        if (returnTarget.isBlank() || codeChallenge.isBlank()) {
+        if (appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 "Mobile sign-in could not be prepared."
@@ -184,7 +185,8 @@ class SharedAuthDataSource(
                     provider = normalizedProvider,
                     mode = "login",
                     platform = "android",
-                    returnTarget = returnTarget.trim(),
+                    appEnv = appEnv.trim(),
+                    returnUri = returnUri.trim(),
                     codeChallenge = codeChallenge.trim()
                 )
         ) {
@@ -194,11 +196,10 @@ class SharedAuthDataSource(
     }
 
     suspend fun completeMobileOAuthLogin(
-        oauthRequestId: String,
-        handoffCode: String,
+        code: String,
         codeVerifier: String
     ): SharedAuthResult<StoredAuthSession> {
-        if (oauthRequestId.isBlank() || handoffCode.isBlank() || codeVerifier.isBlank()) {
+        if (code.isBlank() || codeVerifier.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 "Mobile sign-in did not return the required credentials."
@@ -208,8 +209,7 @@ class SharedAuthDataSource(
             when (
                 val response =
                     api.completeMobileOAuth(
-                        oauthRequestId = oauthRequestId.trim(),
-                        handoffCode = handoffCode.trim(),
+                        code = code.trim(),
                         codeVerifier = codeVerifier.trim(),
                         platform = "android"
                     )
@@ -701,13 +701,13 @@ interface SlockAuthApi {
         provider: String,
         mode: String,
         platform: String,
-        returnTarget: String,
+        appEnv: String,
+        returnUri: String,
         codeChallenge: String,
         authorization: String? = null
     ): AuthApiResult<AuthMobileOAuthStartResponse>
     suspend fun completeMobileOAuth(
-        oauthRequestId: String,
-        handoffCode: String,
+        code: String,
         codeVerifier: String,
         platform: String,
         authorization: String? = null
@@ -741,7 +741,8 @@ class SlockAuthApiClient(
         provider: String,
         mode: String,
         platform: String,
-        returnTarget: String,
+        appEnv: String,
+        returnUri: String,
         codeChallenge: String,
         authorization: String?
     ): AuthApiResult<AuthMobileOAuthStartResponse> =
@@ -751,7 +752,8 @@ class SlockAuthApiClient(
                     provider = provider,
                     mode = mode,
                     platform = platform,
-                    returnTarget = returnTarget,
+                    appEnv = appEnv,
+                    returnUri = returnUri,
                     codeChallenge = codeChallenge,
                     codeChallengeMethod = "S256"
                 )
@@ -762,8 +764,7 @@ class SlockAuthApiClient(
         }
 
     override suspend fun completeMobileOAuth(
-        oauthRequestId: String,
-        handoffCode: String,
+        code: String,
         codeVerifier: String,
         platform: String,
         authorization: String?
@@ -771,8 +772,7 @@ class SlockAuthApiClient(
         transport.completeMobileOAuth(
             authJson.encodeToString(
                 AuthMobileOAuthCompleteRequestBody(
-                    oauthRequestId = oauthRequestId,
-                    handoffCode = handoffCode,
+                    code = code,
                     codeVerifier = codeVerifier,
                     platform = platform
                 )
@@ -837,7 +837,8 @@ data class AuthSocialCompleteResponse(
 
 data class AuthMobileOAuthStartResponse(
     val authorizationUrl: String,
-    val oauthRequestId: String,
+    val requestId: String,
+    val returnUri: String,
     val expiresAt: String
 )
 
@@ -890,15 +891,15 @@ data class AuthMobileOAuthStartRequestBody(
     val provider: String,
     val mode: String,
     val platform: String,
-    val returnTarget: String,
+    val appEnv: String,
+    val returnUri: String,
     val codeChallenge: String,
     val codeChallengeMethod: String
 )
 
 @kotlinx.serialization.Serializable
 data class AuthMobileOAuthCompleteRequestBody(
-    val oauthRequestId: String,
-    val handoffCode: String,
+    val code: String,
     val codeVerifier: String,
     val platform: String
 )
@@ -1036,14 +1037,16 @@ private fun AuthSocialCompleteResponseDto.toDomain(): AuthSocialCompleteResponse
 @Serializable
 private data class AuthMobileOAuthStartResponseDto(
     val authorizationUrl: String,
-    val oauthRequestId: String,
+    val requestId: String,
+    val returnUri: String,
     val expiresAt: String,
 )
 
 private fun AuthMobileOAuthStartResponseDto.toDomain(): AuthMobileOAuthStartResponse =
     AuthMobileOAuthStartResponse(
         authorizationUrl = authorizationUrl,
-        oauthRequestId = oauthRequestId,
+        requestId = requestId,
+        returnUri = returnUri,
         expiresAt = expiresAt
     )
 

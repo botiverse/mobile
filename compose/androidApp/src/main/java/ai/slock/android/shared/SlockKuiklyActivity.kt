@@ -3095,7 +3095,8 @@ internal class SlockKuiklyBridgeModule(
                     withContext(Dispatchers.IO) {
                         authDataSource.startMobileOAuthLogin(
                                 provider = provider,
-                                returnTarget = AndroidMobileOAuth.ReturnTarget,
+                                appEnv = AndroidMobileOAuth.AppEnv,
+                                returnUri = AndroidMobileOAuth.ReturnUri,
                                 codeChallenge = pkce.codeChallenge
                         )
                     }
@@ -3104,7 +3105,7 @@ internal class SlockKuiklyBridgeModule(
                     AndroidMobileOAuthPendingStore(appContext).save(
                             AndroidMobileOAuthPendingRequest(
                                     provider = provider,
-                                    oauthRequestId = startResult.data.oauthRequestId,
+                                    requestId = startResult.data.requestId,
                                     codeVerifier = pkce.codeVerifier
                             )
                     )
