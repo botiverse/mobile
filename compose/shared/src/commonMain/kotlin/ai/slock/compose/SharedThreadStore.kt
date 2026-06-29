@@ -691,7 +691,7 @@ internal class SharedThreadDataSource(
             readSession()
                 ?: return authSessionRequiredResult()
         val result =
-            if (basePayload.shouldFetchReplyThreadByParentPair()) {
+            if (basePayload.shouldResolveReplyThreadByParentPair()) {
                 fetchInitialReplyThreadPayloadFromRepository(
                     session = session,
                     basePayload = basePayload,
@@ -2199,7 +2199,10 @@ internal class SharedThreadStore(
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
-        if (visiblePayload != null && nextPayload.hasRenderableThreadContent()) {
+        if (visiblePayload != null &&
+            nextPayload.hasRenderableThreadContent() &&
+            !basePayload.needsReplyThreadStreamResolution()
+        ) {
             launchSecondaryTimelineRefresh(basePayload)
         }
         if (nextPayload.hasRenderableThreadContent()) {
@@ -3280,6 +3283,10 @@ private fun KuiklyThreadScreenPayload.shouldFetchReplyThreadByParentPair(): Bool
         parentChannelId?.isNotBlank() == true &&
         (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
 
+private fun KuiklyThreadScreenPayload.shouldResolveReplyThreadByParentPair(): Boolean =
+    shouldFetchReplyThreadByParentPair() &&
+        needsReplyThreadStreamResolution()
+
 private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boolean {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     parentMessageId?.takeIf { it.isNotBlank() }
@@ -4149,10 +4156,19 @@ internal fun KuiklyThreadScreenPayload.withResolvedReplyThreadIdentityFrom(
     if (patch.hasResolvedReplyThreadStreamFrom(this)) {
         copy(
             instanceId = patch.instanceId,
+            title = patch.title,
+            subtitle = patch.subtitle,
             sourceThreadId = patch.sourceThreadId,
             streamChannelId = patch.streamChannelId,
             parentChannelId = patch.parentChannelId,
-            parentMessageId = patch.parentMessageId
+            parentMessageId = patch.parentMessageId,
+            composer =
+                composer.copy(
+                    streamChannelId =
+                        patch.composer.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: patch.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: patch.sourceThreadId?.takeIf { it.isNotBlank() }
+                )
         )
     } else {
         this

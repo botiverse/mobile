@@ -2691,7 +2691,7 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("#general", payload.subtitle)
     }
 
@@ -3483,7 +3483,7 @@ class SharedThreadStoreTest {
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("m1", payload.parentMessageId)
         assertEquals("m1", payload.originParentMessageId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
@@ -3832,7 +3832,7 @@ class SharedThreadStoreTest {
         assertEquals("m1", payload.parentMessageId)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("reply-1", payload.focusedMessageId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
