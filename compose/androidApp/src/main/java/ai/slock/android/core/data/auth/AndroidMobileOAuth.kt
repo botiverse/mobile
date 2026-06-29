@@ -14,12 +14,13 @@ data class AndroidMobileOAuthPkce(
 
 data class AndroidMobileOAuthPendingRequest(
     val provider: String,
-    val oauthRequestId: String,
+    val requestId: String,
     val codeVerifier: String
 )
 
 object AndroidMobileOAuth {
-    const val ReturnTarget = "android"
+    const val AppEnv = "dev"
+    const val ReturnUri = "raft-dev://oauth/callback"
     private const val VerifierByteCount = 32
     private val SupportedProviders = setOf("google", "github")
 
@@ -35,8 +36,11 @@ object AndroidMobileOAuth {
         return AndroidMobileOAuthPkce(codeVerifier = verifier, codeChallenge = challenge)
     }
 
-    fun isCallbackQuery(code: String?, error: String?, requestId: String?): Boolean =
-        !requestId.isNullOrBlank() && (!code.isNullOrBlank() || !error.isNullOrBlank())
+    fun isCallbackUri(scheme: String?, host: String?, path: String?, code: String?, error: String?): Boolean =
+        scheme.equals("raft-dev", ignoreCase = true) &&
+            host.equals("oauth", ignoreCase = true) &&
+            path == "/callback" &&
+            (!code.isNullOrBlank() || !error.isNullOrBlank())
 
     private fun base64Url(bytes: ByteArray): String =
         Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
@@ -48,7 +52,7 @@ class AndroidMobileOAuthPendingStore(context: Context) {
 
     fun save(request: AndroidMobileOAuthPendingRequest) {
         store.putString(KEY_PROVIDER, request.provider)
-        store.putString(KEY_REQUEST_ID, request.oauthRequestId)
+        store.putString(KEY_REQUEST_ID, request.requestId)
         store.putString(KEY_VERIFIER, request.codeVerifier)
     }
 
@@ -56,7 +60,7 @@ class AndroidMobileOAuthPendingStore(context: Context) {
         val provider = store.getString(KEY_PROVIDER)?.takeIf { it.isNotBlank() } ?: return null
         val requestId = store.getString(KEY_REQUEST_ID)?.takeIf { it.isNotBlank() } ?: return null
         val verifier = store.getString(KEY_VERIFIER)?.takeIf { it.isNotBlank() } ?: return null
-        return AndroidMobileOAuthPendingRequest(provider = provider, oauthRequestId = requestId, codeVerifier = verifier)
+        return AndroidMobileOAuthPendingRequest(provider = provider, requestId = requestId, codeVerifier = verifier)
     }
 
     fun clear() {

@@ -66,6 +66,17 @@
                     android:host="app.raft.build"
                     android:scheme="https" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="oauth"
+                    android:path="/callback"
+                    android:scheme="raft-dev" />
+            </intent-filter>
         </activity>
 
         <receiver

@@ -8631,15 +8631,15 @@ private class AuthChooseServerVisualApi(
         provider: String,
         mode: String,
         platform: String,
-        returnTarget: String,
+        appEnv: String,
+        returnUri: String,
         codeChallenge: String,
         authorization: String?
     ): AuthApiResult<AuthMobileOAuthStartResponse> =
         AuthApiResult.Failure(code = 400)
 
     override suspend fun completeMobileOAuth(
-        oauthRequestId: String,
-        handoffCode: String,
+        code: String,
         codeVerifier: String,
         platform: String,
         authorization: String?

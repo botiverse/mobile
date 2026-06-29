@@ -142,15 +142,15 @@ class SlockNetworkAuthMiddlewareTest {
             provider: String,
             mode: String,
             platform: String,
-            returnTarget: String,
+            appEnv: String,
+            returnUri: String,
             codeChallenge: String,
             authorization: String?
         ): AuthApiResult<AuthMobileOAuthStartResponse> =
             error("not used")
 
         override suspend fun completeMobileOAuth(
-            oauthRequestId: String,
-            handoffCode: String,
+            code: String,
             codeVerifier: String,
             platform: String,
             authorization: String?

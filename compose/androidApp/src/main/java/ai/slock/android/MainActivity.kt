@@ -106,10 +106,9 @@ class MainActivity : ComponentActivity() {
         val uri = intent?.data ?: return false
         if (!uri.isSlockMobileOAuthCallback()) return false
         setIntent(Intent(this, MainActivity::class.java))
-        val requestId = uri.getQueryParameter("request_id").orEmpty()
         val pendingStore = AndroidMobileOAuthPendingStore(applicationContext)
         val pending = pendingStore.read()
-        if (pending == null || pending.oauthRequestId != requestId) {
+        if (pending == null) {
             pendingStore.clear()
             Toast.makeText(this, "Sign-in request expired. Try again.", Toast.LENGTH_SHORT).show()
             return true
@@ -134,8 +133,7 @@ class MainActivity : ComponentActivity() {
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
                         sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
                     ).completeMobileOAuthLogin(
-                        oauthRequestId = requestId,
-                        handoffCode = handoffCode,
+                        code = handoffCode,
                         codeVerifier = pending.codeVerifier
                     )
                 }
@@ -200,11 +198,12 @@ private fun Uri.isSlockSocialAuthCallback(): Boolean =
         getQueryParameter("auth_callback") == "social"
 
 internal fun Uri.isSlockMobileOAuthCallback(): Boolean =
-    isSlockAppWebLink() &&
-        AndroidMobileOAuth.isCallbackQuery(
+    AndroidMobileOAuth.isCallbackUri(
+            scheme = scheme,
+            host = host,
+            path = path,
             code = getQueryParameter("code"),
-            error = getQueryParameter("error") ?: getQueryParameter("error_description"),
-            requestId = getQueryParameter("request_id")
+            error = getQueryParameter("error") ?: getQueryParameter("error_description")
         )
 
 private fun String.socialProviderDisplayName(): String =
