@@ -644,6 +644,7 @@ internal fun slockMarkdownAnnotator(
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     inlineCodeWidths: Map<String, TextUnit> = emptyMap(),
     inlineCodeTextStyle: TextStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body.withResolvedSlockFontFamily()),
+    renderInlineTagsAsInlineContent: Boolean = true,
     tokenPlan: MarkdownInlineTokenPlan =
         SlockMarkdownInlineTokenRegistry.plan(
             content,
@@ -653,7 +654,8 @@ internal fun slockMarkdownAnnotator(
         )
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val inlineTagTokens = tokenPlan.tagTokens()
+    val plannedInlineTagTokens = tokenPlan.tagTokens()
+    val inlineTagTokens = if (renderInlineTagsAsInlineContent) plannedInlineTagTokens else emptyList()
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
     val inlineContentById =
@@ -699,7 +701,7 @@ internal fun slockMarkdownAnnotator(
         }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
-            inlineTagTokens.size,
+            plannedInlineTagTokens.size,
             tokenPlan.inlineCodeMatchCount(),
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
@@ -1282,11 +1284,12 @@ fun SlockMarkdownBody(
             inlineContentScope = inlineContentScope
         )
     }
+    val useInlineTextFastPath = content.shouldUseSlockMarkdownInlineTextFastPath()
     val measuredInlineCodeWidths = remember(content, tokenPlan.signature) {
         mutableStateMapOf<String, TextUnit>()
     }
     val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
-    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle) {
+    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle, useInlineTextFastPath) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
@@ -1308,10 +1311,11 @@ fun SlockMarkdownBody(
                 },
             inlineCodeWidths = inlineCodeWidthOverrides,
             inlineCodeTextStyle = inlineCodeTextStyle,
+            renderInlineTagsAsInlineContent = useInlineTextFastPath,
             tokenPlan = tokenPlan
         )
     }
-    if (content.shouldUseSlockMarkdownInlineTextFastPath()) {
+    if (useInlineTextFastPath) {
         val resolvedStyle = markdownTextStyle
         val renderStartedAt = TimeSource.Monotonic.markNow()
         val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle, tokenPlan.signature)

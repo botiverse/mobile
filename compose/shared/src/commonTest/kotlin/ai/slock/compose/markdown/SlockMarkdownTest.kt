@@ -22,6 +22,7 @@ import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
+import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
@@ -566,6 +567,28 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun richMarkdownCanDisableInlineTagContentWithoutLosingText() {
+        val body = "**Bold** text for @artin in #markdown专修 with `code`"
+        val annotator =
+            slockMarkdownAnnotator(
+                content = body,
+                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                renderInlineTagsAsInlineContent = false
+            )
+
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
+
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
+
+        assertEquals("Bold text for @artin in #markdown专修 with code", annotated.text)
+        assertEquals(
+            listOf("code"),
+            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
+                .map { annotated.text.substring(it.start, it.end) }
+        )
+    }
+
+    @Test
     fun inlineTagPlanFindsTokensForTextNodeRange() {
         val body = "Ping @artin for #405 and #markdown专修:7933cf78"
         val plan = SlockMarkdownInlineTokenRegistry.plan(body)
@@ -813,9 +836,20 @@ class SlockMarkdownTest {
         content: String,
         linkInteractionListener: LinkInteractionListener? = null
     ): AnnotatedString {
+        return buildSlockMarkdownParagraphAnnotatedString(
+            content = content,
+            annotator = slockMarkdownAnnotator(content),
+            linkInteractionListener = linkInteractionListener
+        )
+    }
+
+    private fun buildSlockMarkdownParagraphAnnotatedString(
+        content: String,
+        annotator: MarkdownAnnotator,
+        linkInteractionListener: LinkInteractionListener? = null
+    ): AnnotatedString {
         val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
-        val annotator = slockMarkdownAnnotator(content)
         val settings =
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
