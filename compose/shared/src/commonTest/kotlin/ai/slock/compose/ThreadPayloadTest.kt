@@ -69,6 +69,18 @@ class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
+    fun composerSendBodyFallsBackToAttachmentLabelWhenDraftIsBlank() {
+        assertEquals("[1 attachment]", threadComposerMessageBodyForSend("   ", attachmentCount = 1))
+        assertEquals("[2 attachments]", threadComposerMessageBodyForSend("", attachmentCount = 2))
+    }
+
+    @Test
+    fun composerSendBodyKeepsTypedDraftWhenPresent() {
+        assertEquals("hello", threadComposerMessageBodyForSend("  hello  ", attachmentCount = 1))
+        assertEquals("", threadComposerMessageBodyForSend("   ", attachmentCount = 0))
+    }
+
+    @Test
     fun threadMentionSuggestionsRankRecentParticipantsWithinChannelGroups() {
         val suggestions =
             listOf(

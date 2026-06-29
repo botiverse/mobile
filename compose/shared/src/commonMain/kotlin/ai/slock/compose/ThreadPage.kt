@@ -729,6 +729,13 @@ internal data class KuiklyThreadPendingSendContext(
     val memberScopedMentions: Boolean = false
 )
 
+internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount: Int): String {
+    val cleanDraft = draftText.trim()
+    if (cleanDraft.isNotBlank() || attachmentCount <= 0) return cleanDraft
+    val suffix = if (attachmentCount == 1) "attachment" else "attachments"
+    return "[$attachmentCount $suffix]"
+}
+
 internal fun KuiklyThreadMessageItem.hasLocalSendState(): Boolean =
     deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) ||
@@ -4223,10 +4230,15 @@ internal fun SharedThreadRouteContent(
                         } else {
                             currentComposer.pendingAttachments
                         }
+                    val messageBody =
+                        threadComposerMessageBodyForSend(
+                            draftText = draftText,
+                            attachmentCount = pendingAttachments.size
+                        )
                     val pendingContext =
                         KuiklyThreadPendingSendContext(
                             channelId = threadId ?: return@ThreadPageContent,
-                            body = draftText,
+                            body = messageBody,
                             asTask = draftAsTask,
                             attachmentIds = attachmentIds,
                             attachments = pendingAttachments,
