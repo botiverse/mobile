@@ -537,6 +537,22 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun notificationIconUsesMachineSpecificIconWhenProvided() {
+        assertEquals(
+            SlockLucideIconName.TriangleAlert,
+            SlockHomeNotificationIcon.WifiOff.notificationIconName(SlockHomeNotificationKind.Warning)
+        )
+        assertEquals(
+            SlockLucideIconName.CircleArrowUp,
+            SlockHomeNotificationIcon.CircleArrowUp.notificationIconName(SlockHomeNotificationKind.Warning)
+        )
+        assertEquals(
+            SlockLucideIconName.TriangleAlert,
+            SlockHomeNotificationIcon.Default.notificationIconName(SlockHomeNotificationKind.Warning)
+        )
+    }
+
+    @Test
     fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
         val agents =
             listOf(

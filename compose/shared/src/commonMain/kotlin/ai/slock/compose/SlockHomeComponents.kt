@@ -162,11 +162,15 @@ data class SlockHomeNotificationItem(
     val body: String = "",
     val actionLabel: String = "View",
     val targetId: String? = null,
-    val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning
+    val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning,
+    val icon: SlockHomeNotificationIcon = SlockHomeNotificationIcon.Default
 )
 
 @Serializable
 enum class SlockHomeNotificationKind { Warning, Info, Error }
+
+@Serializable
+enum class SlockHomeNotificationIcon { Default, WifiOff, CircleArrowUp, Info }
 
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
@@ -1665,27 +1669,41 @@ private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationIte
 
 @Composable
 private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView: () -> Unit, onDismiss: () -> Unit) {
+    val title = notification.title.ifBlank { notification.body }
+    val body = if (notification.title.isBlank()) "" else notification.body
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor()).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
-            SlockLucideIcon(
-                when (notification.kind) {
-                    SlockHomeNotificationKind.Warning -> SlockLucideIconName.TriangleAlert
-                    SlockHomeNotificationKind.Info -> SlockLucideIconName.Info
-                    SlockHomeNotificationKind.Error -> SlockLucideIconName.TriangleAlert
-                },
-                Modifier.size(16.dp)
-            )
+            SlockLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp))
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            Text(notification.title, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
-            Text(notification.body, style = SlockType.Button, color = SlockColor.TextMutedGray, overflow = TextOverflow.Ellipsis, maxLines = 3)
+        Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            Text(title, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
+            if (body.isNotBlank()) {
+                Text(body, style = SlockType.Button, color = SlockColor.TextMutedGray, overflow = TextOverflow.Ellipsis, maxLines = 3)
+            }
             com.tencent.kuikly.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                HomeNotificationActionButton(notification.actionLabel, SlockColor.AccentPink, onView)
+                if (notification.actionLabel.isNotBlank()) {
+                    HomeNotificationActionButton(notification.actionLabel, SlockColor.AccentPink, onView)
+                }
                 HomeNotificationActionButton("Dismiss", SlockColor.SurfaceWhite, onDismiss)
             }
         }
     }
 }
+
+private val HomeNotificationTextWidth = 260.dp
+
+internal fun SlockHomeNotificationIcon.notificationIconName(kind: SlockHomeNotificationKind): SlockLucideIconName =
+    when (this) {
+        SlockHomeNotificationIcon.WifiOff -> SlockLucideIconName.TriangleAlert
+        SlockHomeNotificationIcon.CircleArrowUp -> SlockLucideIconName.CircleArrowUp
+        SlockHomeNotificationIcon.Info -> SlockLucideIconName.Info
+        SlockHomeNotificationIcon.Default ->
+            when (kind) {
+                SlockHomeNotificationKind.Warning -> SlockLucideIconName.TriangleAlert
+                SlockHomeNotificationKind.Info -> SlockLucideIconName.Info
+                SlockHomeNotificationKind.Error -> SlockLucideIconName.TriangleAlert
+            }
+    }
 
 @Composable
 private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit) {

@@ -1634,8 +1634,53 @@ class SharedHomeStoreTest {
         assertEquals("View", notification.actionLabel)
         assertEquals("machine-1", notification.targetId)
         assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
+        assertEquals(SharedHomeNotificationIcon.WifiOff, notification.icon)
         assertEquals(emptyList(), announcementsApi.calls)
         assertEquals(listOf("GET machines:server-1"), computersApi.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun startLoadsOutdatedMachinesIntoHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val computersApi =
+            RecordingComputersApi(
+                bodyText =
+                    """
+                    {
+                      "latestDaemonVersion": "0.63.7",
+                      "machines": [
+                        {
+                          "id": "machine-1",
+                          "name": "Jiachengs-MacBook-Pro.local",
+                          "status": "online",
+                          "statusVersion": 1,
+                          "daemonVersion": "0.62.0"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = RecordingHomeApi(),
+                    announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}"""),
+                    computersApi = computersApi
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val notification = store.state.value.notifications.single()
+        assertEquals("machine-outdated:0.63.7:machine-1", notification.id)
+        assertEquals("Jiachengs-MacBook-Pro.local is running an outdated daemon", notification.title)
+        assertEquals("Stop the daemon and reconnect to update.", notification.body)
+        assertEquals("machine-1", notification.targetId)
+        assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
+        assertEquals(SharedHomeNotificationIcon.CircleArrowUp, notification.icon)
         scope.cancel()
     }
 
@@ -2389,26 +2434,28 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private class RecordingComputersApi : SlockComputersApi {
+    private class RecordingComputersApi(
+        private val bodyText: String =
+            """
+            {
+              "machines": [
+                {
+                  "id": "machine-1",
+                  "name": "OranixSlockTest",
+                  "status": "offline",
+                  "statusVersion": 1
+                }
+              ]
+            }
+            """.trimIndent()
+    ) : SlockComputersApi {
         val calls = mutableListOf<String>()
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
             calls += "GET machines:${serverId.value}"
             return HomeNetworkResponse(
                 code = 200,
-                bodyText =
-                    """
-                    {
-                      "machines": [
-                        {
-                          "id": "machine-1",
-                          "name": "OranixSlockTest",
-                          "status": "offline",
-                          "statusVersion": 1
-                        }
-                      ]
-                    }
-                    """.trimIndent()
+                bodyText = bodyText
             )
         }
 

@@ -106,6 +106,7 @@ import ai.slock.compose.data.SharedHomeState
 import ai.slock.compose.data.SharedHomeTopAction
 import ai.slock.compose.data.SharedHomeViewModel
 import ai.slock.compose.data.SharedHomeNotification
+import ai.slock.compose.data.SharedHomeNotificationIcon
 import ai.slock.compose.data.SharedHomeNotificationKind
 import ai.slock.compose.data.SharedHomeShellDestinationActivity
 import ai.slock.compose.data.SharedHomeShellDestinationSaved
@@ -10396,6 +10397,13 @@ private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificati
                 SharedHomeNotificationKind.Warning -> SlockHomeNotificationKind.Warning
                 SharedHomeNotificationKind.Info -> SlockHomeNotificationKind.Info
                 SharedHomeNotificationKind.Error -> SlockHomeNotificationKind.Error
+            },
+        icon =
+            when (icon) {
+                SharedHomeNotificationIcon.Default -> SlockHomeNotificationIcon.Default
+                SharedHomeNotificationIcon.WifiOff -> SlockHomeNotificationIcon.WifiOff
+                SharedHomeNotificationIcon.CircleArrowUp -> SlockHomeNotificationIcon.CircleArrowUp
+                SharedHomeNotificationIcon.Info -> SlockHomeNotificationIcon.Info
             }
     )
 

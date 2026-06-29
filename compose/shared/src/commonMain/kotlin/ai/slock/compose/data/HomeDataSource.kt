@@ -254,7 +254,8 @@ data class SharedHomeNotification(
     val body: String,
     val actionLabel: String = "View",
     val targetId: String? = null,
-    val kind: SharedHomeNotificationKind = SharedHomeNotificationKind.Info
+    val kind: SharedHomeNotificationKind = SharedHomeNotificationKind.Info,
+    val icon: SharedHomeNotificationIcon = SharedHomeNotificationIcon.Default
 )
 
 enum class SharedHomeNotificationKind {
@@ -263,31 +264,78 @@ enum class SharedHomeNotificationKind {
     Error
 }
 
+enum class SharedHomeNotificationIcon {
+    Default,
+    WifiOff,
+    CircleArrowUp,
+    Info
+}
+
 internal fun String.isLocalHomeNotificationId(): Boolean =
-    startsWith("machine-offline:")
+    startsWith("machine-offline:") || startsWith("machine-outdated:")
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
+    val notifications = mutableListOf<SharedHomeNotification>()
     val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
-    if (offlineMachines.isEmpty()) return emptyList()
-    val sortedIds = offlineMachines.map { it.id }.sorted()
-    val names = offlineMachines.joinToString(", ") { it.name }
-    val verb = if (offlineMachines.size == 1) "is offline" else "are offline"
-    val body =
-        if (offlineMachines.size == 1) {
-            "No agents are active on this computer right now - reconnect when you need it next."
-        } else {
-            "No agents are active on these computers right now - reconnect when you need them next."
-        }
-    return listOf(
-        SharedHomeNotification(
+    if (offlineMachines.isNotEmpty()) {
+        val sortedIds = offlineMachines.map { it.id }.sorted()
+        val names = offlineMachines.joinToString(", ") { it.name }
+        val verb = if (offlineMachines.size == 1) "is offline" else "are offline"
+        val body =
+            if (offlineMachines.size == 1) {
+                "No agents are active on this computer right now - reconnect when you need it next."
+            } else {
+                "No agents are active on these computers right now - reconnect when you need them next."
+            }
+        notifications += SharedHomeNotification(
             id = "machine-offline:${sortedIds.joinToString(",")}",
             title = "$names $verb",
             body = body,
             actionLabel = "View",
             targetId = offlineMachines.first().id,
-            kind = SharedHomeNotificationKind.Warning
+            kind = SharedHomeNotificationKind.Warning,
+            icon = SharedHomeNotificationIcon.WifiOff
         )
-    )
+    }
+    val outdatedMachines =
+        machines.filter { machine ->
+            machine.status == ComputerStatus.Online && isDaemonOutdated(machine.daemonVersion, latestDaemonVersion)
+        }
+    if (outdatedMachines.isNotEmpty()) {
+        val sortedIds = outdatedMachines.map { it.id }.sorted()
+        val names = outdatedMachines.joinToString(", ") { it.name }
+        val verb = if (outdatedMachines.size == 1) "is running an outdated daemon" else "are running outdated daemons"
+        notifications += SharedHomeNotification(
+            id = "machine-outdated:${latestDaemonVersion ?: "unknown"}:${sortedIds.joinToString(",")}",
+            title = "$names $verb",
+            body = "Stop the daemon and reconnect to update.",
+            actionLabel = "View",
+            targetId = outdatedMachines.first().id,
+            kind = SharedHomeNotificationKind.Warning,
+            icon = SharedHomeNotificationIcon.CircleArrowUp
+        )
+    }
+    return notifications
+}
+
+internal fun isDaemonOutdated(currentVersion: String?, latestVersion: String?): Boolean {
+    val current = currentVersion.versionSegmentsOrNull() ?: return false
+    val latest = latestVersion.versionSegmentsOrNull() ?: return false
+    val width = maxOf(current.size, latest.size)
+    for (index in 0 until width) {
+        val left = current.getOrElse(index) { 0 }
+        val right = latest.getOrElse(index) { 0 }
+        if (left != right) return left < right
+    }
+    return false
+}
+
+private fun String?.versionSegmentsOrNull(): List<Int>? {
+    val value = this?.trim()?.removePrefix("v")?.takeIf { it.isNotBlank() } ?: return null
+    val segments = value.split('.', '-', '+').mapNotNull { segment ->
+        segment.takeWhile { it.isDigit() }.takeIf { it.isNotBlank() }?.toIntOrNull()
+    }
+    return segments.takeIf { it.isNotEmpty() }
 }
 
 /**
