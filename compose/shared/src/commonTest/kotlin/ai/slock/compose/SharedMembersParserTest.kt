@@ -192,6 +192,7 @@ class SharedMembersParserTest {
         assertEquals("members-detail-members-server-1-human-artin", pageData.optString("instanceId"))
         assertEquals("human-artin", pageData.optString("memberId"))
         assertEquals("human", pageData.optString("memberKind"))
+        assertEquals("", pageData.optString("sourceServerId"))
         assertEquals("activity", pageData.optString("initialAgentTab"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20624", pageData.optString("todayEpochDay"))
@@ -200,6 +201,35 @@ class SharedMembersParserTest {
         assertEquals(listOf("activity", "profile"), pageData.toKuiklyMemberDetailPayload().agentPanelTabOrder)
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("selectedMemberId"))
+    }
+
+    @Test
+    fun memberDetailPageDataCarriesSourceServerIdentityWithoutProfileContent() {
+        val payload =
+            KuiklyMembersPayload(
+                instanceId = "members-server-1",
+                title = "Members",
+                members = listOf(
+                    MemberProfile(
+                        id = MemberId("remote-human"),
+                        displayName = "Remote Human",
+                        handle = "remote-human",
+                        kind = MemberKind.Human,
+                        description = "Loaded from channel member projection",
+                        serverId = ServerId("server-remote"),
+                        serverName = "Remote Workspace"
+                    )
+                )
+            )
+
+        val pageData = payload.toMemberDetailPageData("remote-human", MemberKind.Human)!!
+
+        assertEquals("remote-human", pageData.optString("memberId"))
+        assertEquals("human", pageData.optString("memberKind"))
+        assertEquals("server-remote", pageData.optString("sourceServerId"))
+        assertEquals("", pageData.optString("members"))
+        assertEquals("", pageData.optString("profile"))
+        assertEquals("", pageData.optString("description"))
     }
 
     @Test
@@ -218,6 +248,23 @@ class SharedMembersParserTest {
         assertEquals("detail-human-artin", payload.instanceId)
         assertEquals("human-artin", payload.memberId)
         assertEquals("human", payload.memberKind)
+    }
+
+    @Test
+    fun memberDetailPayloadParsesSourceServerIdentity() {
+        val payload =
+            JSONObject(
+                """
+                {
+                  "instanceId": "detail-human-artin",
+                  "memberId": "human-artin",
+                  "memberKind": "human",
+                  "sourceServerId": "server-remote"
+                }
+                """.trimIndent()
+            ).toKuiklyMemberDetailPayload()
+
+        assertEquals("server-remote", payload.sourceServerId)
     }
 
     @Test

@@ -6256,7 +6256,8 @@ class SharedThreadStoreTest {
 
         override suspend fun getMemberProfile(
             priority: ai.slock.compose.data.DataRequestPriority,
-            memberId: MemberId
+            memberId: MemberId,
+            serverId: ServerId?
         ): DataResult<MemberProfile> = error("unused")
 
         override suspend fun updateAgentProfile(

@@ -209,6 +209,12 @@ class SharedServerMembersStore(
             .filter { it.id.value.trim().isNotBlank() }
             .associateBy { it.id.value.trim() }
 
+    fun currentChannelMembers(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): List<MemberProfile> =
+        _state.value.channelMemberSlice(serverId, channelId).members
+
     fun currentServerMembersContent(
         serverId: ServerId,
         fallbackServer: ServerSummary? = null
