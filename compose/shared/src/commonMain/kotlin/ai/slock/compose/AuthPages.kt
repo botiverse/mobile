@@ -78,7 +78,7 @@ private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery
 private const val AUTH_TERMS_URL = "https://raft.build/terms"
 private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
-private val MobileHiddenSocialAuthProviders = setOf(AuthProvider.Google, AuthProvider.GitHub)
+private val MobileHiddenSocialAuthProviders = emptySet<AuthProvider>()
 
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -173,7 +173,7 @@ private fun LoginScreen() {
                 submitting = false,
                 errorMessage =
                     response?.optString("message").takeUnless { it.isNullOrBlank() }
-                        ?: "Google sign-in is unavailable. Try email sign-in."
+                        ?: "${effect.provider.providerDisplayName()} sign-in is unavailable. Try email sign-in."
             )
         } else {
             state = state.copy(submitting = false, errorMessage = null)
@@ -1232,4 +1232,10 @@ private fun AuthProvider.providerId(): String =
     when (this) {
         AuthProvider.Google -> "google"
         AuthProvider.GitHub -> "github"
+    }
+
+private fun AuthProvider.providerDisplayName(): String =
+    when (this) {
+        AuthProvider.Google -> "Google"
+        AuthProvider.GitHub -> "GitHub"
     }

@@ -1,6 +1,8 @@
 package ai.slock.android
 
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
+import ai.slock.android.core.data.auth.AndroidMobileOAuth
+import ai.slock.android.core.data.auth.AndroidMobileOAuthPendingStore
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.shared.SlockKuiklyActivity
@@ -30,7 +32,7 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (!handleSocialAuthCallback(intent)) {
+        if (!handleMobileOAuthCallback(intent) && !handleSocialAuthCallback(intent)) {
             openSharedShell(intent)
         }
     }
@@ -45,7 +47,7 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (!handleSocialAuthCallback(intent)) {
+        if (!handleMobileOAuthCallback(intent) && !handleSocialAuthCallback(intent)) {
             openSharedShell(intent)
         }
     }
@@ -99,6 +101,58 @@ class MainActivity : ComponentActivity() {
         }
         return true
     }
+
+    private fun handleMobileOAuthCallback(intent: Intent?): Boolean {
+        val uri = intent?.data ?: return false
+        if (!uri.isSlockMobileOAuthCallback()) return false
+        setIntent(Intent(this, MainActivity::class.java))
+        val requestId = uri.getQueryParameter("request_id").orEmpty()
+        val pendingStore = AndroidMobileOAuthPendingStore(applicationContext)
+        val pending = pendingStore.read()
+        if (pending == null || pending.oauthRequestId != requestId) {
+            pendingStore.clear()
+            Toast.makeText(this, "Sign-in request expired. Try again.", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val providerName = pending.provider.socialProviderDisplayName()
+        val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
+        if (!error.isNullOrBlank()) {
+            pendingStore.clear()
+            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val handoffCode = uri.getQueryParameter("code")
+        if (handoffCode.isNullOrBlank()) {
+            pendingStore.clear()
+            Toast.makeText(this, "$providerName sign-in did not return a handoff code", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        lifecycleScope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    SharedAuthDataSource(
+                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
+                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
+                    ).completeMobileOAuthLogin(
+                        oauthRequestId = requestId,
+                        handoffCode = handoffCode,
+                        codeVerifier = pending.codeVerifier
+                    )
+                }
+            pendingStore.clear()
+            when (result) {
+                is SharedAuthResult.Success -> {
+                    Toast.makeText(this@MainActivity, "Signed in with $providerName", Toast.LENGTH_SHORT).show()
+                    openSharedShell()
+                }
+                is SharedAuthResult.Failure ->
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                SharedAuthResult.Unauthenticated ->
+                    Toast.makeText(this@MainActivity, "$providerName sign-in failed. Try again.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        return true
+    }
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =
@@ -144,3 +198,18 @@ private fun Uri.isSlockSocialAuthCallback(): Boolean =
     scheme == "https" &&
         host in setOf("app.slock.ai", "app.raft.build") &&
         getQueryParameter("auth_callback") == "social"
+
+internal fun Uri.isSlockMobileOAuthCallback(): Boolean =
+    isSlockAppWebLink() &&
+        AndroidMobileOAuth.isCallbackQuery(
+            code = getQueryParameter("code"),
+            error = getQueryParameter("error") ?: getQueryParameter("error_description"),
+            requestId = getQueryParameter("request_id")
+        )
+
+private fun String.socialProviderDisplayName(): String =
+    when (lowercase(Locale.US)) {
+        "github" -> "GitHub"
+        "google" -> "Google"
+        else -> "Social"
+    }

@@ -350,6 +350,52 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun mobileOAuthStartUsesServerBrokerContract() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.startMobileOAuthLogin(
+                provider = " GitHub ",
+                returnTarget = "android",
+                codeChallenge = "challenge-1"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("https://accounts.example/oauth", result.data.authorizationUrl)
+        assertEquals("request-1", result.data.oauthRequestId)
+        assertEquals(
+            """{"provider":"github","mode":"login","platform":"android","returnTarget":"android","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
+            api.mobileOAuthStartBody
+        )
+    }
+
+    @Test
+    fun mobileOAuthCompleteStoresReturnedSessionAndFetchesServers() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.completeMobileOAuthLogin(
+                oauthRequestId = "request-1",
+                handoffCode = "handoff-1",
+                codeVerifier = "verifier-1"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(
+            """{"oauthRequestId":"request-1","handoffCode":"handoff-1","codeVerifier":"verifier-1","platform":"android"}""",
+            api.mobileOAuthCompleteBody
+        )
+        assertEquals("Bearer access-token", api.serversAuthorization)
+        assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals("access-token", store.readSession()?.accessToken)
+        assertEquals("refresh-token", store.readSession()?.refreshToken)
+    }
+
+    @Test
     fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()
@@ -677,6 +723,16 @@ class AuthDataSourceTest {
                 200,
                 """{"provider":"google","mode":"login","accessToken":"social-access","refreshToken":"social-refresh"}"""
             ),
+        private val mobileOAuthStartResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"authorizationUrl":"https://accounts.example/oauth","oauthRequestId":"request-1","expiresAt":"2026-06-29T00:00:00Z"}"""
+            ),
+        private val mobileOAuthCompleteResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}"""
+            ),
         private val serversResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
@@ -710,6 +766,10 @@ class AuthDataSourceTest {
             private set
         var socialCompleteBody: String? = null
             private set
+        var mobileOAuthStartBody: String? = null
+            private set
+        var mobileOAuthCompleteBody: String? = null
+            private set
         var currentUserAuthorization: String? = null
             private set
         var serversAuthorization: String? = null
@@ -727,6 +787,16 @@ class AuthDataSourceTest {
             socialCompleteProvider = provider
             socialCompleteBody = bodyText
             return socialCompleteResponse
+        }
+
+        override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
+            mobileOAuthStartBody = bodyText
+            return mobileOAuthStartResponse
+        }
+
+        override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
+            mobileOAuthCompleteBody = bodyText
+            return mobileOAuthCompleteResponse
         }
 
         override suspend fun register(bodyText: String): AuthNetworkResponse {

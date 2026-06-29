@@ -6,6 +6,7 @@ import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.compose.data.StoredAuthUser as AuthUser
 import ai.slock.compose.data.AuthApiResult
 import ai.slock.compose.data.AuthLoginResponse
+import ai.slock.compose.data.AuthMobileOAuthStartResponse
 import ai.slock.compose.data.AuthRefreshResponse
 import ai.slock.compose.data.AuthSocialCompleteResponse
 import ai.slock.compose.data.SlockAuthApi
@@ -970,6 +971,25 @@ class RealtimeRepositoryTest {
             provider: String,
             bodyText: String
         ): AuthApiResult<AuthSocialCompleteResponse> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun startMobileOAuth(
+            provider: String,
+            mode: String,
+            platform: String,
+            returnTarget: String,
+            codeChallenge: String,
+            authorization: String?
+        ): AuthApiResult<AuthMobileOAuthStartResponse> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun completeMobileOAuth(
+            oauthRequestId: String,
+            handoffCode: String,
+            codeVerifier: String,
+            platform: String,
+            authorization: String?
+        ): AuthApiResult<AuthLoginResponse> =
             AuthApiResult.Failure(404)
 
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =

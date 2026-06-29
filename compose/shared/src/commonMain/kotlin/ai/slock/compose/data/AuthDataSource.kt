@@ -160,6 +160,79 @@ class SharedAuthDataSource(
         return completeSocialLoginWithBody("google", body)
     }
 
+    suspend fun startMobileOAuthLogin(
+        provider: String,
+        returnTarget: String,
+        codeChallenge: String
+    ): SharedAuthResult<AuthMobileOAuthStartResponse> {
+        val normalizedProvider = provider.trim().lowercase()
+        if (normalizedProvider !in MobileOAuthProviders) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "This sign-in provider is not available on this device."
+            )
+        }
+        if (returnTarget.isBlank() || codeChallenge.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Mobile sign-in could not be prepared."
+            )
+        }
+        return when (
+            val response =
+                api.startMobileOAuth(
+                    provider = normalizedProvider,
+                    mode = "login",
+                    platform = "android",
+                    returnTarget = returnTarget.trim(),
+                    codeChallenge = codeChallenge.trim()
+                )
+        ) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    suspend fun completeMobileOAuthLogin(
+        oauthRequestId: String,
+        handoffCode: String,
+        codeVerifier: String
+    ): SharedAuthResult<StoredAuthSession> {
+        if (oauthRequestId.isBlank() || handoffCode.isBlank() || codeVerifier.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Mobile sign-in did not return the required credentials."
+            )
+        }
+        val login =
+            when (
+                val response =
+                    api.completeMobileOAuth(
+                        oauthRequestId = oauthRequestId.trim(),
+                        handoffCode = handoffCode.trim(),
+                        codeVerifier = codeVerifier.trim(),
+                        platform = "android"
+                    )
+            ) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val servers =
+            when (val response = api.servers("Bearer ${login.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> emptyList()
+            }
+        val session =
+            StoredAuthSession(
+                user = login.user,
+                accessToken = login.accessToken,
+                refreshToken = login.refreshToken,
+                servers = servers
+            ).withValidatedServerSelection(servers, serverSelectionMemory)
+        sessionStore.saveSession(session)
+        return SharedAuthResult.Success(session)
+    }
+
     private suspend fun completeSocialLoginWithBody(
         provider: String,
         body: String
@@ -564,6 +637,8 @@ class SharedAuthDataSource(
     }
 }
 
+private val MobileOAuthProviders = setOf("google", "github")
+
 private suspend fun StoredAuthSession.withValidatedServerSelection(
     servers: List<StoredAuthServer>,
     serverSelectionMemory: SlockAuthServerSelectionMemory?
@@ -622,6 +697,21 @@ private fun Throwable.persistenceDiagnostics(): String =
 interface SlockAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
+    suspend fun startMobileOAuth(
+        provider: String,
+        mode: String,
+        platform: String,
+        returnTarget: String,
+        codeChallenge: String,
+        authorization: String? = null
+    ): AuthApiResult<AuthMobileOAuthStartResponse>
+    suspend fun completeMobileOAuth(
+        oauthRequestId: String,
+        handoffCode: String,
+        codeVerifier: String,
+        platform: String,
+        authorization: String? = null
+    ): AuthApiResult<AuthLoginResponse>
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
@@ -646,6 +736,51 @@ class SlockAuthApiClient(
             .mapAuthBody("auth_social_complete_contract_mismatch", AuthSocialCompleteResponseDto.serializer()) {
                 it.toDomain()
             }
+
+    override suspend fun startMobileOAuth(
+        provider: String,
+        mode: String,
+        platform: String,
+        returnTarget: String,
+        codeChallenge: String,
+        authorization: String?
+    ): AuthApiResult<AuthMobileOAuthStartResponse> =
+        transport.startMobileOAuth(
+            authJson.encodeToString(
+                AuthMobileOAuthStartRequestBody(
+                    provider = provider,
+                    mode = mode,
+                    platform = platform,
+                    returnTarget = returnTarget,
+                    codeChallenge = codeChallenge,
+                    codeChallengeMethod = "S256"
+                )
+            ),
+            authorization = authorization
+        ).mapAuthBody("auth_mobile_oauth_start_contract_mismatch", AuthMobileOAuthStartResponseDto.serializer()) {
+            it.toDomain()
+        }
+
+    override suspend fun completeMobileOAuth(
+        oauthRequestId: String,
+        handoffCode: String,
+        codeVerifier: String,
+        platform: String,
+        authorization: String?
+    ): AuthApiResult<AuthLoginResponse> =
+        transport.completeMobileOAuth(
+            authJson.encodeToString(
+                AuthMobileOAuthCompleteRequestBody(
+                    oauthRequestId = oauthRequestId,
+                    handoffCode = handoffCode,
+                    codeVerifier = codeVerifier,
+                    platform = platform
+                )
+            ),
+            authorization = authorization
+        ).mapAuthBody("auth_mobile_oauth_complete_contract_mismatch", AuthLoginResponseDto.serializer()) {
+            it.toDomain()
+        }
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
@@ -700,6 +835,12 @@ data class AuthSocialCompleteResponse(
     val refreshToken: String
 )
 
+data class AuthMobileOAuthStartResponse(
+    val authorizationUrl: String,
+    val oauthRequestId: String,
+    val expiresAt: String
+)
+
 data class AuthRefreshResponse(
     val accessToken: String,
     val refreshToken: String
@@ -742,6 +883,24 @@ data class AuthSocialCompleteRequestBody(
     val code: String? = null,
     val idToken: String? = null,
     val nonce: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class AuthMobileOAuthStartRequestBody(
+    val provider: String,
+    val mode: String,
+    val platform: String,
+    val returnTarget: String,
+    val codeChallenge: String,
+    val codeChallengeMethod: String
+)
+
+@kotlinx.serialization.Serializable
+data class AuthMobileOAuthCompleteRequestBody(
+    val oauthRequestId: String,
+    val handoffCode: String,
+    val codeVerifier: String,
+    val platform: String
 )
 
 @kotlinx.serialization.Serializable
@@ -873,6 +1032,20 @@ private data class AuthSocialCompleteResponseDto(
 
 private fun AuthSocialCompleteResponseDto.toDomain(): AuthSocialCompleteResponse =
     AuthSocialCompleteResponse(accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthMobileOAuthStartResponseDto(
+    val authorizationUrl: String,
+    val oauthRequestId: String,
+    val expiresAt: String,
+)
+
+private fun AuthMobileOAuthStartResponseDto.toDomain(): AuthMobileOAuthStartResponse =
+    AuthMobileOAuthStartResponse(
+        authorizationUrl = authorizationUrl,
+        oauthRequestId = oauthRequestId,
+        expiresAt = expiresAt
+    )
 
 @Serializable
 private data class AuthRefreshResponseDto(

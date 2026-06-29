@@ -63,6 +63,9 @@ import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironment
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
+import ai.slock.android.core.data.auth.AndroidMobileOAuth
+import ai.slock.android.core.data.auth.AndroidMobileOAuthPendingRequest
+import ai.slock.android.core.data.auth.AndroidMobileOAuthPendingStore
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
@@ -106,7 +109,6 @@ import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.TimeZone
@@ -3058,7 +3060,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun socialAuth(params: String?, callback: KuiklyRenderCallback?) {
         val provider = JSONObject(params ?: "{}").optString("provider").trim().lowercase()
-        if (provider != "google") {
+        if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
             callback?.invoke(
                     mapOf(
                             "code" to 0,
@@ -3069,33 +3071,90 @@ internal class SlockKuiklyBridgeModule(
             return
         }
         val hostActivity = activity as? SlockKuiklyActivity
-        if (hostActivity?.requestGoogleNativeSocialAuth(callback) == true) return
-
-        val returnTo = URLEncoder.encode("/", StandardCharsets.UTF_8.name())
-        val url = "${AndroidAuthApiFactory.currentBaseUrl(appContext).trimEnd('/')}/auth/google/start?returnTo=$returnTo"
-        val intent =
-                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-        runCatching {
-            appContext.startActivity(intent)
-        }.onSuccess {
-            callback?.invoke(mapOf("code" to 202, "status" to "started"))
-        }.onFailure { throwable ->
-            val message =
-                    if (throwable is ActivityNotFoundException) {
-                        "No browser can open Google sign-in"
-                    } else {
-                        "Unable to open Google sign-in"
-                    }
-            Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+        val lifecycleOwner = hostActivity ?: appContext as? SlockKuiklyActivity
+        if (lifecycleOwner == null) {
             callback?.invoke(
                     mapOf(
                             "code" to 0,
                             "status" to "error",
-                            "message" to message
+                            "message" to "Unable to open ${provider.socialProviderDisplayName()} sign-in"
                     )
             )
+            return
+        }
+
+        lifecycleOwner.lifecycleScope.launch {
+            val pkce = AndroidMobileOAuth.createPkce()
+            val authDataSource =
+                    SharedAuthDataSource(
+                            api = AndroidAuthApiFactory.createAuthApi(appContext),
+                            sessionStore =
+                                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+                    )
+            val startResult =
+                    withContext(Dispatchers.IO) {
+                        authDataSource.startMobileOAuthLogin(
+                                provider = provider,
+                                returnTarget = AndroidMobileOAuth.ReturnTarget,
+                                codeChallenge = pkce.codeChallenge
+                        )
+                    }
+            when (startResult) {
+                is SharedAuthResult.Success -> {
+                    AndroidMobileOAuthPendingStore(appContext).save(
+                            AndroidMobileOAuthPendingRequest(
+                                    provider = provider,
+                                    oauthRequestId = startResult.data.oauthRequestId,
+                                    codeVerifier = pkce.codeVerifier
+                            )
+                    )
+                    val intent =
+                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                    runCatching {
+                                appContext.startActivity(intent)
+                            }
+                            .onSuccess {
+                                callback?.invoke(mapOf("code" to 202, "status" to "started"))
+                            }
+                            .onFailure { throwable ->
+                                AndroidMobileOAuthPendingStore(appContext).clear()
+                                val message =
+                                        if (throwable is ActivityNotFoundException) {
+                                            "No browser can open ${provider.socialProviderDisplayName()} sign-in"
+                                        } else {
+                                            "Unable to open ${provider.socialProviderDisplayName()} sign-in"
+                                        }
+                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+                                callback?.invoke(
+                                        mapOf(
+                                                "code" to 0,
+                                                "status" to "error",
+                                                "message" to message
+                                        )
+                                )
+                            }
+                }
+                is SharedAuthResult.Failure -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "code" to 0,
+                                    "status" to "error",
+                                    "message" to startResult.message
+                            )
+                    )
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "code" to 0,
+                                    "status" to "error",
+                                    "message" to "${provider.socialProviderDisplayName()} sign-in failed. Try again."
+                            )
+                    )
+                }
+            }
         }
     }
 
@@ -3179,6 +3238,13 @@ private class AttachmentDownloadControl(
 }
 
 private class AttachmentDownloadStoppedException : RuntimeException()
+
+private fun String.socialProviderDisplayName(): String =
+        when (lowercase(Locale.US)) {
+            "github" -> "GitHub"
+            "google" -> "Google"
+            else -> "Social"
+        }
 
 private enum class SlockBridgeLogLevel {
     DEBUG,

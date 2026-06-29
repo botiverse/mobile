@@ -138,6 +138,25 @@ class SlockNetworkAuthMiddlewareTest {
         ): AuthApiResult<AuthSocialCompleteResponse> =
             error("not used")
 
+        override suspend fun startMobileOAuth(
+            provider: String,
+            mode: String,
+            platform: String,
+            returnTarget: String,
+            codeChallenge: String,
+            authorization: String?
+        ): AuthApiResult<AuthMobileOAuthStartResponse> =
+            error("not used")
+
+        override suspend fun completeMobileOAuth(
+            oauthRequestId: String,
+            handoffCode: String,
+            codeVerifier: String,
+            platform: String,
+            authorization: String?
+        ): AuthApiResult<AuthLoginResponse> =
+            error("not used")
+
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
 

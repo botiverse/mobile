@@ -420,6 +420,12 @@ internal class KuiklySlockAuthTransport(
     override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse =
         request(path = "auth/${provider.trim().lowercase()}/complete", method = "POST", bodyText = bodyText)
 
+    override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
+        request(path = "auth/mobile/oauth/start", method = "POST", authorization = authorization, bodyText = bodyText)
+
+    override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
+        request(path = "auth/mobile/oauth/complete", method = "POST", authorization = authorization, bodyText = bodyText)
+
     override suspend fun register(bodyText: String): AuthNetworkResponse =
         request(path = "auth/register", method = "POST", bodyText = bodyText)
 
