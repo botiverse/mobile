@@ -121,6 +121,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.requiredWidth
 import com.tencent.kuikly.compose.foundation.layout.size
@@ -3525,13 +3526,20 @@ private fun MembersRestartResetActionCard(
             Modifier
                 .fillMaxWidth()
                 .padding(end = shadowOffset, bottom = shadowOffset)
-                .background(if (selected) SlockColor.ShadowBlack else SlockColor.SurfaceWhite)
     ) {
+        if (shadowOffset > 0.dp) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(end = shadowOffset, bottom = shadowOffset)
                     .background(if (selected) action.restartResetTintColor() else SlockColor.SurfaceWhite)
                     .border(
                         if (selected) SlockStroke.Default else SlockStroke.Thin,
