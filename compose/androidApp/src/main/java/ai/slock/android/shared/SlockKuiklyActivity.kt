@@ -83,6 +83,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
+import ai.slock.compose.network.SharedKtorBinaryDownloader
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -106,7 +107,6 @@ import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
-import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -1290,13 +1290,11 @@ private class SlockKuiklyImageAdapter(
                         cachedNetworkBitmap(imageLoadOption.src)?.let { bitmap ->
                             return@runCatching bitmap.toBitmapDrawable()
                         }
-                        val connection = URL(imageLoadOption.src).openConnection() as HttpURLConnection
-                        connection.connectTimeout = 10_000
-                        connection.readTimeout = 15_000
-                        connection.instanceFollowRedirects = true
-                        val contentType = connection.contentType
-                        val bytes = connection.inputStream.use { input -> input.readBytes() }
-                        drawableFromNetworkBytes(bytes, imageLoadOption, contentType)
+                        val response =
+                                runBlocking {
+                                    SharedKtorBinaryDownloader.fetchBytes(imageLoadOption.src)
+                                }
+                        drawableFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
@@ -1416,11 +1414,9 @@ private class SlockKuiklyImageAdapter(
             return context.assets.open(assetPath).use { input -> input.readBytes().toString(StandardCharsets.UTF_8) }
         }
         if (isWebUrl()) {
-            val connection = URL(src).openConnection() as HttpURLConnection
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = true
-            return connection.inputStream.use { input -> input.readBytes().toString(StandardCharsets.UTF_8) }
+            return runBlocking {
+                SharedKtorBinaryDownloader.fetchBytes(src).bytes.toString(StandardCharsets.UTF_8)
+            }
         }
         return raw
     }
@@ -2861,83 +2857,81 @@ internal class SlockKuiklyBridgeModule(
     ): String? {
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
         runCatching { tempFile.delete() }
-        val connection = (URL(urlText).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 30_000
-            readTimeout = 60_000
-            setRequestProperty("Accept", "*/*")
-        }
         try {
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                throw IllegalStateException("Attachment download failed: HTTP $code")
-            }
-            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
-            control.totalBytes = totalBytes
             val downloadStartedAt = System.currentTimeMillis()
+            var lastDownloadedBytes = 0L
+            var lastTotalBytes: Long? = null
+            var lastPercent = -1
+            var lastProgressAt = System.currentTimeMillis()
+            val responseContentType =
+                    runBlocking {
+                        tempFile.outputStream().use { output ->
+                            SharedKtorBinaryDownloader.download(
+                                url = urlText,
+                                onStart = { totalBytes ->
+                                    lastTotalBytes = totalBytes
+                                    lastPercent = if (totalBytes == null) -1 else 0
+                                    control.totalBytes = totalBytes
+                                    emitAttachmentDownloadProgress(
+                                            progressCallback,
+                                            attachmentDownloadProgress(
+                                                    downloadId = downloadId,
+                                                    downloadedBytes = 0L,
+                                                    totalBytes = totalBytes,
+                                                    percent = totalBytes?.let { 0 },
+                                                    bytesPerSecond = null
+                                            )
+                                    )
+                                },
+                                beforeRead = {
+                                    control.waitIfPausedOrStopped()
+                                },
+                                onChunk = { bytes, downloadedBytes, totalBytes ->
+                                    output.write(bytes)
+                                    lastDownloadedBytes = downloadedBytes
+                                    lastTotalBytes = totalBytes
+                                    val percent =
+                                            totalBytes?.let { total ->
+                                                ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
+                                            }
+                                    control.updateProgress(downloadedBytes, totalBytes, percent)
+                                    val now = System.currentTimeMillis()
+                                    val shouldEmit =
+                                            when {
+                                                percent != null && percent >= 100 -> true
+                                                percent != null && percent != lastPercent && percent - lastPercent >= 2 -> true
+                                                percent == null && now - lastProgressAt >= 500L -> true
+                                                now - lastProgressAt >= 750L -> true
+                                                else -> false
+                                            }
+                                    if (shouldEmit) {
+                                        emitAttachmentDownloadProgress(
+                                                progressCallback,
+                                                attachmentDownloadProgress(
+                                                        downloadId = downloadId,
+                                                        downloadedBytes = downloadedBytes,
+                                                        totalBytes = totalBytes,
+                                                        percent = percent,
+                                                        bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, now)
+                                                )
+                                        )
+                                        lastPercent = percent ?: lastPercent
+                                        lastProgressAt = now
+                                    }
+                                }
+                            )
+                        }
+                    }
             emitAttachmentDownloadProgress(
                     progressCallback,
                     attachmentDownloadProgress(
                             downloadId = downloadId,
-                            downloadedBytes = 0L,
-                            totalBytes = totalBytes,
-                            percent = totalBytes?.let { 0 },
-                            bytesPerSecond = null
+                            downloadedBytes = lastDownloadedBytes,
+                            totalBytes = lastTotalBytes,
+                            percent = lastTotalBytes?.let { 100 },
+                            bytesPerSecond = lastDownloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, System.currentTimeMillis())
                     )
             )
-            connection.inputStream.use { input ->
-                tempFile.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var downloadedBytes = 0L
-                    var lastPercent = if (totalBytes == null) -1 else 0
-                    var lastProgressAt = System.currentTimeMillis()
-                    while (true) {
-                        control.waitIfPausedOrStopped()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        downloadedBytes += read.toLong()
-                        val percent =
-                                totalBytes?.let { total ->
-                                    ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
-                                }
-                        control.updateProgress(downloadedBytes, totalBytes, percent)
-                        val now = System.currentTimeMillis()
-                        val shouldEmit =
-                                when {
-                                    percent != null && percent >= 100 -> true
-                                    percent != null && percent != lastPercent && percent - lastPercent >= 2 -> true
-                                    percent == null && now - lastProgressAt >= 500L -> true
-                                    now - lastProgressAt >= 750L -> true
-                                    else -> false
-                                }
-                        if (shouldEmit) {
-                            emitAttachmentDownloadProgress(
-                                    progressCallback,
-                                    attachmentDownloadProgress(
-                                            downloadId = downloadId,
-                                            downloadedBytes = downloadedBytes,
-                                            totalBytes = totalBytes,
-                                            percent = percent,
-                                            bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, now)
-                                    )
-                            )
-                            lastPercent = percent ?: lastPercent
-                            lastProgressAt = now
-                        }
-                    }
-                    emitAttachmentDownloadProgress(
-                            progressCallback,
-                            attachmentDownloadProgress(
-                                    downloadId = downloadId,
-                                    downloadedBytes = downloadedBytes,
-                                    totalBytes = totalBytes,
-                                    percent = totalBytes?.let { 100 },
-                                    bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, System.currentTimeMillis())
-                            )
-                    )
-                }
-            }
             if (targetFile.exists()) {
                 targetFile.delete()
             }
@@ -2945,9 +2939,8 @@ internal class SlockKuiklyBridgeModule(
                 tempFile.copyTo(targetFile, overwrite = true)
                 tempFile.delete()
             }
-            return connection.contentType?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+            return responseContentType
         } finally {
-            connection.disconnect()
             runCatching { if (tempFile.exists()) tempFile.delete() }
         }
     }
