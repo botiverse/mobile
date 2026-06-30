@@ -2,6 +2,8 @@ package ai.slock.compose
 
 import ai.slock.compose.base.BasePager
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
@@ -64,7 +66,7 @@ private fun MarkdownRerenderVisualScreen() {
                         body = bodies[index],
                         textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                         highlightedMentions = setOf("artin"),
-                        knownChannelNames = setOf("首页专修", "Kuiklybase", "markdown专修"),
+                        isTagValid = ::isMarkdownRerenderTagValid,
                         performanceKey = "markdown-rerender-list-$index",
                         performanceLogger = { message -> println(message) }
                     )
@@ -77,4 +79,21 @@ private fun MarkdownRerenderVisualScreen() {
 private val MarkdownRerenderBodies =
     List(12) { index ->
         "@artin #markdown专修 item-${index.toString().padStart(2, '0')} task #37"
+    }
+
+private val MarkdownRerenderKnownChannelNames =
+    setOf("首页专修", "kuiklybase", "markdown专修")
+
+private fun isMarkdownRerenderTagValid(tag: ThreadMarkdownTag): Boolean =
+    when (tag.kind) {
+        ThreadMarkdownTagKind.Task -> true
+        ThreadMarkdownTagKind.UserMention -> tag.label.removePrefix("@").equals("artin", ignoreCase = true)
+        ThreadMarkdownTagKind.Channel,
+        ThreadMarkdownTagKind.ChannelThread -> {
+            val channelKey =
+                (tag.channelName ?: tag.label.removePrefix("#").substringBefore(":"))
+                    .trim()
+                    .lowercase()
+            channelKey in MarkdownRerenderKnownChannelNames
+        }
     }

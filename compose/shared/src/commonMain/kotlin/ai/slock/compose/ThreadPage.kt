@@ -10518,7 +10518,6 @@ private val ThreadMessageMenuWidth = 240.dp
 private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
-private val ThreadMessageMenuStroke = SlockStroke.Thin
 
 private fun threadMessageMenuActions(
     message: KuiklyThreadMessageItem,
@@ -10822,7 +10821,7 @@ private fun ThreadMessageMenuChrome(
             modifier = Modifier
                 .width(ThreadMessageMenuWidth)
                 .background(SlockColor.SurfaceWhite)
-                .border(ThreadMessageMenuStroke, SlockColor.BorderBlack)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .slockFloatingContentClickTarget()
         ) {
             if (showReactionActions) {
@@ -11212,7 +11211,7 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
 
 @Composable
 private fun ThreadMessageMenuDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(ThreadMessageMenuStroke).background(SlockColor.BorderBlack))
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable
