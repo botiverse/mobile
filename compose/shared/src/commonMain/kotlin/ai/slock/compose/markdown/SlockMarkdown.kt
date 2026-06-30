@@ -712,36 +712,77 @@ internal fun slockMarkdownAnnotator(
             true
         },
         inlineContent = {
-            tokenPlan.slockMarkdownInlineCodeContent(
+            tokenPlan.slockMarkdownInlineContent(
                 inlineCodeWidths = inlineCodeWidths,
-                inlineCodeTextStyle = inlineCodeTextStyle
+                inlineCodeTextStyle = inlineCodeTextStyle,
+                onOpenTag = onOpenTag,
+                resolveTagLabel = resolveTagLabel
             )
         },
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
 }
 
-private fun MarkdownInlineTokenPlan.slockMarkdownInlineCodeContent(
+private fun MarkdownInlineTokenPlan.slockMarkdownInlineContent(
     inlineCodeWidths: Map<String, TextUnit>,
-    inlineCodeTextStyle: TextStyle
+    inlineCodeTextStyle: TextStyle,
+    onOpenTag: (ThreadMarkdownTag) -> Unit,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
 ): Map<String, InlineTextContent> {
-    val inlineCodeTokens = inlineCodeTokens()
-    if (inlineCodeTokens.isEmpty()) return emptyMap()
-    return inlineCodeTokens.associate { token ->
-        val code = token.code.orEmpty()
-        token.id to
-            InlineTextContent(
-                Placeholder(
-                    width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
-                    height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
-                )
-            ) { alternateText ->
-                SlockMarkdownInlineCodeChip(
-                    code = alternateText.ifEmpty { code },
-                    textStyle = inlineCodeTextStyle
-                )
-            }
+    val inlineTokens = tokens.filter { it.tag != null || it.kind == MarkdownInlineTokenKind.InlineCode }
+    if (inlineTokens.isEmpty()) return emptyMap()
+    return inlineTokens.associateNotNull { token ->
+        val tag = token.tag
+        if (tag != null) {
+            val label =
+                resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
+                    ?: threadMarkdownTagDisplayLabel(tag.label)
+            token.id to
+                InlineTextContent(
+                    Placeholder(
+                        width = slockMarkdownInlineTagWidthSp(label, tag.kind, token.highlighted),
+                        height = SlockMarkdownInlineChipHeight
+                    )
+                ) {
+                    if (tag.kind == ThreadMarkdownTagKind.UserMention && !token.highlighted) {
+                        SlockMarkdownMentionText(label, onClick = { onOpenTag(tag) })
+                    } else {
+                        SlockMarkdownInlineChip(
+                            label = label,
+                            color = slockMarkdownTagColor(tag.kind, highlighted = token.highlighted),
+                            onClick = { onOpenTag(tag) }
+                        )
+                    }
+                }
+        } else if (token.kind == MarkdownInlineTokenKind.InlineCode) {
+            val code = token.code.orEmpty()
+            token.id to
+                InlineTextContent(
+                    Placeholder(
+                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
+                        height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
+                    )
+                ) { alternateText ->
+                    SlockMarkdownInlineCodeChip(
+                        code = alternateText.ifEmpty { code },
+                        textStyle = inlineCodeTextStyle
+                    )
+                }
+        } else {
+            null
+        }
     }
+}
+
+private inline fun <T, R : Any> Iterable<T>.associateNotNull(transform: (T) -> Pair<String, R>?): Map<String, R> {
+    val destination = LinkedHashMap<String, R>()
+    for (element in this) {
+        val pair = transform(element)
+        if (pair != null) {
+            destination[pair.first] = pair.second
+        }
+    }
+    return destination
 }
 
 private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
@@ -753,27 +794,12 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
     val label =
         resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
             ?: threadMarkdownTagDisplayLabel(tag.label)
-    val style =
-        SpanStyle(
-            color = Color.Black,
-            background = slockMarkdownTagColor(tag.kind, highlighted = token.highlighted),
-            fontWeight = FontWeight.Bold,
-            textDecoration =
-                if (tag.kind == ThreadMarkdownTagKind.UserMention && !token.highlighted) {
-                    TextDecoration.Underline
-                } else {
-                    null
-                }
-        )
-    withLink(
-        LinkAnnotation.Clickable(
-            tag = token.id,
-            styles = TextLinkStyles(style = style),
-            linkInteractionListener = LinkInteractionListener { onOpenTag(tag) }
-        )
-    ) {
-        append(label)
-    }
+    pushStringAnnotation(
+        tag = SlockMarkdownTagAnnotationTag,
+        annotation = token.id
+    )
+    appendInlineContent(token.id, label)
+    pop()
 }
 
 private object SlockMarkdownTextProvider : TextProvider {
@@ -918,6 +944,7 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 }
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
+internal const val SlockMarkdownTagAnnotationTag = "ai.slock.markdown.tag"
 internal const val SlockMarkdownInlineCodeAnnotationTag = "ai.slock.markdown.inlineCode"
 private const val SlockMarkdownInlineCodeAnnotationValue = "true"
 
@@ -1566,13 +1593,14 @@ internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boo
     }
 
 @Composable
-private fun SlockMarkdownInlineChip(label: String, color: Color) {
+private fun SlockMarkdownInlineChip(label: String, color: Color, onClick: () -> Unit = {}) {
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(color, RectangleShape)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
+                .clickable { onClick() }
                 .padding(start = 5.dp, end = 5.dp, top = 0.dp, bottom = 0.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1595,9 +1623,9 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
 }
 
 @Composable
-private fun SlockMarkdownMentionText(label: String) {
+private fun SlockMarkdownMentionText(label: String, onClick: () -> Unit = {}) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Box(

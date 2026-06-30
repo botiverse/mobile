@@ -453,7 +453,6 @@ class SlockMarkdownTest {
     @Test
     fun fullRendererKeepsCodeBoldAndClickableTagsTogether() {
         val body = "Ping @artin with `mimo` and **bold** in #markdown专修"
-        var openedTag: ThreadMarkdownTag? = null
         val tokenPlan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
@@ -475,17 +474,19 @@ class SlockMarkdownTest {
                         knownMentions = setOf("artin")
                     ),
                 inlineContentScope = "message-mixed",
-                onOpenTag = { openedTag = it },
                 tokenPlan = tokenPlan
             )
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
             .withSlockMarkdownSpanFonts(SlockType.Body)
+        val expectedInlineIds = tokenPlan.tokens.mapTo(mutableSetOf()) { it.id }
 
         assertEquals("Ping @artin with mimo and bold in #markdown专修", annotated.text)
         assertEquals(
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.slockMarkdownClickableTags()
         )
+        assertEquals(expectedInlineIds, annotated.slockMarkdownInlineContentIds())
+        assertEquals(expectedInlineIds, annotator.inlineContent?.invoke().orEmpty().keys)
         assertEquals(
             listOf("mimo"),
             annotated
@@ -496,11 +497,6 @@ class SlockMarkdownTest {
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
         assertEquals(FontWeight.Normal, boldSpan.item.fontWeight)
-        val mention = annotated.getLinkAnnotations(0, annotated.length).first {
-            (it.item as? LinkAnnotation.Clickable)?.tag == "slock-message-mixed:5"
-        }.item as LinkAnnotation.Clickable
-        mention.linkInteractionListener?.onClick(mention)
-        assertEquals("@artin", openedTag?.label)
     }
 
     @Test
@@ -584,11 +580,14 @@ class SlockMarkdownTest {
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             )
 
-        assertEquals(setOf("slock-code:25"), annotator.inlineContent?.invoke().orEmpty().keys)
+        assertEquals(
+            setOf("slock:5", "slock:16", "slock-code:25"),
+            annotator.inlineContent?.invoke().orEmpty().keys
+        )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock-code:25"), annotated.slockMarkdownInlineContentIds())
+        assertEquals(setOf("slock:5", "slock:16", "slock-code:25"), annotated.slockMarkdownInlineContentIds())
         val inlineCodeText =
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
                 .map { annotated.text.substring(it.start, it.end) }
@@ -609,13 +608,16 @@ class SlockMarkdownTest {
                     )
             )
 
-        assertEquals(setOf("slock-code:45"), annotator.inlineContent?.invoke().orEmpty().keys)
+        assertEquals(
+            setOf("slock:18", "slock:28", "slock-code:45"),
+            annotator.inlineContent?.invoke().orEmpty().keys
+        )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
         assertEquals("Bold text for @artin in #markdown专修 with code", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock-code:45"), annotated.slockMarkdownInlineContentIds())
+        assertEquals(setOf("slock:18", "slock:28", "slock-code:45"), annotated.slockMarkdownInlineContentIds())
         assertEquals(
             listOf("code"),
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
@@ -938,8 +940,8 @@ class SlockMarkdownTest {
     }
 
     private fun AnnotatedString.slockMarkdownClickableTags(): Set<String> =
-        getLinkAnnotations(0, length)
-            .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
+        getStringAnnotations(SlockMarkdownTagAnnotationTag, 0, length)
+            .map { it.item }
             .toSet()
 
     private fun validThreadMarkdownTags(
