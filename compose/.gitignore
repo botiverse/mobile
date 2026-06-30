@@ -9,6 +9,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+github-packages.properties
 *.so
 *.js
 node_modules

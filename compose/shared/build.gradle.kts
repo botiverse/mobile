@@ -85,14 +85,14 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("io.ktor:ktor-client-mock:2.3.7")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
             }
         }
         val androidMain by getting {
