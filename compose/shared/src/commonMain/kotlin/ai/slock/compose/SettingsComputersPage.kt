@@ -465,9 +465,6 @@ internal fun SettingsComputersContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        payload.latestDaemonVersion?.takeIf { it.isNotBlank() }?.let { version ->
-            item { SettingsInfoStrip("Latest daemon", version) }
-        }
         if (payload.computers.isEmpty()) {
             item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
         } else {
