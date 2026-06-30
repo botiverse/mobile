@@ -118,6 +118,10 @@ class SharedAuthGateViewModel(
         store.dispatch(intent)
     }
 
+    suspend fun accept(intent: SharedAuthGateIntent) {
+        store.accept(intent)
+    }
+
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {
             store.clear()

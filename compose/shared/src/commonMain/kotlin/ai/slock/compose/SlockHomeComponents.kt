@@ -760,9 +760,11 @@ internal fun SlockStructuralHomeShell(
         } else {
             bottomContentPadding
         }
-    Column(
+    val bottomBarOverlaysContent = showBottomBar && slockAppBottomTabBarOverlaysContent()
+    Box(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
+        Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 traceMarkdownSection(SlockHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
@@ -1176,7 +1178,7 @@ internal fun SlockStructuralHomeShell(
                 )
             }
         }
-        if (showBottomBar) {
+        if (showBottomBar && !bottomBarOverlaysContent) {
             val homeTabLabel = stringResource(MR.strings.tab_home)
             val tasksTabLabel = stringResource(MR.strings.tab_tasks)
             val membersTabLabel = stringResource(MR.strings.tab_members)
@@ -1199,6 +1201,33 @@ internal fun SlockStructuralHomeShell(
                 items = bottomTabItems,
                 onSelect = onTabSelected,
                 modifier = Modifier.fillMaxWidth(),
+                bottomSafeArea = bottomSafeArea
+            )
+        }
+        }
+        if (bottomBarOverlaysContent) {
+            val homeTabLabel = stringResource(MR.strings.tab_home)
+            val tasksTabLabel = stringResource(MR.strings.tab_tasks)
+            val membersTabLabel = stringResource(MR.strings.tab_members)
+            val settingsTabLabel = stringResource(MR.strings.tab_settings)
+            val bottomTabItems = remember(
+                selectedTabKey,
+                homeTabLabel,
+                tasksTabLabel,
+                membersTabLabel,
+                settingsTabLabel
+            ) {
+                listOf(
+                    SlockBottomTabItemPayload("home", homeTabLabel, SlockLucideIconName.House, selected = selectedTabKey == "home"),
+                    SlockBottomTabItemPayload("tasks", tasksTabLabel, SlockLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
+                    SlockBottomTabItemPayload("members", membersTabLabel, SlockLucideIconName.Users, selected = selectedTabKey == "members"),
+                    SlockBottomTabItemPayload("settings", settingsTabLabel, SlockLucideIconName.Settings, selected = selectedTabKey == "settings")
+                )
+            }
+            SlockAppBottomTabBarHost(
+                items = bottomTabItems,
+                onSelect = onTabSelected,
+                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                 bottomSafeArea = bottomSafeArea
             )
         }

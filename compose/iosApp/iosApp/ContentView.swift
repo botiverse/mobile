@@ -4,7 +4,13 @@ import shared
 struct ContentView: View {
 
     var body: some View {
-        KuiklyRenderViewPage(pageName: "router", data: [:]).ignoresSafeArea()
+        KuiklyRenderViewPage(
+            pageName: "compose_slock_app_shell",
+            data: [
+                "pageName": "compose_slock_app_shell",
+                "slockNativeTabBarRenderer": "iosLiquidGlass"
+            ]
+        ).ignoresSafeArea()
     }
 }
 

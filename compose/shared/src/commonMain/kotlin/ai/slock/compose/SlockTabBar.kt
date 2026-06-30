@@ -69,7 +69,9 @@ internal enum class SlockTabBarPresentation {
 
 private enum class SlockAppTabBarRenderer {
     SharedCompose,
-    OhosHdsImmersive
+    OhosHdsImmersive,
+    IosLiquidGlass,
+    AndroidFloating
 }
 
 private val SlockSharedBottomTabBarHeight = 58.dp
@@ -80,10 +82,22 @@ private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
     return when (slockAppTabBarRenderer()) {
-        // OHOS HDS dock already floats above the system gesture area; adding the host safe area
-        // again here creates an extra blank strip below the dock and pushes content too far up.
-        SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight + SlockSpacing.Lg
+        // Native floating docks are overlays. Content should keep filling the screen behind them,
+        // with only the normal gesture-safe breathing room instead of a reserved tabbar band.
+        SlockAppTabBarRenderer.OhosHdsImmersive,
+        SlockAppTabBarRenderer.IosLiquidGlass,
+        SlockAppTabBarRenderer.AndroidFloating -> bottomSafeArea + SlockSpacing.Lg
         SlockAppTabBarRenderer.SharedCompose -> slockSharedBottomTabBarContentInset(bottomSafeArea)
+    }
+}
+
+@Composable
+internal fun slockAppBottomTabBarOverlaysContent(): Boolean {
+    return when (slockAppTabBarRenderer()) {
+        SlockAppTabBarRenderer.OhosHdsImmersive,
+        SlockAppTabBarRenderer.IosLiquidGlass,
+        SlockAppTabBarRenderer.AndroidFloating -> true
+        SlockAppTabBarRenderer.SharedCompose -> false
     }
 }
 
@@ -208,12 +222,13 @@ internal fun SlockAppBottomTabBarHost(
     bottomSafeArea: Dp = 0.dp
 ) {
     if (slockAppTabBarRenderer() == SlockAppTabBarRenderer.OhosHdsImmersive) {
-        SlockOhosHdsBottomTabBarHost(
-            items = items,
-            onSelect = onSelect,
-            modifier = modifier,
-            bottomSafeArea = bottomSafeArea
-        )
+        SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+        return
+    }
+    if (slockAppTabBarRenderer() == SlockAppTabBarRenderer.IosLiquidGlass ||
+        slockAppTabBarRenderer() == SlockAppTabBarRenderer.AndroidFloating
+    ) {
+        SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
         return
     }
     Box(
@@ -234,7 +249,7 @@ internal fun SlockAppBottomTabBarHost(
 }
 
 @Composable
-private fun SlockOhosHdsBottomTabBarHost(
+private fun SlockNativeFloatingBottomTabBarHost(
     items: List<SlockBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -244,16 +259,15 @@ private fun SlockOhosHdsBottomTabBarHost(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
-            .clickable(onClick = {})
     ) {
-        SlockOhosHdsTabBar(
+        SlockNativeFloatingTabBar(
             items = items,
             onSelect = onSelect,
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SlockOhosHdsBottomTabBarHostHeight)
-                .align(Alignment.BottomCenter)
+                .align(Alignment.TopCenter)
         )
     }
 }
@@ -263,19 +277,21 @@ private fun slockAppTabBarRenderer(): SlockAppTabBarRenderer {
     val params = (LocalActivity.current.getPager() as Pager).pageData.params
     return when (params.optString("slockNativeTabBarRenderer").ifBlank { params.optString("nativeTabBarRenderer") }) {
         "ohosHdsImmersive", "hdsImmersive" -> SlockAppTabBarRenderer.OhosHdsImmersive
+        "iosLiquidGlass", "iosNativeFloating" -> SlockAppTabBarRenderer.IosLiquidGlass
+        "androidFloating", "androidNativeFloating" -> SlockAppTabBarRenderer.AndroidFloating
         else -> SlockAppTabBarRenderer.SharedCompose
     }
 }
 
 @Composable
-private fun SlockOhosHdsTabBar(
+private fun SlockNativeFloatingTabBar(
     items: List<SlockBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     bottomSafeArea: Dp,
     modifier: Modifier = Modifier
 ) {
-    MakeKuiklyComposeNode<SlockOhosHdsTabBarView>(
-        factory = { SlockOhosHdsTabBarView() },
+    MakeKuiklyComposeNode<SlockNativeFloatingTabBarView>(
+        factory = { SlockNativeFloatingTabBarView() },
         modifier = modifier.setEvent("select") { payload ->
             val key =
                 (payload as? JSONObject)?.optString("key")
@@ -311,47 +327,47 @@ private fun SlockOhosHdsTabBar(
 private fun List<SlockBottomTabItemPayload>.tabJoin(value: (SlockBottomTabItemPayload) -> String): String =
     joinToString("\u001F") { value(it).replace("\u001F", " ") }
 
-private class SlockOhosHdsTabBarView : DeclarativeBaseView<SlockOhosHdsTabBarAttr, SlockOhosHdsTabBarEvent>() {
-    override fun createAttr(): SlockOhosHdsTabBarAttr = SlockOhosHdsTabBarAttr()
+private class SlockNativeFloatingTabBarView : DeclarativeBaseView<SlockNativeFloatingTabBarAttr, SlockNativeFloatingTabBarEvent>() {
+    override fun createAttr(): SlockNativeFloatingTabBarAttr = SlockNativeFloatingTabBarAttr()
 
-    override fun createEvent(): SlockOhosHdsTabBarEvent = SlockOhosHdsTabBarEvent()
+    override fun createEvent(): SlockNativeFloatingTabBarEvent = SlockNativeFloatingTabBarEvent()
 
     override fun viewName(): String = VIEW_NAME
 
     companion object {
-        const val VIEW_NAME = "SlockOhosHdsTabBarView"
+        const val VIEW_NAME = "SlockNativeFloatingTabBarView"
     }
 }
 
-private class SlockOhosHdsTabBarEvent : Event()
+private class SlockNativeFloatingTabBarEvent : Event()
 
-private class SlockOhosHdsTabBarAttr : Attr() {
-    fun keys(value: String): SlockOhosHdsTabBarAttr {
+private class SlockNativeFloatingTabBarAttr : Attr() {
+    fun keys(value: String): SlockNativeFloatingTabBarAttr {
         "keysText" with value
         return this
     }
 
-    fun labels(value: String): SlockOhosHdsTabBarAttr {
+    fun labels(value: String): SlockNativeFloatingTabBarAttr {
         "labelsText" with value
         return this
     }
 
-    fun icons(value: String): SlockOhosHdsTabBarAttr {
+    fun icons(value: String): SlockNativeFloatingTabBarAttr {
         "iconsText" with value
         return this
     }
 
-    fun enabled(value: String): SlockOhosHdsTabBarAttr {
+    fun enabled(value: String): SlockNativeFloatingTabBarAttr {
         "enabledText" with value
         return this
     }
 
-    fun selectedKey(value: String): SlockOhosHdsTabBarAttr {
+    fun selectedKey(value: String): SlockNativeFloatingTabBarAttr {
         "selectedKey" with value
         return this
     }
 
-    fun bottomSafeArea(value: Float): SlockOhosHdsTabBarAttr {
+    fun bottomSafeArea(value: Float): SlockNativeFloatingTabBarAttr {
         "bottomSafeArea" with value
         return this
     }

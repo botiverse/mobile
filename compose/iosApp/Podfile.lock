@@ -1,4 +1,7 @@
 PODS:
+  - MMKV (2.4.0):
+    - MMKVCore (~> 2.4.0)
+  - MMKVCore (2.4.0)
   - OpenKuiklyIOSRender (2.21.0)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
@@ -9,6 +12,7 @@ PODS:
   - Starscream (4.0.8)
 
 DEPENDENCIES:
+  - MMKV (~> 2.4.0)
   - OpenKuiklyIOSRender (~> 2.21.0)
   - SDWebImage
   - shared (from `../shared`)
@@ -16,6 +20,8 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - MMKV
+    - MMKVCore
     - OpenKuiklyIOSRender
     - SDWebImage
     - Socket.IO-Client-Swift
@@ -26,12 +32,14 @@ EXTERNAL SOURCES:
     :path: "../shared"
 
 SPEC CHECKSUMS:
+  MMKV: 86859fdfa2b0b21db1fd6e48788474a6416a2c77
+  MMKVCore: 3d16ce9f7d411e135020915fde98a056859a1efa
   OpenKuiklyIOSRender: 3a1d74e85639e26e82e575134dc5bdf5dd43095b
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   shared: aac0841a6e205a327a91ee41d63583e9ae52d89c
   Socket.IO-Client-Swift: 3614bea82ba005df1c2ff01154f4004993e05ad7
   Starscream: 19b5533ddb925208db698f0ac508a100b884a1b9
 
-PODFILE CHECKSUM: 59718384dad7844480fa20e16591233dc3ecc580
+PODFILE CHECKSUM: 1a286012da03afaf76371c419d711279f09ddeca
 
 COCOAPODS: 1.16.2

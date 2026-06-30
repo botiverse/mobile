@@ -31,7 +31,7 @@ interface SlockHdsTabItem {
 
 @Observed
 export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
-  static readonly VIEW_NAME = 'SlockOhosHdsTabBarView';
+  static readonly VIEW_NAME = 'SlockNativeFloatingTabBarView';
   keysText: string = '';
   labelsText: string = '';
   iconsText: string = '';

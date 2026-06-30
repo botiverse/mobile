@@ -18,7 +18,8 @@ import com.tencent.kuikly.compose.ui.unit.dp
 internal data class SlockAppShellScope(
     val topSafeArea: Dp,
     val bottomSafeArea: Dp,
-    val bottomTabBarContentInset: Dp
+    val bottomTabBarContentInset: Dp,
+    val bottomTabBarOverlaysContent: Boolean
 ) {
     fun topInset(includeTopSafeArea: Boolean): Dp =
         if (includeTopSafeArea) topSafeArea else 0.dp
@@ -27,7 +28,7 @@ internal data class SlockAppShellScope(
         if (includeBottomTabBar) bottomTabBarContentInset else bottomSafeArea + SlockSpacing.Lg
 
     fun bottomTabBarHostInset(includeBottomTabBar: Boolean): Dp =
-        if (includeBottomTabBar) bottomTabBarContentInset - SlockSpacing.Lg else 0.dp
+        if (includeBottomTabBar && !bottomTabBarOverlaysContent) bottomTabBarContentInset - SlockSpacing.Lg else 0.dp
 
     fun contentBottomInset(includeBottomTabBar: Boolean): Dp =
         if (includeBottomTabBar) SlockSpacing.Lg else bottomSafeArea + SlockSpacing.Lg
@@ -38,11 +39,13 @@ internal fun rememberSlockAppShellScope(): SlockAppShellScope {
     val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val bottomTabBarContentInset = slockAppBottomTabBarContentInset(bottomSafeArea)
-    return remember(topSafeArea, bottomSafeArea, bottomTabBarContentInset) {
+    val bottomTabBarOverlaysContent = slockAppBottomTabBarOverlaysContent()
+    return remember(topSafeArea, bottomSafeArea, bottomTabBarContentInset, bottomTabBarOverlaysContent) {
         SlockAppShellScope(
             topSafeArea = topSafeArea,
             bottomSafeArea = bottomSafeArea,
-            bottomTabBarContentInset = bottomTabBarContentInset
+            bottomTabBarContentInset = bottomTabBarContentInset,
+            bottomTabBarOverlaysContent = bottomTabBarOverlaysContent
         )
     }
 }

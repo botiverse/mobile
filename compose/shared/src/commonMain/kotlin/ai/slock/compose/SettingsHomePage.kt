@@ -969,17 +969,19 @@ internal class ComposeAuthChooseServerPage : ai.slock.compose.base.BasePager() {
 @Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeSlockAppShellPage : ai.slock.compose.base.BasePager() {
     private var pageVisibleTick by mutableStateOf(0)
+    private var initialAuthRestoreTick by mutableStateOf(0)
     private var consumedInitialPageAppearance = false
 
     override fun willInit() {
         super.willInit()
-        setContent { SlockAppShellContent(pageVisibleTick) }
+        setContent { SlockAppShellContent(pageVisibleTick, initialAuthRestoreTick) }
     }
 
     override fun pageDidAppear() {
         super.pageDidAppear()
         if (!consumedInitialPageAppearance) {
             consumedInitialPageAppearance = true
+            initialAuthRestoreTick += 1
             return
         }
         pageVisibleTick += 1
@@ -1434,7 +1436,7 @@ private fun retainedAppShellPaneModifier(active: Boolean, keepLayoutWhenInactive
     }
 
 @Composable
-private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
+private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTick: Int = 0) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
@@ -1696,7 +1698,23 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
         }
-    val authGateState by authGateViewModel.state.collectAsState()
+    var authGateState by remember { mutableStateOf(authGateViewModel.state.value) }
+    LaunchedEffect(authGateViewModel) {
+        authGateViewModel.state.collect { nextState ->
+            authGateState = nextState
+        }
+    }
+    var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
+    LaunchedEffect(initialAuthRestoreTick) {
+        if (
+            initialAuthRestoreTick > 0 &&
+            consumedInitialAuthRestoreTick != initialAuthRestoreTick
+        ) {
+            consumedInitialAuthRestoreTick = initialAuthRestoreTick
+            authGateViewModel.accept(SharedAuthGateIntent.Restore)
+            authGateState = authGateViewModel.state.value
+        }
+    }
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
@@ -1913,9 +1931,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
         resetAppShellSessionState()
     }
 
-    LaunchedEffect(Unit) {
-        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-    }
     LaunchedEffect(notificationPreferenceRepository) {
         notificationPreferenceSnapshot =
             notificationPreferenceRepository.getNotificationPreference()

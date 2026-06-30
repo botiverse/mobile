@@ -23,6 +23,10 @@
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
 		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
+		D43B80232E0F300100C0DE05 /* KuiklyMMKVModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80252E0F300100C0DE05 /* KuiklyMMKVModule.m */; };
+		D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */; };
+		D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */; };
+		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
 		FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */; };
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
 		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
@@ -54,6 +58,14 @@
 		D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKRVideoViewHandler.m; sourceTree = "<group>"; };
 		D43B80212E0F100100C0DE04 /* SlockSandboxWebView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebView.h; sourceTree = "<group>"; };
 		D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebView.m; sourceTree = "<group>"; };
+		D43B80242E0F300100C0DE05 /* KuiklyMMKVModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KuiklyMMKVModule.h; sourceTree = "<group>"; };
+		D43B80252E0F300100C0DE05 /* KuiklyMMKVModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KuiklyMMKVModule.m; sourceTree = "<group>"; };
+		D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockLucideIconView.h; sourceTree = "<group>"; };
+		D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockLucideIconView.m; sourceTree = "<group>"; };
+		D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockPixelAvatarView.h; sourceTree = "<group>"; };
+		D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockPixelAvatarView.m; sourceTree = "<group>"; };
+		D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockNativeFloatingTabBarView.h; sourceTree = "<group>"; };
+		D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockNativeFloatingTabBarView.m; sourceTree = "<group>"; };
 		EAD586BEDBD0772EDC4E4B96 /* Pods-iosApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.release.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.release.xcconfig"; sourceTree = "<group>"; };
 		FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderViewController.m; sourceTree = "<group>"; };
 		FF6B714129A2A173009349F1 /* HRBridgeModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HRBridgeModule.m; sourceTree = "<group>"; };
@@ -165,6 +177,12 @@
 				D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */,
 				D43B80212E0F100100C0DE04 /* SlockSandboxWebView.h */,
 				D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */,
+				D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */,
+				D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */,
+				D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */,
+				D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */,
+				D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */,
+				D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -195,6 +213,8 @@
 			children = (
 				FF6B714129A2A173009349F1 /* HRBridgeModule.m */,
 				FF6B714229A2A173009349F1 /* HRBridgeModule.h */,
+				D43B80252E0F300100C0DE05 /* KuiklyMMKVModule.m */,
+				D43B80242E0F300100C0DE05 /* KuiklyMMKVModule.h */,
 			);
 			path = Modules;
 			sourceTree = "<group>";
@@ -354,6 +374,7 @@
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
+				D43B80232E0F300100C0DE05 /* KuiklyMMKVModule.m in Sources */,
 				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
@@ -361,6 +382,9 @@
 				D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */,
 				D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */,
 				D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */,
+				D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */,
+				D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */,
+				D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

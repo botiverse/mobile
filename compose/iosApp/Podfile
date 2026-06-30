@@ -8,4 +8,5 @@ target 'iosApp' do
 
   pod 'SDWebImage'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
+  pod 'MMKV', '~> 2.4.0'
 end

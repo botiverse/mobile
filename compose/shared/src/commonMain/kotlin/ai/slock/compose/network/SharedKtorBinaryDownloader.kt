@@ -15,6 +15,8 @@ data class SharedDownloadedBytes(
 )
 
 object SharedKtorBinaryDownloader {
+    private const val DownloadBufferSize = 8 * 1024
+
     private val client: HttpClient =
         createSlockKtorHttpClient(
             priority = SlockRequestPriority.Background,
@@ -56,7 +58,7 @@ object SharedKtorBinaryDownloader {
         val totalBytes = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()?.takeIf { it > 0L }
         onStart(totalBytes)
         val channel = response.bodyAsChannel()
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        val buffer = ByteArray(DownloadBufferSize)
         var downloadedBytes = 0L
         while (true) {
             beforeRead()

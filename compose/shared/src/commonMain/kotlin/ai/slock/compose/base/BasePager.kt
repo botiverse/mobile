@@ -6,6 +6,7 @@ import ai.slock.compose.data.KuiklyMMKVModule
 import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
+import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IModuleCreator
 import com.tencent.kuikly.core.pager.Pager
@@ -19,6 +20,7 @@ internal abstract class BasePager : ComposeContainer() {
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
         externalModules[KuiklyMMKVModule.MODULE_NAME] = KuiklyMMKVModule()
         externalModules[SlockNetworkModule.MODULE_NAME] = SlockNetworkModule()
+        externalModules[NotifyModule.MODULE_NAME] = NotifyModule()
         return externalModules
     }
 
@@ -30,7 +32,9 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     private fun configureSlockComposeSnapshotConsumption() {
-        ComposeContainer.enableConsumeSnapshot = pageData.isAndroid
+        // iOS also needs snapshot consumption so async state transitions
+        // render without waiting for the next touch event.
+        ComposeContainer.enableConsumeSnapshot = true
     }
 
     private fun registerSlockExternalModuleCreators() {
@@ -42,6 +46,9 @@ internal abstract class BasePager : ComposeContainer() {
         })
         registerModule(SlockNetworkModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = SlockNetworkModule()
+        })
+        registerModule(NotifyModule.MODULE_NAME, object : IModuleCreator {
+            override fun createModule(): Module = NotifyModule()
         })
     }
 
