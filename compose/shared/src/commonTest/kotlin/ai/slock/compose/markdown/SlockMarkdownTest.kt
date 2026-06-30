@@ -168,7 +168,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun htmlCommentsAreHiddenWithoutDroppingFollowingText() {
+    fun htmlCommentsAreEscapedWithoutDroppingFollowingText() {
         val body =
             """
             <!-- Describe what happened here. --> activity status
@@ -183,8 +183,8 @@ class SlockMarkdownTest {
 
         assertEquals(
             """
-            activity status
-            before after
+            \<!-- Describe what happened here. --\> activity status
+            before \<!-- hidden --\> after
             `<!-- code -->`
             ```html
             <!-- code -->
@@ -193,7 +193,7 @@ class SlockMarkdownTest {
             prepared
         )
         assertEquals(
-            "activity status",
+            "<!-- Describe what happened here. --> activity status",
             renderSlockMarkdownParagraphText("<!-- Describe what happened here. --> activity status".escapeThreadMarkdownHtmlTagsForThread())
         )
     }

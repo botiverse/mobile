@@ -336,14 +336,7 @@ fun String.escapeThreadMarkdownHtmlTagsForThread(): String {
         if (protectedRanges.any { match.range.first in it }) {
             builder.append(match.value)
         } else if (nextMatch is ThreadMarkdownHtmlMatch.Comment) {
-            val nextIndex = match.range.last + 1
-            index =
-                if (nextIndex < length && this[nextIndex].isThreadMarkdownHorizontalWhitespace() && builder.endsWithThreadMarkdownWhitespace()) {
-                    nextIndex + 1
-                } else {
-                    nextIndex
-                }
-            continue
+            builder.append(match.value.escapeMarkdownHtmlTagText())
         } else {
             builder.append(match.value.escapeMarkdownHtmlTagText())
         }
@@ -436,12 +429,6 @@ private val ThreadMarkdownHtmlCommentRegex =
 
 private val ThreadMarkdownAutolinkRegex =
     Regex("""<https?://[^>\s]+>""")
-
-private fun Char.isThreadMarkdownHorizontalWhitespace(): Boolean =
-    this == ' ' || this == '\t'
-
-private fun StringBuilder.endsWithThreadMarkdownWhitespace(): Boolean =
-    isEmpty() || last().isWhitespace()
 
 internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
     this
