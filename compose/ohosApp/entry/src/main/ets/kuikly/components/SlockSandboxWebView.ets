@@ -167,16 +167,63 @@ function normalizeBoolean(value: KRAny | KuiklyRenderCallback, fallback: boolean
 }
 
 function sameDocumentUrl(left: string, right: string): boolean {
-  try {
-    const leftUrl = new URL(left);
-    const rightUrl = new URL(right);
-    return leftUrl.protocol === rightUrl.protocol &&
-      leftUrl.host === rightUrl.host &&
-      leftUrl.pathname === rightUrl.pathname &&
-      leftUrl.search === rightUrl.search;
-  } catch (_error) {
+  const leftUrl = parseDocumentUrl(left);
+  const rightUrl = parseDocumentUrl(right);
+  if (leftUrl === null || rightUrl === null) {
     return false;
   }
+  return leftUrl.protocol === rightUrl.protocol &&
+    leftUrl.host === rightUrl.host &&
+    leftUrl.pathname === rightUrl.pathname &&
+    leftUrl.search === rightUrl.search;
+}
+
+interface SlockParsedDocumentUrl {
+  protocol: string;
+  host: string;
+  pathname: string;
+  search: string;
+}
+
+function parseDocumentUrl(value: string): SlockParsedDocumentUrl | null {
+  const trimmed = value.trim();
+  const protocolSeparator = trimmed.indexOf('://');
+  if (protocolSeparator <= 0) {
+    return null;
+  }
+  const protocol = `${trimmed.substring(0, protocolSeparator)}:`;
+  const hostStart = protocolSeparator + 3;
+  const pathStart = firstIndexOfUrlSuffix(trimmed, hostStart);
+  const host = pathStart < 0 ? trimmed.substring(hostStart) : trimmed.substring(hostStart, pathStart);
+  const suffix = pathStart < 0 ? '' : trimmed.substring(pathStart);
+  const hashIndex = suffix.indexOf('#');
+  const withoutHash = hashIndex < 0 ? suffix : suffix.substring(0, hashIndex);
+  const searchIndex = withoutHash.indexOf('?');
+  const pathname = searchIndex < 0 ? withoutHash : withoutHash.substring(0, searchIndex);
+  const search = searchIndex < 0 ? '' : withoutHash.substring(searchIndex);
+  return {
+    protocol: protocol.toLowerCase(),
+    host: host.toLowerCase(),
+    pathname: pathname.length > 0 ? pathname : '/',
+    search: search
+  };
+}
+
+function firstIndexOfUrlSuffix(value: string, fromIndex: number): number {
+  const slashIndex = value.indexOf('/', fromIndex);
+  const queryIndex = value.indexOf('?', fromIndex);
+  const hashIndex = value.indexOf('#', fromIndex);
+  let result = -1;
+  if (slashIndex >= 0) {
+    result = slashIndex;
+  }
+  if (queryIndex >= 0 && (result < 0 || queryIndex < result)) {
+    result = queryIndex;
+  }
+  if (hashIndex >= 0 && (result < 0 || hashIndex < result)) {
+    result = hashIndex;
+  }
+  return result;
 }
 
 @Builder
