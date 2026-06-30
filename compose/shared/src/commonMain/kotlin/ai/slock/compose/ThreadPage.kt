@@ -8364,7 +8364,7 @@ private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
-private val ThreadBottomScrollPaddingHeight = 32.dp
+private val ThreadBottomScrollPaddingHeight = 16.dp
 internal data class ThreadInlineActionSpec(
     val label: String,
     val event: String,
