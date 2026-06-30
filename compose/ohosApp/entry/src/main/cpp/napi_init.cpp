@@ -13,8 +13,8 @@ namespace {
 //
 // 注册策略：在 fork staging 上撤掉 #1424 的 fontName:weight 序列化 delta 后，
 // Kuikly runtime 不再把 weight 自动塞进 FontFamily 协议。Slock 业务侧约定用
-// familyName 字符串编码 weight（space_grotesk_bold / semibold / medium /
-// regular / light / variable / space_grotesk 兜底），OHOS host 端把这条
+// familyName 字符串编码 weight（SpaceGrotesk-Bold / SemiBold / Medium /
+// Regular / Light / Variable / Space Grotesk 兜底），OHOS host 端把这条
 // 字符串映射到 rawfile 路径，由 Kuikly 渲染层 + OHOS ResourceManager 自取
 // ttf bytes。
 //
@@ -37,6 +37,13 @@ static constexpr const char *kSlockFontFamilies[] = {
     "space_grotesk_medium",
     "space_grotesk_semibold",
     "space_grotesk_bold",
+    "Space Grotesk",
+    "SpaceGrotesk-Variable",
+    "SpaceGrotesk-Regular",
+    "SpaceGrotesk-Light",
+    "SpaceGrotesk-Medium",
+    "SpaceGrotesk-SemiBold",
+    "SpaceGrotesk-Bold",
 };
 
 static constexpr size_t kSlockFontFamiliesCount =
@@ -49,12 +56,26 @@ static char *SlockFontAdapter(const char *fontFamily,
     if (fontFamily == nullptr) {
         return nullptr;
     }
-    for (const auto *known : kSlockFontFamilies) {
-        if (std::strcmp(fontFamily, known) == 0) {
-            static thread_local std::string path;
-            path = std::string("rawfile:fonts/") + fontFamily + ".ttf";
-            return const_cast<char *>(path.c_str());
-        }
+    const char *fileName = nullptr;
+    if (std::strcmp(fontFamily, "Space Grotesk") == 0 || std::strcmp(fontFamily, "space_grotesk") == 0) {
+        fileName = "space_grotesk";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Variable") == 0 || std::strcmp(fontFamily, "space_grotesk_variable") == 0) {
+        fileName = "space_grotesk_variable";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Regular") == 0 || std::strcmp(fontFamily, "space_grotesk_regular") == 0) {
+        fileName = "space_grotesk_regular";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Light") == 0 || std::strcmp(fontFamily, "space_grotesk_light") == 0) {
+        fileName = "space_grotesk_light";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Medium") == 0 || std::strcmp(fontFamily, "space_grotesk_medium") == 0) {
+        fileName = "space_grotesk_medium";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-SemiBold") == 0 || std::strcmp(fontFamily, "space_grotesk_semibold") == 0) {
+        fileName = "space_grotesk_semibold";
+    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Bold") == 0 || std::strcmp(fontFamily, "space_grotesk_bold") == 0) {
+        fileName = "space_grotesk_bold";
+    }
+    if (fileName != nullptr) {
+        static thread_local std::string path;
+        path = std::string("rawfile:fonts/") + fileName + ".ttf";
+        return const_cast<char *>(path.c_str());
     }
     return nullptr;
 }

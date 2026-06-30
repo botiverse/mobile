@@ -1,6 +1,8 @@
 package ai.slock.compose
 
+import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -34,4 +36,15 @@ class SlockDesignTokensTest {
         assertEquals(SlockType.ButtonBold.fontFamily, resolved.fontFamily)
         assertEquals(FontWeight.Normal, resolved.fontWeight)
     }
+
+    @Test
+    fun slockFontFamiliesUseIosRegisteredPostScriptNames() {
+        assertEquals("SpaceGrotesk-Regular", SlockType.Body.fontFamily.slockFontName())
+        assertEquals("SpaceGrotesk-Medium", SlockType.Button.fontFamily.slockFontName())
+        assertEquals("SpaceGrotesk-SemiBold", SlockType.PageTitle.fontFamily.slockFontName())
+        assertEquals("SpaceGrotesk-Bold", SlockType.ButtonBold.fontFamily.slockFontName())
+    }
+
+    private fun Any?.slockFontName(): String? =
+        ((this as? FontListFontFamily)?.fonts?.singleOrNull() as? KuiklyFont)?.fontName
 }

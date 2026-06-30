@@ -70,10 +70,10 @@ internal object SlockSize {
 // A single FontFamily with multiple weights would always pick the first entry.
 // We must use one FontFamily per weight and manually dispatch.
 // See KuiklyTextExtension.toKuiklyFontFamily() for the serialization constraint.
-private val SpaceGroteskBold = FontFamily(KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal))
-private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
-private val SpaceGroteskMedium = FontFamily(KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal))
-private val SpaceGroteskRegular = FontFamily(KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal))
+private val SpaceGroteskBold = FontFamily(KuiklyFont("SpaceGrotesk-Bold", FontWeight.Bold, FontStyle.Normal))
+private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("SpaceGrotesk-SemiBold", FontWeight.SemiBold, FontStyle.Normal))
+private val SpaceGroteskMedium = FontFamily(KuiklyFont("SpaceGrotesk-Medium", FontWeight.Medium, FontStyle.Normal))
+private val SpaceGroteskRegular = FontFamily(KuiklyFont("SpaceGrotesk-Regular", FontWeight.Normal, FontStyle.Normal))
 private val SpaceGroteskFamilies = setOf(
     SpaceGroteskBold,
     SpaceGroteskSemiBold,

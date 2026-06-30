@@ -14,6 +14,10 @@
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
+		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
+		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
+		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
+		D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
@@ -38,6 +42,10 @@
 		7555FF7B242A565900829871 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_regular.ttf; sourceTree = "<group>"; };
+		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
+		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
+		D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_bold.ttf; sourceTree = "<group>"; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKuiklyPageView.h; sourceTree = "<group>"; };
@@ -130,12 +138,24 @@
 				D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */,
 				FF6B713E29A2A10E009349F1 /* KuiklyExpand */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
+				D49163102E14000100C0DE01 /* Fonts */,
 				7555FF82242A565900829871 /* ContentView.swift */,
 				7555FF8C242A565B00829871 /* Info.plist */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
+			sourceTree = "<group>";
+		};
+		D49163102E14000100C0DE01 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */,
+				D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */,
+				D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */,
+				D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		D43B80132E0E500100C0DE01 /* Components */ = {
@@ -254,6 +274,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */,
+				D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */,
+				D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */,
+				D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */,
+				D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */,
 				058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
