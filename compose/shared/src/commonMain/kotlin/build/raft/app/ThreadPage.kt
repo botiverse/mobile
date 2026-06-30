@@ -53,7 +53,9 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestion
+import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.SharedMembersMemberSuggestion
+import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
@@ -2548,7 +2550,6 @@ internal fun SharedThreadRouteContent(
     }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
-    val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     val threadMembersServerId = currentServerId?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
@@ -2624,6 +2625,7 @@ internal fun SharedThreadRouteContent(
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
     val renderedTimelineSlice = timelineSlice
+    val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
             serverMembersStore,
@@ -2645,10 +2647,9 @@ internal fun SharedThreadRouteContent(
                             memberScopedMentions = memberSuggestionScopedMentions
                         )
                     }
-                    .map { slice -> slice.suggestions }
                     .distinctUntilChanged()
             } else {
-                emptyMemberSuggestionsFlow
+                emptyMemberSuggestionSliceFlow
             }
         }
     val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
@@ -3610,6 +3611,37 @@ internal fun SharedThreadRouteContent(
         )
     }
 
+    fun patchComposerMemberSuggestionsAfterMembershipMutation(
+        member: KuiklyThreadMemberItem?,
+        inMentionChannel: Boolean
+    ): Boolean {
+        val store = serverMembersStore ?: return false
+        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return false
+        val profile = member?.toMemberProfile() ?: return false
+        return store.patchMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = memberSuggestionScopeChannelId,
+            memberScopedMentions = memberSuggestionScopedMentions,
+            member = profile,
+            inMentionChannel = inMentionChannel
+        )
+    }
+
+    fun removeComposerMemberSuggestionsAfterMembershipMutation(
+        memberId: String,
+        memberKind: MemberKind?
+    ): Boolean {
+        val store = serverMembersStore ?: return false
+        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return false
+        return store.removeMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = memberSuggestionScopeChannelId,
+            memberScopedMentions = memberSuggestionScopedMentions,
+            memberId = memberId,
+            memberKind = memberKind
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
@@ -4169,15 +4201,10 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
                             is DataResult.Content -> {
-                                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-                                    serverMembersStore.loadChannelMembers(
-                                        serverId = threadMembersServerId,
-                                        channelId = threadMembersChannelId,
-                                        priority = DataRequestPriority.Visible,
-                                        force = true
-                                    )
+                                val addedMember = result.data.members.firstOrNull { it.id == itemId }
+                                if (!patchComposerMemberSuggestionsAfterMembershipMutation(addedMember, inMentionChannel = true)) {
+                                    refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 }
-                                refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -4220,15 +4247,9 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
                             is DataResult.Content -> {
-                                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-                                    serverMembersStore.loadChannelMembers(
-                                        serverId = threadMembersServerId,
-                                        channelId = threadMembersChannelId,
-                                        priority = DataRequestPriority.Visible,
-                                        force = true
-                                    )
+                                if (!removeComposerMemberSuggestionsAfterMembershipMutation(itemId, member?.threadMemberKind())) {
+                                    refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 }
-                                refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -6377,7 +6398,7 @@ private fun ThreadPageContent(
     taskChannelId: ChannelId?,
     linkedTasksProjection: ThreadLinkedTasksProjection,
     filesViewModel: SharedThreadFilesViewModel,
-    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
+    memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
@@ -7057,7 +7078,7 @@ private fun ThreadComposerRoute(
     timelineSlice: ThreadTimelineSlice,
     resolvedAuxiliaryThreadId: String?,
     surface: ThreadComposerSurface,
-    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
+    memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
@@ -7093,7 +7114,7 @@ private fun ThreadComposerContentWithSuggestions(
     state: ThreadComposerUiState,
     threadMessages: List<KuiklyThreadMessageItem>,
     prioritizeThreadParticipants: Boolean,
-    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
+    memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
@@ -7101,11 +7122,11 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp
 ) {
-    val memberSuggestions by memberSuggestionsFlow.collectAsState(emptyList())
+    val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestions by channelSuggestionsFlow.collectAsState(emptyList())
     val loadedMemberSuggestions =
-        remember(memberSuggestions, threadMessages, prioritizeThreadParticipants) {
-            memberSuggestions
+        remember(memberSuggestionSlice.suggestions, threadMessages, prioritizeThreadParticipants) {
+            memberSuggestionSlice.suggestions
                 .sortForThreadMentionParticipants(
                     threadMessages = threadMessages,
                     prioritizeThreadParticipants = prioritizeThreadParticipants
@@ -7136,8 +7157,8 @@ private fun ThreadComposerContentWithSuggestions(
         }
     var retainedMemberSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerMemberItem>()) }
     var retainedChannelSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerChannelItem>()) }
-    LaunchedEffect(loadedMemberSuggestions) {
-        if (loadedMemberSuggestions.isNotEmpty()) {
+    LaunchedEffect(loadedMemberSuggestions, memberSuggestionSlice.status) {
+        if (loadedMemberSuggestions.isNotEmpty() || memberSuggestionSlice.status == SharedMembersLoadStatus.Loaded) {
             retainedMemberSuggestions = loadedMemberSuggestions
         }
     }
@@ -7147,7 +7168,7 @@ private fun ThreadComposerContentWithSuggestions(
         }
     }
     val renderedMemberSuggestions =
-        loadedMemberSuggestions.takeIf { it.isNotEmpty() }
+        loadedMemberSuggestions.takeIf { it.isNotEmpty() || memberSuggestionSlice.status == SharedMembersLoadStatus.Loaded }
             ?: retainedMemberSuggestions.takeIf { it.isNotEmpty() }
             ?: state.memberSuggestions
     val renderedChannelSuggestions =

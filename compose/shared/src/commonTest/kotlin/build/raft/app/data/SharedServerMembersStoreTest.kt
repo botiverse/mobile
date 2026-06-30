@@ -461,6 +461,105 @@ class SharedServerMembersStoreTest {
         assertEquals(1, repository.getChannelMembersCalls)
     }
 
+    @Test
+    fun memberSuggestionPatchMarksRemovedChannelMemberWithoutReloading() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+        val patched =
+            store.removeMentionChannelMemberSuggestion(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberScopedMentions = false,
+                memberId = "u2",
+                memberKind = MemberKind.Human
+            )
+
+        assertEquals(true, patched)
+        assertEquals(1, repository.getMembersCalls)
+        assertEquals(1, repository.getChannelMembersCalls)
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(false, suggestions.single { it.handle == "artin" }.inMentionChannel)
+        assertEquals(listOf("u1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
+    }
+
+    @Test
+    fun scopedMemberSuggestionPatchRemovesMemberWithoutReloading() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1",
+            memberScopedMentions = true
+        )
+        val patched =
+            store.removeMentionChannelMemberSuggestion(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberScopedMentions = true,
+                memberId = "u2",
+                memberKind = MemberKind.Human
+            )
+
+        assertEquals(true, patched)
+        assertEquals(0, repository.getMembersCalls)
+        assertEquals(1, repository.getChannelMembersCalls)
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberScopedMentions = true
+            ).suggestions
+        assertEquals(listOf("cindy"), suggestions.map { it.handle })
+    }
+
+    @Test
+    fun memberSuggestionPatchAddsChannelMemberWithoutReloading() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+        val patched =
+            store.patchMentionChannelMemberSuggestion(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberScopedMentions = false,
+                member = member("u2", "Artin"),
+                inMentionChannel = true
+            )
+
+        assertEquals(true, patched)
+        assertEquals(1, repository.getMembersCalls)
+        assertEquals(1, repository.getChannelMembersCalls)
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(true, suggestions.single { it.handle == "artin" }.inMentionChannel)
+        assertEquals(
+            listOf("u1", "u2"),
+            store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value }
+        )
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()

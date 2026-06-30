@@ -606,6 +606,86 @@ class SharedServerMembersStore(
         }
     }
 
+    fun patchMentionChannelMemberSuggestion(
+        serverId: ServerId,
+        mentionChannelId: String?,
+        memberScopedMentions: Boolean,
+        member: MemberProfile,
+        inMentionChannel: Boolean
+    ): Boolean {
+        val serverKey = serverId.value.trim()
+        val channelKey = mentionChannelId.normalizedServerMembersId()
+        val memberKey = member.id.value.trim()
+        if (serverKey.isBlank() || memberKey.isBlank()) return false
+        val scope =
+            SharedMembersMentionScope(
+                serverId = serverKey,
+                mentionChannelId = channelKey,
+                memberScopedMentions = memberScopedMentions
+            )
+        val current = _state.value.memberSuggestionSlices[scope] ?: return false
+        val suggestion =
+            listOf(member)
+                .toServerMembersMemberSuggestions(localServerId = serverKey, inMentionChannel = inMentionChannel)
+                .firstOrNull()
+                ?: return false
+        val nextSuggestions =
+            current.suggestions.patchMemberSuggestion(
+                suggestion = suggestion,
+                memberScopedMentions = memberScopedMentions,
+                inMentionChannel = inMentionChannel
+            )
+        setMemberSuggestionSlice(
+            scope = scope,
+            slice =
+                current.copy(
+                    suggestions = nextSuggestions,
+                    status = SharedMembersLoadStatus.Loaded,
+                    errorCode = null
+                )
+        )
+        patchChannelMemberSlice(serverKey, channelKey, member, inMentionChannel)
+        seedProfiles(ServerId(serverKey), listOf(member))
+        return true
+    }
+
+    fun removeMentionChannelMemberSuggestion(
+        serverId: ServerId,
+        mentionChannelId: String?,
+        memberScopedMentions: Boolean,
+        memberId: String,
+        memberKind: MemberKind? = null
+    ): Boolean {
+        val serverKey = serverId.value.trim()
+        val channelKey = mentionChannelId.normalizedServerMembersId()
+        val memberKey = memberId.trim()
+        if (serverKey.isBlank() || memberKey.isBlank()) return false
+        val scope =
+            SharedMembersMentionScope(
+                serverId = serverKey,
+                mentionChannelId = channelKey,
+                memberScopedMentions = memberScopedMentions
+            )
+        val current = _state.value.memberSuggestionSlices[scope] ?: return false
+        val nextSuggestions =
+            current.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
+                memberId = memberKey,
+                memberKind = memberKind,
+                remove = memberScopedMentions || channelKey == null
+            )
+        setMemberSuggestionSlice(
+            scope = scope,
+            slice =
+                current.copy(
+                    suggestions = nextSuggestions,
+                    status = SharedMembersLoadStatus.Loaded,
+                    errorCode = null
+                )
+        )
+        patchChannelMemberSlice(serverKey, channelKey, memberId = memberKey, memberKind = memberKind, inMentionChannel = false)
+        return true
+    }
+
     private fun cachedLoadedSnapshot(key: String, force: Boolean): MemberSnapshot? {
         if (force) return null
         val entry = _state.value.entriesByServerId[key] ?: return null
@@ -888,6 +968,52 @@ class SharedServerMembersStore(
                 channelMemberSlices = _state.value.channelMemberSlices - scope
             )
     }
+
+    private fun patchChannelMemberSlice(
+        serverKey: String,
+        channelKey: String?,
+        member: MemberProfile,
+        inMentionChannel: Boolean
+    ) {
+        val memberKey = member.id.value.trim()
+        if (channelKey == null || memberKey.isBlank()) return
+        val scope = SharedServerChannelMembersScope(serverId = serverKey, channelId = channelKey)
+        val current = _state.value.channelMemberSlices[scope] ?: return
+        val nextMembers =
+            if (inMentionChannel) {
+                current.members.upsertServerMember(member.withServerMemberPresenceFacts(_state.value.presenceByMemberId))
+            } else {
+                current.members.removeServerMember(memberKey, member.kind)
+            }
+        putChannelSlice(
+            scope,
+            current.copy(
+                members = nextMembers,
+                status = SharedServerMembersLoadStatus.Loaded,
+                errorCode = null
+            )
+        )
+    }
+
+    private fun patchChannelMemberSlice(
+        serverKey: String,
+        channelKey: String?,
+        memberId: String,
+        memberKind: MemberKind?,
+        inMentionChannel: Boolean
+    ) {
+        if (channelKey == null || inMentionChannel) return
+        val scope = SharedServerChannelMembersScope(serverId = serverKey, channelId = channelKey)
+        val current = _state.value.channelMemberSlices[scope] ?: return
+        putChannelSlice(
+            scope,
+            current.copy(
+                members = current.members.removeServerMember(memberId, memberKind),
+                status = SharedServerMembersLoadStatus.Loaded,
+                errorCode = null
+            )
+        )
+    }
 }
 
 private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean =
@@ -919,6 +1045,40 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
             agentStatus = event.agentStatus ?: member.agentStatus
         )
     }
+
+private fun MemberProfile.withServerMemberPresenceFacts(
+    presenceFacts: Map<String, MemberPresenceUpdated>
+): MemberProfile {
+    val event = presenceFacts[id.value.trim()]?.takeIf { kind == MemberKind.Agent } ?: return this
+    return copy(
+        presence = event.presence,
+        agentStatus = event.agentStatus ?: agentStatus
+    )
+}
+
+private fun List<MemberProfile>.upsertServerMember(member: MemberProfile): List<MemberProfile> {
+    val key = member.id.value.trim()
+    if (key.isBlank()) return this
+    var replaced = false
+    val next =
+        map { existing ->
+            if (existing.id.value.trim() == key && existing.kind == member.kind) {
+                replaced = true
+                existing.mergeSeedProfile(member)
+            } else {
+                existing
+            }
+        }
+    return if (replaced) next else next + member
+}
+
+private fun List<MemberProfile>.removeServerMember(memberId: String, memberKind: MemberKind?): List<MemberProfile> {
+    val key = memberId.trim()
+    if (key.isBlank()) return this
+    return filterNot { member ->
+        member.id.value.trim() == key && (memberKind == null || member.kind == memberKind)
+    }
+}
 
 private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
     val agentProfile = kind == MemberKind.Agent || seed.kind == MemberKind.Agent
@@ -1012,6 +1172,73 @@ private fun List<SharedMembersMemberSuggestion>.mergeServerMembersMentionChannel
     }
     return deduped.values.toList()
 }
+
+private fun List<SharedMembersMemberSuggestion>.patchMemberSuggestion(
+    suggestion: SharedMembersMemberSuggestion,
+    memberScopedMentions: Boolean,
+    inMentionChannel: Boolean
+): List<SharedMembersMemberSuggestion> {
+    if (memberScopedMentions && !inMentionChannel) {
+        return removeOrMarkMemberSuggestionOutsideMentionChannel(
+            memberId = suggestion.memberId.orEmpty(),
+            memberKind = suggestion.kind,
+            remove = true
+        )
+    }
+    val key = suggestion.memberSuggestionPatchKey()
+    if (key.isBlank()) return this
+    var replaced = false
+    val next =
+        map { existing ->
+            if (existing.memberSuggestionPatchKey() == key) {
+                replaced = true
+                existing.mergePatchedSuggestion(suggestion)
+            } else {
+                existing
+            }
+        }
+    return if (replaced) next else next + suggestion
+}
+
+private fun List<SharedMembersMemberSuggestion>.removeOrMarkMemberSuggestionOutsideMentionChannel(
+    memberId: String,
+    memberKind: MemberKind?,
+    remove: Boolean
+): List<SharedMembersMemberSuggestion> {
+    val key = memberId.trim()
+    if (key.isBlank()) return this
+    return mapNotNull { suggestion ->
+        val matches =
+            suggestion.memberId?.trim() == key &&
+                (memberKind == null || suggestion.kind == memberKind)
+        when {
+            !matches -> suggestion
+            remove -> null
+            else -> suggestion.copy(inMentionChannel = false)
+        }
+    }
+}
+
+private fun SharedMembersMemberSuggestion.memberSuggestionPatchKey(): String =
+    memberId?.trim()?.takeIf { it.isNotBlank() }
+        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }
+        ?: displayName.trim().lowercase()
+
+private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
+    patch: SharedMembersMemberSuggestion
+): SharedMembersMemberSuggestion =
+    copy(
+        displayName = patch.displayName.ifBlank { displayName },
+        handle = patch.handle.ifBlank { handle },
+        inMentionChannel = patch.inMentionChannel,
+        sourceServerLabel = sourceServerLabel ?: patch.sourceServerLabel,
+        kind = patch.kind,
+        description = description ?: patch.description,
+        avatarWireValue = avatarWireValue.preferServerMembersConcreteSuggestionAvatar(patch.avatarWireValue),
+        gravatarHash = gravatarHash ?: patch.gravatarHash,
+        avatarLabel = avatarLabel.ifBlank { patch.avatarLabel },
+        memberId = memberId ?: patch.memberId
+    )
 
 private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: String?): String? =
     when {
