@@ -26,7 +26,6 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -36,7 +35,8 @@ import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.Placeholder
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
+import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
@@ -48,6 +48,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.withLink
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
@@ -162,6 +163,31 @@ internal data class MarkdownInlineTokenPlan(
                 val values = result ?: mutableListOf<MarkdownInlineToken>().also { result = it }
                 values += token
             }
+            index++
+        }
+        return result ?: emptyList()
+    }
+
+    fun tagTokensStartingInRange(start: Int, endExclusive: Int): List<MarkdownInlineToken> {
+        if (tagTokensByStart.isEmpty()) return emptyList()
+        var low = 0
+        var high = tagTokensByStart.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (tagTokensByStart[mid].range.first < start) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        var index = low
+        var result: MutableList<MarkdownInlineToken>? = null
+        while (index < tagTokensByStart.size) {
+            val token = tagTokensByStart[index]
+            if (token.range.first >= endExclusive) break
+            val values = result ?: mutableListOf<MarkdownInlineToken>().also { result = it }
+            values += token
             index++
         }
         return result ?: emptyList()
@@ -432,23 +458,6 @@ internal fun String.shouldUseSlockMarkdownPlainTextFastPath(): Boolean {
 private val SlockMarkdownPlainTextFastPathBlockers =
     setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '#', '@', '|')
 
-internal fun String.shouldUseSlockMarkdownInlineTextFastPath(): Boolean {
-    if (isEmpty() || contains("://")) return false
-    if (any { it in SlockMarkdownInlineTextFastPathBlockers }) return false
-    return !hasSlockMarkdownBlockShape()
-}
-
-private val SlockMarkdownInlineTextFastPathBlockers =
-    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '|')
-
-private fun String.shouldUseSlockMarkdownDirectInlineTagFastPath(): Boolean {
-    if (isEmpty() || contains("://")) return false
-    return none { it in SlockMarkdownDirectInlineTagFastPathBlockers }
-}
-
-private val SlockMarkdownDirectInlineTagFastPathBlockers =
-    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '|')
-
 private fun String.hasSlockMarkdownBlockShape(): Boolean {
     val trimmed = trimStart()
     return SlockMarkdownHeadingPrefixRegex.containsMatchIn(trimmed) ||
@@ -679,7 +688,6 @@ internal fun slockMarkdownAnnotator(
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     inlineCodeWidths: Map<String, TextUnit> = emptyMap(),
     inlineCodeTextStyle: TextStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body.withResolvedSlockFontFamily()),
-    renderInlineTagsAsInlineContent: Boolean = true,
     tokenPlan: MarkdownInlineTokenPlan =
         SlockMarkdownInlineTokenRegistry.plan(
             content,
@@ -690,50 +698,6 @@ internal fun slockMarkdownAnnotator(
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val plannedInlineTagTokens = tokenPlan.tagTokens()
-    val inlineTagTokens = if (renderInlineTagsAsInlineContent) plannedInlineTagTokens else emptyList()
-    val inlineTagById = inlineTagTokens.associateBy { it.id }
-    val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
-    val inlineContentById =
-        if (inlineTagById.isEmpty()) {
-            null
-        } else {
-            buildMap<String, InlineTextContent> {
-                inlineTagById.forEach { (id, token) ->
-                    val tag = token.tag ?: return@forEach
-                    val label =
-                        resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
-                            ?: threadMarkdownTagDisplayLabel(tag.label)
-                    put(
-                        id,
-                        InlineTextContent(
-                            Placeholder(
-                                width = slockMarkdownInlineTagWidthSp(
-                                    label,
-                                    tag.kind,
-                                    highlightedMentionById.containsKey(token.id)
-                                ),
-                                height = SlockMarkdownInlineChipHeight
-                            )
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().clickable { onOpenTag(tag) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                val isHighlightedMention = highlightedMentionById.containsKey(token.id)
-                                if (tag.kind == ThreadMarkdownTagKind.UserMention &&
-                                    !isHighlightedMention
-                                ) {
-                                    SlockMarkdownMentionText(label)
-                                } else {
-                                    val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
-                                    SlockMarkdownInlineChip(label, chipColor)
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-        }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             plannedInlineTagTokens.size,
@@ -741,8 +705,12 @@ internal fun slockMarkdownAnnotator(
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
+    var consumedTagEndExclusive = -1
     return markdownAnnotator(
         annotate = { markdownContent, child, _ ->
+            if (child.startOffset < consumedTagEndExclusive) {
+                return@markdownAnnotator true
+            }
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeToken =
                     tokenPlan.inlineCodeMatchForNode(child.startOffset)
@@ -768,25 +736,62 @@ internal fun slockMarkdownAnnotator(
             val nodeText = child.getTextInNode(markdownContent).toString()
             val nodeStart = child.startOffset
             val nodeEndExclusive = nodeStart + nodeText.length
-            val nodeTokens = tokenPlan.tagTokensInRange(nodeStart, nodeEndExclusive)
+            val nodeTokens = tokenPlan.tagTokensStartingInRange(nodeStart, nodeEndExclusive)
             if (nodeTokens.isEmpty()) return@markdownAnnotator false
 
             var cursor = 0
             nodeTokens.forEach { token ->
                 val relativeStart = token.range.first - nodeStart
-                val relativeEndExclusive = token.range.last - nodeStart + 1
+                val relativeEndExclusive = (token.range.last - nodeStart + 1).coerceAtMost(nodeText.length)
                 if (relativeStart > cursor) {
                     append(nodeText.substring(cursor, relativeStart))
                 }
-                appendInlineContent(token.id, token.label)
+                appendSlockMarkdownTagToken(
+                    token = token,
+                    onOpenTag = onOpenTag,
+                    resolveTagLabel = resolveTagLabel
+                )
+                consumedTagEndExclusive = maxOf(consumedTagEndExclusive, token.range.last + 1)
                 cursor = relativeEndExclusive
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
-        inlineContent = inlineContentById?.let { contentMap -> { contentMap } },
+        inlineContent = null,
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
+}
+
+private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
+    token: MarkdownInlineToken,
+    onOpenTag: (ThreadMarkdownTag) -> Unit,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+) {
+    val tag = token.tag ?: return append(token.label)
+    val label =
+        resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
+            ?: threadMarkdownTagDisplayLabel(tag.label)
+    val style =
+        SpanStyle(
+            color = Color.Black,
+            background = slockMarkdownTagColor(tag.kind, highlighted = token.highlighted),
+            fontWeight = FontWeight.Bold,
+            textDecoration =
+                if (tag.kind == ThreadMarkdownTagKind.UserMention && !token.highlighted) {
+                    TextDecoration.Underline
+                } else {
+                    null
+                }
+        )
+    withLink(
+        LinkAnnotation.Clickable(
+            tag = token.id,
+            styles = TextLinkStyles(style = style),
+            linkInteractionListener = LinkInteractionListener { onOpenTag(tag) }
+        )
+    ) {
+        append(label)
+    }
 }
 
 private object SlockMarkdownTextProvider : TextProvider {
@@ -983,47 +988,6 @@ private object SlockMarkdownPreparedBodyCache {
     }
 }
 
-internal data class SlockMarkdownInlineTextCacheKey(
-    val content: String,
-    val textStyle: TextStyle,
-    val tokenPlanSignature: String
-)
-
-internal data class SlockMarkdownInlineTextRender(
-    val fontResolvedText: AnnotatedString
-)
-
-internal object SlockMarkdownInlineTextRenderCache {
-    private const val MaxEntries = 256
-    private val entries = LinkedHashMap<SlockMarkdownInlineTextCacheKey, SlockMarkdownInlineTextRender>()
-
-    fun getOrPut(
-        key: SlockMarkdownInlineTextCacheKey,
-        value: () -> AnnotatedString
-    ): Pair<SlockMarkdownInlineTextRender, Boolean> {
-        entries[key]?.let { cached ->
-            return cached to true
-        }
-        val annotated = value()
-        val rendered =
-            SlockMarkdownInlineTextRender(
-                fontResolvedText = annotated.withSlockMarkdownSpanFonts(key.textStyle)
-            )
-        entries[key] = rendered
-        if (entries.size > MaxEntries) {
-            val firstKey = entries.keys.firstOrNull()
-            if (firstKey != null) {
-                entries.remove(firstKey)
-            }
-        }
-        return rendered to false
-    }
-
-    fun clearForTest() {
-        entries.clear()
-    }
-}
-
 internal data class SlockMarkdownPreparseResult(
     val requestedCount: Int,
     val parsedCount: Int,
@@ -1064,7 +1028,6 @@ internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): String? {
         }
     if (content.isBlank()) return null
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) return null
-    if (content.shouldUseSlockMarkdownInlineTextFastPath()) return null
     return content
 }
 
@@ -1091,29 +1054,6 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
     return buildAnnotatedString {
         pushStyle(style.toSpanStyle())
         buildMarkdownAnnotatedString(content, textNode, settings)
-        pop()
-    }
-}
-
-internal fun buildSlockMarkdownDirectInlineTagAnnotatedString(
-    content: String,
-    style: TextStyle,
-    tokenPlan: MarkdownInlineTokenPlan
-): AnnotatedString {
-    val tagTokens = tokenPlan.tagTokens()
-    if (tagTokens.isEmpty()) return AnnotatedString(content)
-    return buildAnnotatedString {
-        pushStyle(style.toSpanStyle())
-        var cursor = 0
-        tagTokens.forEach { token ->
-            val start = token.range.first.coerceIn(0, content.length)
-            val endExclusive = (token.range.last + 1).coerceIn(start, content.length)
-            if (start < cursor) return@forEach
-            if (start > cursor) append(content.substring(cursor, start))
-            appendInlineContent(token.id, token.label)
-            cursor = endExclusive
-        }
-        if (cursor < content.length) append(content.substring(cursor))
         pop()
     }
 }
@@ -1319,12 +1259,11 @@ fun SlockMarkdownBody(
             inlineContentScope = inlineContentScope
         )
     }
-    val useInlineTextFastPath = content.shouldUseSlockMarkdownInlineTextFastPath()
     val measuredInlineCodeWidths = remember(content, tokenPlan.signature) {
         mutableStateMapOf<String, TextUnit>()
     }
     val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
-    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle, useInlineTextFastPath) {
+    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
@@ -1346,79 +1285,8 @@ fun SlockMarkdownBody(
                 },
             inlineCodeWidths = inlineCodeWidthOverrides,
             inlineCodeTextStyle = inlineCodeTextStyle,
-            renderInlineTagsAsInlineContent = useInlineTextFastPath,
             tokenPlan = tokenPlan
         )
-    }
-    if (useInlineTextFastPath) {
-        val resolvedStyle = markdownTextStyle
-        val renderStartedAt = TimeSource.Monotonic.markNow()
-        val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle, tokenPlan.signature)
-        val (renderedText, cacheHit) =
-            traceMarkdownSection(SlockMarkdownTraceNames.ANNOTATE) {
-                SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
-                    if (tokenPlan.tagTokens().isNotEmpty() && content.shouldUseSlockMarkdownDirectInlineTagFastPath()) {
-                        buildSlockMarkdownDirectInlineTagAnnotatedString(content, resolvedStyle, tokenPlan)
-                    } else {
-                        buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
-                    }
-                }
-            }
-        val inlineContent = remember(annotator) {
-            annotator.inlineContent?.invoke().orEmpty()
-        }
-        if (performanceKey != null && tokenPlan.tagTokens().isNotEmpty()) {
-            val placeholderIds = renderedText.fontResolvedText.slockMarkdownInlineContentIds()
-            val inlineContentIds = inlineContent.keys
-            val missingInlineContentIds = placeholderIds - inlineContentIds
-            val missingPlaceholderIds = inlineContentIds - placeholderIds
-            if (placeholderIds.isEmpty() || missingInlineContentIds.isNotEmpty() || missingPlaceholderIds.isNotEmpty()) {
-                performanceLogger(
-                    "thread_markdown_inline_content_mismatch key=$performanceKey " +
-                        "contentLength=${content.length} tagTokens=${tokenPlan.tagTokens().size} " +
-                        "placeholderIds=${placeholderIds.sorted()} inlineContentIds=${inlineContentIds.sorted()} " +
-                        "missingInlineContentIds=${missingInlineContentIds.sorted()} " +
-                        "missingPlaceholderIds=${missingPlaceholderIds.sorted()}"
-                )
-            }
-        }
-        val renderDurationMs = renderStartedAt.elapsedNow().inWholeMilliseconds
-        if (performanceKey != null && shouldLogSlockMarkdownPerformance(renderDurationMs)) {
-            performanceLogger(
-                "thread_markdown_render stage=inline_text key=$performanceKey contentLength=${content.length} " +
-                    "cacheHit=$cacheHit durationMs=$renderDurationMs"
-            )
-        }
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
-            SlockMarkdownMeasuredInlineCodeBox(
-                modifier = markdownModifier,
-                tokenPlan = tokenPlan,
-                inlineCodeTextStyle = inlineCodeTextStyle,
-                measuredInlineCodeWidths = measuredInlineCodeWidths
-            ) { contentModifier ->
-                KuiklyText(
-                    text = renderedText.fontResolvedText,
-                    modifier = contentModifier,
-                    color = resolvedStyle.color,
-                    fontSize = resolvedStyle.fontSize,
-                    fontStyle = resolvedStyle.fontStyle,
-                    fontWeight = resolvedStyle.fontWeight,
-                    fontFamily = resolvedStyle.fontFamily,
-                    letterSpacing = resolvedStyle.letterSpacing,
-                    textDecoration = resolvedStyle.textDecoration,
-                    textAlign = resolvedStyle.textAlign,
-                    lineHeight = resolvedStyle.lineHeight,
-                    overflow = TextOverflow.Clip,
-                    softWrap = true,
-                    maxLines = Int.MAX_VALUE,
-                    minLines = 1,
-                    inlineContent = inlineContent,
-                    onTextLayout = {},
-                    style = resolvedStyle
-                )
-            }
-        }
-        return
     }
     if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
         performanceLogger(

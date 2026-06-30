@@ -3,7 +3,6 @@ package ai.slock.compose.markdown
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
 import ai.slock.compose.slockFontFamilyForWeight
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -42,7 +41,10 @@ class SlockMarkdownTest {
         val fullRendererBody = "Open https://raft.build/task36-preparse"
 
         assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
-        assertEquals(null, "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull())
+        assertEquals(
+            "Ping @artin in #markdown专修",
+            "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull()
+        )
         assertEquals(
             fullRendererBody,
             fullRendererBody.preparedSlockMarkdownFullRendererContentOrNull()
@@ -52,8 +54,8 @@ class SlockMarkdownTest {
             prepareSlockMarkdownFullRendererBodies(
                 listOf("Plain text only", "Ping @artin", fullRendererBody, fullRendererBody)
             )
-        assertEquals(1, first.requestedCount)
-        assertEquals(1, first.parsedCount)
+        assertEquals(2, first.requestedCount)
+        assertEquals(2, first.parsedCount)
         assertEquals(0, first.cacheHitCount)
 
         val second = prepareSlockMarkdownFullRendererBodies(listOf(fullRendererBody))
@@ -221,39 +223,26 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun userMentionsRenderAsClickableInlineContent() {
-        val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
+    fun userMentionsRenderAsClickableTags() {
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "Ping @Android-App-Integrator in #markdown专修 for #15"
+            )
 
-        assertTrue(inlineContent.containsKey("slock:5"))
-        assertTrue(inlineContent.containsKey("slock:32"))
-        assertTrue(inlineContent.containsKey("slock:48"))
+        assertEquals(setOf("slock:5", "slock:32", "slock:48"), annotated.slockMarkdownClickableTags())
     }
 
     @Test
-    fun highlightedUserMentionsStillRenderAsInlineContent() {
-        val inlineContent =
+    fun highlightedUserMentionsStillRenderAsClickableTags() {
+        val body = "Ping @artin and @Android-App-Integrator in #markdown专修"
+        val annotator =
             slockMarkdownAnnotator(
-                "Ping @artin and @Android-App-Integrator in #markdown专修",
+                body,
                 highlightedMentions = setOf("artin")
-            ).inlineContent?.invoke().orEmpty()
+            )
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
-        assertTrue(inlineContent.containsKey("slock:5"))
-        assertTrue(inlineContent.containsKey("slock:16"))
-        assertTrue(inlineContent.containsKey("slock:43"))
-    }
-
-    @Test
-    fun inlineContentFilteringKeepsOnlyPlaceholdersUsedByTextNode() {
-        val inlineContent = slockMarkdownAnnotator("Ping @artin and #KMP:13374006 for #196")
-            .inlineContent?.invoke()
-            .orEmpty()
-        val textNode = buildAnnotatedString {
-            appendInlineContent("slock:5", "@artin")
-            append(" plain text")
-        }
-
-        assertEquals(setOf("slock:5"), textNode.slockMarkdownInlineContentIds())
-        assertEquals(setOf("slock:5"), textNode.filteredSlockMarkdownInlineContent(inlineContent).keys)
+        assertEquals(setOf("slock:5", "slock:16", "slock:43"), annotated.slockMarkdownClickableTags())
     }
 
     @Test
@@ -363,22 +352,16 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTextFastPathKeepsOnlyPlainTaggedTextOutOfBlockRenderer() {
-        assertTrue("Ping @artin in #KMP".shouldUseSlockMarkdownInlineTextFastPath())
-        assertTrue("#KMP is a channel reference, not a heading".shouldUseSlockMarkdownInlineTextFastPath())
-
-        assertFalse("Use `code` and **bold** text".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("Use _emphasis_ and ~~strike~~ text".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("Open https://raft.build".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("# Heading".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("### Heading".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("- list item".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("1. ordered item".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("1) ordered item".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("> quote".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("***".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("first line\nsecond line".shouldUseSlockMarkdownInlineTextFastPath())
-        assertFalse("[link](https://raft.build)".shouldUseSlockMarkdownInlineTextFastPath())
+    fun taggedTextUsesFullRendererPreparse() {
+        assertEquals(
+            "Ping @artin in #KMP",
+            "Ping @artin in #KMP".preparedSlockMarkdownFullRendererContentOrNull()
+        )
+        assertEquals(
+            "#KMP is a channel reference, not a heading",
+            "#KMP is a channel reference, not a heading".preparedSlockMarkdownFullRendererContentOrNull()
+        )
+        assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
     }
 
     @Test
@@ -436,8 +419,9 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineFastPathKeepsCodeAndBoldWhenTagsArePresent() {
+    fun fullRendererKeepsCodeBoldAndClickableTagsTogether() {
         val body = "Ping @artin with `mimo` and **bold** in #markdown专修"
+        var openedTag: ThreadMarkdownTag? = null
         val tokenPlan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
@@ -451,16 +435,16 @@ class SlockMarkdownTest {
                 highlightedMentions = setOf("artin"),
                 knownChannelNames = setOf("markdown专修"),
                 inlineContentScope = "message-mixed",
+                onOpenTag = { openedTag = it },
                 tokenPlan = tokenPlan
             )
-        val annotated =
-            buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
-                .withSlockMarkdownSpanFonts(SlockType.Body)
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
+            .withSlockMarkdownSpanFonts(SlockType.Body)
 
         assertEquals("Ping @artin with mimo and bold in #markdown专修", annotated.text)
         assertEquals(
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
-            annotated.slockMarkdownInlineContentIds()
+            annotated.slockMarkdownClickableTags()
         )
         assertEquals(
             listOf("mimo"),
@@ -472,6 +456,11 @@ class SlockMarkdownTest {
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
         assertEquals(FontWeight.Normal, boldSpan.item.fontWeight)
+        val mention = annotated.getLinkAnnotations(0, annotated.length).first {
+            (it.item as? LinkAnnotation.Clickable)?.tag == "slock-message-mixed:5"
+        }.item as LinkAnnotation.Clickable
+        mention.linkInteractionListener?.onClick(mention)
+        assertEquals("@artin", openedTag?.label)
     }
 
     @Test
@@ -493,36 +482,6 @@ class SlockMarkdownTest {
 
         assertEquals(SlockType.Body.fontFamily, codeFontSpan.item.fontFamily)
         assertFalse(codeFontSpan.item.fontFamily == FontFamily.Monospace)
-    }
-
-    @Test
-    fun inlineTextRenderCacheStoresFontResolvedText() {
-        SlockMarkdownInlineTextRenderCache.clearForTest()
-        val source =
-            AnnotatedString(
-                "normal bold",
-                spanStyles =
-                    listOf(
-                        AnnotatedString.Range(
-                            SpanStyle(fontWeight = FontWeight.Bold),
-                            start = 7,
-                            end = 11
-                        )
-                    )
-            )
-        val key = SlockMarkdownInlineTextCacheKey("normal **bold**", SlockType.Body, "test")
-
-        val (first, firstCacheHit) =
-            SlockMarkdownInlineTextRenderCache.getOrPut(key) { source }
-        val (second, secondCacheHit) =
-            SlockMarkdownInlineTextRenderCache.getOrPut(key) { error("cache miss") }
-        val strongFontSpan = first.fontResolvedText.spanStyles.last { it.start == 7 && it.end == 11 }
-
-        assertFalse(firstCacheHit)
-        assertTrue(secondCacheHit)
-        assertTrue(first === second)
-        assertEquals(SlockType.ButtonBold.fontFamily, strongFontSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, strongFontSpan.item.fontWeight)
     }
 
     @Test
@@ -575,7 +534,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTagPlaceholdersRemainButCodeUsesTextMarker() {
+    fun fullRendererTagLinksRemainButCodeUsesTextMarker() {
         val body = "Ping @artin for #405 and `mimo`"
         val annotator =
             slockMarkdownAnnotator(
@@ -583,14 +542,11 @@ class SlockMarkdownTest {
                 highlightedMentions = setOf("artin"),
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             )
-        val inlineContent =
-            annotator.inlineContent?.invoke().orEmpty()
 
-        assertEquals(24.sp, inlineContent.getValue("slock:5").placeholder.height)
-        assertEquals(24.sp, inlineContent.getValue("slock:16").placeholder.height)
-        assertFalse(inlineContent.containsKey("slock-code:25"))
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
-        val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
+        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
         val inlineCodeText =
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
                 .map { annotated.text.substring(it.start, it.end) }
@@ -598,13 +554,13 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun richMarkdownCanDisableInlineTagContentWithoutLosingText() {
+    fun richMarkdownFullRendererKeepsTagsWithoutInlineContentPlaceholders() {
         val body = "**Bold** text for @artin in #markdown专修 with `code`"
         val annotator =
             slockMarkdownAnnotator(
                 content = body,
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                renderInlineTagsAsInlineContent = false
+                knownChannelNames = setOf("markdown专修")
             )
 
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
@@ -612,6 +568,7 @@ class SlockMarkdownTest {
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
         assertEquals("Bold text for @artin in #markdown专修 with code", annotated.text)
+        assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
         assertEquals(
             listOf("code"),
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
@@ -669,23 +626,33 @@ class SlockMarkdownTest {
     @Test
     fun channelThreadReferencesRenderAsSingleInlineChip() {
         val matches = "See #markdown专修:7933cf78 and #general:abc123 in chat".threadInlineTagMatches()
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "See #markdown专修:7933cf78 and #general:abc123 in chat"
+            )
 
         assertEquals(2, matches.size)
         assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[0].tag.kind)
         assertEquals("#markdown专修:7933cf78", matches[0].tag.label)
         assertEquals("markdown专修", matches[0].tag.channelName)
         assertEquals("7933cf78", matches[0].tag.threadShortId)
-
-        val inlineContent = slockMarkdownAnnotator("See #markdown专修:7933cf78 and #general:abc123 in chat").inlineContent?.invoke().orEmpty()
-        assertTrue(inlineContent.containsKey("slock:4"))
-        assertTrue(inlineContent.containsKey("slock:29"))
+        assertEquals(setOf("slock:4", "slock:29"), annotated.slockMarkdownClickableTags())
     }
 
     @Test
-    fun directInlineTagRendererKeepsChannelThreadPlaceholders() {
+    fun fullMarkdownRendererKeepsChannelThreadClickableTags() {
         val body = "Final #markdown专修:9579b48a @artin #markdown专修 #37."
         val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("markdown专修"))
-        val annotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, plan)
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        knownChannelNames = setOf("markdown专修"),
+                        tokenPlan = plan
+                    )
+            )
 
         assertEquals(
             listOf("#markdown专修:9579b48a", "@artin", "#markdown专修", "#37"),
@@ -693,12 +660,12 @@ class SlockMarkdownTest {
         )
         assertEquals(
             setOf("slock:6", "slock:27", "slock:34", "slock:46"),
-            annotated.slockMarkdownInlineContentIds()
+            annotated.slockMarkdownClickableTags()
         )
     }
 
     @Test
-    fun inlineTagPlaceholdersCanBeScopedPerMessageRow() {
+    fun fullRendererClickableTagsCanBeScopedPerMessageRow() {
         val body = "Ping @artin in #markdown专修"
         val firstPlan =
             SlockMarkdownInlineTokenRegistry.plan(
@@ -712,16 +679,36 @@ class SlockMarkdownTest {
                 knownChannelNames = setOf("markdown专修"),
                 inlineContentScope = "message-b"
             )
-        val firstAnnotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, firstPlan)
-        val secondAnnotated = buildSlockMarkdownDirectInlineTagAnnotatedString(body, SlockType.Body, secondPlan)
+        val firstAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        knownChannelNames = setOf("markdown专修"),
+                        inlineContentScope = "message-a",
+                        tokenPlan = firstPlan
+                    )
+            )
+        val secondAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        knownChannelNames = setOf("markdown专修"),
+                        inlineContentScope = "message-b",
+                        tokenPlan = secondPlan
+                    )
+            )
 
         assertEquals(
             setOf("slock-message-a:5", "slock-message-a:15"),
-            firstAnnotated.slockMarkdownInlineContentIds()
+            firstAnnotated.slockMarkdownClickableTags()
         )
         assertEquals(
             setOf("slock-message-b:5", "slock-message-b:15"),
-            secondAnnotated.slockMarkdownInlineContentIds()
+            secondAnnotated.slockMarkdownClickableTags()
         )
         assertFalse(firstPlan.signature == secondPlan.signature)
     }
@@ -819,10 +806,14 @@ class SlockMarkdownTest {
 
     @Test
     fun channelThreadReferencesAreIgnoredInsideInlineCode() {
-        val inlineContent = slockMarkdownAnnotator("Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78").inlineContent?.invoke().orEmpty()
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78"
+            )
+        val clickableTags = annotated.slockMarkdownClickableTags()
 
-        assertFalse(inlineContent.containsKey("slock:5"))
-        assertTrue(inlineContent.containsKey("slock:35"))
+        assertFalse(clickableTags.contains("slock:5"))
+        assertTrue(clickableTags.contains("slock:35"))
     }
 
     @Test
@@ -862,6 +853,11 @@ class SlockMarkdownTest {
     private fun renderSlockMarkdownParagraphText(content: String): String {
         return buildSlockMarkdownParagraphAnnotatedString(content).text
     }
+
+    private fun AnnotatedString.slockMarkdownClickableTags(): Set<String> =
+        getLinkAnnotations(0, length)
+            .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
+            .toSet()
 
     private fun buildSlockMarkdownParagraphAnnotatedString(
         content: String,
