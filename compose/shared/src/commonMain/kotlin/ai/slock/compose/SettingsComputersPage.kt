@@ -96,6 +96,7 @@ internal data class KuiklySettingsComputersPayload(
     val canAddComputer: Boolean = false,
     val addComputerUnavailableReason: String? = null,
     val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null,
     val emptyTitle: String = "No computers yet",
     val emptyDetail: String = "Connect a desktop daemon to see it here."
 )
@@ -119,6 +120,8 @@ internal data class KuiklySettingsComputerItem(
     val id: String = "",
     val name: String = "Computer",
     val daemonVersion: String = "",
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
     val online: Boolean = false,
     val hostname: String? = null,
     val platform: String? = null,
@@ -469,7 +472,10 @@ internal fun SettingsComputersContent(
             item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
         } else {
             items(payload.computers.size, key = { index -> "computer-$index-${payload.computers[index].id}" }) { index ->
-                SettingsComputerCard(payload.computers[index]) {
+                SettingsComputerCard(
+                    item = payload.computers[index],
+                    latestComputerVersion = payload.latestComputerVersion
+                ) {
                     onEvent("openComputer", payload.computers[index].id)
                 }
             }
@@ -1139,7 +1145,8 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
             ),
         canAddComputer = true,
         addComputerUnavailableReason = null,
-        latestDaemonVersion = "0.63.7"
+        latestDaemonVersion = "0.63.7",
+        latestComputerVersion = "0.0.62"
     )
 
 private fun visualSettingsComputerDetailPayload(
@@ -1151,6 +1158,8 @@ private fun visualSettingsComputerDetailPayload(
                 id = "computer-mbp",
                 name = "Jiachengs-MacBook-Pro",
                 daemonVersion = "0.0.50",
+                computerVersion = "0.0.50",
+                isComputer = true,
                 online = true,
                 hostname = "Jiachengs-MacBook-Pro.local",
                 platform = "darwin",
@@ -1191,6 +1200,8 @@ private fun visualPrimaryComputer(): KuiklySettingsComputerItem =
         id = "computer-mbp",
         name = "Jiachengs-MacBook-Pro.local",
         daemonVersion = "0.63.7",
+        computerVersion = "0.0.50",
+        isComputer = true,
         online = true,
         hostname = "Jiachengs-MacBook-Pro.local",
         platform = "darwin",
@@ -1211,7 +1222,8 @@ private fun SettingsComputersSnapshot.toComputersPayload(
         computers = computers.map { it.toComputerItem(timeContext) },
         canAddComputer = canAddComputer,
         addComputerUnavailableReason = addComputerUnavailableReason,
-        latestDaemonVersion = latestDaemonVersion
+        latestDaemonVersion = latestDaemonVersion,
+        latestComputerVersion = latestComputerVersion
     )
 
 internal fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayload(
@@ -1299,6 +1311,8 @@ internal fun SettingsComputerSnapshot.toComputerItem(
         id = id,
         name = name,
         daemonVersion = daemonVersion,
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         online = online,
         hostname = hostname,
         platform = platform,
@@ -1394,10 +1408,14 @@ private fun settingsComputerErrorTitle(code: String): String = when (code) {
 }
 
 @Composable
-private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() -> Unit)?) {
+private fun SettingsComputerCard(
+    item: KuiklySettingsComputerItem,
+    latestComputerVersion: String?,
+    onClick: (() -> Unit)?
+) {
     // #77: align the Settings Computers list card with React's
     // `MobileComputersPanel.tsx` (107 行) and `Sidebar.tsx` line 1248-1290 list
-    // pattern — each card shows name + status dot + daemon version line.
+    // pattern — each card shows name + status dot + run-kind version line.
     // host/platform/createdAt/lastHeartbeat/runtimes are intentionally NOT
     // rendered here; they live on the ComputerDetail page (see #74 commit
     // `cf01a0a4`) and `MachineDetailPanel.tsx` Info / Detected Runtimes
@@ -1421,22 +1439,86 @@ private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() 
                     Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     OnlineDot(item.online)
                 }
-                val daemonVersion = item.daemonVersion.takeIf { it.isNotBlank() }
+                val runLabel = settingsComputerRunLabel(item)
+                val versionWarning =
+                    settingsComputerVersionWarning(
+                        currentVersion = item.computerVersion,
+                        latestVersion = latestComputerVersion,
+                        isComputer = item.isComputer
+                    )
                 Text(
-                    text = if (daemonVersion != null) "daemon v$daemonVersion" else "daemon offline",
+                    text = runLabel.text,
                     style = SlockType.Input.copy(
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
-                        color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
-                        fontStyle = if (daemonVersion != null) null else FontStyle.Italic
+                        color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
+                        fontStyle = if (runLabel.isOffline) FontStyle.Italic else null
                     ),
-                    color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
+                    color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                versionWarning?.let { warning ->
+                    Text(
+                        text = warning,
+                        style = SlockType.Input.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = SlockColor.AccentOrange,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = SlockColor.AccentOrange,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
+}
+
+private data class SettingsComputerRunLabel(
+    val text: String,
+    val isOffline: Boolean
+)
+
+private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): SettingsComputerRunLabel {
+    val kind = if (item.isComputer) "computer" else "daemon"
+    if (!item.online) return SettingsComputerRunLabel("$kind offline", isOffline = true)
+    val version =
+        if (item.isComputer) item.computerVersion?.takeIf { it.isNotBlank() }
+        else item.daemonVersion.takeIf { it.isNotBlank() }
+    return if (version != null) {
+        SettingsComputerRunLabel("$kind v$version", isOffline = false)
+    } else {
+        SettingsComputerRunLabel("$kind online", isOffline = false)
+    }
+}
+
+private fun settingsComputerVersionWarning(
+    currentVersion: String?,
+    latestVersion: String?,
+    isComputer: Boolean
+): String? {
+    if (!isComputer || !isSettingsComputerOutdated(currentVersion, latestVersion)) return null
+    return "v${currentVersion?.trim()} -> v${latestVersion?.trim()}"
+}
+
+private val SettingsComputerSemverTriple = Regex("""^\d+\.\d+\.\d+$""")
+
+private fun isSettingsComputerOutdated(currentVersion: String?, latestVersion: String?): Boolean {
+    val current = currentVersion.settingsComputerVersionTripleOrNull() ?: return false
+    val latest = latestVersion.settingsComputerVersionTripleOrNull() ?: return false
+    for (index in current.indices) {
+        if (current[index] < latest[index]) return true
+        if (current[index] > latest[index]) return false
+    }
+    return false
+}
+
+private fun String?.settingsComputerVersionTripleOrNull(): List<Int>? {
+    val value = this?.trim()?.removePrefix("v")?.takeIf { SettingsComputerSemverTriple.matches(it) } ?: return null
+    return value.split('.').map { it.toInt() }
 }
 
 @Composable

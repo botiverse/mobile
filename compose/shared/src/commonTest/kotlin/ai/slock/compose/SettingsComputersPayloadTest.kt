@@ -145,11 +145,11 @@ class SettingsComputersPayloadTest {
     }
 
     @Test
-    fun computersListPayloadRoundTripsDaemonVersionForOnlineAndOfflineMachines() {
-        // #77: list card only renders name + status + daemon version line,
+    fun computersListPayloadRoundTripsRunVersionForOnlineAndOfflineMachines() {
+        // #77/#268: list card renders name + status + run-kind version line,
         // matching React MobileComputersPanel.tsx + Sidebar.tsx:1248-1290. The
-        // payload must carry daemonVersion on the per-item level so the page
-        // can fall back to "daemon offline" when it is blank, without
+        // payload must carry daemonVersion/computerVersion on the per-item level
+        // so the page can fall back to "daemon/computer offline" when blank, without
         // pulling in fields the React list doesn't show (createdAt /
         // runtimes / lastHeartbeat / hostname / os live on the detail
         // payload, see #74 commit cf01a0a4).
@@ -157,12 +157,15 @@ class SettingsComputersPayloadTest {
             KuiklySettingsComputersPayload(
                 instanceId = "computers-list",
                 latestDaemonVersion = "0.53.0",
+                latestComputerVersion = "0.0.62",
                 computers =
                     listOf(
                         KuiklySettingsComputerItem(
                             id = "machine-1",
                             name = "Maria Laptop",
                             daemonVersion = "0.53.0",
+                            computerVersion = "0.0.61",
+                            isComputer = true,
                             online = true
                         ),
                         KuiklySettingsComputerItem(
@@ -183,6 +186,9 @@ class SettingsComputersPayloadTest {
         assertEquals(2, decoded.computers.size)
         val (online, offline) = decoded.computers
         assertEquals("0.53.0", online.daemonVersion)
+        assertEquals("0.0.61", online.computerVersion)
+        assertEquals(true, online.isComputer)
+        assertEquals("0.0.62", decoded.latestComputerVersion)
         assertEquals(true, online.online)
         assertEquals("", offline.daemonVersion)
         assertEquals(false, offline.online)

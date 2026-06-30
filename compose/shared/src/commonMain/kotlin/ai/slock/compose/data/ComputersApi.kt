@@ -116,6 +116,7 @@ internal class SlockComputersApiClient(
                 machines = wire.machines.mapNotNull { it.toSummary() },
                 machineCount = wire.machines.size,
                 latestDaemonVersion = wire.latestDaemonVersion,
+                latestComputerVersion = wire.latestComputerVersion,
                 onlineCount = wire.machines.count { it.status == "online" }
             )
         }
@@ -187,7 +188,8 @@ internal data class ComputerListSummary(
     val machines: List<ComputerSummary>,
     val machineCount: Int,
     val onlineCount: Int,
-    val latestDaemonVersion: String?
+    val latestDaemonVersion: String?,
+    val latestComputerVersion: String?
 )
 
 internal data class ComputerSummary(
@@ -198,6 +200,8 @@ internal data class ComputerSummary(
     val apiKeyPrefix: String?,
     val runtimes: List<String>,
     val daemonVersion: String?,
+    val computerVersion: String?,
+    val isComputer: Boolean,
     val hostname: String?,
     val os: String?,
     val lastHeartbeat: String?,
@@ -269,7 +273,8 @@ private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataR
 @Serializable
 private data class ComputersListResponseDto(
     val machines: List<ComputerDto>,
-    val latestDaemonVersion: String? = null
+    val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null
 )
 
 @Serializable
@@ -281,6 +286,8 @@ private data class ComputerDto(
     val apiKeyPrefix: String? = null,
     val runtimes: List<String> = emptyList(),
     val daemonVersion: String? = null,
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
     val hostname: String? = null,
     val os: String? = null,
     val lastHeartbeat: String? = null,
@@ -303,6 +310,8 @@ private data class MachineRenameDto(
     val apiKeyPrefix: String? = null,
     val runtimes: List<String> = emptyList(),
     val daemonVersion: String? = null,
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
     val hostname: String? = null,
     val os: String? = null,
     val lastHeartbeat: String? = null,
@@ -333,6 +342,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         apiKeyPrefix = apiKeyPrefix,
         runtimes = runtimes,
         daemonVersion = daemonVersion,
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         hostname = hostname,
         os = os,
         lastHeartbeat = lastHeartbeat,
@@ -350,6 +361,8 @@ private fun MachineRenameDto.toSummary(): ComputerSummary? {
         apiKeyPrefix = apiKeyPrefix,
         runtimes = runtimes,
         daemonVersion = daemonVersion,
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         hostname = hostname,
         os = os,
         lastHeartbeat = lastHeartbeat,

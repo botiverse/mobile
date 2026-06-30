@@ -457,6 +457,7 @@ private fun WireServerMemberProfile.toMemberProfile(): MemberProfile {
 private data class WireSettingsComputersResponse(
     val machines: List<WireSettingsComputer>,
     val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null,
 )
 
 @Serializable
@@ -466,6 +467,8 @@ private data class WireSettingsComputer(
     val hostname: String? = null,
     val os: String? = null,
     val daemonVersion: String? = null,
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
     val status: String? = null,
     val lastHeartbeat: String? = null,
 )
@@ -478,6 +481,7 @@ fun parseSharedSettingsComputers(bodyText: String): SettingsComputersSnapshot? =
             .filter { it.id.isNotBlank() || it.name.isNotBlank() },
         canAddComputer = false,
         latestDaemonVersion = response.latestDaemonVersion,
+        latestComputerVersion = response.latestComputerVersion,
     )
 }.getOrNull()
 
@@ -488,6 +492,8 @@ private fun WireSettingsComputer.toSettingsComputerSnapshot(): SettingsComputerS
         id = id.ifBlank { label },
         name = label.ifBlank { "Unknown computer" },
         daemonVersion = daemonVersion ?: "daemon unavailable",
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         online = normalizedStatus == "online",
         hostname = hostname,
         platform = os,

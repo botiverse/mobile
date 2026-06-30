@@ -655,13 +655,16 @@ data class SettingsComputersSnapshot(
     val computers: List<SettingsComputerSnapshot>,
     val canAddComputer: Boolean = false,
     val addComputerUnavailableReason: String? = null,
-    val latestDaemonVersion: String? = null
+    val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null
 )
 
 data class SettingsComputerSnapshot(
     val id: String,
     val name: String,
     val daemonVersion: String,
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
     val online: Boolean,
     val hostname: String? = null,
     val platform: String? = null,

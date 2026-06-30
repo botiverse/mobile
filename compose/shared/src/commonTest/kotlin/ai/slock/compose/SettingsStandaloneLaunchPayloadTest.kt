@@ -37,7 +37,7 @@ class SettingsStandaloneLaunchPayloadTest {
         )
         assertDescriptorExcludes(
             descriptor = WireSettingsComputersLaunchPayload.serializer().descriptor,
-            fields = listOf("computers", "canAddComputer", "latestDaemonVersion", "emptyTitle")
+            fields = listOf("computers", "canAddComputer", "latestDaemonVersion", "latestComputerVersion", "emptyTitle")
         )
         assertDescriptorExcludes(
             descriptor = WireSettingsComputerDetailLaunchPayload.serializer().descriptor,
@@ -215,6 +215,7 @@ class SettingsStandaloneLaunchPayloadTest {
                         {"id":"machine-1","name":"Stale Machine","online":true}
                       ],
                       "latestDaemonVersion": "9.9.9",
+                      "latestComputerVersion": "9.9.8",
                       "canAddComputer": true
                     }
                     """.trimIndent(),
@@ -226,6 +227,7 @@ class SettingsStandaloneLaunchPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals(emptyList(), payload.computers)
         assertEquals(null, payload.latestDaemonVersion)
+        assertEquals(null, payload.latestComputerVersion)
         assertEquals(false, payload.canAddComputer)
     }
 
