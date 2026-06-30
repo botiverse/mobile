@@ -50,6 +50,7 @@ import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
 import build.raft.app.data.parseSharedThreadUploadedAttachments
+import build.raft.app.data.toHomeChannelRow
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
@@ -5234,7 +5235,7 @@ class ThreadPayloadTest {
                     handle = "member",
                     kind = MemberKind.Human
                 ),
-            channels = channels.toList(),
+            channels = channels.map { it.toHomeChannelRow() },
             directMessages = emptyList(),
             unreadTotal = 0
         )

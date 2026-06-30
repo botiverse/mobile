@@ -79,12 +79,12 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
 
 private fun sharedConversationDirectoryState(
     serverId: ServerId,
-    conversations: List<ConversationSummary>,
+    conversations: List<HomeConversationRow>,
     logger: (String) -> Unit
 ): SharedConversationDirectoryState {
     val projections =
         conversations
-            .mapNotNull { conversation -> conversation.toSharedConversationDirectoryProjection(serverId) }
+            .mapNotNull { conversation -> conversation.toConversationSummary().toSharedConversationDirectoryProjection(serverId) }
             .associateBy { it.canonicalChannelId }
     val aliasesById =
         buildMap<String, MutableSet<String>> {

@@ -676,7 +676,7 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
     }
 }
 
-private fun ConversationSummary.homeRowKey(): String =
+private fun HomeConversationRow.homeRowKey(): String =
     channelId?.value ?: threadId.value
 
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =

@@ -759,8 +759,8 @@ class ComposeLocalWriteThroughTest {
         HomeSnapshot(
             server = server,
             currentMember = member,
-            channels = channels,
-            directMessages = directMessages,
+            channels = channels.map { it.toHomeChannelRow() },
+            directMessages = directMessages.map { it.toHomeDirectMessageRow() },
             unreadTotal = 0
         )
 

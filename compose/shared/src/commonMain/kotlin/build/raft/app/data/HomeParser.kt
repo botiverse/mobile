@@ -81,20 +81,20 @@ fun parseSlockHome(
 
     val channels = payload.channels
         .filter { it.archivedAt == null }
-        .map { it.toConversation() }
-        .dedupeHomeConversations()
+        .map { it.toChannelRow() }
+        .dedupeHomeChannels()
 
     val directMessages = payload.directMessages
-        .map { it.toConversation(warningLogger) }
-        .dedupeHomeConversations()
+        .map { it.toDirectMessageRow(warningLogger) }
+        .dedupeHomeDirectMessages()
 
     if (channels.isEmpty() && directMessages.isEmpty()) {
         return DataResult.Empty(EmptyReason.NoChannels)
     }
 
     val unreadCounts = payload.unreadCounts
-    val channelsWithUnread = channels.applyUnreadCounts(unreadCounts)
-    val dmsWithUnread = directMessages.applyUnreadCounts(unreadCounts)
+    val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts)
+    val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts)
     val channelUnreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
     val serverUnreadTotal =
         payload.serverUnreadSummary
@@ -130,8 +130,8 @@ fun parseSharedChannelSnapshot(
         server = server,
         channels = homeJson.decodeFromString(ListSerializer(HomeChannelWireDto.serializer()), bodyText)
             .filter { it.archivedAt == null }
-            .map { it.toConversation() }
-            .dedupeHomeConversations(),
+            .map { it.toChannelRow() }
+            .dedupeHomeChannels(),
     )
 }.getOrNull()
 
@@ -143,22 +143,22 @@ fun parseSharedDirectMessageSnapshot(
     DirectMessageSnapshot(
         server = server,
         directMessages = homeJson.decodeFromString(ListSerializer(HomeDirectMessageWireDto.serializer()), bodyText)
-            .map { it.toConversation(warningLogger) }
-            .dedupeHomeConversations(),
+            .map { it.toDirectMessageRow(warningLogger) }
+            .dedupeHomeDirectMessages(),
     )
 }.getOrNull()
 
 fun parseSharedCreateChannelResult(bodyText: String): CreateChannelResult? = runCatching {
     CreateChannelResult(
         channel = homeJson.decodeFromString(HomeChannelWireDto.serializer(), bodyText)
-            .toConversation()
+            .toChannelRow()
     )
 }.getOrNull()
 
 fun parseSharedOpenDirectMessageResult(bodyText: String): OpenDirectMessageResult? = runCatching {
     OpenDirectMessageResult(
         conversation = homeJson.decodeFromString(HomeDirectMessageWireDto.serializer(), bodyText)
-            .toConversation { _ -> },
+            .toDirectMessageRow { _ -> },
         directMessages = emptyList(),
     )
 }.getOrNull()
@@ -168,7 +168,7 @@ fun parseSharedChannelArchiveResult(
     fallbackChannelId: ChannelId,
 ): ChannelArchiveResult? = runCatching {
     val channel = homeJson.decodeFromString(HomeChannelWireDto.serializer(), bodyText)
-        .toConversation()
+        .toChannelRow()
         .copy(archived = true)
     ChannelArchiveResult(
         channelId = channel.channelId ?: fallbackChannelId,
@@ -203,9 +203,9 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
         if (decoded.ok) ChannelDeleteResult(channelId = channelId, deleted = true) else null
     }.getOrNull()
 
-private fun HomeChannelWireDto.toConversation(): ConversationSummary {
+private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
     val isJoint = jointChannelId?.isNotBlank() == true || jointRole?.isNotBlank() == true
-    return ConversationSummary(
+    return HomeChannelRow(
         threadId = ThreadId(id),
         channelId = ChannelId(id),
         channelType = type.takeIf { it.isNotBlank() },
@@ -229,7 +229,7 @@ private fun HomeChannelWireDto.toConversation(): ConversationSummary {
     )
 }
 
-private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> Unit): ConversationSummary {
+private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) -> Unit): HomeDirectMessageRow {
     val displayName =
         peerDisplayName?.takeIf { it.isNotBlank() }
             ?: peerName.takeIf { it.isNotBlank() }
@@ -237,7 +237,7 @@ private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> U
     if (peerAvatarUrl.isNullOrBlank() && peerGravatarHash.isNullOrBlank()) {
         warningLogger("dm_avatar_missing source=home_direct_messages peerId=$peerId peerName=$displayName")
     }
-    return ConversationSummary(
+    return HomeDirectMessageRow(
         threadId = ThreadId(id),
         channelId = ChannelId(id),
         kind = ConversationKind.DirectMessage,
@@ -276,17 +276,34 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): Me
     )
 }
 
-private fun List<ConversationSummary>.applyUnreadCounts(
+private fun List<HomeChannelRow>.applyChannelUnreadCounts(
     counts: Map<ChannelId, Int>
-): List<ConversationSummary> =
+): List<HomeChannelRow> =
     map { conversation ->
-        val channelId = conversation.channelId
-        val count = if (channelId == null) null else counts[channelId]
+        val count = counts[conversation.channelId]
         if (count == null) conversation else conversation.copy(unreadCount = count, unreadCountKnown = true)
     }
 
-private fun List<ConversationSummary>.dedupeHomeConversations(): List<ConversationSummary> {
-    val deduped = LinkedHashMap<String, ConversationSummary>()
+private fun List<HomeDirectMessageRow>.applyDirectMessageUnreadCounts(
+    counts: Map<ChannelId, Int>
+): List<HomeDirectMessageRow> =
+    map { conversation ->
+        val count = counts[conversation.channelId]
+        if (count == null) conversation else conversation.copy(unreadCount = count, unreadCountKnown = true)
+    }
+
+private fun List<HomeChannelRow>.dedupeHomeChannels(): List<HomeChannelRow> {
+    val deduped = LinkedHashMap<String, HomeChannelRow>()
+    for (conversation in this) {
+        val key = conversation.channelId?.value ?: conversation.threadId.value
+        deduped.remove(key)
+        deduped[key] = conversation
+    }
+    return deduped.values.toList()
+}
+
+private fun List<HomeDirectMessageRow>.dedupeHomeDirectMessages(): List<HomeDirectMessageRow> {
+    val deduped = LinkedHashMap<String, HomeDirectMessageRow>()
     for (conversation in this) {
         val key = conversation.channelId?.value ?: conversation.threadId.value
         deduped.remove(key)

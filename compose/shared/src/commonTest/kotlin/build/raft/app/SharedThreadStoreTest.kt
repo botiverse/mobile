@@ -70,6 +70,8 @@ import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.WireMessage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
+import build.raft.app.data.toHomeChannelRow
+import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -1018,7 +1020,7 @@ class SharedThreadStoreTest {
                             joined = false,
                             memberCount = 4,
                             permissions = ConversationPermissions(canSend = false)
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages = emptyList(),
                 unreadTotal = 0
@@ -2472,7 +2474,7 @@ class SharedThreadStoreTest {
                             kind = ConversationKind.DirectMessage,
                             name = "Product-UX-Designer",
                             presenceMemberId = MemberId("agent-1")
-                        )
+                        ).toHomeDirectMessageRow()
                     ),
                 unreadTotal = 0
             )
@@ -2662,7 +2664,7 @@ class SharedThreadStoreTest {
                             kind = ConversationKind.Channel,
                             name = "general",
                             subtitle = "#general"
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages = emptyList(),
                 unreadTotal = 0
@@ -3161,7 +3163,7 @@ class SharedThreadStoreTest {
                             name = "all",
                             subtitle = "General updates",
                             memberCount = 4
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages = emptyList(),
                 unreadTotal = 0
@@ -4212,7 +4214,7 @@ class SharedThreadStoreTest {
                             kind = ConversationKind.DirectMessage,
                             name = "Product-UX-Designer",
                             presenceMemberId = MemberId("agent-1")
-                        )
+                        ).toHomeDirectMessageRow()
                     ),
                 unreadTotal = 0
             )
@@ -6197,7 +6199,7 @@ class SharedThreadStoreTest {
                             channelId = ChannelId("channel-created"),
                             kind = ConversationKind.Channel,
                             name = request.name
-                        ),
+                        ).toHomeChannelRow(),
                     addedAgentMemberIds = request.agentMemberIds,
                     addedUserMemberIds = request.userMemberIds
                 )

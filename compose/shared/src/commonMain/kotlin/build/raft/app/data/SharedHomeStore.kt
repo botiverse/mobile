@@ -89,6 +89,7 @@ internal class SharedHomeStore(
 
     private var loadJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
+    private val contentByServer = linkedMapOf<ServerId, SharedHomeContentState.Content>()
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
     // base snapshot and clobber any server-side pinned list.
@@ -135,6 +136,7 @@ internal class SharedHomeStore(
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
         sidebarOrderByServer.clear()
+        contentByServer.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
     }
@@ -264,7 +266,7 @@ internal class SharedHomeStore(
         }
     }
 
-    private fun SharedHomeState.withCreatedChannel(channel: ConversationSummary): SharedHomeState {
+    private fun SharedHomeState.withCreatedChannel(channel: HomeChannelRow): SharedHomeState {
         val nextContent =
             when (val current = content) {
                 is SharedHomeContentState.Content ->
@@ -540,17 +542,25 @@ internal class SharedHomeStore(
             }
 
             val activeSession = authStore.readSession() ?: session
+            val activeServerId = requestedServerId ?: activeSession.currentServerId
             reduceState(
                 _state.value.copy(
                     content =
                         if (switchingServers) {
-                            SharedHomeContentState.Loading(activeSession)
+                            activeServerId
+                                ?.let(::ServerId)
+                                ?.let { serverId ->
+                                    contentByServer[serverId]?.copy(
+                                        session = activeSession,
+                                        contentRefreshing = showRefreshAffordance
+                                    )
+                                }
+                                ?: SharedHomeContentState.Loading(activeSession)
                         } else {
                             _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
                         }
                 )
             )
-            val activeServerId = requestedServerId ?: activeSession.currentServerId
             val activeServer = activeServerId?.let(::ServerId)
             loadHomeFromNetwork(
                 request = request,
@@ -730,12 +740,14 @@ internal class SharedHomeStore(
             }
         val baseSnapshot = snapshotWithSidebarOrder.preserveStableRowsFrom(previousContent?.baseSnapshot)
         updateConversationIdentity(baseSnapshot)
-        return SharedHomeContentState.Content(
+        val content = SharedHomeContentState.Content(
             snapshot = baseSnapshot.preserveStableRowsFrom(previousContent?.snapshot),
             session = session,
             contentRefreshing = contentRefreshing,
             baseSnapshot = baseSnapshot
         )
+        contentByServer[baseSnapshot.server.id] = content
+        return content
     }
 
     private suspend fun loadNotifications() {
@@ -821,12 +833,15 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content ?: return false
         if (current.snapshot.server.id != serverId) return false
         if (current.snapshot.sidebarOrder == next) return false
+        val nextContent =
+            current.copy(
+                snapshot = current.snapshot.copy(sidebarOrder = next),
+                baseSnapshot = current.baseSnapshot.copy(sidebarOrder = next)
+            )
+        contentByServer[serverId] = nextContent
         reduceState(
             _state.value.copy(
-                content = current.copy(
-                    snapshot = current.snapshot.copy(sidebarOrder = next),
-                    baseSnapshot = current.baseSnapshot.copy(sidebarOrder = next)
-                )
+                content = nextContent
             )
         )
         return true
@@ -1002,12 +1017,15 @@ internal class SharedHomeStore(
         val nextSnapshot = transform(current.snapshot)
         val nextBaseSnapshot = transform(current.baseSnapshot)
         updateConversationIdentity(nextBaseSnapshot)
+        val nextContent =
+            current.copy(
+                snapshot = nextSnapshot,
+                baseSnapshot = nextBaseSnapshot
+            )
+        contentByServer[nextBaseSnapshot.server.id] = nextContent
         reduceState(
             _state.value.copy(
-                content = current.copy(
-                    snapshot = nextSnapshot,
-                    baseSnapshot = nextBaseSnapshot
-                ),
+                content = nextContent,
                 serverUnreadCounts = nextSnapshot.serverUnreadCounts
             )
         )
@@ -1015,6 +1033,7 @@ internal class SharedHomeStore(
 
     private fun rollbackHomeContent(previous: SharedHomeContentState.Content) {
         updateConversationIdentity(previous.baseSnapshot)
+        contentByServer[previous.baseSnapshot.server.id] = previous
         reduceState(_state.value.copy(content = previous))
     }
 
@@ -1061,7 +1080,7 @@ internal class SharedHomeStore(
 
 }
 
-private val ConversationSummary.isAgentDirectMessage: Boolean
+private val HomeDirectMessageRow.isAgentDirectMessage: Boolean
     get() =
         kind == ConversationKind.DirectMessage &&
             directMessagePeerType.equals("agent", ignoreCase = true)
@@ -1163,7 +1182,7 @@ internal fun snapshotToBadgeCount(
  */
 internal expect fun defaultNowMillis(): Long
 
-private fun HomeSnapshot.findHomeConversation(conversationId: String): ConversationSummary? =
+private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConversationRow? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
 
 private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
@@ -1225,6 +1244,16 @@ private data class HomeRealtimeConversationPatch(
     val unreadIncrement: Int
 )
 
+private data class HomeRealtimeChannelRowPatch(
+    val conversation: HomeChannelRow,
+    val unreadIncrement: Int
+)
+
+private data class HomeRealtimeDirectMessageRowPatch(
+    val conversation: HomeDirectMessageRow,
+    val unreadIncrement: Int
+)
+
 private fun HomeSnapshot.withRealtimeMessages(
     patch: HomeRealtimeMessagePatch,
     activeConversationId: String?
@@ -1260,20 +1289,19 @@ private fun HomeSnapshot.withRealtimeMessagesForStream(
             -1
         }
     if (channelIndex < 0 && directMessageIndex < 0) return this
-    val currentConversation =
-        if (channelIndex >= 0) channels[channelIndex] else directMessages[directMessageIndex]
-    val conversationPatch =
-        currentConversation.withRealtimePreview(
-            latest = latest,
-            messages = messages,
-            incrementUnread = incrementUnread,
-            activeConversationId = activeConversationId,
-            currentMemberId = currentMember.id.value
-        )
-    if (conversationPatch.conversation == currentConversation) return this
-    val nextUnreadTotal = (unreadTotal + conversationPatch.unreadIncrement).coerceAtLeast(0)
-    val nextServerUnreadCount = (server.unreadCount + conversationPatch.unreadIncrement).coerceAtLeast(0)
     return if (channelIndex >= 0) {
+        val currentConversation = channels[channelIndex]
+        val conversationPatch =
+            currentConversation.withRealtimePreview(
+                latest = latest,
+                messages = messages,
+                incrementUnread = incrementUnread,
+                activeConversationId = activeConversationId,
+                currentMemberId = currentMember.id.value
+            )
+        if (conversationPatch.conversation == currentConversation) return this
+        val nextUnreadTotal = (unreadTotal + conversationPatch.unreadIncrement).coerceAtLeast(0)
+        val nextServerUnreadCount = (server.unreadCount + conversationPatch.unreadIncrement).coerceAtLeast(0)
         copy(
             channels = channels.replaceAt(channelIndex, conversationPatch.conversation),
             server = server.copy(unreadCount = nextServerUnreadCount),
@@ -1281,6 +1309,18 @@ private fun HomeSnapshot.withRealtimeMessagesForStream(
             serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
         )
     } else {
+        val currentConversation = directMessages[directMessageIndex]
+        val conversationPatch =
+            currentConversation.withRealtimePreview(
+                latest = latest,
+                messages = messages,
+                incrementUnread = incrementUnread,
+                activeConversationId = activeConversationId,
+                currentMemberId = currentMember.id.value
+            )
+        if (conversationPatch.conversation == currentConversation) return this
+        val nextUnreadTotal = (unreadTotal + conversationPatch.unreadIncrement).coerceAtLeast(0)
+        val nextServerUnreadCount = (server.unreadCount + conversationPatch.unreadIncrement).coerceAtLeast(0)
         copy(
             directMessages = directMessages.replaceAt(directMessageIndex, conversationPatch.conversation),
             server = server.copy(unreadCount = nextServerUnreadCount),
@@ -1288,6 +1328,42 @@ private fun HomeSnapshot.withRealtimeMessagesForStream(
             serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
         )
     }
+}
+
+private fun HomeChannelRow.withRealtimePreview(
+    latest: Message,
+    messages: List<Message>,
+    incrementUnread: Boolean,
+    activeConversationId: String?,
+    currentMemberId: String
+): HomeRealtimeChannelRowPatch {
+    val patch =
+        toConversationSummary().withRealtimePreview(
+            latest = latest,
+            messages = messages,
+            incrementUnread = incrementUnread,
+            activeConversationId = activeConversationId,
+            currentMemberId = currentMemberId
+        )
+    return HomeRealtimeChannelRowPatch(patch.conversation.toHomeChannelRow(), patch.unreadIncrement)
+}
+
+private fun HomeDirectMessageRow.withRealtimePreview(
+    latest: Message,
+    messages: List<Message>,
+    incrementUnread: Boolean,
+    activeConversationId: String?,
+    currentMemberId: String
+): HomeRealtimeDirectMessageRowPatch {
+    val patch =
+        toConversationSummary().withRealtimePreview(
+            latest = latest,
+            messages = messages,
+            incrementUnread = incrementUnread,
+            activeConversationId = activeConversationId,
+            currentMemberId = currentMemberId
+        )
+    return HomeRealtimeDirectMessageRowPatch(patch.conversation.toHomeDirectMessageRow(), patch.unreadIncrement)
 }
 
 private fun ConversationSummary.withRealtimePreview(
@@ -1351,7 +1427,17 @@ private fun HomeSnapshot.withConversationUnread(
     unreadCount: Int
 ): HomeSnapshot {
     var delta = 0
-    fun ConversationSummary.updated(): ConversationSummary {
+    fun HomeChannelRow.updated(): HomeChannelRow {
+        if (!matchesHomeConversation(conversationId)) return this
+        val nextUnread = unreadCount.coerceAtLeast(0)
+        delta += nextUnread - this.unreadCount
+        return copy(
+            unreadCount = nextUnread,
+            unreadCountKnown = true,
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null
+        )
+    }
+    fun HomeDirectMessageRow.updated(): HomeDirectMessageRow {
         if (!matchesHomeConversation(conversationId)) return this
         val nextUnread = unreadCount.coerceAtLeast(0)
         delta += nextUnread - this.unreadCount
@@ -1385,7 +1471,7 @@ private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
 
 private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {
     var removedUnread = 0
-    fun shouldRemove(conversation: ConversationSummary): Boolean {
+    fun shouldRemove(conversation: HomeConversationRow): Boolean {
         val remove = conversation.matchesHomeConversation(conversationId)
         if (remove) removedUnread += conversation.unreadCount
         return remove
@@ -1403,10 +1489,13 @@ private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSn
     )
 }
 
-private fun ConversationSummary.matchesHomeConversation(conversationId: String): Boolean =
+private fun HomeConversationRow.matchesHomeConversation(conversationId: String): Boolean =
     threadId.value == conversationId ||
         channelId?.value == conversationId ||
         messageStreamChannelId().value == conversationId
+
+private fun HomeConversationRow.messageStreamChannelId(): ChannelId =
+    thread?.streamChannelId ?: channelId ?: ChannelId(threadId.value)
 
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
@@ -1445,7 +1534,7 @@ sealed interface SharedHomeIntent {
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
-    data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
+    data class ChannelCreated(val channel: HomeChannelRow) : SharedHomeIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
     /**
      * #211: pin or unpin a conversation. The store applies an optimistic

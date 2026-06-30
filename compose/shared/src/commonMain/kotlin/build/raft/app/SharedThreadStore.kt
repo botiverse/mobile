@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.toConversationSummary
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.AttachmentUploadFile
 import build.raft.app.data.AttachmentUploadRequest
@@ -1734,6 +1735,7 @@ internal class SharedThreadDataSource(
         if (lookupIds.isEmpty()) return null
         val home = currentHomeSnapshot(session) ?: return null
         return (home.channels + home.directMessages)
+            .map { it.toConversationSummary() }
             .firstOrNull { conversation -> conversation.matchesHeaderFallbackId(lookupIds) }
     }
 
@@ -3203,6 +3205,7 @@ internal fun buildMarkdownChannelLaunchPayload(
     if (key.isBlank()) return null
     val matches =
         home.channels
+            .map { it.toConversationSummary() }
             .filter { it.name.markdownChannelLookupKey() == key }
             .distinctBy { it.messageStreamChannelId().value }
     if (matches.size != 1) return null

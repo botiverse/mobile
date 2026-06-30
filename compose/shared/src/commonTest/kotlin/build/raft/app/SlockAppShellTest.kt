@@ -24,7 +24,8 @@ class SlockAppShellTest {
             SlockAppShellScope(
                 topSafeArea = 24.dp,
                 bottomSafeArea = 18.dp,
-                bottomTabBarContentInset = 88.dp
+                bottomTabBarContentInset = 88.dp,
+                bottomTabBarOverlaysContent = false
             )
 
         assertEquals(24.dp, scope.topInset(includeTopSafeArea = true))

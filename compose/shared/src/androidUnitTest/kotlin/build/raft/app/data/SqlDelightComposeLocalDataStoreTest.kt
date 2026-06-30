@@ -343,7 +343,7 @@ class SqlDelightComposeLocalDataStoreTest {
                             channelId = ChannelId("channel-1"),
                             kind = ConversationKind.Channel,
                             name = "general"
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages =
                     listOf(
@@ -354,7 +354,7 @@ class SqlDelightComposeLocalDataStoreTest {
                             name = "Codex Agent",
                             directMessagePeerType = "agent",
                             presenceMemberId = MemberId("agent-1")
-                        )
+                        ).toHomeDirectMessageRow()
                     ),
                 unreadTotal = 0
             )
@@ -389,7 +389,7 @@ class SqlDelightComposeLocalDataStoreTest {
                             kind = ConversationKind.Joint,
                             name = "raft-mobile",
                             subtitle = "Mobile bridge"
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages = emptyList(),
                 unreadTotal = 0
@@ -445,7 +445,7 @@ class SqlDelightComposeLocalDataStoreTest {
                                     parentMessageId = MessageId("parent-1"),
                                     streamChannelId = ChannelId("reply-thread-1")
                                 )
-                        )
+                        ).toHomeChannelRow()
                     ),
                 directMessages = emptyList(),
                 unreadTotal = 0

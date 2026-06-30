@@ -66,7 +66,7 @@ class SharedMembersStoreTest {
         )
 
     private class FakeChannelRepository(
-        channels: List<ConversationSummary> = listOf(channel("channel-1", "general", "team"))
+        channels: List<HomeChannelRow> = listOf(channel("channel-1", "general", "team"))
     ) : ChannelRepository {
         val channelsByServer = mutableMapOf("server-1" to channels)
         var getChannelsCalls = 0
@@ -110,8 +110,8 @@ private fun channel(
     subtitle: String? = null,
     kind: ConversationKind = ConversationKind.Channel,
     archived: Boolean = false
-): ConversationSummary =
-    ConversationSummary(
+): HomeChannelRow =
+    HomeChannelRow(
         threadId = ThreadId(id),
         channelId = ChannelId(id),
         name = name,

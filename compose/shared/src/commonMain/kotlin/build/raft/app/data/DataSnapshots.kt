@@ -45,11 +45,209 @@ data class InboxItem(
 )
 
 @Serializable
+sealed interface HomeConversationRow {
+    val threadId: ThreadId
+    val channelId: ChannelId?
+    val channelType: String?
+    val thread: ThreadConversation?
+    val kind: ConversationKind
+    val name: String
+    val subtitle: String?
+    val directMessagePeerType: String?
+    val unreadCount: Int
+    val unreadCountKnown: Boolean
+    val mentionCount: Int
+    val mentionCountKnown: Boolean
+    val lastMessageId: MessageId?
+    val firstUnreadMessageId: MessageId?
+    val lastMessagePreview: String?
+    val lastMessageAt: String?
+    val lastMessageSenderName: String?
+    val presenceMemberId: MemberId?
+    val hasDraft: Boolean
+    val hasDraftKnown: Boolean
+    val joined: Boolean
+    val archived: Boolean
+    val memberCount: Int?
+    val jointChannelId: String?
+    val jointRole: String?
+    val jointPeerServerId: ServerId?
+    val jointPeerServerName: String?
+    val jointPeerServerSlug: String?
+    val jointPeerStatus: String?
+    val permissions: ConversationPermissions
+}
+
+@Serializable
+data class HomeChannelRow(
+    override val threadId: ThreadId,
+    override val channelId: ChannelId,
+    override val channelType: String? = null,
+    override val thread: ThreadConversation? = null,
+    override val kind: ConversationKind = ConversationKind.Channel,
+    override val name: String,
+    override val subtitle: String? = null,
+    override val directMessagePeerType: String? = null,
+    override val unreadCount: Int = 0,
+    override val unreadCountKnown: Boolean = false,
+    override val mentionCount: Int = 0,
+    override val mentionCountKnown: Boolean = false,
+    override val lastMessageId: MessageId? = null,
+    override val firstUnreadMessageId: MessageId? = null,
+    override val lastMessagePreview: String? = null,
+    override val lastMessageAt: String? = null,
+    override val lastMessageSenderName: String? = null,
+    override val presenceMemberId: MemberId? = null,
+    override val hasDraft: Boolean = false,
+    override val hasDraftKnown: Boolean = false,
+    override val joined: Boolean = true,
+    override val archived: Boolean = false,
+    override val memberCount: Int? = null,
+    override val jointChannelId: String? = null,
+    override val jointRole: String? = null,
+    override val jointPeerServerId: ServerId? = null,
+    override val jointPeerServerName: String? = null,
+    override val jointPeerServerSlug: String? = null,
+    override val jointPeerStatus: String? = null,
+    override val permissions: ConversationPermissions = ConversationPermissions()
+) : HomeConversationRow
+
+@Serializable
+data class HomeDirectMessageRow(
+    override val threadId: ThreadId,
+    override val channelId: ChannelId,
+    override val channelType: String? = null,
+    override val thread: ThreadConversation? = null,
+    override val kind: ConversationKind = ConversationKind.DirectMessage,
+    override val name: String,
+    override val subtitle: String? = null,
+    override val directMessagePeerType: String? = null,
+    override val unreadCount: Int = 0,
+    override val unreadCountKnown: Boolean = false,
+    override val mentionCount: Int = 0,
+    override val mentionCountKnown: Boolean = false,
+    override val lastMessageId: MessageId? = null,
+    override val firstUnreadMessageId: MessageId? = null,
+    override val lastMessagePreview: String? = null,
+    override val lastMessageAt: String? = null,
+    override val lastMessageSenderName: String? = null,
+    override val presenceMemberId: MemberId? = null,
+    override val hasDraft: Boolean = false,
+    override val hasDraftKnown: Boolean = false,
+    override val joined: Boolean = true,
+    override val archived: Boolean = false,
+    override val memberCount: Int? = null,
+    override val jointChannelId: String? = null,
+    override val jointRole: String? = null,
+    override val jointPeerServerId: ServerId? = null,
+    override val jointPeerServerName: String? = null,
+    override val jointPeerServerSlug: String? = null,
+    override val jointPeerStatus: String? = null,
+    override val permissions: ConversationPermissions = ConversationPermissions()
+) : HomeConversationRow
+
+fun HomeConversationRow.toConversationSummary(): ConversationSummary =
+    ConversationSummary(
+        threadId = threadId,
+        channelId = channelId,
+        channelType = channelType,
+        thread = thread,
+        kind = kind,
+        name = name,
+        subtitle = subtitle,
+        directMessagePeerType = directMessagePeerType,
+        unreadCount = unreadCount,
+        unreadCountKnown = unreadCountKnown,
+        mentionCount = mentionCount,
+        mentionCountKnown = mentionCountKnown,
+        lastMessageId = lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageAt = lastMessageAt,
+        lastMessageSenderName = lastMessageSenderName,
+        presenceMemberId = presenceMemberId,
+        hasDraft = hasDraft,
+        hasDraftKnown = hasDraftKnown,
+        joined = joined,
+        archived = archived,
+        memberCount = memberCount,
+        jointChannelId = jointChannelId,
+        jointRole = jointRole,
+        jointPeerServerId = jointPeerServerId,
+        jointPeerServerName = jointPeerServerName,
+        jointPeerServerSlug = jointPeerServerSlug,
+        jointPeerStatus = jointPeerStatus,
+        permissions = permissions
+    )
+
+fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
+    HomeChannelRow(
+        threadId = threadId,
+        channelId = channelId ?: ChannelId(threadId.value),
+        channelType = channelType,
+        thread = thread,
+        kind = if (kind == ConversationKind.Joint) ConversationKind.Joint else ConversationKind.Channel,
+        name = name,
+        subtitle = subtitle,
+        directMessagePeerType = directMessagePeerType,
+        unreadCount = unreadCount,
+        unreadCountKnown = unreadCountKnown,
+        mentionCount = mentionCount,
+        mentionCountKnown = mentionCountKnown,
+        lastMessageId = lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageAt = lastMessageAt,
+        lastMessageSenderName = lastMessageSenderName,
+        presenceMemberId = presenceMemberId,
+        hasDraft = hasDraft,
+        hasDraftKnown = hasDraftKnown,
+        joined = joined,
+        archived = archived,
+        memberCount = memberCount,
+        jointChannelId = jointChannelId,
+        jointRole = jointRole,
+        jointPeerServerId = jointPeerServerId,
+        jointPeerServerName = jointPeerServerName,
+        jointPeerServerSlug = jointPeerServerSlug,
+        jointPeerStatus = jointPeerStatus,
+        permissions = permissions
+    )
+
+fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
+    HomeDirectMessageRow(
+        threadId = threadId,
+        channelId = channelId ?: ChannelId(threadId.value),
+        channelType = channelType,
+        thread = thread,
+        kind = ConversationKind.DirectMessage,
+        name = name,
+        subtitle = subtitle,
+        directMessagePeerType = directMessagePeerType,
+        unreadCount = unreadCount,
+        unreadCountKnown = unreadCountKnown,
+        mentionCount = mentionCount,
+        mentionCountKnown = mentionCountKnown,
+        lastMessageId = lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageAt = lastMessageAt,
+        lastMessageSenderName = lastMessageSenderName,
+        presenceMemberId = presenceMemberId,
+        hasDraft = hasDraft,
+        hasDraftKnown = hasDraftKnown,
+        joined = joined,
+        archived = archived,
+        memberCount = memberCount,
+        permissions = permissions
+    )
+
+@Serializable
 data class HomeSnapshot(
     val server: ServerSummary,
     val currentMember: MemberProfile,
-    val channels: List<ConversationSummary>,
-    val directMessages: List<ConversationSummary>,
+    val channels: List<HomeChannelRow>,
+    val directMessages: List<HomeDirectMessageRow>,
     val unreadTotal: Int,
     /**
      * #81: explicit source provenance for [unreadTotal]. Matches
@@ -396,11 +594,11 @@ data class InboxDoneResult(
 
 data class ChannelSnapshot(
     val server: ServerSummary,
-    val channels: List<ConversationSummary>
+    val channels: List<HomeChannelRow>
 )
 
 data class CreateChannelResult(
-    val channel: ConversationSummary,
+    val channel: HomeChannelRow,
     val addedAgentMemberIds: List<String> = emptyList(),
     val addedUserMemberIds: List<String> = emptyList()
 )
@@ -408,7 +606,7 @@ data class CreateChannelResult(
 data class ChannelJoinResult(
     val channelId: ChannelId,
     val joined: Boolean = true,
-    val channel: ConversationSummary? = null
+    val channel: HomeChannelRow? = null
 )
 
 data class ChannelLeaveResult(
@@ -419,7 +617,7 @@ data class ChannelLeaveResult(
 data class ChannelArchiveResult(
     val channelId: ChannelId,
     val archived: Boolean = true,
-    val channel: ConversationSummary? = null
+    val channel: HomeChannelRow? = null
 )
 
 data class ChannelDeleteResult(
@@ -443,12 +641,12 @@ data class ReadReceiptResult(
 
 data class DirectMessageSnapshot(
     val server: ServerSummary,
-    val directMessages: List<ConversationSummary>
+    val directMessages: List<HomeDirectMessageRow>
 )
 
 data class OpenDirectMessageResult(
-    val conversation: ConversationSummary,
-    val directMessages: List<ConversationSummary>
+    val conversation: HomeDirectMessageRow,
+    val directMessages: List<HomeDirectMessageRow>
 )
 
 data class SavedSnapshot(

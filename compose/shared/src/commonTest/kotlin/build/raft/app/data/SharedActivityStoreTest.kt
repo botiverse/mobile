@@ -1155,7 +1155,7 @@ class SharedActivityStoreTest {
                     handle = "user",
                     kind = MemberKind.Human
                 ),
-            channels = listOf(conversation),
+            channels = listOf(conversation.toHomeChannelRow()),
             directMessages = emptyList(),
             unreadTotal = unreadTotal
         )

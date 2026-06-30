@@ -152,7 +152,7 @@ class SharedMembersStore(
             is DataResult.Content ->
                 _state.value =
                     _state.value.copy(
-                        channelSuggestions = result.data.channels.toSharedMembersChannelSuggestions(),
+                        channelSuggestions = result.data.channels.map { it.toConversationSummary() }.toSharedMembersChannelSuggestions(),
                         channelStatus = SharedMembersLoadStatus.Loaded,
                         channelErrorCode = null
                     )

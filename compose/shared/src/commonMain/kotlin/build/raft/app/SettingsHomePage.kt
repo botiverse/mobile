@@ -103,10 +103,15 @@ import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeConversationRow
+import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedHomeTopAction
 import build.raft.app.data.SharedHomeViewModel
+import build.raft.app.data.toConversationSummary
+import build.raft.app.data.toHomeChannelRow
+import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.data.SharedHomeNotification
 import build.raft.app.data.SharedHomeNotificationIcon
 import build.raft.app.data.SharedHomeNotificationKind
@@ -9909,7 +9914,7 @@ private fun SharedHomeScreen(
                     if (conversation == null) {
                         bridge.toast("Conversation is no longer available")
                     } else {
-                        onOpenConversation(conversation)
+                        onOpenConversation(conversation.toConversationSummary())
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 },
@@ -10107,6 +10112,7 @@ private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<Conversati
                 channel.permissions.canSend &&
                 channel.permissions.canAttach
         }
+        .map { it.toConversationSummary() }
         .mapIndexed { index, channel -> index to channel }
         .sortedWith(
             compareByDescending<Pair<Int, ConversationSummary>> {
@@ -12361,7 +12367,7 @@ private fun SharedHomeState.systemNotificationConversation(message: Message): Co
             message.channelId?.value,
             message.threadChannelId?.value
         )
-    return (snapshot.channels + snapshot.directMessages).firstOrNull { conversation ->
+    return (snapshot.channels + snapshot.directMessages).map { it.toConversationSummary() }.firstOrNull { conversation ->
         conversation.threadId.value in ids ||
             conversation.channelId?.value in ids ||
             conversation.thread?.streamChannelId?.value in ids ||
@@ -12451,11 +12457,11 @@ private fun homeSearchEntityResults(
         snapshot.directMessages
             .mapNotNull { conversation ->
                 val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
-                memberId to conversation
+                memberId to conversation.toConversationSummary()
             }
             .toMap()
     val conversationResults =
-        conversations.mapNotNull { conversation ->
+        conversations.map { it.toConversationSummary() }.mapNotNull { conversation ->
             if (!conversation.searchMatches(normalizedQuery)) return@mapNotNull null
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
@@ -12500,6 +12506,10 @@ private fun homeSearchEntityResults(
         .distinctBy { it.key }
         .take(5)
 }
+
+private fun HomeDirectMessageRow.isAgentDirectMessage(): Boolean =
+    kind == ConversationKind.DirectMessage &&
+        directMessagePeerType.equals("agent", ignoreCase = true)
 
 private fun ConversationSummary.isAgentDirectMessage(): Boolean =
     kind == ConversationKind.DirectMessage &&
@@ -12604,7 +12614,7 @@ internal data class SharedHomeConversationRowProjector(
     val directoryProjections: Map<String, SharedConversationDirectoryProjection> = emptyMap(),
     val draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty
 ) {
-    fun project(conversation: ConversationSummary): SlockHomeConversationItem =
+    fun project(conversation: HomeConversationRow): SlockHomeConversationItem =
         project(conversation.toSharedHomeConversationRowSeed())
 
     fun project(seed: SharedHomeConversationRowSeed): SlockHomeConversationItem =
@@ -12614,7 +12624,7 @@ internal data class SharedHomeConversationRowProjector(
         )
 }
 
-private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
+private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
     SharedHomeConversationRowSeed(
         id = threadId.value,
         kind = kind.name.lowercase(),
@@ -14238,7 +14248,7 @@ private val homeSearchVisualChannels = listOf(
         lastMessageAt = "10:38",
         lastMessageSenderName = "Product UX Designer",
         memberCount = 18
-    ),
+    ).toHomeChannelRow(),
     ConversationSummary(
         threadId = ThreadId("thread_android"),
         channelId = ChannelId("ch_android"),
@@ -14249,7 +14259,7 @@ private val homeSearchVisualChannels = listOf(
         lastMessageAt = "09:58",
         lastMessageSenderName = "Android Developer",
         memberCount = 8
-    )
+    ).toHomeChannelRow()
 )
 
 private val homeSearchVisualDirectMessages = listOf(
@@ -14263,7 +14273,7 @@ private val homeSearchVisualDirectMessages = listOf(
         lastMessageAt = "09:42",
         lastMessageSenderName = "Product UX Designer",
         presenceMemberId = MemberId("agent_product")
-    )
+    ).toHomeDirectMessageRow()
 )
 
 private val homeSearchVisualHomeState = SharedHomeState(

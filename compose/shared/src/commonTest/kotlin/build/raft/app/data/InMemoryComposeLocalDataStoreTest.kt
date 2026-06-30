@@ -88,6 +88,6 @@ class InMemoryComposeLocalDataStoreTest {
             channelId = channelId,
             kind = ConversationKind.Channel,
             name = "general"
-        )
+        ).toHomeChannelRow()
     }
 }

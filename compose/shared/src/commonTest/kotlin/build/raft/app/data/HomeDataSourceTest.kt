@@ -147,7 +147,7 @@ class HomeDataSourceTest {
                 parseHome = { _, session ->
                     DataResult.Content(
                         sampleHome(ServerId(session.currentServerId!!)).copy(
-                            directMessages = listOf(agentDm, humanDm)
+                            directMessages = listOf(agentDm.toHomeDirectMessageRow(), humanDm.toHomeDirectMessageRow())
                         )
                     )
                 }
@@ -679,7 +679,7 @@ class HomeDataSourceTest {
                         channelId = ChannelId("channel-1"),
                         kind = ConversationKind.Channel,
                         name = "general"
-                    )
+                    ).toHomeChannelRow()
                 ),
             directMessages = emptyList(),
             unreadTotal = 0

@@ -170,6 +170,44 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun selectServerRestoresCachedServerContentWhileRefreshIsPending() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = source(api = api, sessionStore = sessionStore),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+        val server2Content = store.state.value.content
+        assertTrue(server2Content is SharedHomeContentState.Content)
+        assertEquals("server-2", server2Content.snapshot.server.id.value)
+
+        val blockedSwitchBack = api.blockNextChannels()
+        val switchBackJob = launch { store.accept(SharedHomeIntent.SelectServer("server-1")) }
+        blockedSwitchBack.awaitStarted()
+
+        val switchingContent = store.state.value.content
+        assertTrue(switchingContent is SharedHomeContentState.Content)
+        assertEquals("server-1", switchingContent.snapshot.server.id.value)
+        assertEquals("general", switchingContent.snapshot.channels.single().name)
+        assertEquals(true, switchingContent.contentRefreshing)
+        assertEquals("server-1", store.state.value.serverSwitchState.pendingServerId)
+
+        blockedSwitchBack.release()
+        switchBackJob.join()
+
+        val finalContent = store.state.value.content
+        assertTrue(finalContent is SharedHomeContentState.Content)
+        assertEquals("server-1", finalContent.snapshot.server.id.value)
+        assertEquals(false, finalContent.contentRefreshing)
+        assertEquals(null, store.state.value.serverSwitchState.pendingServerId)
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
@@ -633,13 +671,7 @@ class SharedHomeStoreTest {
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
-                        ConversationSummary(
-                            threadId = ThreadId("dm-1"),
-                            channelId = ChannelId("dm-1"),
-                            kind = ConversationKind.DirectMessage,
-                            name = "Agent",
-                            presenceMemberId = MemberId("agent-1")
-                        )
+                        directMessage("dm-1", "Agent", "agent-1", Presence.Offline)
                     )
             )
         val store = SharedHomeStore(
@@ -754,14 +786,8 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val agentDm =
-            ConversationSummary(
-                threadId = ThreadId("dm-agent-1"),
-                channelId = ChannelId("dm-agent-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "Agent One",
-                directMessagePeerType = "agent",
-                presenceMemberId = MemberId("agent-1")
-            )
+            directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Offline)
+                .copy(directMessagePeerType = "agent")
         val home = sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
@@ -1479,12 +1505,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
 
         val created =
-            ConversationSummary(
-                threadId = ThreadId("channel-new"),
-                channelId = ChannelId("channel-new"),
-                kind = ConversationKind.Channel,
-                name = "release-room"
-            )
+            channel("channel-new", "release-room")
         store.accept(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
         store.accept(SharedHomeIntent.ChannelCreated(created))
 
@@ -2450,24 +2471,15 @@ class SharedHomeStoreTest {
         HomeSnapshot(
             server = ServerSummary(serverId, if (serverId.value == "server-2") "Work" else "Slock Community"),
             currentMember = sampleMember(),
-            channels =
-                listOf(
-                    ConversationSummary(
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        kind = ConversationKind.Channel,
-                        name = "general"
-                    )
-                ),
+            channels = listOf(channel("channel-1", "general")),
             directMessages = emptyList(),
             unreadTotal = 0
         )
 
-    private fun channel(id: String, name: String): ConversationSummary =
-        ConversationSummary(
+    private fun channel(id: String, name: String): HomeChannelRow =
+        HomeChannelRow(
             threadId = ThreadId(id),
             channelId = ChannelId(id),
-            kind = ConversationKind.Channel,
             name = name
         )
 
@@ -2476,11 +2488,10 @@ class SharedHomeStoreTest {
         name: String,
         memberId: String,
         presence: Presence
-    ): ConversationSummary =
-        ConversationSummary(
+    ): HomeDirectMessageRow =
+        HomeDirectMessageRow(
             threadId = ThreadId(id),
             channelId = ChannelId(id),
-            kind = ConversationKind.DirectMessage,
             name = name,
             presenceMemberId = MemberId(memberId)
         )

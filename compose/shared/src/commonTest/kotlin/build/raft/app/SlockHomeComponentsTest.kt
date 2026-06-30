@@ -7,6 +7,7 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -316,7 +317,7 @@ class SlockHomeComponentsTest {
                 name = "KMP-Expert",
                 directMessagePeerType = "agent",
                 presenceMemberId = MemberId("agent-1")
-            )
+            ).toHomeDirectMessageRow()
 
         val item = SharedHomeConversationRowProjector().project(conversation)
 
