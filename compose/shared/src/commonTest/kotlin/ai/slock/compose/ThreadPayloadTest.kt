@@ -620,7 +620,7 @@ class ThreadPayloadTest {
         assertEquals("application/pdf · 184 KB", pdf.threadAttachmentChipMetaLine())
         assertEquals("Document preview", pdf.threadAttachmentSummaryLine())
         assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine())
-        assertEquals(null, html.threadAttachmentSummaryLine())
+        assertEquals("Text preview", html.threadAttachmentSummaryLine())
     }
 
     @Test
@@ -996,7 +996,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("thread-launch-1", payload.instanceId)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
         assertEquals("loading", payload.status)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals("channel-1", payload.streamChannelId)
@@ -1133,7 +1133,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("page-1", payload.instanceId)
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals("dm-1", payload.sourceThreadId)
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals("files", payload.selectedTab)
@@ -1162,7 +1162,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("page-dm", payload.instanceId)
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals("dm-artin", payload.sourceThreadId)
         assertEquals("dm-artin", payload.streamChannelId)
         assertEquals(null, payload.dmPeerName)
@@ -1172,7 +1172,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun launchPayloadDmWithoutPeerNameFallsBackToDirectMessage() {
+    fun launchPayloadDmWithoutPeerNameKeepsTitleIdentityOnly() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -1186,13 +1186,13 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
     }
 
     @Test
-    fun launchPayloadDmEmptyPeerNameFallsBackToDirectMessage() {
+    fun launchPayloadDmEmptyPeerNameKeepsTitleIdentityOnly() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -1208,7 +1208,7 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
     }
@@ -1229,7 +1229,7 @@ class ThreadPayloadTest {
             payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
 
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals("artin", headerDisplay.title)
         assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
@@ -1276,7 +1276,7 @@ class ThreadPayloadTest {
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
         assertEquals("首页专修", headerDisplay.title)
         assertEquals("Home repair", headerDisplay.subtitle)
         assertEquals(null, payload.dmPeerName)
@@ -1867,12 +1867,12 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals(true, payload.canSend)
-        assertEquals(7, payload.membersCount)
+        assertEquals(0, payload.membersCount)
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
         assertEquals(true, payload.showReplyActions)
@@ -1887,7 +1887,7 @@ class ThreadPayloadTest {
             payload.settingsActions.map { it.id }
         )
         val composer = payload.resolveThreadComposer()
-        assertEquals("Message #Channel", composer.placeholder)
+        assertEquals("Message #channel-1", composer.placeholder)
         assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
         assertEquals("channel-1", composer.streamChannelId)
         assertEquals("idle", composer.composerMode)
@@ -2054,7 +2054,7 @@ class ThreadPayloadTest {
                 )
             )
 
-        assertEquals("Direct Message", payload.title)
+        assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("dm-agent-1", payload.streamChannelId)
@@ -2115,7 +2115,7 @@ class ThreadPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
         assertEquals("dm-agent-1", parentPayload.sourceThreadId)
         assertEquals("dm-agent-1", parentPayload.streamChannelId)
-        assertEquals("Direct Message", parentPayload.title)
+        assertEquals("", parentPayload.title)
     }
 
     @Test
@@ -2528,10 +2528,10 @@ class ThreadPayloadTest {
         assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel", payload.channelKind)
-        assertEquals("channel-1", payload.sourceThreadId)
-        assertEquals("channel-1", payload.streamChannelId)
-        assertEquals(null, payload.parentChannelId)
-        assertEquals(null, payload.parentMessageId)
+        assertEquals("reply-stream-1", payload.sourceThreadId)
+        assertEquals("reply-stream-1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("parent-message-1", payload.parentMessageId)
         assertEquals(null, payload.originParentMessageId)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showReplyActions)
@@ -2884,7 +2884,7 @@ class ThreadPayloadTest {
 
         assertEquals("shared-shell-thread-channel-1", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
-        assertEquals("Channel", initialPayload.title)
+        assertEquals("", initialPayload.title)
         assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
         assertEquals("channel-1", initialPayload.sourceThreadId)
         assertEquals("message-focus", initialPayload.focusedMessageId)
@@ -3198,7 +3198,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("loading", initialPayload.status)
-        assertEquals(ThreadReplyPageTitle, initialPayload.title)
+        assertEquals("", initialPayload.title)
         assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
         assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
@@ -3309,7 +3309,7 @@ class ThreadPayloadTest {
 
         assertEquals("task-thread-task-1", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
-        assertEquals(ThreadReplyPageTitle, initialPayload.title)
+        assertEquals("", initialPayload.title)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals("thread-channel-1", initialPayload.sourceThreadId)
         assertEquals("parent-channel-1", initialPayload.parentChannelId)

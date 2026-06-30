@@ -263,7 +263,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun startUsesCachedHomeAndKeepsContentOnVisibleNetworkError() = runBlocking {
+    fun startIgnoresRemovedHomeBlobOnVisibleNetworkError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(ServerId("server-1")))
@@ -282,17 +282,15 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
 
         val content = store.state.value.content
-        assertTrue(content is SharedHomeContentState.Content)
-        assertEquals("general", content.snapshot.channels.single().name)
-        assertEquals(false, content.contentRefreshing)
+        assertTrue(content is SharedHomeContentState.Error)
+        assertEquals("home_network", content.code)
+        assertEquals("general", localStore.readHome(ServerId("server-1"))?.channels?.single()?.name)
         scope.cancel()
     }
 
     @Test
-    fun cacheHitStartRendersCachedHomeBeforeNetworkRefreshCompletes() = runBlocking {
+    fun startShowsLoadingUntilNetworkRefreshCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -300,7 +298,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ ->
                         DataResult.Content(
                             sampleHome(payload.serverId).copy(
@@ -313,15 +310,13 @@ class SharedHomeStoreTest {
         )
         val blockedRefresh = api.blockNextChannels()
 
-        store.accept(SharedHomeIntent.Start)
+        val startJob = launch { store.accept(SharedHomeIntent.Start) }
         blockedRefresh.awaitStarted()
 
-        val cachedContent = store.state.value.content
-        assertTrue(cachedContent is SharedHomeContentState.Content)
-        assertEquals("general", cachedContent.snapshot.channels.single().name)
-        assertEquals(true, cachedContent.contentRefreshing)
+        assertTrue(store.state.value.content is SharedHomeContentState.Loading)
 
         blockedRefresh.release()
+        startJob.join()
         awaitCondition {
             val refreshedContent = store.state.value.content
             refreshedContent is SharedHomeContentState.Content &&
@@ -339,16 +334,9 @@ class SharedHomeStoreTest {
     fun realtimeMessageUpdatesVisibleHomeWithoutWritingLocalCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore),
             scope = scope
         )
         store.accept(SharedHomeIntent.Start)
@@ -382,7 +370,7 @@ class SharedHomeStoreTest {
         assertEquals("live update", content.baseSnapshot.channels.single().lastMessagePreview)
         assertEquals(1, content.snapshot.channels.single().unreadCount)
         assertEquals(1, content.snapshot.unreadTotal)
-        assertEquals(null, localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
 
@@ -390,7 +378,7 @@ class SharedHomeStoreTest {
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 channels =
                     listOf(
@@ -398,16 +386,9 @@ class SharedHomeStoreTest {
                         channel("channel-2", "random")
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope
         )
         store.accept(SharedHomeIntent.Start)
@@ -445,16 +426,9 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
             presenceFlushDelayMillis = 0L
         )
@@ -655,7 +629,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
@@ -668,16 +642,9 @@ class SharedHomeStoreTest {
                         )
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope
         )
         store.accept(SharedHomeIntent.Start)
@@ -703,7 +670,7 @@ class SharedHomeStoreTest {
     fun realtimePresenceUpdateOnlyReplacesMatchingDirectMessageRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
@@ -711,16 +678,9 @@ class SharedHomeStoreTest {
                         directMessage("dm-2", "Agent Two", "agent-2", Presence.Active)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 0L
         )
@@ -749,7 +709,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
@@ -757,16 +717,9 @@ class SharedHomeStoreTest {
                         directMessage("dm-2", "Agent Two", "agent-2", Presence.Offline)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
             presenceFlushDelayMillis = 0L
         )
@@ -790,7 +743,7 @@ class SharedHomeStoreTest {
         val after = contentAfter.snapshot.directMessages
         assertTrue(before === after)
         assertTrue(contentAfter.snapshot === contentAfter.baseSnapshot)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         assertEquals(emptyList(), logs)
         scope.cancel()
     }
@@ -809,19 +762,17 @@ class SharedHomeStoreTest {
                 directMessagePeerType = "agent",
                 presenceMemberId = MemberId("agent-1")
             )
-        localStore.writeHome(
-            sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
-        )
+        val home = sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
             authStore = sessionStore,
             dataSource =
-                SharedHomeDataSource(
+                sourceWithSnapshot(
+                    home,
                     sessionStore = sessionStore,
-                    api = ThrowingHomeApi(),
-                    serverMembersStore = SharedServerMembersStore(EmptyMemberRepository),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
+                    localStore = localStore,
+                    logger = logs::add,
+                    serverMembersStore = SharedServerMembersStore(EmptyMemberRepository)
                 ),
             scope = scope,
             diagnosticsLogger = logs::add,
@@ -872,10 +823,10 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun realtimePresenceOverlayRematerializesAfterCachedRefresh() = runBlocking {
+    fun homeIdentityProjectionRematerializesAfterNetworkRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        var networkHome =
             sampleHome(ServerId("server-1")).copy(
                 channels = listOf(channel("channel-1", "general")),
                 directMessages =
@@ -883,15 +834,14 @@ class SharedHomeStoreTest {
                         directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
+                    api = RecordingHomeApi(),
                     localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
+                    parseHome = { _, _ -> DataResult.Content(networkHome) }
                 ),
             scope = scope,
             presenceFlushDelayMillis = 0L
@@ -911,7 +861,7 @@ class SharedHomeStoreTest {
         val beforeRefresh = store.state.value.content as SharedHomeContentState.Content
         assertEquals(MemberId("agent-1"), beforeRefresh.snapshot.directMessages.single().presenceMemberId)
 
-        localStore.writeHome(
+        networkHome =
             sampleHome(ServerId("server-1")).copy(
                 channels = listOf(channel("channel-2", "updates")),
                 directMessages =
@@ -919,14 +869,13 @@ class SharedHomeStoreTest {
                         directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
                     )
             )
-        )
         store.accept(SharedHomeIntent.Refresh)
 
         val afterRefresh = store.state.value.content as SharedHomeContentState.Content
         assertEquals("channel-2", afterRefresh.baseSnapshot.channels.single().threadId.value)
         assertEquals(MemberId("agent-1"), afterRefresh.baseSnapshot.directMessages.single().presenceMemberId)
         assertEquals(MemberId("agent-1"), afterRefresh.snapshot.directMessages.single().presenceMemberId)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
 
@@ -934,7 +883,7 @@ class SharedHomeStoreTest {
     fun realtimePresenceBatchUsesLatestEventAndSkipsNoOpState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
@@ -942,16 +891,9 @@ class SharedHomeStoreTest {
                         directMessage("dm-2", "Agent Two", "agent-2", Presence.Active)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 1L
         )
@@ -997,7 +939,7 @@ class SharedHomeStoreTest {
         val after = contentAfter.snapshot.directMessages
         assertTrue(before === after)
         assertEquals(MemberId("agent-1"), contentAfter.baseSnapshot.directMessages[0].presenceMemberId)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
 
@@ -1005,23 +947,16 @@ class SharedHomeStoreTest {
     fun realtimePresenceBatchKeepsHighestServerSeqForMember() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
                         directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 1L
         )
@@ -1056,7 +991,7 @@ class SharedHomeStoreTest {
         val contentAfter = store.state.value.content as SharedHomeContentState.Content
         assertEquals(MemberId("agent-1"), contentAfter.snapshot.directMessages.single().presenceMemberId)
         assertEquals(MemberId("agent-1"), contentAfter.baseSnapshot.directMessages.single().presenceMemberId)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
 
@@ -1065,16 +1000,9 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
             diagnosticsLogger = logs::add
         )
@@ -1104,7 +1032,7 @@ class SharedHomeStoreTest {
         val afterState = store.state.value
         assertTrue(afterState.content === beforeContent)
         assertEquals(true, afterState.homeRealtimeDirty)
-        assertEquals(null, localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         assertEquals(emptyList(), logs.filter { it.startsWith("read_home ") })
         assertContains(logs, "home_realtime_dirty serverId=server-1 reason=message_new")
         scope.cancel()
@@ -1115,23 +1043,16 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(
+        val home =
             sampleHome(ServerId("server-1")).copy(
                 directMessages =
                     listOf(
                         directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
                     )
             )
-        )
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                    api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
-                    parseHome = { _, _ -> error("network failure should not parse") }
-                ),
+            dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
             diagnosticsLogger = logs::add,
             presenceFlushDelayMillis = 0L
@@ -1158,7 +1079,7 @@ class SharedHomeStoreTest {
         assertEquals(false, afterState.homeRealtimeDirty)
         assertEquals(MemberId("agent-1"), beforeContent.snapshot.directMessages.single().presenceMemberId)
         assertEquals(MemberId("agent-1"), beforeContent.baseSnapshot.directMessages.single().presenceMemberId)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         assertEquals(emptyList(), logs.filter { it.startsWith("home_realtime_dirty ") })
 
         store.accept(SharedHomeIntent.SetSurfaceVisible(true))
@@ -1166,7 +1087,7 @@ class SharedHomeStoreTest {
         assertEquals(MemberId("agent-1"), visibleContent.snapshot.directMessages.single().presenceMemberId)
         assertEquals(MemberId("agent-1"), visibleContent.baseSnapshot.directMessages.single().presenceMemberId)
         assertEquals(false, store.state.value.homeRealtimeDirty)
-        assertEquals(MemberId("agent-1"), localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presenceMemberId)
+        assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
 
@@ -1406,7 +1327,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun dispatchStartDebouncesInFlightHomeLoad() = runBlocking {
+    fun dispatchStartDebouncesInitialNetworkLoadWithoutCachedHome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val api = RecordingHomeApi()
@@ -1443,11 +1364,9 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun dispatchStartDebouncesInFlightHomeBackgroundRefresh() = runBlocking {
+    fun dispatchStartDebouncesInFlightHomeLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1455,7 +1374,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ ->
                         DataResult.Content(
                             sampleHome(payload.serverId).copy(
@@ -1480,7 +1398,7 @@ class SharedHomeStoreTest {
             logs.count {
                 it.contains("home_load_debounce") &&
                     it.contains("intent=Start") &&
-                    it.contains("reason=in_flight_refresh")
+                    it.contains("reason=in_flight_load")
             }
         )
         blockedRefresh.release()
@@ -1500,8 +1418,6 @@ class SharedHomeStoreTest {
     fun dispatchForegroundRefreshReplacesInFlightHomeBackgroundRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1509,7 +1425,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ ->
                         DataResult.Content(
                             sampleHome(payload.serverId).copy(
@@ -1710,22 +1625,13 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun cachedHomeStartDoesNotLoadActiveAnnouncementsIntoHomeNotifications() = runBlocking {
+    fun homeStartDoesNotLoadActiveAnnouncementsIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(ServerId("server-1")))
         val announcementsApi = RecordingAnnouncementsApi()
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
             authStore = sessionStore,
-            dataSource =
-                SharedHomeDataSource(
-                    sessionStore = sessionStore,
-                    api = ThrowingHomeApi(),
-                    announcementsApi = announcementsApi,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
-                    parseHome = { _, _ -> error("cached home should not parse network payload") }
-                ),
+            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi, sessionStore = sessionStore),
             scope = scope
         )
 
@@ -2118,6 +2024,22 @@ class SharedHomeStoreTest {
             announcementsApi = announcementsApi,
             computersApi = computersApi,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+        )
+
+    private fun sourceWithSnapshot(
+        snapshot: HomeSnapshot,
+        api: SlockHomeApi = RecordingHomeApi(),
+        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        localStore: ComposeLocalDataStore? = null,
+        logger: (String) -> Unit = {},
+        serverMembersStore: SharedServerMembersStore? = null
+    ): SharedHomeDataSource =
+        SharedHomeDataSource(
+            sessionStore = sessionStore,
+            api = api,
+            serverMembersStore = serverMembersStore,
+            localWriteThrough = localStore?.let { ComposeLocalWriteThrough(it, logger = logger) },
+            parseHome = { _, _ -> DataResult.Content(snapshot) }
         )
 
     private class RecordingHomeApi : SlockHomeApi {
