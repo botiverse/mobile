@@ -21,8 +21,11 @@ import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.calculatePan
+import com.tencent.kuikly.compose.foundation.gestures.calculateZoom
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTransformGestures
 import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -86,6 +89,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.core.views.ModalView
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -198,10 +202,36 @@ private fun SlockZoomableCachedImage(
             .clipToBounds()
             .onSizeChanged { viewportSize = it }
             .pointerInput(source) {
-                detectTransformGestures(panZoomLock = true) { _, panChange, zoomChange, _ ->
-                    val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
-                    scale = nextScale
-                    pan = clampedPan(pan + panChange, nextScale)
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pastTouchSlop = false
+                    val touchSlop = viewConfiguration.touchSlop
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.any { it.isConsumed }) {
+                            break
+                        }
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        val shouldHandle =
+                            zoomChange != 1f ||
+                                scale > 1f
+                        if (!pastTouchSlop && shouldHandle) {
+                            val zoomMotion = abs(1f - zoomChange) * max(viewportSize.width, viewportSize.height)
+                            val panMotion = panChange.getDistance()
+                            pastTouchSlop = zoomMotion > touchSlop || panMotion > touchSlop
+                        }
+                        if (pastTouchSlop && shouldHandle) {
+                            val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
+                            scale = nextScale
+                            pan = clampedPan(pan + panChange, nextScale)
+                            event.changes.forEach {
+                                if (it.positionChanged()) {
+                                    it.consume()
+                                }
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             },
         contentAlignment = Alignment.Center

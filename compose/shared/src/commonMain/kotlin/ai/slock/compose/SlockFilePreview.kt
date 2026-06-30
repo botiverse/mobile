@@ -1492,7 +1492,7 @@ internal fun SlockFilePreviewPayloadContent(
                             modifier = Modifier.fillMaxSize(),
                             backgroundColor = SlockColor.SurfaceWhite,
                             borderWidth = 0.dp,
-                            zoomable = payload.imageGallery.size <= 1
+                            zoomable = true
                         )
                     }
                 } else {
