@@ -42,6 +42,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.size
@@ -53,6 +54,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.StrokeCap
@@ -65,6 +67,7 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -82,6 +85,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlin.time.TimeSource
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
@@ -1487,7 +1491,8 @@ internal fun SlockFilePreviewPayloadContent(
                             contentDescription = payload.name.ifBlank { payload.path },
                             modifier = Modifier.fillMaxSize(),
                             backgroundColor = SlockColor.SurfaceWhite,
-                            borderWidth = 0.dp
+                            borderWidth = 0.dp,
+                            zoomable = payload.imageGallery.size <= 1
                         )
                     }
                 } else {
@@ -1601,6 +1606,7 @@ private fun SlockFilePreviewImageGallerySurface(
     content: @Composable () -> Unit
 ) {
     val progressLabel = payload.imageGalleryProgressLabel()
+    var dragOffsetPx by remember(payload.imageGalleryIndex, payload.imageGallery.size) { mutableStateOf(0f) }
     val swipeThresholdPx =
         with(LocalDensity.current) {
             56.dp.toPx()
@@ -1610,20 +1616,37 @@ private fun SlockFilePreviewImageGallerySurface(
             Modifier.pointerInput(payload.imageGalleryIndex, payload.imageGallery.size) {
                 var dragDistance = 0f
                 detectHorizontalDragGestures(
-                    onDragStart = { dragDistance = 0f },
-                    onDragEnd = {
-                        payload.nextImageGalleryIndex(dragDistance, swipeThresholdPx)?.let(onImageGalleryIndexChange)
+                    onDragStart = {
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
                     },
-                    onDragCancel = { dragDistance = 0f }
+                    onDragEnd = {
+                        val nextIndex = payload.nextImageGalleryIndex(dragDistance, swipeThresholdPx)
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
+                        nextIndex?.let(onImageGalleryIndexChange)
+                    },
+                    onDragCancel = {
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
+                    }
                 ) { _, dragAmount ->
                     dragDistance += dragAmount
+                    dragOffsetPx = payload.imageGalleryDragOffsetWithResistance(dragDistance)
                 }
             }
         } else {
             Modifier
         }
-    Box(modifier = modifier.then(galleryModifier)) {
-        content()
+    Box(modifier = modifier.clipToBounds().then(galleryModifier)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
+        ) {
+            content()
+        }
         if (progressLabel != null) {
             Box(
                 modifier =
@@ -1869,6 +1892,16 @@ internal fun SlockFilePreviewPayload.nextImageGalleryIndex(
         dragDistancePx <= -thresholdPx && imageGalleryIndex < imageGallery.lastIndex -> imageGalleryIndex + 1
         dragDistancePx >= thresholdPx && imageGalleryIndex > 0 -> imageGalleryIndex - 1
         else -> null
+    }
+}
+
+private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDistancePx: Float): Float {
+    if (imageGallery.size <= 1) return 0f
+    val index = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    return when {
+        dragDistancePx > 0f && index == 0 -> dragDistancePx * 0.35f
+        dragDistancePx < 0f && index == imageGallery.lastIndex -> dragDistancePx * 0.35f
+        else -> dragDistancePx
     }
 }
 
@@ -2633,7 +2666,8 @@ internal fun SlockFilePreviewImagePanel(
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
     backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
-    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default
+    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default,
+    zoomable: Boolean = true
 ) {
     SlockAspectFitImagePreviewSurface(
         source = source,
@@ -2642,7 +2676,7 @@ internal fun SlockFilePreviewImagePanel(
         modifier = modifier.fillMaxWidth(),
         backgroundColor = backgroundColor,
         borderWidth = borderWidth,
-        zoomable = true,
+        zoomable = zoomable,
         showLoadingIndicator = true
     )
 }
