@@ -3671,10 +3671,11 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
-                    val routeParentMessage = parentMessage.withThreadReplyMetadata(parentReplyMetadata)
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
-                            parentMessage = routeParentMessage,
+                            parentMessageId = parentMessage.id,
+                            parentChannelId = renderedThread.sourceThreadId,
+                            threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
                     threadViewModel.dispatch(
@@ -3912,10 +3913,11 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
-                    val routeParentMessage = parentMessage.withThreadReplyMetadata(parentReplyMetadata)
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
-                            parentMessage = routeParentMessage,
+                            parentMessageId = parentMessage.id,
+                            parentChannelId = renderedThread.sourceThreadId,
+                            threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
                     threadViewModel.dispatch(
@@ -5601,10 +5603,13 @@ private fun ThreadImagePreviewThumbnail(
 }
 
 internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
-    parentMessage: KuiklyThreadMessageItem,
+    parentMessageId: String,
+    parentChannelId: String?,
+    threadChannelId: String?,
     focusedMessageId: String? = null
 ): KuiklyThreadScreenPayload {
-    val knownThreadChannelId = parentMessage.threadChannelId?.takeIf { it.isNotBlank() }
+    val knownParentMessageId = parentMessageId.takeIf { it.isNotBlank() }
+    val knownThreadChannelId = threadChannelId?.takeIf { it.isNotBlank() }
     val resolvedParentSurfaceKind =
         when {
             surfaceKind == KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
@@ -5622,22 +5627,22 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         buildThreadSurfaceComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
             displayName = ThreadReplyPageTitle,
-            fallbackId = parentMessage.id,
+            fallbackId = knownParentMessageId.orEmpty(),
             enabled = canSend,
-            mentionChannelId = sourceThreadId,
-            parentMessageId = parentMessage.id,
+            mentionChannelId = parentChannelId,
+            parentMessageId = knownParentMessageId,
             streamChannelId = knownThreadChannelId
         )
     return copy(
-        instanceId = knownThreadChannelId?.let { "shared-shell-thread-$it" } ?: "shared-shell-thread-pending-${parentMessage.id}",
+        instanceId = knownThreadChannelId?.let { "shared-shell-thread-$it" } ?: "shared-shell-thread-pending-$parentMessageId",
         title = ThreadReplyPageTitle,
         subtitle = replyThreadHeaderSubtitle(),
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = knownThreadChannelId,
         streamChannelId = knownThreadChannelId,
-        parentChannelId = sourceThreadId,
-        parentMessageId = parentMessage.id,
+        parentChannelId = parentChannelId,
+        parentMessageId = knownParentMessageId,
         parentSurfaceKind = resolvedParentSurfaceKind,
         parentChannelKind = resolvedParentChannelKind,
         parentNavigationHint = ThreadParentNavigationPrevious,
@@ -5647,9 +5652,9 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         showModeTabs = false,
         showReplyActions = false,
         showOpenInChannelAction = true,
-        originMessage = parentMessage,
-        originParentMessageId = parentMessage.id,
-        originStatus = "loaded",
+        originMessage = null,
+        originParentMessageId = knownParentMessageId,
+        originStatus = "none",
         messages = emptyList(),
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,

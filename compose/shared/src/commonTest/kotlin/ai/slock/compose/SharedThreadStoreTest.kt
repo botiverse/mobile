@@ -4995,7 +4995,13 @@ class SharedThreadStoreTest {
                 firstUnreadReplyMessageId = "reply-1"
             )
 
-        val loading = basePayload().replyThreadLoadingPayload(parent, focusedMessageId = parent.firstUnreadReplyMessageId)
+        val loading =
+            basePayload().replyThreadLoadingPayload(
+                parentMessageId = parent.id,
+                parentChannelId = "channel-1",
+                threadChannelId = parent.threadChannelId,
+                focusedMessageId = parent.firstUnreadReplyMessageId
+            )
 
         assertEquals("reply-1", loading.focusedMessageId)
         assertEquals("m1", loading.parentMessageId)

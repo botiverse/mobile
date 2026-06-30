@@ -2090,7 +2090,12 @@ class ThreadPayloadTest {
                 threadChannelId = "thread-dm-parent-1"
             )
 
-        val replyPayload = dmPayload.replyThreadLoadingPayload(parentMessage)
+        val replyPayload =
+            dmPayload.replyThreadLoadingPayload(
+                parentMessageId = parentMessage.id,
+                parentChannelId = dmPayload.sourceThreadId,
+                threadChannelId = parentMessage.threadChannelId
+            )
         val launchPayload = replyPayload.toWireThreadLaunchPayload()
         val parsedPayload =
             parseThreadScreenPayload(
@@ -2135,7 +2140,12 @@ class ThreadPayloadTest {
                 messages = listOf(parentMessage)
             )
 
-        val replyPayload = jointPayload.replyThreadLoadingPayload(parentMessage)
+        val replyPayload =
+            jointPayload.replyThreadLoadingPayload(
+                parentMessageId = parentMessage.id,
+                parentChannelId = jointPayload.sourceThreadId,
+                threadChannelId = parentMessage.threadChannelId
+            )
         val launchPayload = replyPayload.toWireThreadLaunchPayload()
         val parsedPayload =
             parseThreadScreenPayload(
@@ -3329,7 +3339,11 @@ class ThreadPayloadTest {
                 sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
-            ).replyThreadLoadingPayload(parent)
+            ).replyThreadLoadingPayload(
+                parentMessageId = parent.id,
+                parentChannelId = "channel-1",
+                threadChannelId = parent.threadChannelId
+            )
 
         assertEquals("shared-shell-thread-pending-message-1", payload.instanceId)
         assertEquals(ThreadReplyPageTitle, payload.title)
@@ -3345,7 +3359,7 @@ class ThreadPayloadTest {
         assertEquals("channel-1", composer.mentionChannelId)
         assertEquals("message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
-        assertEquals("loaded", payload.originStatus)
+        assertEquals("none", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals("Loading...", payload.emptyTitle)
@@ -3368,13 +3382,17 @@ class ThreadPayloadTest {
                 sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
-            ).replyThreadLoadingPayload(parent)
+            ).replyThreadLoadingPayload(
+                parentMessageId = parent.id,
+                parentChannelId = "channel-1",
+                threadChannelId = parent.threadChannelId
+            )
 
         assertEquals("shared-shell-thread-thread-message-1", payload.instanceId)
         assertEquals("thread-message-1", payload.sourceThreadId)
         assertEquals("thread-message-1", payload.streamChannelId)
         assertEquals("thread-message-1", payload.resolveThreadComposer().streamChannelId)
-        assertEquals("Parent message", payload.originMessage?.body)
+        assertEquals(null, payload.originMessage)
 
         val launch = payload.toWireThreadLaunchPayload()
         assertEquals("thread-message-1", launch.threadId)
@@ -3400,7 +3418,11 @@ class ThreadPayloadTest {
                 sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
-            ).replyThreadLoadingPayload(parent)
+            ).replyThreadLoadingPayload(
+                parentMessageId = parent.id,
+                parentChannelId = "channel-1",
+                threadChannelId = parent.threadChannelId
+            )
 
         assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals(null, payload.subtitle)
@@ -4304,18 +4326,16 @@ class ThreadPayloadTest {
         val strippedActionMessage = timeline.threadActionMessage("message-1")
 
         val replyMetadata = payload.toThreadReplyMetadataMap().threadReplyMetadataFor(strippedActionMessage!!)
-        val routeParentMessage = strippedActionMessage.withThreadReplyMetadata(replyMetadata)
         val loadingPayload =
             payload.replyThreadLoadingPayload(
-                parentMessage = routeParentMessage,
+                parentMessageId = strippedActionMessage.id,
+                parentChannelId = payload.sourceThreadId,
+                threadChannelId = replyMetadata.threadChannelId,
                 focusedMessageId = replyMetadata.firstUnreadReplyMessageId
             )
 
         assertEquals(null, strippedActionMessage.threadChannelId)
         assertEquals(0, strippedActionMessage.replyCount)
-        assertEquals("reply-stream-1", routeParentMessage.threadChannelId)
-        assertEquals(3, routeParentMessage.replyCount)
-        assertEquals("reply-2", routeParentMessage.firstUnreadReplyMessageId)
         assertEquals("reply-stream:reply-stream-1", loadingPayload.resolveThreadRouteIdentity().instanceKey)
         assertEquals("reply-stream-1", loadingPayload.streamChannelId)
         assertEquals("reply-2", loadingPayload.focusedMessageId)
