@@ -238,4 +238,3 @@ Server V1 is ready for Android killed-app push when:
 6. Server logs/metrics expose target count, provider count, success/failure,
    and skipped muted/disabled/self cases without printing raw tokens.
 7. App resume reconciles unread/badge state from canonical server APIs.
-

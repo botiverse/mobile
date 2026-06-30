@@ -216,4 +216,3 @@ Server V1 is ready for iOS killed-app push when:
 5. Badge count is server-authoritative and corrected on app resume.
 6. APNs invalid-token responses revoke token rows.
 7. Logs/metrics do not expose raw APNs tokens.
-

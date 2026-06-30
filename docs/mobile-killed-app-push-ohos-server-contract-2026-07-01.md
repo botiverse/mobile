@@ -209,4 +209,3 @@ Server V1 is ready for OHOS killed-app push when:
 6. Invalid tokens are revoked and raw tokens are redacted in logs.
 7. App resume refreshes canonical unread state and corrects stale badge/local
    notification state.
-
