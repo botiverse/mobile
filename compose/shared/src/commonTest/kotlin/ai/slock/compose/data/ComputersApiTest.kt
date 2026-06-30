@@ -15,11 +15,14 @@ class ComputersApiTest {
 
         val machines = assertIs<DataResult.Content<ComputerListSummary>>(client.machines(serverId)).data
         assertEquals(1, machines.machineCount)
+        assertEquals("0.0.62", machines.latestComputerVersion)
         val firstMachine = machines.machines.single()
         assertEquals(ComputerStatus.Online, firstMachine.status)
         assertEquals(7L, firstMachine.statusVersion)
         assertEquals("sk_machine_abc", firstMachine.apiKeyPrefix)
         assertEquals(listOf("claude", "codex"), firstMachine.runtimes)
+        assertEquals(true, firstMachine.isComputer)
+        assertEquals("0.0.61", firstMachine.computerVersion)
         assertEquals("2026-06-14T02:00:00.000Z", firstMachine.lastHeartbeat)
         assertEquals("2026-05-01T00:00:00.000Z", firstMachine.createdAt)
 
@@ -115,7 +118,7 @@ class ComputersApiTest {
 
     private class RecordingComputersApi(
         private val machinesBody: String =
-            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0"}""",
+            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
         private val registerBody: String =
             """{"machine":{"id":"machine-1","name":"Maria","status":"offline","statusVersion":0,"apiKeyPrefix":"sk_machine_123456","runtimes":[],"daemonVersion":null,"hostname":null,"os":null,"lastHeartbeat":null,"createdAt":null},"apiKey":"sk_machine_123456"}""",
         private val renameBody: String =

@@ -641,10 +641,11 @@ class SettingsRepositoryDataSourceTest {
                 machinesJson = """
                     {
                       "machines": [
-                        {"id":"machine-1","name":"Jiachengs-MacBook-Pro","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
+                        {"id":"machine-1","name":"Jiachengs-MacBook-Pro","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","computerVersion":"0.0.61","isComputer":true,"status":"online"},
                         {"id":"machine-2","name":"Build host","daemonVersion":"1.3.0","status":"offline"}
                       ],
-                      "latestDaemonVersion": "1.5.0"
+                      "latestDaemonVersion": "1.5.0",
+                      "latestComputerVersion": "0.0.62"
                     }
                 """.trimIndent()
             )
@@ -658,9 +659,12 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(true, snapshot.canAddComputer)
         assertEquals(null, snapshot.addComputerUnavailableReason)
         assertEquals("1.5.0", snapshot.latestDaemonVersion)
+        assertEquals("0.0.62", snapshot.latestComputerVersion)
         assertEquals(2, snapshot.computers.size)
         assertEquals("Jiachengs-MacBook-Pro", snapshot.computers[0].name)
         assertEquals("1.4.2", snapshot.computers[0].daemonVersion)
+        assertEquals("0.0.61", snapshot.computers[0].computerVersion)
+        assertEquals(true, snapshot.computers[0].isComputer)
         assertEquals(true, snapshot.computers[0].online)
         assertEquals("machine-2", snapshot.computers[1].id)
         assertEquals(false, snapshot.computers[1].online)

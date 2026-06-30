@@ -30,6 +30,7 @@ internal data class SharedComputersServerSlice(
     val machineCount: Int = 0,
     val onlineCount: Int = 0,
     val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null,
     val status: SharedComputersLoadStatus = SharedComputersLoadStatus.Idle,
     val errorCode: String? = null
 )
@@ -178,6 +179,7 @@ class SharedComputersStore internal constructor(
                             machineCount = result.data.machineCount,
                             onlineCount = result.data.onlineCount,
                             latestDaemonVersion = result.data.latestDaemonVersion,
+                            latestComputerVersion = result.data.latestComputerVersion,
                             status = SharedComputersLoadStatus.Loaded,
                         )
                 )
@@ -252,7 +254,8 @@ private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<S
                     computers = machines.map { it.toSettingsComputerSnapshot() },
                     canAddComputer = false,
                     addComputerUnavailableReason = null,
-                    latestDaemonVersion = latestDaemonVersion
+                    latestDaemonVersion = latestDaemonVersion,
+                    latestComputerVersion = latestComputerVersion
                 )
             )
         SharedComputersLoadStatus.Error ->
@@ -277,6 +280,8 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         id = id,
         name = name,
         daemonVersion = daemonVersion.orEmpty(),
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         online = status == ComputerStatus.Online,
         hostname = hostname,
         platform = os,

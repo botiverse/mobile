@@ -1306,7 +1306,8 @@ class RealSettingsRepository(
                 computers = computers,
                 canAddComputer = canManageServer,
                 addComputerUnavailableReason = if (canManageServer) null else "server_admin_required",
-                latestDaemonVersion = summary.latestDaemonVersion
+                latestDaemonVersion = summary.latestDaemonVersion,
+                latestComputerVersion = summary.latestComputerVersion
             )
         }
 
@@ -2480,6 +2481,8 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         id = id,
         name = name,
         daemonVersion = daemonVersion.orEmpty(),
+        computerVersion = computerVersion,
+        isComputer = isComputer,
         online = status == ComputerStatus.Online,
         hostname = hostname,
         platform = os,
