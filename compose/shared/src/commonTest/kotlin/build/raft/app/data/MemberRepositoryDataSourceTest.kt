@@ -79,7 +79,7 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
-    fun agentActivityCacheCanBeClearedAfterSessionReset() = runBlocking {
+    fun agentActivityDoesNotReusePreviousRepositoryResults() = runBlocking {
         val network = FakeMemberNetworkClient()
         val repository = RealMemberRepository(sampleStore(), network)
         val agentId = MemberId("agent-1")
@@ -94,15 +94,8 @@ class MemberRepositoryDataSourceTest {
             """.trimIndent()
         val merged = repository.getAgentActivity(DataRequestPriority.Visible, agentId)
         assertTrue(merged is DataResult.Content)
-        assertTrue(merged.data.activity.any { it.body == "Running task" })
+        assertTrue(!merged.data.activity.any { it.body == "Running task" })
         assertTrue(merged.data.activity.any { it.body == "After reset" })
-
-        repository.clearAgentActivityCache(agentId)
-
-        val cleared = repository.getAgentActivity(DataRequestPriority.Visible, agentId)
-        assertTrue(cleared is DataResult.Content)
-        assertTrue(!cleared.data.activity.any { it.body == "Running task" })
-        assertTrue(cleared.data.activity.any { it.body == "After reset" })
     }
 
     @Test

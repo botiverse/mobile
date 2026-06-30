@@ -212,6 +212,68 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun setDetailPreservesExistingSectionsWhenRefreshIsPartial() {
+        val s = store()
+        val existing =
+            detailWithSummary(
+                status = "Working",
+                activityEntries = listOf(
+                    AgentActivityEntry(
+                        id = "activity-1",
+                        type = "status",
+                        title = "Building"
+                    )
+                )
+            ).copy(
+                directMessages = listOf(
+                    AgentDmSummary(
+                        id = "dm-1",
+                        peerId = "user-1",
+                        peerName = "Artin"
+                    )
+                ),
+                reminders = listOf(
+                    AgentReminderSummary(
+                        id = "reminder-1",
+                        title = "Follow up"
+                    )
+                ),
+                skills = AgentSkillsSnapshot(
+                    agentId = testMemberId,
+                    groups = listOf(AgentSkillGroup(title = "Tools", count = 1))
+                ),
+                appLogins = AgentAppLoginSnapshot(
+                    agentId = testMemberId,
+                    items = listOf(
+                        AgentAppLoginItem(
+                            id = "login-1",
+                            type = AgentAppLoginType.Active,
+                            clientId = "client-1",
+                            clientName = "GitHub"
+                        )
+                    )
+                )
+            )
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, existing))
+
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(status = "Thinking", activity = "Thinking")
+            )
+        )
+
+        val detail = s.state.value.detail
+        assertEquals("Thinking", detail?.summary?.status)
+        assertEquals(listOf("dm-1"), detail?.directMessages?.map { it.id })
+        assertEquals(listOf("reminder-1"), detail?.reminders?.map { it.id })
+        assertEquals(listOf("activity-1"), detail?.activity?.map { it.id })
+        assertEquals(listOf("Tools"), detail?.skills?.groups?.map { it.title })
+        assertEquals(listOf("login-1"), detail?.appLogins?.items?.map { it.id })
+    }
+
+    @Test
     fun selectMemberResetsTransientState() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))

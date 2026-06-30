@@ -246,7 +246,6 @@ interface MemberRepository {
         priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentActivitySnapshot>
-    suspend fun clearAgentActivityCache(agentId: MemberId) {}
     suspend fun getAgentWorkspaces(
         priority: DataRequestPriority,
         agentId: MemberId

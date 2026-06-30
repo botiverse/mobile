@@ -177,9 +177,14 @@ internal class SharedAgentDetailStore(
                 }
             is SharedAgentDetailIntent.SetDetail ->
                 if (current.agentId == intent.agentId) {
+                    val incoming =
+                        current.detail
+                            ?.takeIf { it.agentId == intent.agentId }
+                            ?.let { intent.detail.withExistingAgentDetailSections(it) }
+                            ?: intent.detail
                     val detail = current.mergeSequencedActivityIntoDetail(
                         agentId = intent.agentId,
-                        incoming = intent.detail,
+                        incoming = incoming,
                         preserveSequencedActivity = intent.preserveSequencedActivity
                     )
                     current.copy(
@@ -504,6 +509,26 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
     return incoming.copy(
         summary = nextSummary,
         activity = nextActivity
+    )
+}
+
+private fun AgentDetailSnapshot.withExistingAgentDetailSections(
+    existing: AgentDetailSnapshot
+): AgentDetailSnapshot {
+    if (existing.agentId != agentId) return this
+    return copy(
+        directMessages = directMessages.ifEmpty { existing.directMessages },
+        reminders = reminders.ifEmpty { existing.reminders },
+        activity = activity.ifEmpty { existing.activity },
+        skills = skills.takeUnless { it.groups.isEmpty() } ?: existing.skills,
+        appLogins =
+            appLogins
+                .takeUnless {
+                    it.items.isEmpty() &&
+                        it.loadState == AgentAppLoginLoadState.Content &&
+                        it.errorCode == null
+                }
+                ?: existing.appLogins
     )
 }
 

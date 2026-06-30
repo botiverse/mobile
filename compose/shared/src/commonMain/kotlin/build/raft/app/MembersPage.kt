@@ -1311,14 +1311,6 @@ private class MemberDetailRouteProvider(
                         AgentMachineAssignmentRequest(agentId, machineId = null)
                     )
             }
-        if (result is DataResult.Content && result.data.success) {
-            if (
-                action == MembersAgentLifecycleAction.ResetSession ||
-                action == MembersAgentLifecycleAction.ResetFull
-            ) {
-                memberRepository.clearAgentActivityCache(agentId)
-            }
-        }
         return result
     }
 

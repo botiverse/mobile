@@ -179,8 +179,6 @@ class RealMemberRepository(
     private val integrationsApiClient = SlockIntegrationsActionsPushApiClient(
         transport = SlockIntegrationsActionsPushNetworkApi(networkClient)
     )
-    private val agentActivityCacheMutex = Mutex()
-    private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
     private val agentLifecycleActionMutex = Mutex()
     private val agentLifecycleActionsInFlight = mutableSetOf<MemberId>()
 
@@ -383,22 +381,21 @@ class RealMemberRepository(
         val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
         return when (logResult) {
             is DataResult.Content -> {
-                DataResult.Content(logResult.data.copy(activity = mergeAgentActivity(agentId, fallbackEntries + logResult.data.activity)))
+                val activity = mergeAgentActivityEntries(fallbackEntries + logResult.data.activity)
+                logger(
+                    "repository_merge domain=agent_activity source=response_merge agentId=${agentId.value} " +
+                        "fallback=${fallbackEntries.size} log=${logResult.data.activity.size} merged=${activity.size}"
+                )
+                DataResult.Content(logResult.data.copy(activity = activity))
             }
             is DataResult.Empty -> {
                 if (fallbackEntries.isNotEmpty()) {
-                    DataResult.Content(AgentActivitySnapshot(agentId = agentId, activity = mergeAgentActivity(agentId, fallbackEntries)))
+                    DataResult.Content(AgentActivitySnapshot(agentId = agentId, activity = mergeAgentActivityEntries(fallbackEntries)))
                 } else {
                     logResult
                 }
             }
             else -> logResult
-        }
-    }
-
-    override suspend fun clearAgentActivityCache(agentId: MemberId) {
-        agentActivityCacheMutex.withLock {
-            agentActivityCache.remove(agentId)
         }
     }
 
@@ -660,20 +657,6 @@ class RealMemberRepository(
         return session.toNetworkServerContext(ServerId(selectedId))
     }
 
-    private suspend fun mergeAgentActivity(agentId: MemberId, incoming: List<AgentActivityEntry>): List<AgentActivityEntry> =
-        agentActivityCacheMutex.withLock {
-            val startedAt = TimeSource.Monotonic.markNow()
-            val existing = agentActivityCache[agentId].orEmpty()
-            val merged = mergeAgentActivityEntries(existing, incoming)
-            agentActivityCache[agentId] = merged
-            logger(
-                "repository_merge domain=agent_activity source=cache_merge agentId=${agentId.value} " +
-                    "existing=${existing.size} incoming=${incoming.size} merged=${merged.size} " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-            )
-            merged
-        }
-
     private suspend fun fetchAgentCurrentActivityFallback(priority: DataRequestPriority, agentId: MemberId): List<AgentActivityEntry> {
         val result =
             executeMember<List<AgentActivityEntry>>(
@@ -930,11 +913,8 @@ private fun DataResult<AgentCommandResult>.toLifecycleActionResult(
         is DataResult.NoPermission -> DataResult.NoPermission(blocker)
     }
 
-private fun mergeAgentActivityEntries(existing: List<AgentActivityEntry>, incoming: List<AgentActivityEntry>): List<AgentActivityEntry> {
+private fun mergeAgentActivityEntries(incoming: List<AgentActivityEntry>): List<AgentActivityEntry> {
     val merged = LinkedHashMap<String, AgentActivityEntry>()
-    for (entry in existing) {
-        merged[entry.activityCacheKey] = entry
-    }
     for (entry in incoming) {
         merged[entry.activityCacheKey] = entry
     }
