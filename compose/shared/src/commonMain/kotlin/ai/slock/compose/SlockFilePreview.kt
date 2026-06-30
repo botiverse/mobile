@@ -241,6 +241,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     var payload by remember(launchPayloadTrace.payload) {
         mutableStateOf(launchPayloadTrace.payload)
     }
+    var resolvedImageGalleryPayloads by remember(launchPayloadTrace.payload.imageGallery) {
+        mutableStateOf<Map<String, SlockFilePreviewPayload>>(emptyMap())
+    }
     var composerImageEditMode by remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
         mutableStateOf(false)
     }
@@ -289,9 +292,18 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewSourceAgentWorkspace ->
                     payload.loadAgentWorkspacePreview(memberRepository)
                 else -> null
-            }
+        }
         if (nextPayload != null) {
             payload = nextPayload
+            if (
+                nextPayload.source == SlockFilePreviewSourceThreadAttachment &&
+                nextPayload.attachmentId.isNotBlank() &&
+                nextPayload.imageGallery.isNotEmpty() &&
+                nextPayload.kind != "loading"
+            ) {
+                resolvedImageGalleryPayloads =
+                    resolvedImageGalleryPayloads + (nextPayload.attachmentId to nextPayload)
+            }
         }
     }
     val canOpenWith = canOpenPayloadWithExternalViewer(payload)
@@ -419,7 +431,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     fun selectImageGalleryIndex(index: Int) {
-        payload.withImageGalleryIndex(index)?.let { nextPayload ->
+        payload.withImageGalleryIndex(index, resolvedImageGalleryPayloads)?.let { nextPayload ->
             payload = nextPayload
             downloadStatus = "idle"
             downloadMessage = ""
@@ -1876,10 +1888,19 @@ internal fun SlockFilePreviewPayload.imageGalleryProgressLabel(): String? {
     return "${index + 1}/$size"
 }
 
-internal fun SlockFilePreviewPayload.withImageGalleryIndex(index: Int): SlockFilePreviewPayload? {
+internal fun SlockFilePreviewPayload.withImageGalleryIndex(
+    index: Int,
+    resolvedPayloadByAttachmentId: Map<String, SlockFilePreviewPayload> = emptyMap()
+): SlockFilePreviewPayload? {
     if (imageGallery.isEmpty()) return null
     val nextIndex = index.coerceIn(0, imageGallery.lastIndex)
     val nextImage = imageGallery.getOrNull(nextIndex) ?: return null
+    resolvedPayloadByAttachmentId[nextImage.attachmentId]?.let { resolvedPayload ->
+        return resolvedPayload.copy(
+            imageGallery = imageGallery,
+            imageGalleryIndex = nextIndex
+        )
+    }
     return nextImage.toPreviewPayload(previous = this, imageGalleryIndex = nextIndex)
 }
 

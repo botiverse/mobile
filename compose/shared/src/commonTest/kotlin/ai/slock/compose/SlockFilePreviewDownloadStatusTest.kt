@@ -389,4 +389,49 @@ class SlockFilePreviewDownloadStatusTest {
         assertEquals("thumb-two", next?.imageUrl)
         assertEquals("2/2", next?.imageGalleryProgressLabel())
     }
+
+    @Test
+    fun imageGalleryIndexChangeReusesResolvedPayloadForSelectedAttachment() {
+        val gallery =
+            listOf(
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "att-1",
+                    name = "one.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "thumb-one"
+                ),
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "att-2",
+                    name = "two.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "thumb-two"
+                )
+            )
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                attachmentId = "att-1",
+                name = "one.png",
+                externalMimeType = "image/png",
+                imageGallery = gallery
+            )
+        val resolved =
+            SlockFilePreviewPayload(
+                kind = "image",
+                attachmentId = "att-2",
+                name = "two.png",
+                externalMimeType = "image/png",
+                imageUrl = "resolved-two",
+                imageGallery = gallery,
+                imageGalleryIndex = 1
+            )
+
+        val next = payload.withImageGalleryIndex(1, mapOf("att-2" to resolved))
+
+        assertEquals("image", next?.kind)
+        assertEquals("att-2", next?.attachmentId)
+        assertEquals("resolved-two", next?.imageUrl)
+        assertEquals(1, next?.imageGalleryIndex)
+        assertEquals("2/2", next?.imageGalleryProgressLabel())
+    }
 }
