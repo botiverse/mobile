@@ -92,7 +92,7 @@ class SharedHomeShellStore(
     fun dispatch(intent: SharedHomeShellIntent) {
         when (intent) {
             SharedHomeShellIntent.Start -> dispatchHome(SharedHomeIntent.Start)
-            SharedHomeShellIntent.Refresh -> dispatchHome(SharedHomeIntent.Refresh)
+            SharedHomeShellIntent.Refresh -> dispatchHomeIntent(SharedHomeIntent.Refresh)
             SharedHomeShellIntent.ForegroundRefresh -> refreshVisibleHomeDestination()
             is SharedHomeShellIntent.SetSurfaceVisible -> setSurfaceVisible(intent.visible)
             SharedHomeShellIntent.OpenActivity -> openDestination(SharedHomeShellDestinationActivity)
