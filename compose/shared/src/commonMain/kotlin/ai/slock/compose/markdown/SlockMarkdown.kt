@@ -32,6 +32,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -1681,8 +1682,8 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(color, RectangleShape)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                 .padding(start = 5.dp, end = 5.dp, top = 0.dp, bottom = 0.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1750,8 +1751,8 @@ private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(SlockColor.BrandYellow.copy(alpha = 0.4f), RectangleShape)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                 .padding(horizontal = 4.dp, vertical = 0.dp),
         contentAlignment = Alignment.Center
     ) {

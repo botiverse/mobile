@@ -46,6 +46,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -122,8 +123,8 @@ internal fun SlockAnchoredMetaChip(
     val chipModifier =
         modifier
             .heightIn(min = 20.dp)
-            .border(borderWidth, SlockColor.BorderBlack)
-            .background(color)
+            .border(borderWidth, SlockColor.BorderBlack, RectangleShape)
+            .background(color, RectangleShape)
             .padding(horizontal = 6.dp, vertical = 2.dp)
             .let { base ->
                 if (anchorPlacement == SlockAnchorPlacement.Tap) {
@@ -656,15 +657,15 @@ internal fun SlockBrutalActionButton(
                 Modifier
                     .matchParentSize()
                     .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
+                    .background(SlockColor.ShadowBlack, RectangleShape)
         )
         Box(
             modifier =
                 Modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
-                    .background(if (enabled) backgroundColor else disabledBackgroundColor)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
                     .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
@@ -765,15 +766,15 @@ internal fun SlockToolbarChip(
                     Modifier
                         .matchParentSize()
                         .offset(x = activeShadowOffset, y = activeShadowOffset)
-                        .background(activeShadowColor)
+                        .background(activeShadowColor, RectangleShape)
             )
         }
         Box(
             modifier =
                 Modifier
                     .heightIn(min = 30.dp)
-                    .background(if (active) activeBackgroundColor else inactiveBackgroundColor)
-                    .border(SlockStroke.Default, resolvedBorderColor)
+                    .background(if (active) activeBackgroundColor else inactiveBackgroundColor, RectangleShape)
+                    .border(SlockStroke.Default, resolvedBorderColor, RectangleShape)
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
@@ -799,8 +800,8 @@ internal fun SlockToolbarChip(
                         color = SlockColor.TextBlack,
                         modifier =
                             Modifier
-                                .background(SlockColor.SurfaceWhite)
-                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                .background(SlockColor.SurfaceWhite, RectangleShape)
+                                .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                         maxLines = 1
                     )
