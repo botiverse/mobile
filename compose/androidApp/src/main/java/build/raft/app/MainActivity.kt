@@ -85,7 +85,8 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
+                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                        diagnosticsLogger = ::logSharedAuthDiagnostics
                     ).completeSocialLogin(provider = provider, code = code)
                 }
             when (result) {
@@ -131,7 +132,8 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
+                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                        diagnosticsLogger = ::logSharedAuthDiagnostics
                     ).completeMobileOAuthLogin(
                         code = handoffCode,
                         codeVerifier = pending.codeVerifier
@@ -151,6 +153,10 @@ class MainActivity : ComponentActivity() {
         }
         return true
     }
+}
+
+private fun logSharedAuthDiagnostics(message: String) {
+    SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =

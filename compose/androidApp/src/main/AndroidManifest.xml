@@ -22,6 +22,7 @@
             android:name=".shared.SlockKuiklyActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Slock"
             android:windowSoftInputMode="adjustNothing" />
         <activity-alias

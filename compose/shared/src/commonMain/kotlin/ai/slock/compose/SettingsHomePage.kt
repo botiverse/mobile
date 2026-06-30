@@ -8844,13 +8844,24 @@ private fun AppShellServerGateContent(
 
     LaunchedEffect(Unit) {
         when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
-            is SharedAuthResult.Success -> latestSession = result.data
-            is SharedAuthResult.Failure -> errorMessage = result.message
+            is SharedAuthResult.Success -> {
+                authDataSource.logDiagnostics(
+                    "auth_choose_server_load_result result=success serversCount=${result.data.servers.size} selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
+                )
+                latestSession = result.data
+            }
+            is SharedAuthResult.Failure -> {
+                authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=${result.code}")
+                errorMessage = result.message
+            }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=unauthenticated action=stay_on_server_picker")
                 errorMessage = serverGateUnauthenticatedMessage()
             }
-            null -> errorMessage = "Could not load servers."
+            null -> {
+                authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=exception")
+                errorMessage = "Could not load servers."
+            }
         }
     }
     LaunchedEffect(latestSession.servers.size) {
@@ -9003,8 +9014,16 @@ private fun AppShellServerGateContent(
         pendingServerId = null
         loading = false
         when (result) {
-            is SharedAuthResult.Success -> onReady(result.data)
-            is SharedAuthResult.Failure -> errorMessage = result.message
+            is SharedAuthResult.Success -> {
+                authDataSource.logDiagnostics(
+                    "auth_choose_server_action_result target=$target result=success selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
+                )
+                onReady(result.data)
+            }
+            is SharedAuthResult.Failure -> {
+                authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=failure code=${result.code}")
+                errorMessage = result.message
+            }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=unauthenticated action=stay_on_server_picker")
                 errorMessage = serverGateUnauthenticatedMessage()

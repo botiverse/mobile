@@ -205,6 +205,7 @@ class SharedAuthDataSource(
                 "Mobile sign-in did not return the required credentials."
             )
         }
+        diagnosticsLogger("auth_login_start provider=mobile_oauth")
         val login =
             when (
                 val response =
@@ -214,13 +215,27 @@ class SharedAuthDataSource(
                         platform = "android"
                     )
             ) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_result provider=mobile_oauth result=success parsed=true")
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_result provider=mobile_oauth result=failure code=${failure.code}")
+                    return failure
+                }
             }
         val servers =
             when (val response = api.servers("Bearer ${login.accessToken}")) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_servers_result provider=mobile_oauth result=success serversCount=${response.data.size}")
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_servers_result provider=mobile_oauth result=failure code=${failure.code} fallback=empty")
+                    emptyList()
+                }
             }
         val session =
             StoredAuthSession(
@@ -229,7 +244,17 @@ class SharedAuthDataSource(
                 refreshToken = login.refreshToken,
                 servers = servers
             ).withValidatedServerSelection(servers, serverSelectionMemory)
-        sessionStore.saveSession(session)
+        val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
+        diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
+            .getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_session_persist_result provider=mobile_oauth result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
+                )
+                return loginStageFailure("session_persist", "Could not save session locally.")
+            }
+        diagnosticsLogger("auth_session_persist_result provider=mobile_oauth result=success stage=session_persist")
+        diagnosticsLogger("auth_login_result provider=mobile_oauth result=success serversCount=${servers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
     }
 
@@ -237,20 +262,39 @@ class SharedAuthDataSource(
         provider: String,
         body: String
     ): SharedAuthResult<StoredAuthSession> {
+        diagnosticsLogger("auth_login_start provider=$provider")
         val tokens =
             when (val response = api.completeSocialLogin(provider, body)) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_result provider=$provider result=success tokens=true")
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_result provider=$provider result=failure code=${failure.code}")
+                    return failure
+                }
             }
         val user =
             when (val response = api.currentUser("Bearer ${tokens.accessToken}")) {
                 is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_current_user_result provider=$provider result=failure code=${failure.code}")
+                    return failure
+                }
             }
         val servers =
             when (val response = api.servers("Bearer ${tokens.accessToken}")) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_servers_result provider=$provider result=success serversCount=${response.data.size}")
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_servers_result provider=$provider result=failure code=${failure.code} fallback=empty")
+                    emptyList()
+                }
             }
         val session =
             StoredAuthSession(
@@ -259,7 +303,17 @@ class SharedAuthDataSource(
                 refreshToken = tokens.refreshToken,
                 servers = servers
             ).withValidatedServerSelection(servers, serverSelectionMemory)
-        sessionStore.saveSession(session)
+        val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
+        diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
+            .getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_session_persist_result provider=$provider result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
+                )
+                return loginStageFailure("session_persist", "Could not save session locally.")
+            }
+        diagnosticsLogger("auth_session_persist_result provider=$provider result=success stage=session_persist")
+        diagnosticsLogger("auth_login_result provider=$provider result=success serversCount=${servers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
     }
 

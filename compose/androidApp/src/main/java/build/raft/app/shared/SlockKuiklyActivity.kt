@@ -164,6 +164,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        SlockDiagnosticsLogger.record(
+                "SlockKuiklyActivity",
+                "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
+        )
+        recreate()
+    }
+
     override fun onDestroy() {
         removeSlockInputFontBridge()
         super.onDestroy()
@@ -397,7 +407,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                         sessionStore =
                                                 KuiklyMMKVAuthSessionStore(
                                                         androidMMKVAuthKeyValueStore(applicationContext)
-                                                )
+                                                ),
+                                        diagnosticsLogger = ::logSharedAuthDiagnostics
                                 ).completeGoogleSocialAuth(nativeResult)
                             }
                     when (result) {
@@ -800,6 +811,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            } else if (pageName == PAGE_APP_SHELL) {
+                starter.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             } else if (context !is Activity) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -3090,7 +3103,8 @@ internal class SlockKuiklyBridgeModule(
                     SharedAuthDataSource(
                             api = AndroidAuthApiFactory.createAuthApi(appContext),
                             sessionStore =
-                                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+                                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
+                            diagnosticsLogger = ::logSharedAuthDiagnostics
                     )
             val startResult =
                     withContext(Dispatchers.IO) {
@@ -3264,6 +3278,10 @@ private enum class SlockBridgeLogLevel {
                     else -> INFO
                 }
     }
+}
+
+private fun logSharedAuthDiagnostics(message: String) {
+    SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")
 }
 
 internal fun JSONObject.toMap(): Map<String, Any> {
