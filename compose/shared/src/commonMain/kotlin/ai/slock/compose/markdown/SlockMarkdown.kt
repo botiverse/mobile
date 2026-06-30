@@ -26,6 +26,7 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
+import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -37,6 +38,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
+import com.tencent.kuikly.compose.ui.text.Placeholder
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
@@ -230,9 +232,21 @@ internal object SlockMarkdownInlineTokenRegistry {
                                 highlightedMentionKeys.containsThreadMention(match.tag.label)
                     )
                 }
+        val inlineCodeTokens =
+            inlineScan.inlineCodeMatches
+                .filter { match -> match.code.shouldRenderThreadInlineCodeAsChip() }
+                .map { match ->
+                    MarkdownInlineToken(
+                        id = match.id,
+                        kind = MarkdownInlineTokenKind.InlineCode,
+                        range = match.range,
+                        label = match.code,
+                        code = match.code
+                    )
+                }
         return MarkdownInlineTokenPlan(
             content = content,
-            tokens = tagTokens.sortedBy { it.range.first },
+            tokens = (tagTokens + inlineCodeTokens).sortedBy { it.range.first },
             inlineCodeMatches = inlineScan.inlineCodeMatches
         )
     }
@@ -646,6 +660,17 @@ internal fun slockMarkdownAnnotator(
                 val code =
                     codeToken?.code
                         ?: child.getTextInNode(markdownContent).toString().markdownInlineCodeText()
+                val inlineToken =
+                    tokenPlan.inlineCodeTokens().firstOrNull { it.id == codeToken?.id }
+                if (inlineToken != null) {
+                    pushStringAnnotation(
+                        tag = SlockMarkdownInlineCodeAnnotationTag,
+                        annotation = SlockMarkdownInlineCodeAnnotationValue
+                    )
+                    appendInlineContent(inlineToken.id, code)
+                    pop()
+                    return@markdownAnnotator true
+                }
                 pushStyle(inlineCodeTextStyle.toSpanStyle())
                 pushStringAnnotation(
                     tag = SlockMarkdownInlineCodeAnnotationTag,
@@ -686,9 +711,37 @@ internal fun slockMarkdownAnnotator(
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
-        inlineContent = null,
+        inlineContent = {
+            tokenPlan.slockMarkdownInlineCodeContent(
+                inlineCodeWidths = inlineCodeWidths,
+                inlineCodeTextStyle = inlineCodeTextStyle
+            )
+        },
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
+}
+
+private fun MarkdownInlineTokenPlan.slockMarkdownInlineCodeContent(
+    inlineCodeWidths: Map<String, TextUnit>,
+    inlineCodeTextStyle: TextStyle
+): Map<String, InlineTextContent> {
+    val inlineCodeTokens = inlineCodeTokens()
+    if (inlineCodeTokens.isEmpty()) return emptyMap()
+    return inlineCodeTokens.associate { token ->
+        val code = token.code.orEmpty()
+        token.id to
+            InlineTextContent(
+                Placeholder(
+                    width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
+                    height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
+                )
+            ) { alternateText ->
+                SlockMarkdownInlineCodeChip(
+                    code = alternateText.ifEmpty { code },
+                    textStyle = inlineCodeTextStyle
+                )
+            }
+    }
 }
 
 private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
