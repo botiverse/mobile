@@ -40,6 +40,10 @@ interface SlockAuthSessionInvalidationSource {
     val sessionInvalidations: SharedFlow<Unit>
 }
 
+interface SlockAuthSessionChangeSource {
+    val sessionChanges: SharedFlow<String>
+}
+
 @Serializable
 data class StoredAuthServerSelection(
     val serverId: String,
@@ -151,30 +155,49 @@ data class StoredAuthServer(
 
 class InMemorySlockAuthSessionStore(
     initialSession: StoredAuthSession? = null
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthServerSelectionMemory {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
     private var session: StoredAuthSession? = initialSession
     private val rememberedSelections = mutableMapOf<String, StoredAuthServerSelection>()
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
+    override val sessionChanges: SharedFlow<String> = changes.asSharedFlow()
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock { session }
 
     override suspend fun saveSession(session: StoredAuthSession) {
-        mutex.withLock { this.session = session }
-    }
-
-    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        mutex.withLock {
-            session = session?.copy(accessToken = accessToken, refreshToken = refreshToken)
+        val changed =
+            mutex.withLock {
+                val previousFingerprint = this.session?.authSessionClearFingerprint()
+                this.session = session
+                previousFingerprint != session.authSessionClearFingerprint()
+            }
+        if (changed) {
+            changes.emit(session.authSessionClearFingerprint())
         }
     }
 
+    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        val updatedFingerprint =
+            mutex.withLock {
+                val previousFingerprint = session?.authSessionClearFingerprint()
+                val updated =
+                    session?.copy(accessToken = accessToken, refreshToken = refreshToken)
+                        ?.also { session = it }
+                updated
+                    ?.authSessionClearFingerprint()
+                    ?.takeIf { it != previousFingerprint }
+            }
+        updatedFingerprint?.let { changes.emit(it) }
+    }
+
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        mutex.withLock {
-            session =
+        val updatedFingerprint =
+            mutex.withLock {
+                val previousFingerprint = session?.authSessionClearFingerprint()
                 session?.let { current ->
                     current.user.accountServerSelectionKey()?.let { accountKey ->
                         val remembered =
@@ -188,8 +211,12 @@ class InMemorySlockAuthSessionStore(
                         }
                     }
                     current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
+                        .also { session = it }
+                        .authSessionClearFingerprint()
+                        .takeIf { it != previousFingerprint }
                 }
-        }
+            }
+        updatedFingerprint?.let { changes.emit(it) }
     }
 
     override suspend fun clearSession() {
@@ -220,11 +247,13 @@ class InMemorySlockAuthSessionStore(
 class KuiklyMMKVAuthSessionStore(
     private val store: SlockKeyValueStore,
     private val sessionClearEvents: SlockAuthSessionClearEventSink? = null
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthServerSelectionMemory {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
+    override val sessionChanges: SharedFlow<String> = changes.asSharedFlow()
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock {
@@ -232,8 +261,18 @@ class KuiklyMMKVAuthSessionStore(
         }
 
     override suspend fun saveSession(session: StoredAuthSession) {
-        mutex.withLock {
-            store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+        val fingerprint = session.authSessionClearFingerprint()
+        val changed =
+            mutex.withLock {
+                val previousFingerprint =
+                    store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+                        ?.decodeStoredSessionOrNull()
+                        ?.authSessionClearFingerprint()
+                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+                previousFingerprint != fingerprint
+            }
+        if (changed) {
+            changes.emit(fingerprint)
         }
     }
 

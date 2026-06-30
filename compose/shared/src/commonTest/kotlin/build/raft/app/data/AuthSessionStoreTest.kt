@@ -1,6 +1,10 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -59,6 +63,30 @@ class AuthSessionStoreTest {
         assertEquals(
             StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
             store.readRememberedServerSelection(sampleSession().user)
+        )
+    }
+
+    @Test
+    fun mmkvAuthSessionStoreBroadcastsChangedSessionFingerprint() = runBlocking {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val store = KuiklyMMKVAuthSessionStore(keyValueStore)
+        val firstChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
+
+        store.saveSession(sampleSession())
+
+        assertEquals(sampleSession().authSessionClearFingerprint(), firstChange.await())
+
+        val duplicateChange = async(start = CoroutineStart.UNDISPATCHED) { withTimeoutOrNull(50) { store.sessionChanges.first() } }
+        store.saveSession(sampleSession())
+        assertNull(duplicateChange.await())
+
+        val selectedServerChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
+        store.updateSelectedServer("server-2", "work")
+        assertEquals(
+            sampleSession()
+                .copy(selectedServerId = "server-2", selectedServerSlug = "work")
+                .authSessionClearFingerprint(),
+            selectedServerChange.await()
         )
     }
 

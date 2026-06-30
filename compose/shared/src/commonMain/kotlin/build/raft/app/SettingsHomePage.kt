@@ -1958,6 +1958,26 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             resetAppShellSessionState()
         }
     }
+    LaunchedEffect(authStore) {
+        authStore.sessionChanges.collect { fingerprint ->
+            val cachedSession =
+                runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+            val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
+            val identityChanged =
+                cachedSession?.user?.id != currentSession?.user?.id ||
+                    cachedSession?.currentServerId != currentSession?.currentServerId
+            bridge.log(
+                "app_shell_session_change_received fingerprint=$fingerprint " +
+                    "hasSession=${cachedSession != null} identityChanged=$identityChanged"
+            )
+            authGateMessage = null
+            if (identityChanged) {
+                bridge.realtimeDisconnect("auth_changed")
+                resetAppShellSessionState()
+            }
+            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+        }
+    }
 
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
