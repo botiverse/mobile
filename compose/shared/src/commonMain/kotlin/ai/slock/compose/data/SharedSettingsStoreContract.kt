@@ -130,6 +130,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetServerMute -> MviActionKey(MOBILE_ACTION_SERVER_MUTE)
                 is SharedSettingsIntent.SetLocale -> MviActionKey(MOBILE_ACTION_LANGUAGE)
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)
+                is SharedSettingsIntent.SetImageAnnotationEnabled -> MviActionKey(MOBILE_ACTION_IMAGE_ANNOTATION)
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")
                 is SharedSettingsIntent.SaveApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:${request.key}")

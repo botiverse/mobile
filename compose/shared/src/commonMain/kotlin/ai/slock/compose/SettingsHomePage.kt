@@ -30,6 +30,7 @@ import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRealtimeEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_COMPACT_MESSAGES
+import ai.slock.compose.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -669,7 +670,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
-        }
+    }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
@@ -3604,6 +3605,9 @@ private fun SettingsAppShellContent(
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
+                    },
+                    onImageAnnotationChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
                     }
                 )
             SettingsDestinationAbout ->
@@ -4380,7 +4384,8 @@ private fun SettingsMobileContent(
     refreshing: Boolean,
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
-    onCompactConsecutiveMessagesChange: (Boolean) -> Unit
+    onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
+    onImageAnnotationChange: (Boolean) -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -4404,6 +4409,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+                )
+            }
+            item {
+                SettingsImageAnnotationCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onImageAnnotationChange = onImageAnnotationChange
                 )
             }
         }
@@ -4480,6 +4492,54 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsImageAnnotationCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onImageAnnotationChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.inProgress
+    val preference = snapshot.imageAnnotation
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = "Support image annotation") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onImageAnnotationChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Composer images open the annotation transfer page" else "Composer images upload directly",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }

@@ -1,11 +1,13 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.BridgeAttachmentDownloadProgress
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.core.views.PlayState
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewDownloadStatusTest {
@@ -42,6 +44,23 @@ class SlockFilePreviewDownloadStatusTest {
         ).forEach { forbidden ->
             assertFalse(encodedPayload.contains(forbidden), "$forbidden must stay outside compose_file_preview launch pageData")
         }
+    }
+
+    @Test
+    fun composerImageEraseRemovesFinalMatchingStroke() {
+        val remaining =
+            slockComposerImageEraseStrokes(
+                strokes =
+                    listOf(
+                        listOf(
+                            Offset(10f, 10f),
+                            Offset(80f, 10f)
+                        )
+                    ),
+                point = Offset(48f, 12f)
+            )
+
+        assertTrue(remaining.isEmpty())
     }
 
     @Test

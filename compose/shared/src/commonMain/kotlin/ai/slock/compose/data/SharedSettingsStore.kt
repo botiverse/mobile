@@ -323,6 +323,7 @@ sealed interface SharedSettingsIntent {
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
+    data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -774,6 +775,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_image_annotation_unavailable", retryable = false))
+        repository.setImageAnnotationEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
 
@@ -964,6 +973,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Compact message layout preference is not available on this platform."
+                    ),
+            imageAnnotation =
+                chatLayout?.toSettingsMobileImageAnnotationSnapshot()
+                    ?: imageAnnotation.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Image annotation preference is not available on this platform."
                     )
         )
     }
@@ -1554,6 +1570,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setCompactConsecutiveMessages(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_COMPACT_MESSAGES)
+            }
+            is SharedSettingsIntent.SetImageAnnotationEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_IMAGE_ANNOTATION, inProgress = true)
+                    )
+                dataSource.setImageAnnotationEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -2318,6 +2342,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
+            is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -2474,6 +2499,7 @@ internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
+internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
@@ -2577,6 +2603,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot
         available = true,
         statusLabel = if (compactConsecutiveMessages) "Enabled" else "Off",
         detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = imageAnnotationEnabled,
+        available = true,
+        statusLabel = if (imageAnnotationEnabled) "Enabled" else "Off",
+        detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
     )
 
 private fun AppLocale.mobileLabel(): String =

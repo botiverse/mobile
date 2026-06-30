@@ -632,10 +632,14 @@ private fun SlockFilePreviewComposerImageEditor(
     var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
     var tool by remember(payload.imageUrl) { mutableStateOf(SlockComposerImageEditorTool.Pen) }
     fun eraseAt(point: Offset) {
-        val nextStrokes = strokes.filterNot { stroke -> slockComposerImageStrokeHit(stroke, point) }
+        val nextStrokes = slockComposerImageEraseStrokes(strokes, point)
+        val shouldClearActiveStroke = slockComposerImageStrokeHit(activeStroke, point)
         val nextTexts = textAnnotations.filterNot { annotation -> annotation.hitTest(point) }
         if (nextStrokes.size != strokes.size) {
             strokes = nextStrokes
+        }
+        if (shouldClearActiveStroke) {
+            activeStroke = emptyList()
         }
         if (nextTexts.size != textAnnotations.size) {
             textAnnotations = nextTexts
@@ -666,7 +670,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     .background(Color(0xFF000000))
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .nativeRef { ref -> onCaptureRef(ref) }
-                    .pointerInput(payload.imageUrl, tool, strokes, textAnnotations) {
+                    .pointerInput(payload.imageUrl, tool) {
                         detectTapGestures { position ->
                             when (tool) {
                                 SlockComposerImageEditorTool.Pen -> Unit
@@ -675,7 +679,7 @@ private fun SlockFilePreviewComposerImageEditor(
                             }
                         }
                     }
-                    .pointerInput(payload.imageUrl, tool, strokes, textAnnotations) {
+                    .pointerInput(payload.imageUrl, tool) {
                         detectDragGestures(
                             onDragStart = { start ->
                                 when (tool) {
@@ -906,7 +910,10 @@ private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
         point.y <= position.y + height
 }
 
-private fun slockComposerImageStrokeHit(stroke: List<Offset>, point: Offset): Boolean {
+internal fun slockComposerImageEraseStrokes(strokes: List<List<Offset>>, point: Offset): List<List<Offset>> =
+    strokes.filterNot { stroke -> slockComposerImageStrokeHit(stroke, point) }
+
+internal fun slockComposerImageStrokeHit(stroke: List<Offset>, point: Offset): Boolean {
     if (stroke.isEmpty()) return false
     val thresholdSquared = 22f * 22f
     return stroke.any { it.slockDistanceSquaredTo(point) <= thresholdSquared } ||

@@ -124,7 +124,8 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.Default,
     val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
         LargeScreenNavigationPreference.entries,
-    val compactConsecutiveMessages: Boolean = false
+    val compactConsecutiveMessages: Boolean = false,
+    val imageAnnotationEnabled: Boolean = false
 )
 
 interface ChatLayoutPreferenceStore {
@@ -137,6 +138,9 @@ interface ChatLayoutPreferenceStore {
     fun readCompactConsecutiveMessagesSync(): Boolean
     suspend fun readCompactConsecutiveMessages(): Boolean
     suspend fun saveCompactConsecutiveMessages(enabled: Boolean)
+    fun readImageAnnotationEnabledSync(): Boolean
+    suspend fun readImageAnnotationEnabled(): Boolean
+    suspend fun saveImageAnnotationEnabled(enabled: Boolean)
 }
 
 class KeyValueChatLayoutPreferenceStore(
@@ -176,10 +180,21 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, enabled)
     }
 
+    override fun readImageAnnotationEnabledSync(): Boolean =
+        store.getBoolean(KEY_IMAGE_ANNOTATION_ENABLED, false)
+
+    override suspend fun readImageAnnotationEnabled(): Boolean =
+        readImageAnnotationEnabledSync()
+
+    override suspend fun saveImageAnnotationEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_IMAGE_ANNOTATION_ENABLED, enabled)
+    }
+
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
+        const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
     }
 }
 
@@ -192,6 +207,7 @@ interface ChatLayoutPreferenceRepository {
         navigation: LargeScreenNavigationPreference
     ): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
 }
 
 class PersistentChatLayoutPreferenceRepository(
@@ -201,7 +217,8 @@ class PersistentChatLayoutPreferenceRepository(
         ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled()
         )
 
     override suspend fun selectMyMessageAlignment(
@@ -211,7 +228,8 @@ class PersistentChatLayoutPreferenceRepository(
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = alignment,
             largeScreenNavigation = store.readLargeScreenNavigation(),
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled()
         )
     }
 
@@ -222,7 +240,8 @@ class PersistentChatLayoutPreferenceRepository(
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = navigation,
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages()
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled()
         )
     }
 
@@ -231,7 +250,18 @@ class PersistentChatLayoutPreferenceRepository(
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
-            compactConsecutiveMessages = enabled
+            compactConsecutiveMessages = enabled,
+            imageAnnotationEnabled = store.readImageAnnotationEnabled()
+        )
+    }
+
+    override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveImageAnnotationEnabled(enabled)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = enabled
         )
     }
 }

@@ -41,6 +41,7 @@ class LocalPreferencesTest {
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(false, snapshot.compactConsecutiveMessages)
+        assertEquals(false, snapshot.imageAnnotationEnabled)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
             snapshot.supportedLargeScreenNavigation.contains(
@@ -60,14 +61,19 @@ class LocalPreferencesTest {
         val navigation =
             repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
         val compact = repository.setCompactConsecutiveMessages(true)
+        val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val restored = repository.getChatLayoutPreference()
+        val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, navigation.largeScreenNavigation)
         assertEquals(true, compact.compactConsecutiveMessages)
+        assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
         assertEquals(true, restored.compactConsecutiveMessages)
+        assertEquals(true, restored.imageAnnotationEnabled)
+        assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
     }
 
     @Test

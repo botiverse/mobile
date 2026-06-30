@@ -701,17 +701,21 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
+        store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
         assertEquals(AppLocale.SimplifiedChinese, localeRepository.current)
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
+        assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
         assertEquals(true, mobile.compactConsecutiveMessages.enabled)
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
+        assertEquals(true, mobile.imageAnnotation.enabled)
+        assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
         scope.cancel()
     }
@@ -2692,12 +2696,14 @@ class SharedSettingsStoreTest {
 
     private class FakeChatLayoutPreferenceRepository(
         var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
-        var compactConsecutiveMessages: Boolean = false
+        var compactConsecutiveMessages: Boolean = false,
+        var imageAnnotationEnabled: Boolean = false
     ) : ChatLayoutPreferenceRepository {
         override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled
             )
 
         override suspend fun selectMyMessageAlignment(
@@ -2706,7 +2712,8 @@ class SharedSettingsStoreTest {
             this.alignment = alignment
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = this.alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled
             )
         }
 
@@ -2716,14 +2723,25 @@ class SharedSettingsStoreTest {
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 largeScreenNavigation = navigation,
-                compactConsecutiveMessages = compactConsecutiveMessages
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled
             )
 
         override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             compactConsecutiveMessages = enabled
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled
+            )
+        }
+
+        override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            imageAnnotationEnabled = enabled
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled
             )
         }
     }

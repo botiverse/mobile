@@ -874,6 +874,13 @@ data class SettingsMobileSnapshot(
             available = true,
             statusLabel = "Off",
             detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
+        ),
+    val imageAnnotation: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
         )
 )
 

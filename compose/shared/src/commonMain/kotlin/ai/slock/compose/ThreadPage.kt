@@ -28,6 +28,7 @@ import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
@@ -42,6 +43,7 @@ import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.realtime.RealtimeRoutePolicy
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
@@ -2410,6 +2412,12 @@ internal fun SharedThreadRouteContent(
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
     var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
+    val chatLayoutPreferenceStore =
+        remember(pager) {
+            KeyValueChatLayoutPreferenceStore(kuiklySharedPreferenceStore(pager))
+        }
+    fun imageAnnotationEnabled(): Boolean =
+        chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -3170,7 +3178,7 @@ internal fun SharedThreadRouteContent(
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.previewUri
         )
-        if (threadAttachment.isImageAttachment()) {
+        if (threadAttachment.isImageAttachment() && imageAnnotationEnabled()) {
             composerImageActionCounter += 1
             val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
             pager.openSlockFilePreviewPage(
@@ -3182,6 +3190,12 @@ internal fun SharedThreadRouteContent(
                     composerImageMimeType = attachment.mimeType.orEmpty(),
                     composerImageReplaceAttachmentId = attachment.id,
                     composerImageCanEdit = true
+                )
+            )
+        } else if (threadAttachment.isImageAttachment()) {
+            pager.openSlockFilePreviewPage(
+                threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
+                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
                 )
             )
         } else {
@@ -4659,7 +4673,7 @@ internal fun SharedThreadRouteContent(
                             }
                             return@launch
                         }
-                        if (action == "attachImage" && files.size == 1) {
+                        if (action == "attachImage" && files.size == 1 && imageAnnotationEnabled()) {
                             openComposerImageTransfer(files.first())
                         } else {
                             uploadComposerAttachmentFiles(files)
