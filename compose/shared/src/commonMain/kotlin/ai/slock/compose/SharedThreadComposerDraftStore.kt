@@ -497,17 +497,21 @@ internal class SharedThreadComposerDraftStore(
                 )
             }
             is SharedThreadComposerDraftIntent.AddLocalAttachments ->
-                current.copy(
-                    syncNonce = current.syncNonce + 1,
-                    sending = false,
-                    failureLabel = null,
-                    removedAttachmentIds =
-                        current.removedAttachmentIds -
-                            intent.attachments.map { attachment -> attachment.id }.toSet(),
-                    uploadedAttachments =
-                        (current.uploadedAttachments + intent.attachments)
-                            .distinctBy { attachment -> attachment.id }
-                )
+                intent.attachments
+                    .map { attachment -> attachment.id }
+                    .toSet()
+                    .let { localAttachmentIds ->
+                        current.copy(
+                            syncNonce = current.syncNonce + 1,
+                            sending = false,
+                            failureLabel = null,
+                            removedAttachmentIds = current.removedAttachmentIds - localAttachmentIds,
+                            uploadedAttachments =
+                                (current.uploadedAttachments.filterNot { attachment -> attachment.id in localAttachmentIds } +
+                                    intent.attachments)
+                                    .distinctBy { attachment -> attachment.id }
+                        )
+                    }
             is SharedThreadComposerDraftIntent.MarkAttachmentsFailed ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,

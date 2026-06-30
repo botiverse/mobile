@@ -2408,6 +2408,9 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadJobs by remember(threadInstanceKey) {
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
+    var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, AttachmentUploadFile>>(emptyMap())
+    }
     val attachmentUploadSemaphore = remember(threadInstanceKey) {
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
@@ -3428,6 +3431,11 @@ internal fun SharedThreadRouteContent(
                     )
                 }
         if (localAttachments.isNotEmpty()) {
+            attachmentUploadFilesByLocalId =
+                attachmentUploadFilesByLocalId +
+                    files
+                        .filter { file -> file.id.isNotBlank() }
+                        .associateBy { file -> file.id }
             composerDraftViewModel.dispatch(
                 SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
             )
@@ -3470,6 +3478,7 @@ internal fun SharedThreadRouteContent(
                                             uploaded.associate { attachment -> attachment.id to localAttachmentId }
                                     )
                                 )
+                                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
                             }
                             is DataResult.Error ->
                                 handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
@@ -4684,12 +4693,31 @@ internal fun SharedThreadRouteContent(
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
                         attachmentUploadJobs[id]?.cancel()
                         attachmentUploadJobs = attachmentUploadJobs - id
+                        attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - id
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
                     }
                 }
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        val file = attachmentUploadFilesByLocalId[id]
+                        if (file == null) {
+                            bridge.log(
+                                "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
+                            )
+                            bridge.toast("Attachment retry unavailable. Remove and attach again.")
+                            return@ThreadPageContent
+                        }
+                        if (attachmentUploadJobs[id]?.isActive == true) {
+                            bridge.log(
+                                "thread_composer_attachment_retry result=already_uploading attachmentId=$id"
+                            )
+                            return@ThreadPageContent
+                        }
+                        bridge.log(
+                            "thread_composer_attachment_retry result=start attachmentId=$id fileName=${file.fileName}"
+                        )
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
+                        uploadComposerAttachmentFiles(listOf(file))
                     }
                 }
                 "previewAttachment" -> {

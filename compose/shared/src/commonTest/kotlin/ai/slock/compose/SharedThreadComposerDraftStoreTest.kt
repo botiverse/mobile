@@ -480,6 +480,27 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun retryingFailedLocalAttachmentReplacesItWithUploadingState() {
+        val store = SharedThreadComposerDraftStore()
+        val failed =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "doc.pdf",
+                sizeLabel = "82 KB",
+                mimeType = "application/pdf",
+                status = "failed",
+                errorCode = "network_error"
+            )
+        val retrying =
+            failed.copy(status = "uploading", errorCode = null)
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(failed)))
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(retrying)))
+
+        assertEquals(listOf(retrying), store.state.value.uploadedAttachments)
+    }
+
+    @Test
     fun completeSendReplacesPendingMentionActionsAndSuccessfulNextSendClearsThem() {
         val store = SharedThreadComposerDraftStore()
         val pending =
