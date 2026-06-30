@@ -7,6 +7,7 @@ import util from '@ohos.util';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
+import { setup } from '@kuiklybase/knoi';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
@@ -41,6 +42,7 @@ const SLOCK_FONTS: SlockFontResource[] = [
   { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
 ];
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
+const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
@@ -50,6 +52,7 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
+    this.setupKnoi();
     this.initBugly(launchParam);
     SlockOhosCrashReporter.install(this.context);
   }
@@ -144,6 +147,20 @@ export default class EntryAbility extends UIAbility {
       // Fall back to String(error) below.
     }
     return String(error);
+  }
+
+  private setupKnoi(): void {
+    try {
+      setup('libshared.so', false);
+      hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
+    } catch (err) {
+      hilog.warn(
+        0x0000,
+        SLOCK_KNOI_LOG_TAG,
+        'KNOI setup failed; realtime will fall back to NAPI. Cause: %{public}s',
+        this.safeErrorMessage(err)
+      );
+    }
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {

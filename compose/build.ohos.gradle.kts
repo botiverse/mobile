@@ -9,4 +9,5 @@ plugins {
     id("org.jetbrains.compose").version("1.7.3").apply(false)
     kotlin("plugin.compose").version("2.0.21-KBA-010").apply(false)
     id("com.tencent.kuiklybase.resource.generator").version("0.1.0").apply(false)
+    id("com.tencent.kuiklybase.knoi.plugin").version("0.0.4").apply(false)
 }

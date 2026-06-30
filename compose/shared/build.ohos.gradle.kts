@@ -9,6 +9,7 @@ plugins {
     kotlin("plugin.compose")
     id("app.cash.sqldelight") version "2.1.0-KBA-001"
     id("com.tencent.kuiklybase.resource.generator")
+    id("com.tencent.kuiklybase.knoi.plugin")
 }
 
 val KEY_PAGE_NAME = "pageName"
@@ -37,6 +38,12 @@ multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
     multiplatformResourcesPrefix = "slock_"
     multiplatformResourcesClassName = "MR"
+}
+
+knoi {
+    ignoreTypeAssert = true
+    moduleName = "slockshared"
+    tsGenDir = layout.buildDirectory.dir("generated/knoi-ts").get().asFile.absolutePath
 }
 
 fun ohosSqliteProviderLibDir(): File {
