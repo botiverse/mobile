@@ -209,16 +209,15 @@ internal object SlockMarkdownInlineTokenRegistry {
     fun plan(
         content: String,
         highlightedMentions: Set<String> = emptySet(),
-        knownChannelNames: Set<String>? = null,
+        isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
         inlineContentScope: String? = null
     ): MarkdownInlineTokenPlan {
         val highlightedMentionKeys =
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
-        val knownChannelKeys = knownChannelNames?.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val inlineScan = content.threadMarkdownInlineScan(inlineContentScope = inlineContentScope)
         val tagTokens =
             inlineScan.tagMatches
-                .filter { match -> match.tag.matchesKnownMarkdownChannelNames(knownChannelKeys) }
+                .filter { match -> isTagValid(match.tag) }
                 .map { match ->
                     MarkdownInlineToken(
                         id = match.id,
@@ -238,6 +237,9 @@ internal object SlockMarkdownInlineTokenRegistry {
         )
     }
 }
+
+fun defaultSlockMarkdownTagValidity(tag: ThreadMarkdownTag): Boolean =
+    tag.kind == ThreadMarkdownTagKind.Task
 
 private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTokenKind =
     when (this) {
@@ -462,19 +464,6 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
         else -> null
     }
 
-private fun ThreadMarkdownTag.matchesKnownMarkdownChannelNames(knownChannelKeys: Set<String>?): Boolean {
-    if (knownChannelKeys == null ||
-        (kind != ThreadMarkdownTagKind.Channel && kind != ThreadMarkdownTagKind.ChannelThread)
-    ) {
-        return true
-    }
-    val key =
-        (channelName ?: label.removePrefix("#").substringBefore(":"))
-            .trim()
-            .lowercase()
-    return key.isNotBlank() && key in knownChannelKeys
-}
-
 private fun String.isThreadChannelReference(): Boolean {
     if (!startsWith('#')) return false
     val colonIndex = indexOf(':')
@@ -621,7 +610,7 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
 internal fun slockMarkdownAnnotator(
     content: String,
     highlightedMentions: Set<String> = emptySet(),
-    knownChannelNames: Set<String>? = null,
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
     inlineContentScope: String? = null,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -632,7 +621,7 @@ internal fun slockMarkdownAnnotator(
         SlockMarkdownInlineTokenRegistry.plan(
             content,
             highlightedMentions,
-            knownChannelNames,
+            isTagValid,
             inlineContentScope = inlineContentScope
         )
 ): MarkdownAnnotator {
@@ -1109,7 +1098,7 @@ fun SlockMarkdownBody(
         lineHeight = SlockMarkdownBodyLineHeight
     ),
     highlightedMentions: Set<String> = emptySet(),
-    knownChannelNames: Set<String>? = null,
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -1195,11 +1184,11 @@ fun SlockMarkdownBody(
     val parserContent = remember(content) {
         content.markdownParserLiteralHtmlContent()
     }
-    val tokenPlan = remember(parserContent, highlightedMentions, knownChannelNames, inlineContentScope) {
+    val tokenPlan = remember(parserContent, highlightedMentions, isTagValid, inlineContentScope) {
         SlockMarkdownInlineTokenRegistry.plan(
             parserContent,
             highlightedMentions,
-            knownChannelNames,
+            isTagValid,
             inlineContentScope = inlineContentScope
         )
     }
@@ -1211,7 +1200,7 @@ fun SlockMarkdownBody(
         slockMarkdownAnnotator(
             parserContent,
             highlightedMentions = highlightedMentions,
-            knownChannelNames = knownChannelNames,
+            isTagValid = isTagValid,
             inlineContentScope = inlineContentScope,
             onOpenTag = { tag -> currentOnOpenTag(tag) },
             resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) },

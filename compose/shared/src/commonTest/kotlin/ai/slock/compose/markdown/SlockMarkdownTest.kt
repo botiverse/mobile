@@ -225,12 +225,31 @@ class SlockMarkdownTest {
 
     @Test
     fun userMentionsRenderAsClickableTags() {
+        val body = "Ping @Android-App-Integrator in #markdown专修 for #15"
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
-                "Ping @Android-App-Integrator in #markdown专修 for #15"
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        isTagValid =
+                            validThreadMarkdownTags(
+                                knownChannels = setOf("markdown专修"),
+                                knownMentions = setOf("Android-App-Integrator")
+                            )
+                    )
             )
 
         assertEquals(setOf("slock:5", "slock:32", "slock:48"), annotated.slockMarkdownClickableTags())
+    }
+
+    @Test
+    fun unknownUserMentionsAndChannelsDoNotRenderAsClickableTags() {
+        val body = "Ping @not-a-member in #not-a-channel for #15"
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body)
+
+        assertEquals("Ping @not-a-member in #not-a-channel for #15", annotated.text)
+        assertEquals(setOf("slock:41"), annotated.slockMarkdownClickableTags())
     }
 
     @Test
@@ -239,7 +258,12 @@ class SlockMarkdownTest {
         val annotator =
             slockMarkdownAnnotator(
                 body,
-                highlightedMentions = setOf("artin")
+                highlightedMentions = setOf("artin"),
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("markdown专修"),
+                        knownMentions = setOf("artin", "Android-App-Integrator")
+                    )
             )
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
@@ -269,7 +293,11 @@ class SlockMarkdownTest {
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
                 highlightedMentions = setOf("artin"),
-                knownChannelNames = setOf("raft-mobile")
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("raft-mobile"),
+                        knownMentions = setOf("artin")
+                    )
             )
         val tokens = plan.tagTokens()
 
@@ -429,14 +457,22 @@ class SlockMarkdownTest {
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
                 highlightedMentions = setOf("artin"),
-                knownChannelNames = setOf("markdown专修"),
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("markdown专修"),
+                        knownMentions = setOf("artin")
+                    ),
                 inlineContentScope = "message-mixed"
             )
         val annotator =
             slockMarkdownAnnotator(
                 body,
                 highlightedMentions = setOf("artin"),
-                knownChannelNames = setOf("markdown专修"),
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("markdown专修"),
+                        knownMentions = setOf("artin")
+                    ),
                 inlineContentScope = "message-mixed",
                 onOpenTag = { openedTag = it },
                 tokenPlan = tokenPlan
@@ -543,6 +579,7 @@ class SlockMarkdownTest {
             slockMarkdownAnnotator(
                 content = body,
                 highlightedMentions = setOf("artin"),
+                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin")),
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             )
 
@@ -563,7 +600,11 @@ class SlockMarkdownTest {
             slockMarkdownAnnotator(
                 content = body,
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                knownChannelNames = setOf("markdown专修")
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("markdown专修"),
+                        knownMentions = setOf("artin")
+                    )
             )
 
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
@@ -582,7 +623,15 @@ class SlockMarkdownTest {
     @Test
     fun inlineTagPlanFindsTokensForTextNodeRange() {
         val body = "Ping @artin for #405 and #markdown专修:7933cf78"
-        val plan = SlockMarkdownInlineTokenRegistry.plan(body)
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("markdown专修"),
+                        knownMentions = setOf("artin")
+                    )
+            )
 
         assertEquals(listOf("@artin"), plan.tagTokensInRange(0, 12).map { it.label })
         assertEquals(listOf("#405"), plan.tagTokensInRange(12, 22).map { it.label })
@@ -631,7 +680,12 @@ class SlockMarkdownTest {
         val matches = "See #markdown专修:7933cf78 and #general:abc123 in chat".threadInlineTagMatches()
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
-                "See #markdown专修:7933cf78 and #general:abc123 in chat"
+                content = "See #markdown专修:7933cf78 and #general:abc123 in chat",
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = "See #markdown专修:7933cf78 and #general:abc123 in chat",
+                        isTagValid = validThreadMarkdownTags(knownChannels = setOf("markdown专修", "general"))
+                    )
             )
 
         assertEquals(2, matches.size)
@@ -645,14 +699,19 @@ class SlockMarkdownTest {
     @Test
     fun fullMarkdownRendererKeepsChannelThreadClickableTags() {
         val body = "Final #markdown专修:9579b48a @artin #markdown专修 #37."
-        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("markdown专修"))
+        val isTagValid =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownMentions = setOf("artin")
+            )
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body, isTagValid = isTagValid)
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
                 content = body,
                 annotator =
                     slockMarkdownAnnotator(
                         content = body,
-                        knownChannelNames = setOf("markdown专修"),
+                        isTagValid = isTagValid,
                         tokenPlan = plan
                     )
             )
@@ -670,16 +729,21 @@ class SlockMarkdownTest {
     @Test
     fun fullRendererClickableTagsCanBeScopedPerMessageRow() {
         val body = "Ping @artin in #markdown专修"
+        val isTagValid =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownMentions = setOf("artin")
+            )
         val firstPlan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
-                knownChannelNames = setOf("markdown专修"),
+                isTagValid = isTagValid,
                 inlineContentScope = "message-a"
             )
         val secondPlan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
-                knownChannelNames = setOf("markdown专修"),
+                isTagValid = isTagValid,
                 inlineContentScope = "message-b"
             )
         val firstAnnotated =
@@ -688,7 +752,7 @@ class SlockMarkdownTest {
                 annotator =
                     slockMarkdownAnnotator(
                         content = body,
-                        knownChannelNames = setOf("markdown专修"),
+                        isTagValid = isTagValid,
                         inlineContentScope = "message-a",
                         tokenPlan = firstPlan
                     )
@@ -699,7 +763,7 @@ class SlockMarkdownTest {
                 annotator =
                     slockMarkdownAnnotator(
                         content = body,
-                        knownChannelNames = setOf("markdown专修"),
+                        isTagValid = isTagValid,
                         inlineContentScope = "message-b",
                         tokenPlan = secondPlan
                     )
@@ -723,7 +787,11 @@ class SlockMarkdownTest {
                 "#a67dddad 存在并确实触发过；backup reminder #3adea0d5 和 #34xxx 都不是引用。"
 
         val matches = body.threadInlineTagMatches()
-        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("raft-mobile"))
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid = validThreadMarkdownTags(knownChannels = setOf("raft-mobile"))
+            )
 
         assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), matches.map { it.tag.label })
         assertEquals(ThreadMarkdownTagKind.Channel, matches[0].tag.kind)
@@ -734,10 +802,14 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineChannelReferencesRequireKnownChannelWhenProvided() {
+    fun inlineChannelReferencesRequireValidChannelCallback() {
         val body = "Known #raft-mobile thread #raft-mobile:4752266f unknown #not-channel and #not-channel:4752266f"
 
-        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("raft-mobile"))
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid = validThreadMarkdownTags(knownChannels = setOf("raft-mobile"))
+            )
 
         assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), plan.tagTokens().map { it.label })
         assertEquals(
@@ -747,10 +819,14 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun emptyKnownChannelSetSuppressesAllChannelReferences() {
+    fun emptyChannelCallbackSuppressesAllChannelReferences() {
         val body = "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25"
 
-        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = emptySet())
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
+            )
 
         assertEquals(listOf("@artin", "#25"), plan.tagTokens().map { it.label })
         assertEquals(
@@ -771,7 +847,12 @@ class SlockMarkdownTest {
     fun inlineTokenRegistryKeepsColonThreadReferenceAsSingleToken() {
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(
-                "Ping @KMP-专家 in #KMP and #KMP:a6967088"
+                "Ping @KMP-专家 in #KMP and #KMP:a6967088",
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownChannels = setOf("KMP"),
+                        knownMentions = setOf("KMP-专家")
+                    )
             )
 
         assertEquals(
@@ -811,7 +892,12 @@ class SlockMarkdownTest {
     fun channelThreadReferencesAreIgnoredInsideInlineCode() {
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
-                "Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78"
+                content = "Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78",
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = "Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78",
+                        isTagValid = validThreadMarkdownTags(knownChannels = setOf("markdown专修"))
+                    )
             )
         val clickableTags = annotated.slockMarkdownClickableTags()
 
@@ -861,6 +947,29 @@ class SlockMarkdownTest {
         getLinkAnnotations(0, length)
             .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
             .toSet()
+
+    private fun validThreadMarkdownTags(
+        knownChannels: Set<String> = emptySet(),
+        knownMentions: Set<String> = emptySet()
+    ): (ThreadMarkdownTag) -> Boolean {
+        val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
+        val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
+        return { tag ->
+            when (tag.kind) {
+                ThreadMarkdownTagKind.Task -> true
+                ThreadMarkdownTagKind.UserMention ->
+                    tag.label.removePrefix("@").trim().lowercase() in mentionKeys
+                ThreadMarkdownTagKind.Channel,
+                ThreadMarkdownTagKind.ChannelThread -> {
+                    val key =
+                        (tag.channelName ?: tag.label.removePrefix("#").substringBefore(":"))
+                            .trim()
+                            .lowercase()
+                    key.isNotBlank() && key in channelKeys
+                }
+            }
+        }
+    }
 
     private fun buildSlockMarkdownParagraphAnnotatedString(
         content: String,
