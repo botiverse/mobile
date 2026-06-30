@@ -483,6 +483,7 @@ private fun SharedActivityList(
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
     var previousTopItemKey by remember { mutableStateOf<String?>(null) }
     var previousUpdateSignature by remember { mutableStateOf<String?>(null) }
     var pendingUpdateCount by remember { mutableStateOf(0) }
@@ -499,6 +500,7 @@ private fun SharedActivityList(
         val currentSignature = activityUpdateSignature(snapshot.items)
         val increment =
             activityPendingUpdateIncrement(
+                previousItems = previousItems,
                 previousTopItemKey = previousTopItemKey,
                 previousUpdateSignature = previousUpdateSignature,
                 currentItems = snapshot.items,
@@ -511,6 +513,7 @@ private fun SharedActivityList(
             pendingUpdateCount = 0
             listState.scrollToItem(0)
         }
+        previousItems = snapshot.items.take(ActivityUpdateSignatureWindow)
         previousTopItemKey = snapshot.items.firstOrNull()?.key
         previousUpdateSignature = currentSignature
     }
@@ -1159,6 +1162,7 @@ private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
 
 internal fun activityPendingUpdateIncrement(
+    previousItems: List<InboxItem>,
     previousTopItemKey: String?,
     previousUpdateSignature: String?,
     currentItems: List<InboxItem>,
@@ -1170,6 +1174,9 @@ internal fun activityPendingUpdateIncrement(
         return if (activityUpdateSignature(currentItems) != previousUpdateSignature) 1 else 0
     }
     val previousTopIndex = currentItems.indexOfFirst { it.key == previousTopItemKey }
+    if (previousTopIndex < 0 && previousItems.any { it.key == currentTopItemKey }) {
+        return 0
+    }
     return if (previousTopIndex > 0) previousTopIndex else 1
 }
 

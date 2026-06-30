@@ -40,6 +40,11 @@ class SharedInboxPanelTest {
         assertEquals(
             2,
             activityPendingUpdateIncrement(
+                previousItems =
+                    listOf(
+                        activityItem(key = "channel:channel-old-top"),
+                        activityItem(key = "channel:channel-old-next")
+                    ),
                 previousTopItemKey = "channel:channel-old-top",
                 previousUpdateSignature =
                     activityUpdateSignature(
@@ -61,6 +66,7 @@ class SharedInboxPanelTest {
         assertEquals(
             0,
             activityPendingUpdateIncrement(
+                previousItems = listOf(activityItem(key = "channel:channel-old-top")),
                 previousTopItemKey = "channel:channel-old-top",
                 previousUpdateSignature =
                     activityUpdateSignature(listOf(activityItem(key = "channel:channel-old-top"))),
@@ -77,6 +83,7 @@ class SharedInboxPanelTest {
         assertEquals(
             1,
             activityPendingUpdateIncrement(
+                previousItems = listOf(activityItem(key = "channel-old-top")),
                 previousTopItemKey = "channel-old-top",
                 previousUpdateSignature =
                     activityUpdateSignature(listOf(activityItem(key = "channel-old-top"))),
@@ -102,6 +109,7 @@ class SharedInboxPanelTest {
         assertEquals(
             1,
             activityPendingUpdateIncrement(
+                previousItems = oldItems,
                 previousTopItemKey = "channel:channel-top",
                 previousUpdateSignature = activityUpdateSignature(oldItems),
                 currentItems = newItems,
@@ -121,9 +129,31 @@ class SharedInboxPanelTest {
         assertEquals(
             0,
             activityPendingUpdateIncrement(
+                previousItems = items,
                 previousTopItemKey = "channel:channel-top",
                 previousUpdateSignature = activityUpdateSignature(items),
                 currentItems = items,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementIgnoresLocalRemovalWhenOldTopDisappears() {
+        val oldItems =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "channel:channel-next")
+            )
+        val newItems = listOf(activityItem(key = "channel:channel-next"))
+
+        assertEquals(
+            0,
+            activityPendingUpdateIncrement(
+                previousItems = oldItems,
+                previousTopItemKey = "channel:channel-top",
+                previousUpdateSignature = activityUpdateSignature(oldItems),
+                currentItems = newItems,
                 nearTop = false
             )
         )
