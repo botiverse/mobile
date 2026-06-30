@@ -7220,7 +7220,7 @@ private fun ThreadHeaderCompactAction(
                 label?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
