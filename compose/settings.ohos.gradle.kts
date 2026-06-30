@@ -105,6 +105,12 @@ pluginManagement {
                 providers.gradleProperty("slock.enableKtorOhosFork").orNull
                     .enabledByDefault(true)
             )
+    val skipOhosLocalDependencyPrep =
+        System.getenv("SLOCK_SKIP_OHOS_LOCAL_DEP_PREP")
+            .enabledByDefault(
+                providers.gradleProperty("slock.skipOhosLocalDependencyPrep").orNull
+                    .enabledByDefault(false)
+            )
     val needsStately =
         !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
@@ -147,7 +153,7 @@ pluginManagement {
                     !mavenArtifactExists("io/ktor", "${module}-ohosarm64", ktorOhosVersion)
             }
 
-    if (needsStately) {
+    if (!skipOhosLocalDependencyPrep && needsStately) {
         ensureSubmodule("third_party/stately")
         runChecked(
             File(slockRoot, "third_party/stately"),
@@ -161,7 +167,7 @@ pluginManagement {
         )
     }
 
-    if (needsSqliter) {
+    if (!skipOhosLocalDependencyPrep && needsSqliter) {
         ensureSubmodule("third_party/sqliter")
         runChecked(
             File(slockRoot, "third_party/sqliter"),
@@ -173,7 +179,7 @@ pluginManagement {
         )
     }
 
-    if (needsSqlDelight) {
+    if (!skipOhosLocalDependencyPrep && needsSqlDelight) {
         ensureSubmodule("third_party/sqldelight")
         runChecked(
             File(slockRoot, "third_party/sqldelight"),
@@ -193,7 +199,7 @@ pluginManagement {
         )
     }
 
-    if (needsKtorOhos) {
+    if (!skipOhosLocalDependencyPrep && needsKtorOhos) {
         runChecked(
             slockRoot,
             "scripts/prepare_ktor_ohos_fork.sh",

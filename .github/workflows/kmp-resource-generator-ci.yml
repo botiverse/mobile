@@ -1,0 +1,135 @@
+name: KMP Resource Generator CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/kmp-resource-generator-ci.yml"
+      - "compose/**"
+      - "scripts/prepare_*.sh"
+      - "third_party/kuikly-compose-markdown/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/kmp-resource-generator-ci.yml"
+      - "compose/**"
+      - "scripts/prepare_*.sh"
+      - "third_party/kuikly-compose-markdown/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: kmp-resource-generator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android shared compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Compile shared Android target
+        working-directory: compose
+        run: ./gradlew :shared:compileDebugKotlinAndroid --no-daemon --console=plain
+
+  ios:
+    name: iOS shared compile
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Compile shared iOS targets
+        working-directory: compose
+        run: |
+          ./gradlew \
+            :shared:compileKotlinIosArm64 \
+            :shared:compileKotlinIosSimulatorArm64 \
+            :shared:compileKotlinIosX64 \
+            --no-daemon \
+            --console=plain
+
+  ohos:
+    name: OHOS shared compile
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Compile shared OHOS target
+        working-directory: compose
+        run: |
+          ./gradlew \
+            -c settings.ohos.gradle.kts \
+            :shared:compileKotlinOhosArm64 \
+            --no-daemon \
+            --console=plain
