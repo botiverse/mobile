@@ -38,10 +38,13 @@ import build.raft.app.data.AgentWorkspaceChildrenSnapshot
 import build.raft.app.data.AgentWorkspaceTreeSnapshot
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.MemberRepository
+import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailLoadStatus
@@ -50,6 +53,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
+import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SlockAgentsApiClient
@@ -1152,6 +1156,7 @@ private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
     val authStore: SlockAuthSessionStore,
     val memberRepository: MemberRepository,
+    val channelRepository: ChannelRepository,
     val settingsRepository: build.raft.app.data.SettingsServerManagementRepository,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore,
@@ -1317,6 +1322,13 @@ private class MemberDetailRouteProvider(
     suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
         memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
 
+    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult> =
+        when (member.kind) {
+            MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
+            MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
+            MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
+        }
+
     suspend fun uploadAgentAvatar(
         agentId: MemberId,
         file: AttachmentUploadFile
@@ -1400,6 +1412,14 @@ private fun rememberMemberDetailRouteProvider(
                 logger = { message -> bridge.log("member_detail_repository $message") }
             )
         }
+    val channelRepository: ChannelRepository =
+        remember(networkClient, authStore) {
+            RealChannelRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("member_detail_channel_repository $message") }
+            )
+        }
     val settingsRepository: build.raft.app.data.SettingsServerManagementRepository =
         remember(networkClient, authStore) {
             build.raft.app.data.RealSettingsRepository(
@@ -1422,6 +1442,7 @@ private fun rememberMemberDetailRouteProvider(
         bridge,
         authStore,
         memberRepository,
+        channelRepository,
         settingsRepository,
         settingsCapabilities,
         agentDetailStore,
@@ -1433,6 +1454,7 @@ private fun rememberMemberDetailRouteProvider(
             bridge = bridge,
             authStore = authStore,
             memberRepository = memberRepository,
+            channelRepository = channelRepository,
             settingsRepository = settingsRepository,
             settingsCapabilities = settingsCapabilities,
             agentDetailStore = agentDetailStore,
@@ -1607,7 +1629,16 @@ private fun MemberDetailPageContent() {
                             detail?.summary?.creatorId == current.currentUserId
                     },
                     onBack = { provider.bridge.closePage() },
-                    onOpenDirectMessage = { provider.bridge.settingsEvent(payload.instanceId, "openMember", member.id.value) },
+                    onOpenDirectMessage = {
+                        routeScope.launch {
+                            provider.openDirectMessage(member).openMembersDirectMessageResult(
+                                pager = pager,
+                                member = member,
+                                timeContext = timeContext,
+                                onUnavailableAction = { bridge.toast(it) }
+                            )
+                        }
+                    },
                     onCopyMemberId = {
                         provider.copyMemberId(member)
                     },
@@ -1692,7 +1723,14 @@ private fun MemberDetailPageContent() {
                 canManageAgent = { _, _ -> false },
                 onBack = { provider.bridge.closePage() },
                 onOpenDirectMessage = {
-                    provider.bridge.settingsEvent(payload.instanceId, "openMember", current.member.id.value)
+                    routeScope.launch {
+                        provider.openDirectMessage(current.member).openMembersDirectMessageResult(
+                            pager = pager,
+                            member = current.member,
+                            timeContext = timeContext,
+                            onUnavailableAction = { bridge.toast(it) }
+                        )
+                    }
                 },
                 onCopyMemberId = {
                     provider.copyMemberId(current.member)
@@ -1882,6 +1920,59 @@ private fun Pager.openMembersReminderMessage(
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+}
+
+private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
+    pager: Pager,
+    member: MemberProfile,
+    timeContext: SlockTimeContext,
+    onUnavailableAction: (String) -> Unit
+) {
+    when (this) {
+        is DataResult.Content -> {
+            val launchPayload =
+                buildMembersDirectMessageThreadLaunchPayload(
+                    memberId = member.id,
+                    conversation = data.conversation,
+                    timeContext = timeContext
+                )
+            if (launchPayload == null) {
+                onUnavailableAction("Unable to open direct message")
+            } else {
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                    .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+            }
+        }
+        is DataResult.Empty ->
+            onUnavailableAction("Unable to open direct message")
+        is DataResult.Error ->
+            onUnavailableAction("Failed to open direct message: ${error.code}")
+        is DataResult.NoPermission ->
+            onUnavailableAction("You do not have permission to open this direct message.")
+    }
+}
+
+internal fun buildMembersDirectMessageThreadLaunchPayload(
+    memberId: MemberId,
+    conversation: HomeDirectMessageRow,
+    timeContext: SlockTimeContext
+): WireThreadLaunchPayload? {
+    val threadId =
+        conversation.threadId.value.trim().takeIf { it.isNotBlank() }
+            ?: conversation.channelId.value.trim().takeIf { it.isNotBlank() }
+            ?: return null
+    return WireThreadLaunchPayload(
+        instanceId = "members-message-${memberId.value}-$threadId",
+        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+        channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+        threadId = threadId,
+        sourceThreadId = threadId,
+        streamChannelId = threadId,
+        localOffsetMinutes = timeContext.localOffsetMinutes,
+        todayEpochDay = timeContext.todayEpochDay,
+        nowEpochMillis = timeContext.nowEpochMillis,
+        timeFormat = timeContext.timeFormat
+    )
 }
 
 private fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
