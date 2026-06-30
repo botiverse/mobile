@@ -4280,6 +4280,48 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun strippedTimelineActionMessageCanRecoverReplyThreadRouteMetadata() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "parent",
+                threadChannelId = "reply-stream-1",
+                replyCount = 3,
+                unreadReplyCount = 2,
+                firstUnreadReplyMessageId = "reply-2",
+                isThreadFollowed = true
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                messages = listOf(message)
+            )
+        val timeline = payload.toThreadTimelineSlice()
+        val strippedActionMessage = timeline.threadActionMessage("message-1")
+
+        val replyMetadata = payload.toThreadReplyMetadataMap().threadReplyMetadataFor(strippedActionMessage!!)
+        val routeParentMessage = strippedActionMessage.withThreadReplyMetadata(replyMetadata)
+        val loadingPayload =
+            payload.replyThreadLoadingPayload(
+                parentMessage = routeParentMessage,
+                focusedMessageId = replyMetadata.firstUnreadReplyMessageId
+            )
+
+        assertEquals(null, strippedActionMessage.threadChannelId)
+        assertEquals(0, strippedActionMessage.replyCount)
+        assertEquals("reply-stream-1", routeParentMessage.threadChannelId)
+        assertEquals(3, routeParentMessage.replyCount)
+        assertEquals("reply-2", routeParentMessage.firstUnreadReplyMessageId)
+        assertEquals("reply-stream:reply-stream-1", loadingPayload.resolveThreadRouteIdentity().instanceKey)
+        assertEquals("reply-stream-1", loadingPayload.streamChannelId)
+        assertEquals("reply-2", loadingPayload.focusedMessageId)
+    }
+
+    @Test
     fun findMarkdownTaskIdUsesLinkedTaskProjectionWithoutProjectedTimeline() {
         val message =
             KuiklyThreadMessageItem(

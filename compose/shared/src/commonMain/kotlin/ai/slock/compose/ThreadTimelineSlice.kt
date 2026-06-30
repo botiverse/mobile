@@ -89,6 +89,21 @@ internal fun Map<String, ThreadReplyMetadata>.threadReplyMetadataFor(
 ): ThreadReplyMetadata =
     this[message.id] ?: message.toThreadReplyMetadata()
 
+internal fun KuiklyThreadMessageItem.withThreadReplyMetadata(
+    replyMetadata: ThreadReplyMetadata
+): KuiklyThreadMessageItem =
+    if (replyMetadata.parentMessageId != id) {
+        this
+    } else {
+        copy(
+            threadChannelId = replyMetadata.threadChannelId ?: threadChannelId,
+            replyCount = maxOf(replyCount, replyMetadata.replyCount),
+            unreadReplyCount = maxOf(unreadReplyCount, replyMetadata.unreadReplyCount),
+            firstUnreadReplyMessageId = firstUnreadReplyMessageId ?: replyMetadata.firstUnreadReplyMessageId,
+            isThreadFollowed = isThreadFollowed || replyMetadata.isThreadFollowed
+        )
+    }
+
 internal fun KuiklyThreadMessageItem.withoutThreadReplyMetadata(): KuiklyThreadMessageItem =
     if (
         threadChannelId == null &&

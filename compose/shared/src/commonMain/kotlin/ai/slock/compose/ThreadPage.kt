@@ -3670,22 +3670,24 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open replies")
                         return@ThreadPageContent
                     }
+                    val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                    val routeParentMessage = parentMessage.withThreadReplyMetadata(parentReplyMetadata)
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
-                            parentMessage = parentMessage,
-                            focusedMessageId = parentMessage.firstUnreadReplyMessageId
+                            parentMessage = routeParentMessage,
+                            focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyReplyThreadRead(
                             parentMessageId = parentMessage.id,
-                            threadChannelId = parentMessage.threadChannelId
+                            threadChannelId = parentReplyMetadata.threadChannelId
                         )
                     )
                     bridge.log(
                         "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                            "parentMessageId=${parentMessage.id} replyCount=${parentMessage.replyCount} " +
-                            "unreadReplyCount=${parentMessage.unreadReplyCount} " +
-                            "knownThreadChannelId=${parentMessage.threadChannelId.orEmpty()} " +
+                            "parentMessageId=${parentMessage.id} replyCount=${parentReplyMetadata.replyCount} " +
+                            "unreadReplyCount=${parentReplyMetadata.unreadReplyCount} " +
+                            "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
                             "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                     )
                     onOpenThreadPayload(loadingPayload)
@@ -3909,21 +3911,23 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
                     }
+                    val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                    val routeParentMessage = parentMessage.withThreadReplyMetadata(parentReplyMetadata)
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
-                            parentMessage = parentMessage,
-                            focusedMessageId = parentMessage.firstUnreadReplyMessageId
+                            parentMessage = routeParentMessage,
+                            focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyReplyThreadRead(
                             parentMessageId = parentMessage.id,
-                            threadChannelId = parentMessage.threadChannelId
+                            threadChannelId = parentReplyMetadata.threadChannelId
                         )
                     )
                     bridge.log(
                         "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                            "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentMessage.replyCount} " +
-                            "knownThreadChannelId=${parentMessage.threadChannelId.orEmpty()} " +
+                            "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentReplyMetadata.replyCount} " +
+                            "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
                             "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                     )
                     onOpenThreadPayload(loadingPayload)
