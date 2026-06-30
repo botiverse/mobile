@@ -293,19 +293,44 @@ fun String.escapeThreadMarkdownHtmlTagsForThread(): String {
     var index = 0
     while (index < length) {
         val tagMatch = ThreadMarkdownHtmlTagRegex.find(this, index)
-        if (tagMatch == null) {
+        val commentMatch = ThreadMarkdownHtmlCommentRegex.find(this, index)
+        val nextMatch =
+            when {
+                tagMatch == null -> commentMatch?.let { ThreadMarkdownHtmlMatch.Comment(it) }
+                commentMatch == null -> ThreadMarkdownHtmlMatch.Tag(tagMatch)
+                commentMatch.range.first < tagMatch.range.first -> ThreadMarkdownHtmlMatch.Comment(commentMatch)
+                else -> ThreadMarkdownHtmlMatch.Tag(tagMatch)
+            }
+        if (nextMatch == null) {
             builder.append(substring(index))
             break
         }
-        builder.append(substring(index, tagMatch.range.first))
-        if (protectedRanges.any { tagMatch.range.first in it }) {
-            builder.append(tagMatch.value)
+        val match = nextMatch.match
+        builder.append(substring(index, match.range.first))
+        if (protectedRanges.any { match.range.first in it }) {
+            builder.append(match.value)
+        } else if (nextMatch is ThreadMarkdownHtmlMatch.Comment) {
+            val nextIndex = match.range.last + 1
+            index =
+                if (nextIndex < length && this[nextIndex].isThreadMarkdownHorizontalWhitespace() && builder.endsWithThreadMarkdownWhitespace()) {
+                    nextIndex + 1
+                } else {
+                    nextIndex
+                }
+            continue
         } else {
-            builder.append(tagMatch.value.escapeMarkdownHtmlTagText())
+            builder.append(match.value.escapeMarkdownHtmlTagText())
         }
-        index = tagMatch.range.last + 1
+        index = match.range.last + 1
     }
     return builder.toString()
+}
+
+private sealed class ThreadMarkdownHtmlMatch(
+    val match: MatchResult
+) {
+    class Tag(match: MatchResult) : ThreadMarkdownHtmlMatch(match)
+    class Comment(match: MatchResult) : ThreadMarkdownHtmlMatch(match)
 }
 
 private data class ThreadMarkdownInlineScan(
@@ -380,8 +405,17 @@ private fun String.threadMarkdownAutolinkRanges(): List<IntRange> =
 private val ThreadMarkdownHtmlTagRegex =
     Regex("""</?[A-Za-z][A-Za-z0-9:-]*(?:\s+[^<>]*)?>""")
 
+private val ThreadMarkdownHtmlCommentRegex =
+    Regex("""<!--.*?-->""", setOf(RegexOption.DOT_MATCHES_ALL))
+
 private val ThreadMarkdownAutolinkRegex =
     Regex("""<https?://[^>\s]+>""")
+
+private fun Char.isThreadMarkdownHorizontalWhitespace(): Boolean =
+    this == ' ' || this == '\t'
+
+private fun StringBuilder.endsWithThreadMarkdownWhitespace(): Boolean =
+    isEmpty() || last().isWhitespace()
 
 internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
     this

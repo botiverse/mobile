@@ -166,6 +166,37 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun htmlCommentsAreHiddenWithoutDroppingFollowingText() {
+        val body =
+            """
+            <!-- Describe what happened here. --> activity status
+            before <!-- hidden --> after
+            `<!-- code -->`
+            ```html
+            <!-- code -->
+            ```
+            """.trimIndent()
+
+        val prepared = body.escapeThreadMarkdownHtmlTagsForThread()
+
+        assertEquals(
+            """
+            activity status
+            before after
+            `<!-- code -->`
+            ```html
+            <!-- code -->
+            ```
+            """.trimIndent(),
+            prepared
+        )
+        assertEquals(
+            "activity status",
+            renderSlockMarkdownParagraphText("<!-- Describe what happened here. --> activity status".escapeThreadMarkdownHtmlTagsForThread())
+        )
+    }
+
+    @Test
     fun inlineCodeUsesTextMarkerWithoutPlaceholderChips() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
