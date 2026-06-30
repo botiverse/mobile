@@ -815,13 +815,18 @@ private fun SharedActivityTaskBadge(item: InboxItem) {
             null -> SlockColor.SurfaceWhite
         }
     SharedActivityCountPill(
-        text = "#${item.taskNumber}" + item.taskClaimedByName?.let { "\n@$it" }.orEmpty(),
+        text = item.activityTaskBadgeText(),
         iconName = item.taskStatus?.activityTaskIconName(),
         backgroundColor = background,
-        textColor = SlockColor.TextBlack,
-        modifier = item.taskClaimedByName?.let { Modifier.width(82.dp) } ?: Modifier
+        textColor = SlockColor.TextBlack
     )
 }
+
+internal fun InboxItem.activityTaskBadgeText(): String =
+    "#${taskNumber}" + taskClaimedByName
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " @$it" }
+        .orEmpty()
 
 @Composable
 private fun SharedActivityCountPill(

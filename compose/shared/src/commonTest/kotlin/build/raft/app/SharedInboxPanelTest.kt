@@ -346,6 +346,27 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityThreadTaskBadgeUsesSingleLineReactLabel() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                replyCount = 12,
+                taskNumber = 177,
+                taskStatus = TaskStatus.InReview,
+                taskClaimedByName = "Claude Assistant"
+            )
+
+        assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
+        assertEquals(
+            listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Task),
+            item.activityFooterSlots()
+        )
+    }
+
+    @Test
     fun activityMentionActionRowUsesSenderSideActionShape() {
         val item =
             InboxItem(
