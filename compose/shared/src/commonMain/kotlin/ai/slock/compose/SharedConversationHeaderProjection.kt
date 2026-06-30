@@ -257,7 +257,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                     directory.avatarLabel.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
                 dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId,
-                dmPeerGravatarUrl = null
+                dmPeerGravatarUrl = dmPeerGravatarUrl
             )
         }
         KuiklyThreadSurfaceKind.Channel ->

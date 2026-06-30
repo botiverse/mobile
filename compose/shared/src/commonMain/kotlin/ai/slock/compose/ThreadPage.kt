@@ -48,7 +48,7 @@ import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedConversationDirectoryProjection
-import ai.slock.compose.data.SharedConversationDirectoryStore
+import ai.slock.compose.data.SharedConversationIdentityProvider
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
@@ -1615,7 +1615,7 @@ private fun ThreadPageScreen() {
         computersStore = computersStore,
         membersStore = membersStore,
         serverMembersStore = sharedStores.serverMembersStore,
-        conversationDirectoryStore = sharedStores.conversationDirectoryStore,
+        conversationIdentityProvider = sharedStores.conversationIdentityProvider,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         onBack = {
             routerModule.closePage()
@@ -2192,7 +2192,7 @@ internal fun SharedThreadRouteContent(
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
     serverMembersStore: SharedServerMembersStore? = null,
-    conversationDirectoryStore: SharedConversationDirectoryStore? = null,
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
@@ -2246,18 +2246,18 @@ internal fun SharedThreadRouteContent(
     val emptyConversationDirectoryProjectionFlow =
         remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
     val directoryConversationProjections by remember(
-        conversationDirectoryStore,
+        conversationIdentityProvider,
         currentSession?.currentServerId,
         headerProjectionInput.surfaceKind,
         conversationDirectoryLookupIds
     ) {
         val serverId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         if (
-            conversationDirectoryStore != null &&
+            conversationIdentityProvider != null &&
             serverId != null &&
             conversationDirectoryLookupIds.isNotEmpty()
         ) {
-            conversationDirectoryStore
+            conversationIdentityProvider
                 .projectionFlow(serverId, conversationDirectoryLookupIds)
         } else {
             emptyConversationDirectoryProjectionFlow

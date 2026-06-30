@@ -26,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -52,6 +53,30 @@ class SharedHomeStoreTest {
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("server-1", content.snapshot.server.id.value)
         assertEquals(false, content.contentRefreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = RecordingHomeApi(),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val projections =
+            store.projectionFlow(
+                ServerId("server-1"),
+                listOf("channel-1")
+            ).first()
+        assertEquals("general", projections["channel-1"]?.title)
         scope.cancel()
     }
 

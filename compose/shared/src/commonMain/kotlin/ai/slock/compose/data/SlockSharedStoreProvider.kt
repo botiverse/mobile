@@ -5,6 +5,7 @@ import ai.slock.compose.SlockFilePreviewStore
 import ai.slock.compose.SharedThreadComposerDraftPersistSlice
 import ai.slock.compose.SharedThreadComposerDraftPersistence
 import ai.slock.compose.model.AgentCreated
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberPresenceUpdated
@@ -38,7 +39,6 @@ internal class SlockSharedStoreProvider private constructor(
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
-    val conversationDirectoryStore: SharedConversationDirectoryStore,
     val serverMembersStore: SharedServerMembersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val activityStateCache: SharedActivityStateCache,
@@ -47,8 +47,12 @@ internal class SlockSharedStoreProvider private constructor(
     val filePreviewStore: SlockFilePreviewStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
+    private var homeStore: SharedHomeStore? = null
     private var homeActivityStore: SharedActivityStore? = null
     private var authSessionClearedCallbackRef: CallbackRef? = null
+
+    val conversationIdentityProvider: SharedConversationIdentityProvider?
+        get() = homeStore
 
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -56,6 +60,42 @@ internal class SlockSharedStoreProvider private constructor(
             fallback = localDataStore,
             currentServerId = currentServerId
         )
+
+    fun getOrCreateHomeStore(
+        dataSource: SharedHomeDataSource,
+        loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
+        markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
+        archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
+        pinUpdateFailureCallback: (String) -> Unit = {},
+        scope: CoroutineScope,
+        diagnosticsLogger: (String) -> Unit = {}
+    ): SharedHomeStore {
+        homeStore?.let { return it }
+        return SharedHomeStore(
+            authStore = authStore,
+            dataSource = dataSource,
+            scope = scope,
+            diagnosticsLogger = diagnosticsLogger,
+            loadSidebarOrder = loadSidebarOrder,
+            updateSidebarOrder = updateSidebarOrder,
+            markChannelReadAll = markChannelReadAll,
+            markChannelUnread = markChannelUnread,
+            archiveChannel = archiveChannel,
+            pinUpdateFailureCallback = pinUpdateFailureCallback
+        ).also { homeStore = it }
+    }
 
     fun getOrCreateHomeActivityStore(
         inboxRepository: InboxRepository,
@@ -133,11 +173,6 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = { message -> bridge.log("local_cache $message") }
                 )
             val tasksDataStore = SharedTasksDataStore()
-            val conversationDirectoryStore =
-                SharedConversationDirectoryStore(
-                    database = database,
-                    logger = { message -> bridge.log("shared_conversation_directory $message") }
-                )
             val authSessionEvents =
                 KuiklyAuthSessionEvents(
                     pager = pager,
@@ -189,7 +224,6 @@ internal class SlockSharedStoreProvider private constructor(
                 ),
                 agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
                 tasksDataStore = tasksDataStore,
-                conversationDirectoryStore = conversationDirectoryStore,
                 serverMembersStore =
                     SharedServerMembersStore(
                         memberRepository =

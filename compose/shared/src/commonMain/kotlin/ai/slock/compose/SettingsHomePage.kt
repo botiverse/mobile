@@ -182,8 +182,7 @@ import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedAgentPanelTabOrderStore
 import ai.slock.compose.data.SharedConversationDirectoryProjection
-import ai.slock.compose.data.SharedConversationDirectorySource
-import ai.slock.compose.data.SharedConversationDirectoryStore
+import ai.slock.compose.data.SharedConversationIdentityProvider
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSavedStateCache
 import ai.slock.compose.data.SharedHomeSearchPanelState
@@ -1598,10 +1597,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                 warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
             )
         }
-    val homeViewModel: SharedHomeViewModel =
-        viewModel(key = "shared-home") {
-            SharedHomeViewModel(
-                authStore = authStore,
+    val homeStore =
+        remember(
+            sharedStores,
+            homeDataSource,
+            homeSidebarOrderRepository,
+            homeReadReceiptRepository,
+            channelRepository,
+            appShellCoroutineScope
+        ) {
+            sharedStores.getOrCreateHomeStore(
                 dataSource = homeDataSource,
                 diagnosticsLogger = { message -> bridge.log("shared_home $message") },
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
@@ -1609,7 +1614,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
-                pinUpdateFailureCallback = { message -> bridge.toast(message) }
+                pinUpdateFailureCallback = { message -> bridge.toast(message) },
+                scope = appShellCoroutineScope
             )
         }
     val homeActivityStore =
@@ -1621,7 +1627,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
             memberRepository,
             sharedStores.serverMembersStore,
             sharedStores.activityStateCache,
-            homeViewModel,
+            homeStore,
             appShellCoroutineScope
         ) {
             sharedStores.getOrCreateHomeActivityStore(
@@ -1630,7 +1636,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 activityStateCache = sharedStores.activityStateCache,
-                onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
+                onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 scope = appShellCoroutineScope,
                 diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
             )
@@ -1716,16 +1722,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
         }
     val homeShellStore =
         remember(
-            homeViewModel,
+            homeStore,
             homeActivityStore,
             homeSearchSavedViewModel,
             appShellCoroutineScope
         ) {
             SharedHomeShellStore(
-                homeState = homeViewModel.state,
+                homeState = homeStore.state,
                 activityState = homeActivityStore.state,
                 searchSavedState = homeSearchSavedViewModel.state,
-                dispatchHome = homeViewModel::dispatch,
+                dispatchHome = homeStore::dispatch,
                 dispatchActivity = homeActivityStore::dispatch,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
                 resetActivity = homeActivityStore::reset,
@@ -2543,7 +2549,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
 
     DisposableEffect(
         realtimeEvents,
-        homeViewModel,
+        homeStore,
         realtimeEventMapper,
         settingsViewModel
     ) {
@@ -2670,7 +2676,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                             active = active,
                             sessionReady = readyServerId?.isNotBlank() == true,
                             draftPersistSlice = composerDraftPersistSlice,
-                            conversationDirectoryStore = sharedStores.conversationDirectoryStore,
+                            conversationIdentityProvider = sharedStores.conversationIdentityProvider,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             savedCount = homeSearchSavedState.saved.totalCount,
@@ -9568,7 +9574,7 @@ private fun SharedHomeScreen(
     active: Boolean,
     sessionReady: Boolean = true,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
-    conversationDirectoryStore: SharedConversationDirectoryStore? = null,
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     savedCount: Int = 0,
@@ -9661,16 +9667,6 @@ private fun SharedHomeScreen(
                     serverMembersStore?.refreshMembers(snapshot.server.id, DataRequestPriority.Background)
                 }
             }
-            LaunchedEffect(conversationDirectoryStore, snapshot.server.id, snapshot.channels, snapshot.directMessages) {
-                val store = conversationDirectoryStore ?: return@LaunchedEffect
-                (snapshot.channels + snapshot.directMessages).forEach { conversation ->
-                    store.upsertConversation(
-                        serverId = snapshot.server.id,
-                        conversation = conversation,
-                        source = SharedConversationDirectorySource.DenormalizedSeed
-                    )
-                }
-            }
             val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
                 .collectAsState(emptySet())
             val draftProjection =
@@ -9686,8 +9682,8 @@ private fun SharedHomeScreen(
                     (snapshot.channels + snapshot.directMessages).map { it.threadId.value }
                 }
             val conversationDirectoryFlow =
-                remember(conversationDirectoryStore, snapshot.server.id, conversationDirectoryIds) {
-                    conversationDirectoryStore
+                remember(conversationIdentityProvider, snapshot.server.id, conversationDirectoryIds) {
+                    conversationIdentityProvider
                         ?.projectionFlow(snapshot.server.id, conversationDirectoryIds)
                         ?: EmptyConversationDirectoryProjectionFlow
                 }

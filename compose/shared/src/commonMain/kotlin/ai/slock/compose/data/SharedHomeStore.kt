@@ -20,14 +20,17 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class SharedHomeStore(
+internal class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedHomeDataSource,
     private val scope: CoroutineScope,
@@ -78,9 +81,11 @@ class SharedHomeStore(
      * `d56ed07d`; UI layer formats via `SlockTime` if needed.
      */
     private val nowMillis: () -> Long = { defaultNowMillis() }
-) {
+) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
+    private val conversationIdentityStates =
+        MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
 
     private var loadJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
@@ -130,8 +135,34 @@ class SharedHomeStore(
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
         sidebarOrderByServer.clear()
+        conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
     }
+
+    override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+        conversationIdentityStates
+            .map { byServer -> byServer[serverId.value] ?: SharedConversationDirectoryState() }
+            .distinctUntilChanged()
+
+    override fun projectionFlow(
+        serverId: ServerId,
+        ids: Collection<String>
+    ): Flow<Map<String, SharedConversationDirectoryProjection>> =
+        observeServer(serverId)
+            .map { state ->
+                ids
+                    .filter { it.isNotBlank() }
+                    .associateWith { id -> state.resolve(id) }
+                    .filterValues { it != null }
+                    .mapValues { (_, value) -> value!! }
+            }
+            .distinctUntilChanged()
+
+    override fun resolveProjection(
+        serverId: ServerId,
+        id: String
+    ): SharedConversationDirectoryProjection? =
+        conversationIdentityStates.value[serverId.value]?.resolve(id)
 
     suspend fun accept(intent: SharedHomeIntent) {
         withStateDiagnosticsReason(intent.toSharedHomeIntentDiagnosticsLabel()) {
@@ -698,6 +729,7 @@ class SharedHomeStore(
                 snapshot
             }
         val baseSnapshot = snapshotWithSidebarOrder.preserveStableRowsFrom(previousContent?.baseSnapshot)
+        updateConversationIdentity(baseSnapshot)
         return SharedHomeContentState.Content(
             snapshot = baseSnapshot.preserveStableRowsFrom(previousContent?.snapshot),
             session = session,
@@ -969,6 +1001,7 @@ class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content ?: return
         val nextSnapshot = transform(current.snapshot)
         val nextBaseSnapshot = transform(current.baseSnapshot)
+        updateConversationIdentity(nextBaseSnapshot)
         reduceState(
             _state.value.copy(
                 content = current.copy(
@@ -981,7 +1014,18 @@ class SharedHomeStore(
     }
 
     private fun rollbackHomeContent(previous: SharedHomeContentState.Content) {
+        updateConversationIdentity(previous.baseSnapshot)
         reduceState(_state.value.copy(content = previous))
+    }
+
+    private fun updateConversationIdentity(snapshot: HomeSnapshot) {
+        val serverKey = snapshot.server.id.value
+        val next =
+            conversationIdentityStates.value +
+                (serverKey to snapshot.toSharedConversationDirectoryState(logger = diagnosticsLogger))
+        if (next != conversationIdentityStates.value) {
+            conversationIdentityStates.value = next
+        }
     }
 
     private suspend fun dismissNotification(id: String) {
