@@ -1501,7 +1501,7 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 }
 
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    base.withSlockFontWeight(FontWeight.SemiBold).withResolvedSlockFontFamily()
+    base.withSlockFontWeight(FontWeight.Normal).withResolvedSlockFontFamily()
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits

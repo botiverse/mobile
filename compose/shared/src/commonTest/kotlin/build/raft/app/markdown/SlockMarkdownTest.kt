@@ -3,6 +3,7 @@ package build.raft.app.markdown
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
+import build.raft.app.withSlockFontWeight
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -327,12 +328,16 @@ class SlockMarkdownTest {
     @Test
     fun inlineCodeKeepsSlockFontInsteadOfMono() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
+        val inlineCodeStyleFromBoldText =
+            slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
 
-        assertEquals(slockFontFamilyForWeight(FontWeight.SemiBold), inlineCodeStyle.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
         assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
+        assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
     }
 
     @Test
