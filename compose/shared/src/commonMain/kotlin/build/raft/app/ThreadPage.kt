@@ -6743,64 +6743,66 @@ private fun ThreadPageContent(
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
             } else if (shareSelectionActive) {
-                ThreadShareSelectionToolbar(
-                    selectedCount = selectedShareMessages.size,
-                    onCancel = clearShareSelection,
-                    onShare = {
-                        if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
-                            sharePreviewLoading = true
-                            sharePreviewImage = null
-                            selectedShareBounds.clear()
-                            shareCaptureMode = true
-                            shareExportScope.launch {
-                                var result: JSONObject? = null
-                                try {
-                                    val captureRect =
-                                        if (selectedShareMessages.size > 1) {
-                                            captureSelectedShareFragments()
-                                        } else {
-                                            var attempts = 0
-                                            while (
-                                                attempts < 24 &&
-                                                    selectedShareMessageIds.any { selectedShareBounds[it] == null }
-                                            ) {
-                                                delay(32)
-                                                attempts += 1
+                if (!shareCaptureMode) {
+                    ThreadShareSelectionToolbar(
+                        selectedCount = selectedShareMessages.size,
+                        onCancel = clearShareSelection,
+                        onShare = {
+                            if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                                sharePreviewLoading = true
+                                sharePreviewImage = null
+                                selectedShareBounds.clear()
+                                shareCaptureMode = true
+                                shareExportScope.launch {
+                                    var result: JSONObject? = null
+                                    try {
+                                        val captureRect =
+                                            if (selectedShareMessages.size > 1) {
+                                                captureSelectedShareFragments()
+                                            } else {
+                                                var attempts = 0
+                                                while (
+                                                    attempts < 24 &&
+                                                        selectedShareMessageIds.any { selectedShareBounds[it] == null }
+                                                ) {
+                                                    delay(32)
+                                                    attempts += 1
+                                                }
+                                                selectedShareCaptureRect()
                                             }
-                                            selectedShareCaptureRect()
-                                        }
-                                    result = runCatching { onExportShareImage(captureRect) }.getOrNull()
-                                } finally {
-                                    shareCaptureMode = false
-                                    shareCaptureTargetMessageId = null
-                                    sharePreviewLoading = false
-                                }
-                                if (result?.optString("status") == "ok") {
-                                    sharePreviewImage =
-                                        ThreadSharePreviewImage(
-                                            uri = result.optString("uri"),
-                                            path = result.optString("path"),
-                                            width = result.optString("width").toIntOrNull() ?: 0,
-                                            height = result.optString("height").toIntOrNull() ?: 0
+                                        result = runCatching { onExportShareImage(captureRect) }.getOrNull()
+                                    } finally {
+                                        shareCaptureMode = false
+                                        shareCaptureTargetMessageId = null
+                                        sharePreviewLoading = false
+                                    }
+                                    if (result?.optString("status") == "ok") {
+                                        sharePreviewImage =
+                                            ThreadSharePreviewImage(
+                                                uri = result.optString("uri"),
+                                                path = result.optString("path"),
+                                                width = result.optString("width").toIntOrNull() ?: 0,
+                                                height = result.optString("height").toIntOrNull() ?: 0
+                                            )
+                                        activeModal = "sharePreview"
+                                    } else {
+                                        onThreadEvent(
+                                            "shareSelectionExportFailed",
+                                            result?.optString("message")?.takeIf { it.isNotBlank() },
+                                            null,
+                                            null
                                         )
-                                    activeModal = "sharePreview"
-                                } else {
-                                    onThreadEvent(
-                                        "shareSelectionExportFailed",
-                                        result?.optString("message")?.takeIf { it.isNotBlank() },
-                                        null,
-                                        null
-                                    )
+                                    }
                                 }
                             }
+                        },
+                        onCopyMarkdown = {
+                            if (selectedShareMarkdown.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                            }
                         }
-                    },
-                    onCopyMarkdown = {
-                        if (selectedShareMarkdown.isNotBlank()) {
-                            onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
-                        }
-                    }
-                )
+                    )
+                }
             } else if (payload.hasRenderableContentForComposer(timelineSlice) && showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))

@@ -15,6 +15,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -1746,17 +1747,41 @@ internal class SlockKuiklyBridgeModule(
             return mapOf("status" to "failed", "message" to "Unable to capture image")
         }
         val width = fragments.maxOf { it.width }.coerceAtLeast(1)
-        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
+        val cropTops =
+                IntArray(fragments.size) { index ->
+                    if (index == 0) {
+                        0
+                    } else {
+                        threadShareVerticalOverlap(
+                                previous = fragments[index - 1],
+                                current = fragments[index]
+                        )
+                    }
+                }
+        val height =
+                fragments
+                        .mapIndexed { index, fragment -> (fragment.height - cropTops[index]).coerceAtLeast(0) }
+                        .sum()
+                        .coerceAtLeast(1)
         val stitched =
                 runCatching {
                     Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
                         val canvas = Canvas(output)
                         canvas.drawColor(Color.WHITE)
-                        var top = 0f
-                        fragments.forEach { fragment ->
-                            val left = ((width - fragment.width) / 2f).coerceAtLeast(0f)
-                            canvas.drawBitmap(fragment, left, top, null)
-                            top += fragment.height
+                        var top = 0
+                        fragments.forEachIndexed { index, fragment ->
+                            val cropTop = cropTops[index].coerceIn(0, fragment.height)
+                            val drawHeight = fragment.height - cropTop
+                            if (drawHeight > 0) {
+                                val left = ((width - fragment.width) / 2f).roundToInt().coerceAtLeast(0)
+                                canvas.drawBitmap(
+                                        fragment,
+                                        Rect(0, cropTop, fragment.width, fragment.height),
+                                        Rect(left, top, left + fragment.width, top + drawHeight),
+                                        null
+                                )
+                                top += drawHeight
+                            }
                         }
                     }
                 }.getOrElse {
@@ -1766,6 +1791,56 @@ internal class SlockKuiklyBridgeModule(
         fragments.forEach { it.recycle() }
         return saveThreadShareBitmap(stitched, frame = true)
     }
+
+    private fun threadShareVerticalOverlap(previous: Bitmap, current: Bitmap): Int {
+        val maxOverlap =
+                minOf(
+                        previous.height,
+                        current.height,
+                        ThreadShareStitchMaxOverlapPx
+                )
+        if (maxOverlap < ThreadShareStitchMinOverlapPx) return 0
+        for (overlap in maxOverlap downTo ThreadShareStitchMinOverlapPx step ThreadShareStitchOverlapStepPx) {
+            if (threadShareOverlapMatches(previous, current, overlap)) {
+                return overlap
+            }
+        }
+        return 0
+    }
+
+    private fun threadShareOverlapMatches(previous: Bitmap, current: Bitmap, overlap: Int): Boolean {
+        val width = minOf(previous.width, current.width)
+        if (width <= 0 || overlap <= 0) return false
+        val xStep = (width / ThreadShareStitchHorizontalSamples).coerceAtLeast(8)
+        val yStep = (overlap / ThreadShareStitchVerticalSamples).coerceAtLeast(2)
+        var samples = 0
+        var totalDiff = 0L
+        var mismatched = 0
+        var y = 0
+        while (y < overlap) {
+            val previousY = previous.height - overlap + y
+            var x = 0
+            while (x < width) {
+                val diff = previous.getPixel(x, previousY).threadSharePixelDiff(current.getPixel(x, y))
+                totalDiff += diff.toLong()
+                if (diff > ThreadShareStitchPixelMismatchThreshold) {
+                    mismatched += 1
+                }
+                samples += 1
+                x += xStep
+            }
+            y += yStep
+        }
+        if (samples == 0) return false
+        val averageDiff = totalDiff.toFloat() / samples.toFloat()
+        return averageDiff <= ThreadShareStitchAverageDiffThreshold &&
+                mismatched <= (samples * ThreadShareStitchMismatchRatio).roundToInt()
+    }
+
+    private fun Int.threadSharePixelDiff(other: Int): Int =
+            kotlin.math.abs(Color.red(this) - Color.red(other)) +
+                    kotlin.math.abs(Color.green(this) - Color.green(other)) +
+                    kotlin.math.abs(Color.blue(this) - Color.blue(other))
 
     private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> {
         val exportBitmap =
@@ -3189,6 +3264,14 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+        private const val ThreadShareStitchMinOverlapPx = 32
+        private const val ThreadShareStitchMaxOverlapPx = 2600
+        private const val ThreadShareStitchOverlapStepPx = 4
+        private const val ThreadShareStitchHorizontalSamples = 36
+        private const val ThreadShareStitchVerticalSamples = 40
+        private const val ThreadShareStitchPixelMismatchThreshold = 18
+        private const val ThreadShareStitchAverageDiffThreshold = 2.5f
+        private const val ThreadShareStitchMismatchRatio = 0.02f
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
         private const val ATTACHMENT_DOWNLOAD_EVENT_NAME = "slock.attachmentDownloadProgress"
     }
