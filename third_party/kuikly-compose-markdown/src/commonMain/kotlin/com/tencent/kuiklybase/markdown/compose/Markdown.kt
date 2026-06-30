@@ -21,6 +21,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownColors
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.MarkdownExtendedSpans
 import com.tencent.kuiklybase.markdown.model.MarkdownPadding
+import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.MarkdownState
 import com.tencent.kuiklybase.markdown.model.MarkdownTypography
 import com.tencent.kuiklybase.markdown.model.NoOpImageTransformerImpl
@@ -29,13 +30,12 @@ import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL
 import com.tencent.kuiklybase.markdown.model.TextProvider
-import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownExtendedSpans
 import com.tencent.kuiklybase.markdown.model.markdownPadding
-import com.tencent.kuiklybase.markdown.model.rememberMarkdownState
+import com.tencent.kuiklybase.markdown.model.rememberMarkdownParserState
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
@@ -88,8 +88,56 @@ fun Markdown(
     },
     error: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
 ) {
-    val parserContent = remember(content) { content.markdownParserLiteralHtmlContent() }
-    val state = rememberMarkdownState(initialContent = parserContent)
+    val parserContent = remember(content) { MarkdownParserContent.from(content) }
+    Markdown(
+        content = parserContent,
+        colors = colors,
+        typography = typography,
+        modifier = modifier,
+        padding = padding,
+        dimens = dimens,
+        flavour = flavour,
+        parser = parser,
+        imageTransformer = imageTransformer,
+        imageLinkHandler = imageLinkHandler,
+        textProvider = textProvider,
+        annotator = annotator,
+        extendedSpans = extendedSpans,
+        components = components,
+        animations = animations,
+        referenceLinkHandler = referenceLinkHandler,
+        loading = loading,
+        success = success,
+        error = error
+    )
+}
+
+@Composable
+fun Markdown(
+    content: MarkdownParserContent,
+    colors: MarkdownColors,
+    typography: MarkdownTypography,
+    modifier: Modifier = Modifier.fillMaxSize(),
+    padding: MarkdownPadding = markdownPadding(),
+    dimens: MarkdownDimens = markdownDimens(),
+    flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
+    parser: MarkdownParser = MarkdownParser(flavour),
+    imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
+    imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
+    textProvider: TextProvider = NoOpTextProvider(),
+    annotator: MarkdownAnnotator = markdownAnnotator(),
+    extendedSpans: MarkdownExtendedSpans = markdownExtendedSpans(),
+    components: MarkdownComponents = markdownComponents(),
+    animations: MarkdownAnimations = markdownAnimations(),
+    referenceLinkHandler: ReferenceLinkHandler = ReferenceLinkHandlerImpl(),
+    loading: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
+    success: @Composable (state: MarkdownState, components: MarkdownComponents, modifier: Modifier) -> Unit = { state, components, modifier ->
+        MarkdownSuccess(state = state, components = components, modifier = modifier)
+    },
+    error: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
+) {
+    val parserContent = content.parserContent
+    val state = rememberMarkdownParserState(initialContent = content)
     LaunchedEffect(parserContent) {
         if (state.isContentApplied(parserContent)) {
             return@LaunchedEffect
@@ -100,7 +148,7 @@ fun Markdown(
         if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
             slockMarkdownLogSubTrace(
                 "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
-                    "bodyLength=${content.length} parserLength=${parserContent.length} cacheHit=$cacheHit " +
+                    "bodyLength=${content.sourceContent.length} parserLength=${parserContent.length} cacheHit=$cacheHit " +
                     "dispatcher=$SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL"
             )
         }

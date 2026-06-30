@@ -23,7 +23,7 @@ import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
-import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
+import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
@@ -44,11 +44,11 @@ class SlockMarkdownTest {
         assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
         assertEquals(
             "Ping @artin in #markdown专修",
-            "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull()
+            "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
         )
         assertEquals(
             fullRendererBody,
-            fullRendererBody.preparedSlockMarkdownFullRendererContentOrNull()
+            fullRendererBody.preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
         )
 
         val first =
@@ -164,7 +164,7 @@ class SlockMarkdownTest {
             ```
             \<b\>text\</b\>
             """.trimIndent(),
-            body.markdownParserLiteralHtmlContent()
+            MarkdownParserContent.from(body).parserContent
         )
     }
 
@@ -180,7 +180,7 @@ class SlockMarkdownTest {
             ```
             """.trimIndent()
 
-        val prepared = body.markdownParserLiteralHtmlContent()
+        val prepared = MarkdownParserContent.from(body).parserContent
 
         assertEquals(
             """
@@ -386,11 +386,11 @@ class SlockMarkdownTest {
     fun taggedTextUsesFullRendererPreparse() {
         assertEquals(
             "Ping @artin in #KMP",
-            "Ping @artin in #KMP".preparedSlockMarkdownFullRendererContentOrNull()
+            "Ping @artin in #KMP".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
         )
         assertEquals(
             "#KMP is a channel reference, not a heading",
-            "#KMP is a channel reference, not a heading".preparedSlockMarkdownFullRendererContentOrNull()
+            "#KMP is a channel reference, not a heading".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
         )
         assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
     }
@@ -987,7 +987,7 @@ class SlockMarkdownTest {
         annotator: MarkdownAnnotator,
         linkInteractionListener: LinkInteractionListener? = null
     ): AnnotatedString {
-        val parserContent = content.markdownParserLiteralHtmlContent()
+        val parserContent = MarkdownParserContent.from(content).parserContent
         val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
         val settings =

@@ -66,11 +66,11 @@ import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
+import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
-import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
@@ -950,14 +950,14 @@ internal suspend fun prepareSlockMarkdownFullRendererBodies(
     )
 }
 
-internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): String? {
+internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): MarkdownParserContent? {
     val (content, _) =
         SlockMarkdownPreparedBodyCache.getOrPut(this) {
             normalizeThreadMarkdownBody()
         }
     if (content.isBlank()) return null
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) return null
-    return content
+    return MarkdownParserContent.from(content)
 }
 
 private const val SlockMarkdownDefaultPreparseLimit = 20
@@ -967,7 +967,7 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
     style: TextStyle,
     annotator: MarkdownAnnotator
 ): AnnotatedString {
-    val parserContent = content.markdownParserLiteralHtmlContent()
+    val parserContent = MarkdownParserContent.from(content).parserContent
     val parsedTree = traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PARSE) {
         MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
     }
@@ -1181,10 +1181,11 @@ fun SlockMarkdownBody(
         remember(markdownTextStyle) {
             slockMarkdownInlineCodeTextStyle(markdownTextStyle)
         }
-    val parserContent = remember(content) {
-        content.markdownParserLiteralHtmlContent()
+    val markdownParserContent = remember(content) {
+        MarkdownParserContent.from(content)
     }
-    val tokenPlan = remember(parserContent, highlightedMentions, isTagValid, inlineContentScope) {
+    val parserContent = markdownParserContent.parserContent
+    val tokenPlan = remember(markdownParserContent, highlightedMentions, isTagValid, inlineContentScope) {
         SlockMarkdownInlineTokenRegistry.plan(
             parserContent,
             highlightedMentions,
@@ -1192,7 +1193,7 @@ fun SlockMarkdownBody(
             inlineContentScope = inlineContentScope
         )
     }
-    val measuredInlineCodeWidths = remember(parserContent, tokenPlan.signature) {
+    val measuredInlineCodeWidths = remember(markdownParserContent, tokenPlan.signature) {
         mutableStateMapOf<String, TextUnit>()
     }
     val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
@@ -1280,7 +1281,7 @@ fun SlockMarkdownBody(
                     measuredInlineCodeWidths = measuredInlineCodeWidths
                 ) { contentModifier ->
                     Markdown(
-                        content = parserContent,
+                        content = markdownParserContent,
                         colors = colors,
                         typography = typography,
                         textProvider = SlockMarkdownTextProvider,

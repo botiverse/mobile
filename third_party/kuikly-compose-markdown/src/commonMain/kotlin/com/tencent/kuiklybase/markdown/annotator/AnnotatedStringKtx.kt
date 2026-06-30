@@ -12,9 +12,9 @@ import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import androidx.compose.runtime.Composable
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
+import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
-import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
@@ -87,7 +87,7 @@ fun String.buildMarkdownAnnotatedString(
     annotatorSettings: AnnotatorSettings,
     flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
 ): AnnotatedString {
-    val content = markdownParserLiteralHtmlContent()
+    val content = MarkdownParserContent.from(this).parserContent
     val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
     val textNode = parsedTree.children.firstOrNull { node ->
         node.type == MarkdownTokenTypes.TEXT || node.type == MarkdownElementTypes.PARAGRAPH

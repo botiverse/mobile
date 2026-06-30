@@ -1,5 +1,18 @@
 package com.tencent.kuiklybase.markdown.model
 
+data class MarkdownParserContent(
+    val sourceContent: String,
+    val parserContent: String
+) {
+    companion object {
+        fun from(content: String): MarkdownParserContent =
+            MarkdownParserContent(
+                sourceContent = content,
+                parserContent = content.markdownParserLiteralHtmlContent()
+            )
+    }
+}
+
 /**
  * Parser-input normalization for Slock's markdown renderer.
  *
@@ -7,7 +20,7 @@ package com.tencent.kuiklybase.markdown.model
  * comments before the Markdown parser sees them so the parser never enters
  * HTML block/comment mode and therefore cannot swallow same-line text.
  */
-fun String.markdownParserLiteralHtmlContent(): String {
+private fun String.markdownParserLiteralHtmlContent(): String {
     if (!contains('<')) return this
 
     val protectedRanges = markdownHtmlProtectionRanges()
