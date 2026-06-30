@@ -26,9 +26,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.aspectRatio
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -42,6 +45,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.extension.nativeRef
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.material3.LinearProgressIndicator
@@ -51,6 +55,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.StrokeCap
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -63,6 +68,8 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.DeclarativeBaseView
+import com.tencent.kuikly.core.base.ViewRef
 import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -78,6 +85,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
+internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
 private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
@@ -136,7 +144,17 @@ internal data class SlockFilePreviewPayload(
     val attachmentId: String = "",
     val agentId: String = "",
     val imageGallery: List<SlockFilePreviewGalleryImage> = emptyList(),
-    val imageGalleryIndex: Int = 0
+    val imageGalleryIndex: Int = 0,
+    val composerImageThreadKey: String = "",
+    val composerImageActionId: String = "",
+    val composerImageFileRef: String = "",
+    val composerImageFileName: String = "",
+    val composerImageMimeType: String = "",
+    val composerImageSizeBytes: Long? = null,
+    val composerImagePreviewUri: String = "",
+    val composerImageReplaceAttachmentId: String = "",
+    val composerImageCanComplete: Boolean = false,
+    val composerImageCanEdit: Boolean = false
 )
 
 @Serializable
@@ -218,6 +236,13 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     var payload by remember(launchPayloadTrace.payload) {
         mutableStateOf(launchPayloadTrace.payload)
+    }
+    var composerImageEditMode by remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
+        mutableStateOf(false)
+    }
+    var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    var composerImageEditCaptureRef by remember(payload.composerImageActionId) {
+        mutableStateOf<ViewRef<DeclarativeBaseView<*, *>>?>(null)
     }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
@@ -398,6 +423,44 @@ private fun SlockFilePreviewStandalonePageContent() {
             activeDownloadId = null
         }
     }
+    fun postComposerImageResult(fileRef: String, previewUri: String?) {
+        if (payload.composerImageActionId.isBlank() || fileRef.isBlank()) return
+        notifyModule.postNotify(
+            SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
+            JSONObject().apply {
+                put("threadKey", payload.composerImageThreadKey)
+                put("actionId", payload.composerImageActionId)
+                put("action", if (payload.composerImageReplaceAttachmentId.isBlank()) "complete" else "replace")
+                put("fileRef", fileRef)
+                put("previewUri", previewUri.orEmpty())
+                put("fileName", payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } })
+                put("mimeType", payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } })
+                payload.composerImageSizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
+                put("replaceAttachmentId", payload.composerImageReplaceAttachmentId)
+            },
+            crossProcess = true
+        )
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
+    fun requestComposerImageEditSave() {
+        if (composerImageEditSaving) return
+        val captureView = composerImageEditCaptureRef?.view
+        if (captureView == null) {
+            bridge.toast("Image editor is still loading")
+            return
+        }
+        composerImageEditSaving = true
+        captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
+            val code = result?.optInt("code", -1) ?: -1
+            val fileRef = result?.optString("data").orEmpty()
+            composerImageEditSaving = false
+            if (code == 0 && fileRef.isNotBlank()) {
+                postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+            } else {
+                bridge.toast(result?.optString("message").orEmpty().ifBlank { "Image edit export failed" })
+            }
+        }
+    }
     SlockFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -433,27 +496,423 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     ) {
         val downloadActive = downloadStatus == "downloading" || downloadStatus == "paused"
-        SlockFilePreviewPayloadContent(
-            payload = payload,
-            onOpenUrl = {},
-            downloadStatusLabel =
-                when (downloadStatus) {
-                    "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
-                    "failed" -> downloadMessage.ifBlank { "Download failed" }
-                    else -> null
-            },
-            downloadInProgress = downloadActive,
-            downloadPaused = downloadStatus == "paused",
-            downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
-            downloadCached = attachmentCacheState,
-            onDownload = if (canOpenWith) ::requestExternalOpen else null,
-            onPauseDownload = { requestDownloadControl("pause") },
-            onResumeDownload = { requestDownloadControl("resume") },
-            onStopDownload = { requestDownloadControl("stop") },
-            onImageGalleryIndexChange = ::selectImageGalleryIndex,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        )
+        if (composerImageEditMode) {
+            SlockFilePreviewComposerImageEditor(
+                payload = payload,
+                saving = composerImageEditSaving,
+                onCaptureRef = { composerImageEditCaptureRef = it },
+                onCancel = { composerImageEditMode = false },
+                onSave = ::requestComposerImageEditSave,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+        } else {
+            SlockFilePreviewPayloadContent(
+                payload = payload,
+                onOpenUrl = {},
+                downloadStatusLabel =
+                    when (downloadStatus) {
+                        "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
+                        "failed" -> downloadMessage.ifBlank { "Download failed" }
+                        else -> null
+                    },
+                downloadInProgress = downloadActive,
+                downloadPaused = downloadStatus == "paused",
+                downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
+                downloadCached = attachmentCacheState,
+                onDownload = if (canOpenWith) ::requestExternalOpen else null,
+                onPauseDownload = { requestDownloadControl("pause") },
+                onResumeDownload = { requestDownloadControl("resume") },
+                onStopDownload = { requestDownloadControl("stop") },
+                onImageGalleryIndexChange = ::selectImageGalleryIndex,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+            SlockFilePreviewComposerImageActionBar(
+                payload = payload,
+                enabled = !downloadActive,
+                onEdit = { composerImageEditMode = true },
+                onComplete = {
+                    postComposerImageResult(
+                        fileRef = payload.composerImageFileRef,
+                        previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
+                    )
+                }
+            )
+        }
     }
+}
+
+@Composable
+private fun SlockFilePreviewComposerImageActionBar(
+    payload: SlockFilePreviewPayload,
+    enabled: Boolean,
+    onEdit: () -> Unit,
+    onComplete: () -> Unit
+) {
+    if (payload.composerImageActionId.isBlank()) return
+    if (!payload.composerImageCanEdit && !payload.composerImageCanComplete) return
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (payload.composerImageCanEdit) {
+            SlockBrutalActionButton(
+                label = "Edit",
+                onClick = onEdit,
+                enabled = enabled && payload.imageUrl != null,
+                leadingIcon = SlockLucideIconName.Pencil,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        if (payload.composerImageCanComplete) {
+            SlockBrutalActionButton(
+                label = "Done",
+                onClick = onComplete,
+                enabled = enabled && payload.composerImageFileRef.isNotBlank(),
+                leadingIcon = SlockLucideIconName.Check,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+private enum class SlockComposerImageEditorTool {
+    Pen,
+    Text,
+    Eraser
+}
+
+private data class SlockComposerImageTextAnnotation(
+    val id: Int,
+    val text: String,
+    val position: Offset
+)
+
+@Composable
+private fun SlockFilePreviewComposerImageEditor(
+    payload: SlockFilePreviewPayload,
+    saving: Boolean,
+    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var strokes by remember(payload.imageUrl) { mutableStateOf<List<List<Offset>>>(emptyList()) }
+    var activeStroke by remember(payload.imageUrl) { mutableStateOf<List<Offset>>(emptyList()) }
+    var textAnnotations by remember(payload.imageUrl) { mutableStateOf<List<SlockComposerImageTextAnnotation>>(emptyList()) }
+    var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
+    var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
+    var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
+    var tool by remember(payload.imageUrl) { mutableStateOf(SlockComposerImageEditorTool.Pen) }
+    fun eraseAt(point: Offset) {
+        val nextStrokes = strokes.filterNot { stroke -> slockComposerImageStrokeHit(stroke, point) }
+        val nextTexts = textAnnotations.filterNot { annotation -> annotation.hitTest(point) }
+        if (nextStrokes.size != strokes.size) {
+            strokes = nextStrokes
+        }
+        if (nextTexts.size != textAnnotations.size) {
+            textAnnotations = nextTexts
+        }
+    }
+    fun addTextAnnotation() {
+        val nextText = textDraft.trim()
+        if (nextText.isBlank()) return
+        textAnnotations =
+            textAnnotations +
+                SlockComposerImageTextAnnotation(
+                    id = nextTextAnnotationId,
+                    text = nextText,
+                    position = textPosition
+                )
+        nextTextAnnotationId += 1
+        textDraft = ""
+    }
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(Color(0xFF000000))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .nativeRef { ref -> onCaptureRef(ref) }
+                    .pointerInput(payload.imageUrl, tool, strokes, textAnnotations) {
+                        detectTapGestures { position ->
+                            when (tool) {
+                                SlockComposerImageEditorTool.Pen -> Unit
+                                SlockComposerImageEditorTool.Text -> textPosition = position
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(position)
+                            }
+                        }
+                    }
+                    .pointerInput(payload.imageUrl, tool, strokes, textAnnotations) {
+                        detectDragGestures(
+                            onDragStart = { start ->
+                                when (tool) {
+                                    SlockComposerImageEditorTool.Pen -> activeStroke = listOf(start)
+                                    SlockComposerImageEditorTool.Text -> textPosition = start
+                                    SlockComposerImageEditorTool.Eraser -> eraseAt(start)
+                                }
+                            },
+                            onDragEnd = {
+                                if (tool == SlockComposerImageEditorTool.Pen && activeStroke.size > 1) {
+                                    strokes = strokes + listOf(activeStroke)
+                                }
+                                activeStroke = emptyList()
+                            },
+                            onDragCancel = { activeStroke = emptyList() }
+                        ) { change, _ ->
+                            when (tool) {
+                                SlockComposerImageEditorTool.Pen -> activeStroke = activeStroke + change.position
+                                SlockComposerImageEditorTool.Text -> textPosition = change.position
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(change.position)
+                            }
+                        }
+                    },
+            contentAlignment = Alignment.Center
+        ) {
+            payload.imageUrl?.let { source ->
+                SlockAspectFitImagePreviewSurface(
+                    source = source,
+                    contentDescription = payload.name.ifBlank { payload.path },
+                    modifier = Modifier.fillMaxSize(),
+                    backgroundColor = Color(0xFF000000),
+                    borderWidth = 0.dp,
+                    zoomable = false,
+                    showLoadingIndicator = true
+                )
+            }
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                (strokes + listOf(activeStroke).filter { it.size > 1 }).forEach { stroke ->
+                    stroke.windowed(2).forEach { segment ->
+                        drawLine(
+                            color = Color(0xFFFF3B30),
+                            start = segment[0],
+                            end = segment[1],
+                            strokeWidth = 6f,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+            textAnnotations.forEach { annotation ->
+                Text(
+                    text = annotation.text,
+                    modifier =
+                        Modifier
+                            .offset(x = annotation.position.x, y = annotation.position.y)
+                            .background(Color(0xCCFFFFFF))
+                            .border(1.dp, SlockColor.BorderBlack)
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    style = SlockType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)),
+                    color = Color(0xFFFF3B30),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockFilePreviewEditorToolButton(
+                    label = "Pen",
+                    icon = SlockLucideIconName.Pencil,
+                    selected = tool == SlockComposerImageEditorTool.Pen,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Pen },
+                    modifier = Modifier.weight(1f)
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = "Text",
+                    icon = SlockLucideIconName.Type,
+                    selected = tool == SlockComposerImageEditorTool.Text,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Text },
+                    modifier = Modifier.weight(1f)
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = "Erase",
+                    icon = SlockLucideIconName.Eraser,
+                    selected = tool == SlockComposerImageEditorTool.Eraser,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Eraser },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (tool == SlockComposerImageEditorTool.Text) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = textDraft,
+                        onValueChange = { textDraft = it.take(80) },
+                        placeholder = "Tap image to place text",
+                        placeholderColor = SlockColor.TextMutedGray,
+                        autoFocus = false,
+                        maxLines = 1,
+                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 36.dp)
+                                .background(SlockColor.SurfaceCream)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                    SlockBrutalActionButton(
+                        label = "Add",
+                        onClick = ::addTextAnnotation,
+                        enabled = !saving && textDraft.isNotBlank(),
+                        leadingIcon = SlockLucideIconName.Check,
+                        minWidth = 60.dp,
+                        minHeight = 34.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = "Cancel",
+                    onClick = onCancel,
+                    enabled = !saving,
+                    leadingIcon = SlockLucideIconName.X,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = "Undo",
+                    onClick = {
+                        when {
+                            textAnnotations.isNotEmpty() -> textAnnotations = textAnnotations.dropLast(1)
+                            strokes.isNotEmpty() -> strokes = strokes.dropLast(1)
+                        }
+                    },
+                    enabled = !saving && (strokes.isNotEmpty() || textAnnotations.isNotEmpty()),
+                    leadingIcon = SlockLucideIconName.RotateCcw,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = "Clear",
+                    onClick = {
+                        strokes = emptyList()
+                        activeStroke = emptyList()
+                        textAnnotations = emptyList()
+                        textDraft = ""
+                    },
+                    enabled = !saving && (strokes.isNotEmpty() || activeStroke.isNotEmpty() || textAnnotations.isNotEmpty()),
+                    leadingIcon = SlockLucideIconName.Trash2,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = if (saving) "Saving" else "Save",
+                    onClick = onSave,
+                    enabled = !saving && payload.imageUrl != null,
+                    leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewEditorToolButton(
+    label: String,
+    icon: SlockLucideIconName,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SlockBrutalActionButton(
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        leadingIcon = icon,
+        minWidth = 0.dp,
+        minHeight = 32.dp,
+        shadowOffset = if (selected) 2.dp else 0.dp,
+        backgroundColor = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+        textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 13.sp),
+        modifier = modifier
+    )
+}
+
+private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
+    val width = (text.length * 13f + 18f).coerceIn(48f, 260f)
+    val height = 34f
+    return point.x >= position.x - 10f &&
+        point.x <= position.x + width &&
+        point.y >= position.y - 10f &&
+        point.y <= position.y + height
+}
+
+private fun slockComposerImageStrokeHit(stroke: List<Offset>, point: Offset): Boolean {
+    if (stroke.isEmpty()) return false
+    val thresholdSquared = 22f * 22f
+    return stroke.any { it.slockDistanceSquaredTo(point) <= thresholdSquared } ||
+        stroke.windowed(2).any { segment ->
+            slockDistanceToSegmentSquared(point = point, start = segment[0], end = segment[1]) <= thresholdSquared
+        }
+}
+
+private fun Offset.slockDistanceSquaredTo(other: Offset): Float {
+    val dx = x - other.x
+    val dy = y - other.y
+    return dx * dx + dy * dy
+}
+
+private fun slockDistanceToSegmentSquared(point: Offset, start: Offset, end: Offset): Float {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val lengthSquared = dx * dx + dy * dy
+    if (lengthSquared == 0f) return point.slockDistanceSquaredTo(start)
+    val t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared).coerceIn(0f, 1f)
+    val projection = Offset(start.x + t * dx, start.y + t * dy)
+    return point.slockDistanceSquaredTo(projection)
 }
 
 private data class FilePreviewLaunchPayloadTrace(
@@ -568,17 +1027,18 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
 private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
     threadApi: SlockThreadApiClient
 ): SlockFilePreviewPayload {
-    val imageUrl =
+    val remoteImageUrl =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
             is ThreadApiResult.Failure -> null
         }
+    val resolvedImageUrl = remoteImageUrl ?: imageUrl
     return copy(
         kind = "image",
         title = "Image preview",
-        imageUrl = imageUrl,
-        message = if (imageUrl == null) "Image preview is unavailable." else "",
-        error = if (imageUrl == null) "image_preview_unavailable" else null
+        imageUrl = resolvedImageUrl,
+        message = if (resolvedImageUrl == null) "Image preview is unavailable." else "",
+        error = if (resolvedImageUrl == null) "image_preview_unavailable" else null
     )
 }
 

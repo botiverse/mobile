@@ -10,6 +10,7 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
+import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.AgentDetailSnapshot
@@ -186,6 +187,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
+import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -206,7 +208,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.yield
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
@@ -2158,6 +2159,7 @@ internal fun SharedThreadRouteContent(
     onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?, String?) -> Unit = { _, _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
+    val notifyModule = remember(pager) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
@@ -2362,6 +2364,7 @@ internal fun SharedThreadRouteContent(
     val attachmentUploadSemaphore = remember(threadInstanceKey) {
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
+    var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -3121,9 +3124,21 @@ internal fun SharedThreadRouteContent(
                 mimeType = attachment.mimeType.orEmpty(),
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.previewUri
-            )
+        )
         if (threadAttachment.isImageAttachment()) {
-            openImagePreview(ThreadImageAttachmentGroup(images = listOf(threadAttachment), currentIndex = 0))
+            composerImageActionCounter += 1
+            val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
+            pager.openSlockFilePreviewPage(
+                threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
+                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() },
+                    composerImageThreadKey = threadInstanceKey,
+                    composerImageActionId = composerImageActionId,
+                    composerImageFileName = name,
+                    composerImageMimeType = attachment.mimeType.orEmpty(),
+                    composerImageReplaceAttachmentId = attachment.id,
+                    composerImageCanEdit = true
+                )
+            )
         } else {
             openAttachmentNoPreview(threadAttachment)
         }
@@ -3332,6 +3347,142 @@ internal fun SharedThreadRouteContent(
                 )
             }
             bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
+        }
+    }
+    fun uploadComposerAttachmentFiles(files: List<AttachmentUploadFile>, replaceAttachmentId: String? = null) {
+        val channelId = composerSurface.sendChannelId
+        if (channelId == null) {
+            bridge.toast("Attachment picker unavailable")
+            return
+        }
+        val localAttachments =
+            files
+                .filter { file -> file.id.isNotBlank() }
+                .map { file ->
+                    SharedThreadComposerAttachment(
+                        id = file.id,
+                        fileName = file.fileName,
+                        sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        mimeType = file.mimeType?.takeIf { it.isNotBlank() },
+                        previewUri = file.composerLocalPreviewUri(),
+                        status = "uploading"
+                    )
+                }
+        if (localAttachments.isNotEmpty()) {
+            composerDraftViewModel.dispatch(
+                SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
+            )
+        }
+        files.forEach { file ->
+            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
+            val uploadJob =
+                coroutineScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        val uploadResult =
+                            attachmentUploadSemaphore.withPermit {
+                                dataSource.uploadAttachments(channelId, listOf(file))
+                            }
+                        when (uploadResult) {
+                            is DataResult.Content -> {
+                                val previewUri = file.composerLocalPreviewUri()
+                                val uploaded =
+                                    uploadResult.data.attachments.map { attachment ->
+                                        SharedThreadComposerAttachment(
+                                            id = attachment.id.value,
+                                            fileName = attachment.name,
+                                            sizeLabel = attachment.sizeLabel,
+                                            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                            previewUri = previewUri,
+                                            status = "ready"
+                                        )
+                                    }
+                                if (uploaded.isEmpty()) {
+                                    handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                    return@launch
+                                }
+                                replaceAttachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
+                                }
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                                        attachments = uploaded,
+                                        replacedAttachmentIds = setOf(localAttachmentId),
+                                        replacedAttachmentIdsByUploadedId =
+                                            uploaded.associate { attachment -> attachment.id to localAttachmentId }
+                                    )
+                                )
+                            }
+                            is DataResult.Error ->
+                                handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(uploadResult)) return@launch
+                                handleAttachmentUploadFailure(uploadResult.blocker.code, setOf(localAttachmentId))
+                            }
+                            is DataResult.Empty ->
+                                handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                        }
+                    } catch (_: CancellationException) {
+                        // The user removed this uploading tile; RemoveAttachment already hid it.
+                    } finally {
+                        attachmentUploadJobs = attachmentUploadJobs - localAttachmentId
+                    }
+                }
+            attachmentUploadJobs = attachmentUploadJobs + (localAttachmentId to uploadJob)
+            uploadJob.start()
+        }
+    }
+    fun nextComposerImageActionId(seed: String): String {
+        composerImageActionCounter += 1
+        return "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${seed.take(12)}"
+    }
+    fun openComposerImageTransfer(file: AttachmentUploadFile) {
+        val actionId = nextComposerImageActionId(file.id)
+        val previewUri = file.composerLocalPreviewUri().orEmpty()
+        pager.openSlockFilePreviewPage(
+            SlockFilePreviewPayload(
+                kind = "image",
+                title = "Image preview",
+                subtitle = file.fileName,
+                name = file.fileName,
+                path = file.fileName,
+                meta = listOf(file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(), file.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                imageUrl = previewUri.takeIf { it.isNotBlank() },
+                message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
+                externalFileName = file.fileName,
+                externalMimeType = file.mimeType.orEmpty(),
+                composerImageThreadKey = threadInstanceKey,
+                composerImageActionId = actionId,
+                composerImageFileRef = file.fileRef.orEmpty(),
+                composerImageFileName = file.fileName,
+                composerImageMimeType = file.mimeType.orEmpty(),
+                composerImageSizeBytes = file.sizeBytes,
+                composerImagePreviewUri = previewUri,
+                composerImageCanComplete = true,
+                composerImageCanEdit = true
+            )
+        )
+    }
+    DisposableEffect(notifyModule, threadInstanceKey) {
+        val callbackRef =
+            notifyModule.addNotify(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+                val eventData = data ?: return@addNotify
+                if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@addNotify
+                val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@addNotify
+                val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
+                val file =
+                    AttachmentUploadFile(
+                        id = "edited-$actionId",
+                        fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
+                        mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
+                        sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
+                        previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
+                        fileRef = fileRef
+                    )
+                val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
+                uploadComposerAttachmentFiles(listOf(file), replaceAttachmentId = replaceAttachmentId)
+            }
+        onDispose {
+            notifyModule.removeNotify(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, callbackRef)
         }
     }
     LaunchedEffect(
@@ -4457,78 +4608,10 @@ internal fun SharedThreadRouteContent(
                             }
                             return@launch
                         }
-                        val localAttachments =
-                            files
-                                .filter { file -> file.id.isNotBlank() }
-                                .map { file ->
-                                    SharedThreadComposerAttachment(
-                                        id = file.id,
-                                        fileName = file.fileName,
-                                        sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
-                                        mimeType = file.mimeType?.takeIf { it.isNotBlank() },
-                                        previewUri = file.previewUri?.takeIf { it.isNotBlank() },
-                                        status = "uploading"
-                                    )
-                                }
-                        if (localAttachments.isNotEmpty()) {
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
-                            )
-                            yield()
-                        }
-                        files.forEach { file ->
-                            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
-                            val uploadJob =
-                                coroutineScope.launch(start = CoroutineStart.LAZY) {
-                                    try {
-                                        val uploadResult =
-                                            attachmentUploadSemaphore.withPermit {
-                                                dataSource.uploadAttachments(channelId, listOf(file))
-                                            }
-                                        when (uploadResult) {
-                                            is DataResult.Content -> {
-                                                val previewUri = file.previewUri?.takeIf { it.isNotBlank() }
-                                                val uploaded =
-                                                    uploadResult.data.attachments.map { attachment ->
-                                                        SharedThreadComposerAttachment(
-                                                            id = attachment.id.value,
-                                                            fileName = attachment.name,
-                                                            sizeLabel = attachment.sizeLabel,
-                                                            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
-                                                            previewUri = previewUri,
-                                                            status = "ready"
-                                                        )
-                                                    }
-                                                if (uploaded.isEmpty()) {
-                                                    handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
-                                                    return@launch
-                                                }
-                                                composerDraftViewModel.dispatch(
-                                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                                                        attachments = uploaded,
-                                                        replacedAttachmentIds = setOf(localAttachmentId),
-                                                        replacedAttachmentIdsByUploadedId =
-                                                            uploaded.associate { attachment -> attachment.id to localAttachmentId }
-                                                    )
-                                                )
-                                            }
-                                            is DataResult.Error ->
-                                                handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
-                                            is DataResult.NoPermission -> {
-                                                if (routeAuthRequired(uploadResult)) return@launch
-                                                handleAttachmentUploadFailure(uploadResult.blocker.code, setOf(localAttachmentId))
-                                            }
-                                            is DataResult.Empty ->
-                                                handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
-                                        }
-                                    } catch (_: CancellationException) {
-                                        // The user removed this uploading tile; RemoveAttachment already hid it.
-                                    } finally {
-                                        attachmentUploadJobs = attachmentUploadJobs - localAttachmentId
-                                    }
-                                }
-                            attachmentUploadJobs = attachmentUploadJobs + (localAttachmentId to uploadJob)
-                            uploadJob.start()
+                        if (action == "attachImage" && files.size == 1) {
+                            openComposerImageTransfer(files.first())
+                        } else {
+                            uploadComposerAttachmentFiles(files)
                         }
                     }
                 }
@@ -11689,6 +11772,10 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType
     )
+
+private fun AttachmentUploadFile.composerLocalPreviewUri(): String? =
+    fileRef?.takeIf { it.isNotBlank() }
+        ?: previewUri?.takeIf { it.isNotBlank() }
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount
