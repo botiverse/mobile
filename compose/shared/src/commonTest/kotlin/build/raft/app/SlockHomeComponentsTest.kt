@@ -526,33 +526,6 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun channelDragStateMovesActiveIdByRowThreshold() {
-        val state =
-            SlockChannelOrderDragState(
-                activeId = "channel-a",
-                startIndex = 0,
-                initialOrder = listOf("channel-a", "channel-b", "channel-c"),
-                totalDragY = 0f,
-                previewOrder = listOf("channel-a", "channel-b", "channel-c"),
-                rowOffsetPx = 0f
-            )
-
-        val moved = state.dragBy(deltaY = 70f, rowStepPx = 32f, fallbackOrder = emptyList())
-
-        assertEquals(listOf("channel-b", "channel-c", "channel-a"), moved.previewOrder)
-        assertEquals(6f, moved.rowOffsetPx)
-    }
-
-    @Test
-    fun moveItemKeepsOrderWhenTargetIsUnchangedOrMissing() {
-        val order = listOf("a", "b", "c")
-
-        assertEquals(listOf("b", "c", "a"), order.moveItem("a", 2))
-        assertEquals(order, order.moveItem("missing", 1))
-        assertEquals(order, order.moveItem("b", 1))
-    }
-
-    @Test
     fun visibleHomeNotificationsDropBlankItems() {
         val notifications =
             listOf(

@@ -9866,8 +9866,6 @@ private fun SharedHomeScreen(
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = notificationItems,
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
-                channelOrder = snapshot.sidebarOrder?.channelOrder.orEmpty(),
-                channelSortMode = snapshot.sidebarOrder?.channelSortMode ?: "manual",
                 dmOrder = snapshot.sidebarOrder?.dmOrder.orEmpty(),
                 dmSortMode = snapshot.sidebarOrder?.dmSortMode ?: "manual",
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
@@ -9923,12 +9921,6 @@ private fun SharedHomeScreen(
                 onChannelLongPress = { _, _ -> },
                 onPinnedSortModeChange = { mode ->
                     onIntent(SharedHomeIntent.SetPinnedSortMode(mode))
-                },
-                onChannelSortModeChange = { mode ->
-                    onIntent(SharedHomeIntent.SetChannelSortMode(mode))
-                },
-                onChannelOrderChange = { channelOrder ->
-                    onIntent(SharedHomeIntent.ReorderChannels(channelOrder))
                 },
                 onPinToggle = { conversationId ->
                     onIntent(SharedHomeIntent.TogglePinned(conversationId))
