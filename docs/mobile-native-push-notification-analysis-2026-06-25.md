@@ -159,3 +159,11 @@ local notification poster.
 
 Until the server exposes a native push subscription/delivery transport, Android
 can only implement a best-effort local fallback.
+
+## Platform Server Contracts
+
+Follow-up platform-specific server contracts:
+
+- `docs/mobile-killed-app-push-android-server-contract-2026-07-01.md`
+- `docs/mobile-killed-app-push-ios-server-contract-2026-07-01.md`
+- `docs/mobile-killed-app-push-ohos-server-contract-2026-07-01.md`
