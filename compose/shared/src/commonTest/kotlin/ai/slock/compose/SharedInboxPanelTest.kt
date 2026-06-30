@@ -160,6 +160,59 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityPendingUpdateIncrementIgnoresLocalRemovalBelowStableTop() {
+        val oldItems =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "thread:checked-thread"),
+                activityItem(key = "channel:channel-next")
+            )
+        val newItems =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "channel:channel-next"),
+                activityItem(key = "channel:tail-fill")
+            )
+
+        assertEquals(
+            0,
+            activityPendingUpdateIncrement(
+                previousItems = oldItems,
+                previousTopItemKey = "channel:channel-top",
+                previousUpdateSignature = activityUpdateSignature(oldItems),
+                currentItems = newItems,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementCountsInsertedRowBelowStableTop() {
+        val oldItems =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "channel:channel-next")
+            )
+        val newItems =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "channel:channel-new"),
+                activityItem(key = "channel:channel-next")
+            )
+
+        assertEquals(
+            1,
+            activityPendingUpdateIncrement(
+                previousItems = oldItems,
+                previousTopItemKey = "channel:channel-top",
+                previousUpdateSignature = activityUpdateSignature(oldItems),
+                currentItems = newItems,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
     fun activityTimeLabelFormatsLatestActivityBeforeRendering() {
         val item =
             activityItem(
