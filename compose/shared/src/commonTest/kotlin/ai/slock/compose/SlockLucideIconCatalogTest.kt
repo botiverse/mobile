@@ -12,4 +12,9 @@ class SlockLucideIconCatalogTest {
         assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Link2.wireName))
         assertFalse(SlockLucideIcons.Names.contains("plug"))
     }
+
+    @Test
+    fun threadConvertToTaskIconUsesGeneratedClipboardCheckIcon() {
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.ClipboardCheck.wireName))
+    }
 }

@@ -41,6 +41,7 @@ enum class SlockLucideIconName(val wireName: String) {
     CircleDashed("circle-dashed"),
     CircleUser("circle-user"),
     Clipboard("clipboard"),
+    ClipboardCheck("clipboard-check"),
     ClipboardList("clipboard-list"),
     Clock("clock"),
     Clock3("clock-3"),

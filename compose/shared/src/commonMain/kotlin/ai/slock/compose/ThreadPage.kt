@@ -10465,6 +10465,7 @@ private val ThreadMessageMenuWidth = 240.dp
 private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
+private val ThreadMessageMenuStroke = SlockStroke.Thin
 
 private fun threadMessageMenuActions(
     message: KuiklyThreadMessageItem,
@@ -10560,7 +10561,7 @@ private fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = "Convert to Task",
-                    icon = SlockLucideIconName.ClipboardList,
+                    icon = SlockLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
                 )
@@ -10768,7 +10769,7 @@ private fun ThreadMessageMenuChrome(
             modifier = Modifier
                 .width(ThreadMessageMenuWidth)
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .border(ThreadMessageMenuStroke, SlockColor.BorderBlack)
                 .slockFloatingContentClickTarget()
         ) {
             if (showReactionActions) {
@@ -11141,12 +11142,12 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
         ) {
             SlockLucideIcon(
                 action.icon,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(14.dp),
                 color = if (action.enabled) "#FF000000" else "#FF6B625F"
             )
             Text(
                 text = action.label,
-                style = (if (action.enabled) SlockType.ButtonBold else SlockType.Body)
+                style = (if (action.enabled) SlockType.Button else SlockType.Body)
                     .copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -11158,7 +11159,7 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
 
 @Composable
 private fun ThreadMessageMenuDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    Box(modifier = Modifier.fillMaxWidth().height(ThreadMessageMenuStroke).background(SlockColor.BorderBlack))
 }
 
 @Composable

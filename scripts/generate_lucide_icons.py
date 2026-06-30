@@ -80,6 +80,7 @@ LUCIDE_ICONS = [
     "circle-dashed",
     "circle-user",
     "clipboard",
+    "clipboard-check",
     "clipboard-list",
     "clock",
     "clock-3",
