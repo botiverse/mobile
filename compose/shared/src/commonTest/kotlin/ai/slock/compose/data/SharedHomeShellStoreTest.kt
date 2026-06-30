@@ -132,22 +132,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun shellRefreshAlsoRefreshesHomeBadgeSummaries() {
-        val fixture = fixture()
-        val store = fixture.store
-
-        store.dispatch(SharedHomeShellIntent.Refresh)
-
-        assertEquals(listOf<SharedHomeIntent>(SharedHomeIntent.Refresh), fixture.homeIntents)
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
-        assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
-            fixture.searchSavedIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
     fun homeServerChangeRefreshesHomeBadgeSummaries() {
         val fixture = fixture(homeState = homeStateForServer("server-1"))
 

@@ -2399,7 +2399,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
                         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(channel.threadId.value))
                         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.ChannelCreated(channel)))
-                        homeShellStore.dispatch(SharedHomeShellIntent.Refresh)
+                        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
                         createChannelDialogOpen = false
                         createChannelError = null
                         bridge.toast("Channel created")
@@ -2783,7 +2783,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0) {
                                 pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                             },
                             onDiagnosticsFeedbackRefresh = {
-                                homeShellStore.dispatch(SharedHomeShellIntent.Refresh)
+                                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
                             },
                             onDiagnosticsFeedbackChannelSelected = { conversation ->
                                 pendingDiagnosticsFeedback?.let { draft ->

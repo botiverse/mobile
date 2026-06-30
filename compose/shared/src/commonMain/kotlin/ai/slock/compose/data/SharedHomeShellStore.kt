@@ -26,7 +26,6 @@ data class SharedHomeShellState(
 
 sealed interface SharedHomeShellIntent {
     data object Start : SharedHomeShellIntent
-    data object Refresh : SharedHomeShellIntent
     data object ForegroundRefresh : SharedHomeShellIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeShellIntent
     data object OpenActivity : SharedHomeShellIntent
@@ -92,7 +91,6 @@ class SharedHomeShellStore(
     fun dispatch(intent: SharedHomeShellIntent) {
         when (intent) {
             SharedHomeShellIntent.Start -> dispatchHome(SharedHomeIntent.Start)
-            SharedHomeShellIntent.Refresh -> dispatchHomeIntent(SharedHomeIntent.Refresh)
             SharedHomeShellIntent.ForegroundRefresh -> refreshVisibleHomeDestination()
             is SharedHomeShellIntent.SetSurfaceVisible -> setSurfaceVisible(intent.visible)
             SharedHomeShellIntent.OpenActivity -> openDestination(SharedHomeShellDestinationActivity)
