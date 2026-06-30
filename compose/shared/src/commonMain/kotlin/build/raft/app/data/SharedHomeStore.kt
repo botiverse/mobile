@@ -244,6 +244,10 @@ internal class SharedHomeStore(
                 togglePinned(intent.conversationId)
             is SharedHomeIntent.SetPinnedSortMode ->
                 setPinnedSortMode(intent.mode)
+            is SharedHomeIntent.SetChannelSortMode ->
+                setChannelSortMode(intent.mode)
+            is SharedHomeIntent.ReorderChannels ->
+                reorderChannels(intent.channelOrder)
             is SharedHomeIntent.MarkRead ->
                 markConversationRead(intent.conversationId)
             is SharedHomeIntent.MarkUnread ->
@@ -914,6 +918,77 @@ internal class SharedHomeStore(
         }
     }
 
+    private suspend fun reorderChannels(channelOrder: List<String>) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        if (current == null) {
+            pinUpdateFailureCallback("Unable to reorder channels: home not loaded")
+            return
+        }
+        val serverId = current.snapshot.server.id
+        val previous = ensureSidebarOrderLoaded()
+        if (previous == null) {
+            pinUpdateFailureCallback("Unable to reorder channels: sidebar order not loaded")
+            return
+        }
+        val regularChannelIds =
+            current.snapshot.channels
+                .filterNot { it.kind == ConversationKind.Joint }
+                .map { it.threadId.value }
+                .toSet()
+        val knownChannelIds = current.snapshot.channels.map { it.threadId.value }
+        val cleanedOrder = channelOrder.distinct().filter { it.isNotBlank() && it in regularChannelIds }
+        if (cleanedOrder.isEmpty()) return
+        val nextChannelOrder =
+            (cleanedOrder +
+                previous.channelOrder.filterNot { it in regularChannelIds } +
+                knownChannelIds.filterNot { it in cleanedOrder || it in previous.channelOrder })
+                .distinct()
+        if (nextChannelOrder == previous.channelOrder) return
+        val next = previous.copy(
+            channelOrder = nextChannelOrder,
+            channelSortMode = SlockSidebarSortMode.Manual.wireValue
+        )
+        applySidebarOrderLocally(serverId = serverId, next = next)
+        val request = SettingsServerSidebarOrderUpdateRequest(
+            channelOrder = next.channelOrder,
+            channelSortMode = next.channelSortMode
+        )
+        when (val result = updateSidebarOrder(request)) {
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                applySidebarOrderLocally(serverId = serverId, next = previous)
+                pinUpdateFailureCallback("Unable to reorder channels")
+            }
+        }
+    }
+
+    private suspend fun setChannelSortMode(mode: SlockSidebarSortMode) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("Unable to update channel sort mode: home not loaded")
+            return
+        }
+        val previous = ensureSidebarOrderLoaded()
+        if (previous == null) {
+            pinUpdateFailureCallback("Unable to update channel sort mode: sidebar order not loaded")
+            return
+        }
+        if (previous.channelSortMode == mode.wireValue) return
+        val next = previous.copy(channelSortMode = mode.wireValue)
+        applySidebarOrderLocally(serverId = serverId, next = next)
+        when (val result = updateSidebarOrder(SettingsServerSidebarOrderUpdateRequest(channelSortMode = next.channelSortMode))) {
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                applySidebarOrderLocally(serverId = serverId, next = previous)
+                pinUpdateFailureCallback("Unable to update channel sort mode")
+            }
+        }
+    }
+
     private suspend fun markConversationRead(conversationId: String) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
@@ -1201,6 +1276,8 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
         is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
+        is SharedHomeIntent.SetChannelSortMode -> "SetChannelSortMode:$mode"
+        is SharedHomeIntent.ReorderChannels -> "ReorderChannels:${channelOrder.size}"
         is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
         is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
@@ -1548,6 +1625,8 @@ sealed interface SharedHomeIntent {
      * Persists through the same sidebar-order PATCH as pin/unpin.
      */
     data class SetPinnedSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
+    data class SetChannelSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
+    data class ReorderChannels(val channelOrder: List<String>) : SharedHomeIntent
     data class MarkRead(val conversationId: String) : SharedHomeIntent
     data class MarkUnread(val conversationId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
@@ -1571,6 +1650,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.ReorderChannels,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
@@ -1594,6 +1675,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.ReorderChannels,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
@@ -1617,6 +1700,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.ReorderChannels,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,

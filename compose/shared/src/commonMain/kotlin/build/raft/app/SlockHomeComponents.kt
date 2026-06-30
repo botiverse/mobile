@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.hoverable
@@ -72,6 +73,7 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -79,6 +81,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import kotlinx.coroutines.launch
@@ -244,6 +247,7 @@ internal data class SlockHomePayload(
     val contentRefreshEnabled: Boolean = true,
     val applyTopSafeArea: Boolean = true,
     val activitySelected: Boolean = false,
+    val channelOrder: List<String> = emptyList(),
     val channelSortMode: String = "manual",
     val dmOrder: List<String> = emptyList(),
     val dmSortMode: String = "manual",
@@ -332,6 +336,7 @@ private fun SlockHomePageContent() {
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
+        channelOrder = payload.channelOrder,
         channelSortMode = payload.channelSortMode,
         dmOrder = payload.dmOrder,
         dmSortMode = payload.dmSortMode,
@@ -357,6 +362,7 @@ private fun SlockHomePageContent() {
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
         onRefresh = { bridge.settingsEvent(payload.instanceId, "refresh", null) },
         onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
+        onChannelOrderChange = { bridge.settingsEvent(payload.instanceId, "setChannelOrder", it.joinToString(",")) },
         onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
@@ -558,6 +564,7 @@ internal fun SlockStructuralHomeShell(
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
     savedSelected: Boolean = false,
+    channelOrder: List<String> = emptyList(),
     channelSortMode: String = "manual",
     dmOrder: List<String> = emptyList(),
     dmSortMode: String = "manual",
@@ -585,6 +592,7 @@ internal fun SlockStructuralHomeShell(
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    onChannelOrderChange: (List<String>) -> Unit = {},
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
@@ -656,11 +664,26 @@ internal fun SlockStructuralHomeShell(
     // section itself (handled by `pinnedItemsForSidebar`).
     @Suppress("UNUSED_VARIABLE")
     val pinnedIdSet = remember(pinnedChannelIds) { pinnedChannelIds.toSet() }
-    val displayedChannels = remember(channels, channelSortModeState) {
-        channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name }
+    val density = LocalDensity.current
+    val channelDragStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
+    var channelDragState by remember(currentServerId) { mutableStateOf<SlockChannelOrderDragState?>(null) }
+    val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState) {
+        channels
+            .filter { it.kind != "joint" }
+            .orderedBySidebarIds(channelOrder)
+            .sortedForSidebar(channelSortModeState) { it.name }
     }
-    val displayedJointChannels = remember(channels, channelSortModeState) {
-        channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name }
+    val displayedChannels = remember(baseDisplayedChannels, channelDragState) {
+        channelDragState
+            ?.takeIf { it.activeId in baseDisplayedChannels.map { channel -> channel.id } }
+            ?.let { dragState -> baseDisplayedChannels.orderedBySidebarIds(dragState.previewOrder) }
+            ?: baseDisplayedChannels
+    }
+    val displayedJointChannels = remember(channels, channelOrder, channelSortModeState) {
+        channels
+            .filter { it.kind == "joint" }
+            .orderedBySidebarIds(channelOrder)
+            .sortedForSidebar(channelSortModeState) { it.name }
     }
     val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
     val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet) {
@@ -926,9 +949,21 @@ internal fun SlockStructuralHomeShell(
                         if (channelsExpanded) {
                             items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
                                 val channel = displayedChannels[index]
+                                val channelDrag = channelDragState
+                                val channelDragEnabled =
+                                    sidebarInteractionsEnabled &&
+                                        channelSortModeState == SlockSidebarSortMode.Manual &&
+                                        displayedChannels.size > 1
+                                val channelDragOffsetY =
+                                    if (channelDrag?.activeId == channel.id) {
+                                        channelDrag.rowOffsetPx
+                                    } else {
+                                        0f
+                                    }
                                 // #211 review (Cindy): selected wins over pressed.
                                 val channelInteractionState = when {
                                     sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                    channelDrag?.activeId == channel.id -> ChannelRowInteractionState.Pressed
                                     pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
                                     else -> ChannelRowInteractionState.Default
                                 }
@@ -949,7 +984,42 @@ internal fun SlockStructuralHomeShell(
                                         pressedRowKey = null
                                     }) else null,
                                     onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                    onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                    onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null },
+                                    dragEnabled = channelDragEnabled,
+                                    dragOffsetY = channelDragOffsetY,
+                                    onDragStart = if (channelDragEnabled) ({
+                                        activeSortMenu = null
+                                        activePinMenuConversationId = null
+                                        pressedRowKey = null
+                                        val ids = displayedChannels.map { it.id }
+                                        channelDragState =
+                                            SlockChannelOrderDragState(
+                                                activeId = channel.id,
+                                                startIndex = index,
+                                                initialOrder = ids,
+                                                totalDragY = 0f,
+                                                previewOrder = ids,
+                                                rowOffsetPx = 0f
+                                            )
+                                    }) else null,
+                                    onDragMove = if (channelDragEnabled) ({ deltaY ->
+                                        channelDragState =
+                                            channelDragState?.dragBy(
+                                                deltaY = deltaY,
+                                                rowStepPx = channelDragStepPx,
+                                                fallbackOrder = displayedChannels.map { it.id }
+                                            )
+                                    }) else null,
+                                    onDragEnd = if (channelDragEnabled) ({
+                                        val ended = channelDragState
+                                        channelDragState = null
+                                        if (ended != null && ended.previewOrder != ended.initialOrder) {
+                                            onChannelOrderChange(ended.previewOrder)
+                                        }
+                                    }) else null,
+                                    onDragCancel = if (channelDragEnabled) ({
+                                        channelDragState = null
+                                    }) else null
                                 )
                             }
                         }
@@ -1443,6 +1513,46 @@ internal fun List<SlockHomeConversationItem>.orderedBySidebarIds(
         }
     }
     return ordered.values.toList()
+}
+
+internal data class SlockChannelOrderDragState(
+    val activeId: String,
+    val startIndex: Int,
+    val initialOrder: List<String>,
+    val totalDragY: Float,
+    val previewOrder: List<String>,
+    val rowOffsetPx: Float
+) {
+    fun dragBy(
+        deltaY: Float,
+        rowStepPx: Float,
+        fallbackOrder: List<String>
+    ): SlockChannelOrderDragState {
+        val baseOrder = initialOrder.takeIf { it.isNotEmpty() } ?: fallbackOrder
+        if (activeId !in baseOrder || baseOrder.size < 2) {
+            return copy(totalDragY = totalDragY + deltaY, previewOrder = baseOrder, rowOffsetPx = 0f)
+        }
+        val nextDragY = totalDragY + deltaY
+        val targetIndex =
+            (startIndex + (nextDragY / rowStepPx.coerceAtLeast(1f)).roundToInt())
+                .coerceIn(baseOrder.indices)
+        val nextOrder = baseOrder.moveItem(activeId, targetIndex)
+        val settledOffset = (targetIndex - startIndex) * rowStepPx
+        return copy(
+            totalDragY = nextDragY,
+            previewOrder = nextOrder,
+            rowOffsetPx = nextDragY - settledOffset
+        )
+    }
+}
+
+internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
+    val fromIndex = indexOf(id)
+    if (fromIndex < 0 || toIndex !in indices || fromIndex == toIndex) return this
+    val mutable = toMutableList()
+    val item = mutable.removeAt(fromIndex)
+    mutable.add(toIndex.coerceIn(0, mutable.size), item)
+    return mutable
 }
 
 /**
@@ -2018,7 +2128,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -2051,6 +2161,20 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
+    val dragHandleModifier =
+        if (dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
+            Modifier.pointerInput(name, dragEnabled, onDragStart, onDragMove, onDragEnd, onDragCancel) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onDragStart.invoke() },
+                    onDragEnd = { onDragEnd.invoke() },
+                    onDragCancel = { (onDragCancel ?: onDragEnd).invoke() }
+                ) { _, dragAmount ->
+                    onDragMove.invoke(dragAmount.y)
+                }
+            }
+        } else {
+            Modifier
+        }
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
@@ -2092,6 +2216,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier =
                 modifier
                     .fillMaxWidth()
+                    .offset { IntOffset(0, dragOffsetY.roundToInt()) }
                     .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
                     .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
@@ -2148,6 +2273,22 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
+            }
+            if (dragEnabled) {
+                Spacer(Modifier.width(SlockSpacing.Xs))
+                Box(
+                    modifier =
+                        Modifier
+                            .size(width = 18.dp, height = ChannelAvatarSize)
+                            .then(dragHandleModifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon(
+                        "grip-vertical",
+                        Modifier.size(14.dp),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                }
             }
         }
         }
