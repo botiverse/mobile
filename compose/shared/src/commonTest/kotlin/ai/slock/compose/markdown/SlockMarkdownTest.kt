@@ -23,6 +23,7 @@ import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
+import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
@@ -143,7 +144,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun htmlTagsAreEscapedOutsideCodeAndAutolinks() {
+    fun parserEscapesHtmlTagsOutsideCodeAndAutolinks() {
         val body =
             """
             <https://app.slock.ai>
@@ -163,12 +164,12 @@ class SlockMarkdownTest {
             ```
             \<b\>text\</b\>
             """.trimIndent(),
-            body.escapeThreadMarkdownHtmlTagsForThread()
+            body.markdownParserLiteralHtmlContent()
         )
     }
 
     @Test
-    fun htmlCommentsAreEscapedWithoutDroppingFollowingText() {
+    fun parserEscapesHtmlCommentsWithoutDroppingFollowingText() {
         val body =
             """
             <!-- Describe what happened here. --> activity status
@@ -179,7 +180,7 @@ class SlockMarkdownTest {
             ```
             """.trimIndent()
 
-        val prepared = body.escapeThreadMarkdownHtmlTagsForThread()
+        val prepared = body.markdownParserLiteralHtmlContent()
 
         assertEquals(
             """
@@ -194,7 +195,7 @@ class SlockMarkdownTest {
         )
         assertEquals(
             "<!-- Describe what happened here. --> activity status",
-            renderSlockMarkdownParagraphText("<!-- Describe what happened here. --> activity status".escapeThreadMarkdownHtmlTagsForThread())
+            renderSlockMarkdownParagraphText("<!-- Describe what happened here. --> activity status")
         )
     }
 
@@ -335,6 +336,8 @@ class SlockMarkdownTest {
     fun plainTextFastPathOnlyAcceptsBodiesWithoutMarkdownWork() {
         assertTrue("Short plain reply.".shouldUseSlockMarkdownPlainTextFastPath())
         assertTrue("中文普通消息 123".shouldUseSlockMarkdownPlainTextFastPath())
+        assertTrue("<b>literal</b>".shouldUseSlockMarkdownPlainTextFastPath())
+        assertTrue("<!-- hidden --> literal".shouldUseSlockMarkdownPlainTextFastPath())
 
         assertFalse("Ping @artin".shouldUseSlockMarkdownPlainTextFastPath())
         assertFalse("See #KMP".shouldUseSlockMarkdownPlainTextFastPath())
@@ -875,7 +878,8 @@ class SlockMarkdownTest {
         annotator: MarkdownAnnotator,
         linkInteractionListener: LinkInteractionListener? = null
     ): AnnotatedString {
-        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        val parserContent = content.markdownParserLiteralHtmlContent()
+        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
         val settings =
             DefaultAnnotatorSettings(
@@ -883,9 +887,9 @@ class SlockMarkdownTest {
                 codeSpanStyle = SpanStyle(),
                 annotator = annotator,
                 linkInteractionListener = linkInteractionListener
-            )
+        )
         return buildAnnotatedString {
-            buildMarkdownAnnotatedString(content, paragraph, settings)
+            buildMarkdownAnnotatedString(parserContent, paragraph, settings)
         }
     }
 }

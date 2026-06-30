@@ -70,6 +70,7 @@ import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
+import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
@@ -313,45 +314,6 @@ fun String.normalizeThreadMarkdownBody(): String {
 private fun threadEscapedMarkdownLineBreakRegex(): Regex =
     Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
 
-fun String.escapeThreadMarkdownHtmlTagsForThread(): String {
-    val protectedRanges = threadMarkdownCodeProtectionRanges()
-    val builder = StringBuilder(length)
-    var index = 0
-    while (index < length) {
-        val tagMatch = ThreadMarkdownHtmlTagRegex.find(this, index)
-        val commentMatch = ThreadMarkdownHtmlCommentRegex.find(this, index)
-        val nextMatch =
-            when {
-                tagMatch == null -> commentMatch?.let { ThreadMarkdownHtmlMatch.Comment(it) }
-                commentMatch == null -> ThreadMarkdownHtmlMatch.Tag(tagMatch)
-                commentMatch.range.first < tagMatch.range.first -> ThreadMarkdownHtmlMatch.Comment(commentMatch)
-                else -> ThreadMarkdownHtmlMatch.Tag(tagMatch)
-            }
-        if (nextMatch == null) {
-            builder.append(substring(index))
-            break
-        }
-        val match = nextMatch.match
-        builder.append(substring(index, match.range.first))
-        if (protectedRanges.any { match.range.first in it }) {
-            builder.append(match.value)
-        } else if (nextMatch is ThreadMarkdownHtmlMatch.Comment) {
-            builder.append(match.value.escapeMarkdownHtmlTagText())
-        } else {
-            builder.append(match.value.escapeMarkdownHtmlTagText())
-        }
-        index = match.range.last + 1
-    }
-    return builder.toString()
-}
-
-private sealed class ThreadMarkdownHtmlMatch(
-    val match: MatchResult
-) {
-    class Tag(match: MatchResult) : ThreadMarkdownHtmlMatch(match)
-    class Comment(match: MatchResult) : ThreadMarkdownHtmlMatch(match)
-}
-
 private data class ThreadMarkdownInlineScan(
     val inlineCodeMatches: List<ThreadInlineCodeMatch>,
     val tagMatches: List<ThreadInlineTagMatch>
@@ -421,12 +383,6 @@ private fun Regex.find(input: CharSequence, startIndex: Int, predicate: (MatchRe
 private fun String.threadMarkdownAutolinkRanges(): List<IntRange> =
     ThreadMarkdownAutolinkRegex.findAll(this).map { it.range }.toList()
 
-private val ThreadMarkdownHtmlTagRegex =
-    Regex("""</?[A-Za-z][A-Za-z0-9:-]*(?:\s+[^<>]*)?>""")
-
-private val ThreadMarkdownHtmlCommentRegex =
-    Regex("""<!--.*?-->""", setOf(RegexOption.DOT_MATCHES_ALL))
-
 private val ThreadMarkdownAutolinkRegex =
     Regex("""<https?://[^>\s]+>""")
 
@@ -443,7 +399,7 @@ internal fun String.shouldUseSlockMarkdownPlainTextFastPath(): Boolean {
 }
 
 private val SlockMarkdownPlainTextFastPathBlockers =
-    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '#', '@', '|')
+    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '#', '@', '|')
 
 private fun String.hasSlockMarkdownBlockShape(): Boolean {
     val trimmed = trimStart()
@@ -467,9 +423,6 @@ private const val SlockMarkdownPerformanceSlowThresholdMs = 8L
 
 internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
     DEBUG_SLOCK_MARKDOWN_PERF_LOG || durationMs >= SlockMarkdownPerformanceSlowThresholdMs
-
-private fun String.escapeMarkdownHtmlTagText(): String =
-    replace("<", "\\<").replace(">", "\\>")
 
 fun threadMarkdownTaskReferenceKey(label: String): String =
     label.removePrefix("#").trim().lowercase()
@@ -1011,7 +964,7 @@ internal suspend fun prepareSlockMarkdownFullRendererBodies(
 internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): String? {
     val (content, _) =
         SlockMarkdownPreparedBodyCache.getOrPut(this) {
-            normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+            normalizeThreadMarkdownBody()
         }
     if (content.isBlank()) return null
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) return null
@@ -1025,8 +978,9 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
     style: TextStyle,
     annotator: MarkdownAnnotator
 ): AnnotatedString {
+    val parserContent = content.markdownParserLiteralHtmlContent()
     val parsedTree = traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PARSE) {
-        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
     }
     val textNode =
         parsedTree.children.firstOrNull { node ->
@@ -1040,7 +994,7 @@ internal fun buildSlockMarkdownInlineTextAnnotatedString(
         )
     return buildAnnotatedString {
         pushStyle(style.toSpanStyle())
-        buildMarkdownAnnotatedString(content, textNode, settings)
+        buildMarkdownAnnotatedString(parserContent, textNode, settings)
         pop()
     }
 }
@@ -1168,7 +1122,7 @@ fun SlockMarkdownBody(
         val (prepared, cacheHit) =
             traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
                 SlockMarkdownPreparedBodyCache.getOrPut(body) {
-                    body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+                    body.normalizeThreadMarkdownBody()
                 }
             }
         if (performanceKey != null) {
@@ -1238,21 +1192,24 @@ fun SlockMarkdownBody(
         remember(markdownTextStyle) {
             slockMarkdownInlineCodeTextStyle(markdownTextStyle)
         }
-    val tokenPlan = remember(content, highlightedMentions, knownChannelNames, inlineContentScope) {
+    val parserContent = remember(content) {
+        content.markdownParserLiteralHtmlContent()
+    }
+    val tokenPlan = remember(parserContent, highlightedMentions, knownChannelNames, inlineContentScope) {
         SlockMarkdownInlineTokenRegistry.plan(
-            content,
+            parserContent,
             highlightedMentions,
             knownChannelNames,
             inlineContentScope = inlineContentScope
         )
     }
-    val measuredInlineCodeWidths = remember(content, tokenPlan.signature) {
+    val measuredInlineCodeWidths = remember(parserContent, tokenPlan.signature) {
         mutableStateMapOf<String, TextUnit>()
     }
     val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
-    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle) {
+    val annotator = remember(parserContent, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle) {
         slockMarkdownAnnotator(
-            content,
+            parserContent,
             highlightedMentions = highlightedMentions,
             knownChannelNames = knownChannelNames,
             inlineContentScope = inlineContentScope,
@@ -1334,7 +1291,7 @@ fun SlockMarkdownBody(
                     measuredInlineCodeWidths = measuredInlineCodeWidths
                 ) { contentModifier ->
                     Markdown(
-                        content = content,
+                        content = parserContent,
                         colors = colors,
                         typography = typography,
                         textProvider = SlockMarkdownTextProvider,

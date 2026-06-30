@@ -29,6 +29,7 @@ import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL
 import com.tencent.kuiklybase.markdown.model.TextProvider
+import com.tencent.kuiklybase.markdown.model.markdownParserLiteralHtmlContent
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownDimens
@@ -87,18 +88,19 @@ fun Markdown(
     },
     error: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
 ) {
-    val state = rememberMarkdownState(initialContent = content)
-    LaunchedEffect(content) {
-        if (state.isContentApplied(content)) {
+    val parserContent = remember(content) { content.markdownParserLiteralHtmlContent() }
+    val state = rememberMarkdownState(initialContent = parserContent)
+    LaunchedEffect(parserContent) {
+        if (state.isContentApplied(parserContent)) {
             return@LaunchedEffect
         }
         val parseStartMark = TimeSource.Monotonic.markNow()
-        val cacheHit = state.parse(content, false)
+        val cacheHit = state.parse(parserContent, false)
         val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
         if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
             slockMarkdownLogSubTrace(
                 "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
-                    "bodyLength=${content.length} cacheHit=$cacheHit " +
+                    "bodyLength=${content.length} parserLength=${parserContent.length} cacheHit=$cacheHit " +
                     "dispatcher=$SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL"
             )
         }

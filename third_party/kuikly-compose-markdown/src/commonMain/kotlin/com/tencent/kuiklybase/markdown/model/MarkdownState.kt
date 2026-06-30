@@ -35,9 +35,10 @@ fun rememberMarkdownState(
 ): MarkdownState {
     val state = remember(lookupLinks, isShareMode, initialContent) {
         val flavour = GFMFlavourDescriptor()
+        val initialParserContent = initialContent?.markdownParserLiteralHtmlContent()
         MarkdownState(
             Input(
-                content = initialContent.orEmpty(),
+                content = initialParserContent.orEmpty(),
                 shareModel = isShareMode,
                 lookupLinks = lookupLinks,
                 flavour = flavour,
@@ -45,8 +46,8 @@ fun rememberMarkdownState(
                 referenceLinkHandler = ReferenceLinkHandlerImpl(),
             )
         ).also { state ->
-            if (initialContent != null) {
-                state.applyCachedInitialContent(initialContent)
+            if (initialParserContent != null) {
+                state.applyCachedInitialContent(initialParserContent)
             }
         }
     }
@@ -54,7 +55,8 @@ fun rememberMarkdownState(
 }
 
 suspend fun prepareMarkdownContent(content: String, lookupLinks: Boolean = true): Boolean {
-    val cacheKey = MarkdownParseResultCacheKey(content, lookupLinks)
+    val parserContent = content.markdownParserLiteralHtmlContent()
+    val cacheKey = MarkdownParseResultCacheKey(parserContent, lookupLinks)
     MarkdownParseResultCache.get(cacheKey)?.let {
         return true
     }
@@ -62,7 +64,7 @@ suspend fun prepareMarkdownContent(content: String, lookupLinks: Boolean = true)
         withContext(SlockMarkdownParseDispatcher) {
             val flavour = GFMFlavourDescriptor()
             parseMarkdownContent(
-                content = content,
+                content = parserContent,
                 lookupLinks = lookupLinks,
                 parser = MarkdownParser(flavour)
             )
