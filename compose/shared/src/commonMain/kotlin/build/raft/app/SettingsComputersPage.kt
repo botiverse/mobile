@@ -26,6 +26,7 @@ import build.raft.app.SlockLucideIcon
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.Presence
+import build.raft.app.model.RUNTIMES
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -855,33 +856,60 @@ private fun VisualInfoValue(label: String, value: String) {
 
 @Composable
 private fun VisualRuntimeRows(installedRuntimes: List<String>) {
-    val missingRuntimeRows =
-        listOf(
-            listOf("Antigravity CLI (not installed)"),
-            listOf("Kimi Code (not installed)"),
-            listOf("Kimi CLI (deprecated) (not installed)"),
-            listOf("Copilot CLI (not installed)", "Cursor CLI (not installed)"),
-            listOf("Gemini CLI (not installed)", "OpenCode (not installed)"),
-            listOf("Pi (not installed)")
-        )
+    val runtimeRows = settingsComputerRuntimePillRows(installedRuntimes)
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(
             "Detected Runtimes",
             style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            installedRuntimes.take(2).forEach { runtime ->
-                VisualInstalledRuntimePill(runtime)
-            }
-        }
-        missingRuntimeRows.forEach { row ->
+        runtimeRows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                row.forEach { runtime -> MissingRuntimePill(runtime) }
+                row.forEach { runtime ->
+                    if (runtime.detected) {
+                        VisualInstalledRuntimePill(runtime.label)
+                    } else {
+                        MissingRuntimePill(runtime.missingLabel)
+                    }
+                }
             }
         }
     }
 }
+
+internal data class SettingsComputerRuntimePill(
+    val id: String,
+    val label: String,
+    val detected: Boolean,
+    val supported: Boolean
+) {
+    val missingLabel: String = "$label (${if (supported) "not installed" else "coming soon"})"
+}
+
+internal fun settingsComputerRuntimePills(installedRuntimes: List<String>): List<SettingsComputerRuntimePill> {
+    val detectedIds =
+        installedRuntimes
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .mapNotNull { runtime ->
+                RUNTIMES.firstOrNull { it.id.equals(runtime, ignoreCase = true) }
+                    ?: RUNTIMES.firstOrNull { it.displayName.equals(runtime, ignoreCase = true) }
+            }
+            .map { it.id }
+            .toSet()
+    return RUNTIMES.map { runtime ->
+        SettingsComputerRuntimePill(
+            id = runtime.id,
+            label = runtime.displayName,
+            detected = runtime.id in detectedIds,
+            supported = runtime.supported
+        )
+    }
+}
+
+private fun settingsComputerRuntimePillRows(installedRuntimes: List<String>): List<List<SettingsComputerRuntimePill>> =
+    settingsComputerRuntimePills(installedRuntimes).chunked(2)
 
 @Composable
 private fun VisualSectionHeader(title: String, count: Int? = null) {

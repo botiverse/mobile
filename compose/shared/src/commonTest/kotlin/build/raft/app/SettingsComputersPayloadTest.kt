@@ -145,6 +145,30 @@ class SettingsComputersPayloadTest {
     }
 
     @Test
+    fun computerRuntimePillsUseSharedDisplayNamesAndDoNotDropPi() {
+        val pills = settingsComputerRuntimePills(listOf("claude", "codex", "pi"))
+
+        assertEquals(true, pills.first { it.id == "claude" }.detected)
+        assertEquals("Claude Code", pills.first { it.id == "claude" }.label)
+        assertEquals(true, pills.first { it.id == "codex" }.detected)
+        assertEquals("Codex CLI", pills.first { it.id == "codex" }.label)
+        assertEquals(true, pills.first { it.id == "pi" }.detected)
+        assertEquals("Pi", pills.first { it.id == "pi" }.label)
+        assertEquals(false, pills.first { it.id == "kimi-sdk" }.detected)
+        assertEquals("Kimi Code (not installed)", pills.first { it.id == "kimi-sdk" }.missingLabel)
+        assertEquals("Kimi CLI (deprecated) (not installed)", pills.first { it.id == "kimi" }.missingLabel)
+    }
+
+    @Test
+    fun computerRuntimePillsAcceptLegacyDisplayNamesFromVisualFixtures() {
+        val pills = settingsComputerRuntimePills(listOf("Claude Code", "Codex CLI", "Pi"))
+
+        assertEquals(true, pills.first { it.id == "claude" }.detected)
+        assertEquals(true, pills.first { it.id == "codex" }.detected)
+        assertEquals(true, pills.first { it.id == "pi" }.detected)
+    }
+
+    @Test
     fun computersListPayloadRoundTripsRunVersionForOnlineAndOfflineMachines() {
         // #77/#268: list card renders name + status + run-kind version line,
         // matching React MobileComputersPanel.tsx + Sidebar.tsx:1248-1290. The
