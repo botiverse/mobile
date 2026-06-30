@@ -1638,7 +1638,7 @@ class SharedSettingsStoreTest {
                             appName = "Slock",
                             versionLabel = "1.2.3",
                             buildLabel = "456",
-                            packageName = "ai.slock.android",
+                            packageName = "build.raft.app",
                             signedInUserLabel = "",
                             selectedServerLabel = "",
                             sessionStatusLabel = ""
@@ -2501,7 +2501,7 @@ class SharedSettingsStoreTest {
                     appName = "Slock",
                     versionLabel = "1.2.3",
                     buildLabel = "456",
-                    packageName = "ai.slock.android",
+                    packageName = "build.raft.app",
                     signedInUserLabel = "Artin",
                     selectedServerLabel = "Slock Community"
                 )

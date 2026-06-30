@@ -6,8 +6,8 @@
 # Usage:
 #   bash scripts/piw_cold_start_simpleperf.sh \
 #       --device emulator-5554 \
-#       --package ai.slock.android \
-#       --component ai.slock.android/.MainActivity \
+#       --package build.raft.app \
+#       --component build.raft.app/.MainActivity \
 #       --duration-seconds 10 \
 #       --frequency 999 \
 #       --out /Users/artin/Downloads/piw-coldstart-simpleperf

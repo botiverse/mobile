@@ -340,7 +340,7 @@ scripts/sync_kuikly_ai_skills.sh
 
 ## OHOS Kuikly Workflow
 
-- The Slock OHOS app bundle/module/ability is `ai.slock.compose` / `entry` /
+- The Slock OHOS app bundle/module/ability is `build.raft.app` / `entry` /
   `EntryAbility`.
 - `hdc` may not be on `PATH`; the default DevEco path in this workspace is
   `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.
@@ -575,8 +575,8 @@ sh ohosApp/runOhosApp.sh
 # 5. Focused unit tests
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:testDebugUnitTest \
-  --tests "ai.slock.android.core.data.quality.NetworkPriorityCallSiteTest*" \
-  --tests "ai.slock.android.core.data.mock.MockRepositoryTest*"
+  --tests "build.raft.app.core.data.quality.NetworkPriorityCallSiteTest*" \
+  --tests "build.raft.app.core.data.mock.MockRepositoryTest*"
 ```
 
 Key invariants:

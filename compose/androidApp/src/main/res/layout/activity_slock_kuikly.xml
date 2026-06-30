@@ -6,7 +6,7 @@
     android:focusable="true"
     android:focusableInTouchMode="true">
 
-    <ai.slock.android.shared.SlockKuiklyTraceFrameLayout
+    <build.raft.app.shared.SlockKuiklyTraceFrameLayout
         android:id="@+id/slock_kuikly_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />

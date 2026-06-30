@@ -102,7 +102,7 @@ includes:
 
 - target type: emulator or real device
 - output of `hdc list targets`
-- bundle/module launched: `ai.slock.compose` / `entry`
+- bundle/module launched: `build.raft.app` / `entry`
 - install and launch commands
 - screenshot command
 - pulled PNG path

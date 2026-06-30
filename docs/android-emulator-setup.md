@@ -163,8 +163,8 @@ $ scripts/avd_install.sh Pixel_9a_3 \
 
 # Launch main activity
 $ adb -s emulator-5560 shell am start \
-    -n ai.slock.android/.MainActivity
-# Or: adb -s emulator-5560 shell monkey -p ai.slock.android -c android.intent.category.LAUNCHER 1
+    -n build.raft.app/.MainActivity
+# Or: adb -s emulator-5560 shell monkey -p build.raft.app -c android.intent.category.LAUNCHER 1
 ```
 
 ### Capture screenshot
@@ -259,7 +259,7 @@ $ rm -rf /Users/artin/.android/avd/Pixel_9a/snapshots/old-snapshot-*
 |---------|-------------|-----|
 | `adb devices` shows `offline` | Stale AVD process | `adb kill-server && adb start-server` |
 | `emulator` boots but no adb | adb cache stale | `adb kill-server && adb -s emulator-NNNN reconnect` |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Existing app signed with different key | `adb uninstall ai.slock.android` then re-install |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Existing app signed with different key | `adb uninstall build.raft.app` then re-install |
 | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | AVD disk full | Delete AVD snapshots; or recreate AVD with larger `disk.dataPartition.size` |
 | `INSTALL_FAILED_VERSION_DOWNGRADE` | New APK older than installed | `adb install -r -d <apk>` (allow downgrade) |
 | Boot takes >3 min | Cold snapshot + first run | Set `-no-snapshot-load` on first boot, save snapshot after first init |

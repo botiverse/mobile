@@ -20,8 +20,8 @@ route chrome should be driven from shared tokens/components.
 The Android product theme is **not yet fully removable**. The repo still has
 runtime product callers from `MainActivity.kt` into Android-owned UI/theme:
 
-- `MainActivity.kt` imports `ai.slock.android.ui.theme.*`,
-  `ai.slock.android.ui.components.*`, and `ai.slock.android.ui.icons.LucideIcons`.
+- `MainActivity.kt` imports `build.raft.app.ui.theme.*`,
+  `build.raft.app.ui.components.*`, and `build.raft.app.ui.icons.LucideIcons`.
 - `MainActivity.kt` still directly renders native product screens:
   `ThreadScreen`, `InboxScreen`, `SettingsHomeScreen`, and several Settings
   detail screens.

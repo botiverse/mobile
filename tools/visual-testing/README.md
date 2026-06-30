@@ -159,7 +159,7 @@ cd compose
 ANDROID_SERIAL=emulator-5560 ./gradlew --no-daemon --console=plain \
   -PslockVisualFixtures=true \
   :androidApp:connectedConnectedTestAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=ai.slock.android.visual.KmpVisualScreenshotCaptureTest#captureThreadMessageRow
+  -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest#captureThreadMessageRow
 ```
 
 Normal product builds intentionally omit the flag:

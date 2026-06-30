@@ -59,7 +59,7 @@ This lets perf capture scripts (and ad-hoc debug) skip UI navigation entirely.
 
 ### Intent shape
 
-Action: `ai.slock.android.diagnostics.OPEN`
+Action: `build.raft.app.diagnostics.OPEN`
 
 Extras (all optional; defaults shown):
 
@@ -83,7 +83,7 @@ Add an `<activity-alias>` (not a new full Activity) so the existing
     android:enabled="@bool/diagnostics_deeplink_enabled">
 
     <intent-filter>
-        <action android:name="ai.slock.android.diagnostics.OPEN" />
+        <action android:name="build.raft.app.diagnostics.OPEN" />
         <category android:name="android.intent.category.DEFAULT" />
     </intent-filter>
 
@@ -144,15 +144,15 @@ depend on the profiler being enabled, and log a warning via
 ### a) Open Diagnostics, no toggle
 ```
 adb shell am start \
-    -a ai.slock.android.diagnostics.OPEN \
-    -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity
+    -a build.raft.app.diagnostics.OPEN \
+    -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity
 ```
 
 ### b) Open Diagnostics + enable profiler + reset scene + export + auto-close in 15s
 ```
 adb shell am start \
-    -a ai.slock.android.diagnostics.OPEN \
-    -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
+    -a build.raft.app.diagnostics.OPEN \
+    -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity \
     --ez enable_profiler true \
     --ez reset_scene true \
     --ez export_report true \
@@ -163,24 +163,24 @@ adb shell am start \
 
 ```bash
 # 1. Reset + enable + (after capture) export
-adb shell am start -a ai.slock.android.diagnostics.OPEN \
-    -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
+adb shell am start -a build.raft.app.diagnostics.OPEN \
+    -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity \
     --ez enable_profiler true --ez reset_scene true
 sleep 1
 # 2. Drive the interaction (existing `interaction_capture.py` handles this)
 python3 scripts/perf/interaction_capture.py \
-    --device emulator-5554 --package ai.slock.android \
+    --device emulator-5554 --package build.raft.app \
     --label send-v3 --out artifacts/perf-send-v3 \
     --stage open-channel:574:1621 \
     --stage type:530:2175:audit-v2 \
     --stage tap:993:2258 --atrace-window 12
 # 3. Trigger export via the same intent (no UI navigation needed)
-adb shell am start -a ai.slock.android.diagnostics.OPEN \
-    -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
+adb shell am start -a build.raft.app.diagnostics.OPEN \
+    -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity \
     --ez export_report true
 # 4. Pull profiler_report.json + profiler_frames.jsonl (SKILL.md §"pull-profiler")
 python3 scripts/slock_android_adb.py --device emulator-5554 \
-    pull-profiler --out artifacts/perf-send-v3 --package ai.slock.android
+    pull-profiler --out artifacts/perf-send-v3 --package build.raft.app
 ```
 
 ## 6. Validation

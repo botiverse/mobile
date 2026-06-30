@@ -34,7 +34,7 @@ const repoRoot = resolve(scriptDir, "..");
 const defaults = {
   adb: process.env.ADB || "adb",
   device: process.env.ANDROID_SERIAL,
-  component: "ai.slock.android/.MainActivity",
+  component: "build.raft.app/.MainActivity",
   outDir: join(repoRoot, "artifacts", "android-recomposition-profiler", timestamp()),
   prefix: "diagnostics-profiler",
   launchWaitMs: 1200,

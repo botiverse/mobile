@@ -94,7 +94,7 @@ would reintroduce ambiguity about which directory is the Gradle project root.
 
 ### 3.1 Source Code: `app/src/main/java/` → `compose/androidApp/src/main/java/`
 
-All packages under `ai.slock.android.*` move as-is. The `compose/androidApp` already has
+All packages under `build.raft.app.*` move as-is. The `compose/androidApp` already has
 `ai.slock.compose` sources that will be **replaced** by the production versions.
 
 | Outer app file | Merge action |
@@ -184,8 +184,8 @@ Move `app/proguard-rules.pro` → `compose/androidApp/proguard-rules.pro`.
 
 The `compose/androidApp/build.gradle.kts` is completely rewritten. Key changes:
 
-1. **Namespace** changes from `ai.slock.compose` → `ai.slock.android`
-2. **applicationId** stays `ai.slock.android`
+1. **Namespace** changes from `ai.slock.compose` → `build.raft.app`
+2. **applicationId** stays `build.raft.app`
 3. **compileSdk** bumps from 34 → 36 (match outer)
 4. **minSdk** stays 24, **targetSdk** bumps from 30 → 36
 5. **Kotlin JVM target** bumps from 1.8 → 11
@@ -314,7 +314,7 @@ Update all build/validation instructions:
 ### 5.1 Namespace Collision
 The inner `compose/androidApp` uses namespace `ai.slock.compose`; the shared module's
 androidMain source set also lives under `ai.slock.compose`. After merge, the androidApp
-will switch to `ai.slock.android` namespace. Ensure no package conflicts.
+will switch to `build.raft.app` namespace. Ensure no package conflicts.
 
 **Mitigation**: The outer app already imports from `ai.slock.compose.*` — these will
 resolve through the `:shared` project dependency normally.
@@ -411,7 +411,7 @@ outer `.idea/`.
 
 6. **Rewrite `compose/androidApp/build.gradle.kts`**:
    - Use the merged version catalog aliases.
-   - Set namespace to `ai.slock.android`.
+   - Set namespace to `build.raft.app`.
    - Merge all plugins, android config, dependencies, sqldelight config.
    - Add `connectedTest` build type and source set.
    - Verify `implementation(project(":shared"))` is present.

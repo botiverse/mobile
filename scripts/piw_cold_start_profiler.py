@@ -12,8 +12,8 @@ Output: artifacts/android-adb/<run-id>/ with one subdir per checkpoint.
 Usage:
   python3 scripts/piw_cold_start_profiler.py \
       --device emulator-5554 \
-      --package ai.slock.android \
-      --component ai.slock.android/.shared.SlockKuiklyActivity \
+      --package build.raft.app \
+      --component build.raft.app/.shared.SlockKuiklyActivity \
       --checkpoints 0.5 1 2 3 5 8 \
       --out /Users/artin/Downloads/piw-coldstart
 
@@ -71,11 +71,11 @@ def write_file(path: Path, content: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Cold-start profiler for Slock Android.")
     parser.add_argument("--device", required=True, help="adb serial, e.g. emulator-5554")
-    parser.add_argument("--package", required=True, help="app package, e.g. ai.slock.android")
+    parser.add_argument("--package", required=True, help="app package, e.g. build.raft.app")
     parser.add_argument(
         "--component",
         required=True,
-        help="activity component, e.g. ai.slock.android/.shared.SlockKuiklyActivity",
+        help="activity component, e.g. build.raft.app/.shared.SlockKuiklyActivity",
     )
     parser.add_argument(
         "--checkpoints",

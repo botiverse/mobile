@@ -17,7 +17,7 @@ class AuthDiagnosticsExportTest {
                         versionLabel = "1.2.3",
                         buildLabel = "42",
                         sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
-                        packageName = "ai.slock.compose",
+                        packageName = "build.raft.app",
                         signedInUserLabel = "artin@slock.ai",
                         selectedServerLabel = "Slock Team",
                         sessionStatusLabel = "Signed out",

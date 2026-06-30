@@ -16,8 +16,8 @@ the single-thread bottleneck. The shape of the data is what downstream
 Usage:
   python3 scripts/perf/cold_start_capture.py \
       --device emulator-5554 \
-      --package ai.slock.android \
-      --component ai.slock.android/.MainActivity \
+      --package build.raft.app \
+      --component build.raft.app/.MainActivity \
       --checkpoints 0.5 1 2 3 5 8 \
       --out ./artifacts/coldstart-2026-06-26
 """
@@ -83,7 +83,7 @@ def main() -> int:
     p.add_argument("--device", required=True)
     p.add_argument("--package", required=True)
     p.add_argument("--component", required=True,
-                   help="Launcher activity component, e.g. ai.slock.android/.MainActivity. "
+                   help="Launcher activity component, e.g. build.raft.app/.MainActivity. "
                         "SlockKuiklyActivity is not exported.")
     p.add_argument("--checkpoints", nargs="+", type=float,
                    default=[0.5, 1.0, 2.0, 3.0, 5.0, 8.0])

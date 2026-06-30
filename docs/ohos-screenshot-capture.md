@@ -26,7 +26,7 @@ The script prints the required verification details:
 
 - `hdc list targets`
 - selected target id and best-effort device type/version fields
-- bundle/module/ability: `ai.slock.compose / entry / EntryAbility`
+- bundle/module/ability: `build.raft.app / entry / EntryAbility`
 - install and launch commands, when requested
 - screenshot command
 - pulled PNG path under `${TMPDIR:-/tmp}/slock-ohos-screenshots/` by default

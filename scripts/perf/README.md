@@ -5,7 +5,7 @@ Reusable scripts for Slock Android perf investigations. All tools are
 
 - `adb` on PATH with at least one device/emulator online
 - `python3 scripts/slock_android_adb.py` working (existing SKILL.md tool)
-- the Slock Android app installed on the device (`ai.slock.android`)
+- the Slock Android app installed on the device (`build.raft.app`)
 
 The tools chain together:
 
@@ -36,8 +36,8 @@ records a full-text atrace over the launch window.
 ```bash
 python3 scripts/perf/cold_start_capture.py \
     --device emulator-5554 \
-    --package ai.slock.android \
-    --component ai.slock.android/.MainActivity \
+    --package build.raft.app \
+    --component build.raft.app/.MainActivity \
     --checkpoints 0.5 1 2 3 5 8 12 \
     --atrace-window 12 \
     --out ./artifacts/coldstart-2026-06-26
@@ -64,7 +64,7 @@ home                       KEYCODE_HOME
 ```bash
 python3 scripts/perf/interaction_capture.py \
     --device emulator-5554 \
-    --package ai.slock.android \
+    --package build.raft.app \
     --label send-message-slock-island \
     --out ./artifacts/perf-send-2026-06-26 \
     --stage open-channel:574:1621 \
@@ -120,7 +120,7 @@ Outputs a markdown delta report covering:
 ```bash
 # 1. Capture send-path before the change.
 python3 scripts/perf/interaction_capture.py \
-    --device emulator-5554 --package ai.slock.android \
+    --device emulator-5554 --package build.raft.app \
     --label send-before --out artifacts/perf-send-before \
     --stage open-channel:574:1621 --stage type:530:2175:audit-test \
     --stage tap:993:2258 --atrace-window 10
@@ -129,7 +129,7 @@ python3 scripts/perf/interaction_capture.py \
 
 # 3. Capture send-path after.
 python3 scripts/perf/interaction_capture.py \
-    --device emulator-5554 --package ai.slock.android \
+    --device emulator-5554 --package build.raft.app \
     --label send-after --out artifacts/perf-send-after \
     --stage open-channel:574:1621 --stage type:530:2175:audit-test \
     --stage tap:993:2258 --atrace-window 10

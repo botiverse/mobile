@@ -56,7 +56,7 @@ React / CLI 这轮迁移不是一次性把所有 `Slock` 文本清零，而是�
 2. **ThreadPage.kt Web Link 匹配**：行 2088 的 host 判断需要同时认两个域名 `setOf("app.slock.ai", "app.raft.build").contains(host)`
 3. **Email 域名**：用户真实邮箱如果是 `@slock.ai`，需要确认邮件发送是否仍走旧域名。测试/mock 数据可以直接改成 `@raft.build`
 4. **本地状态**：旧 SharedPreferences / SQLDelight / cache / notification channel key 如果带 `slock`，要么保持不动，要么读旧写新迁移，不能让老用户升级后丢登录态或本地缓存。
-5. **应用身份**：`applicationId` 不是普通代码包名。若从 `ai.slock.android` 改到 `build.raft.android`，商店和设备会把它当作新 app，需要单独产品/发布决策。
+5. **应用身份**：`applicationId` 不是普通代码包名。若从 `build.raft.app` 改到 `build.raft.app`，商店和设备会把它当作新 app，需要单独产品/发布决策。
 
 **可以延后、但不影响旧用户兼容的**：
 - Kotlin package / import / class / file name：工程内部身份，建议放到可见品牌和兼容迁移之后。
@@ -181,11 +181,11 @@ React / CLI 这轮迁移不是一次性把所有 `Slock` 文本清零，而是�
 - `ai.slock.compose.network` → `build.raft.compose.network`
 - `ai.slock.compose.markdown` → `build.raft.compose.markdown`
 - `ai.slock.compose.components` → `build.raft.compose.components`
-- `ai.slock.android` → `build.raft.android`
-- `ai.slock.android.core` → `build.raft.android.core`
-- `ai.slock.android.feature` → `build.raft.android.feature`
-- `ai.slock.android.ui` → `build.raft.android.ui`
-- `ai.slock.android.shared` → `build.raft.android.shared`
+- `build.raft.app` → `build.raft.app`
+- `build.raft.app.core` → `build.raft.app.core`
+- `build.raft.app.feature` → `build.raft.app.feature`
+- `build.raft.app.ui` → `build.raft.app.ui`
+- `build.raft.app.shared` → `build.raft.app.shared`
 - `ai.slock.shared` → `build.raft.shared`
 
 ### 3.2 目录结构
@@ -208,7 +208,7 @@ compose/androidApp/src/main/java/build/raft/android/
 
 | 文件 | 改动 |
 |------|------|
-| `compose/androidApp/build.gradle.kts` | `namespace = "ai.slock.android"` → `"build.raft.android"`，`applicationId = "ai.slock.android"` → `"build.raft.android"` |
+| `compose/androidApp/build.gradle.kts` | `namespace = "build.raft.app"` → `"build.raft.app"`，`applicationId = "build.raft.app"` → `"build.raft.app"` |
 | `compose/shared/build.gradle.kts` | `namespace = "ai.slock.compose.shared"` → `"build.raft.compose.shared"` |
 
 ### 3.4 SQLDelight
@@ -219,7 +219,7 @@ compose/androidApp/src/main/java/build/raft/android/
 
 ### 3.5 AndroidManifest
 
-`ai.slock.android` 相关的所有引用（application name、activity name、authorities 等）。
+`build.raft.app` 相关的所有引用（application name、activity name、authorities 等）。
 
 ### 3.6 统计
 
@@ -472,6 +472,6 @@ compose/androidApp/src/main/java/build/raft/android/
 2. **SQLDelight** `.sq` 文件改路径后所有生成代码类名变，DAO 引用要同步
 3. **SharedPreferences** `slock_auth_session.xml` 改名后老用户登录状态可能丢失，建议保留旧文件名或做读旧写新迁移
 4. **OHOS 鸿蒙端**有独立的工程结构，需要单独处理
-5. **applicationId** 从 `ai.slock.android` 改成 `build.raft.android` 后，Google Play / AppGallery 上的应用会被视为新应用；这不是 namespace refactor，必须单独产品/发布决策
+5. **applicationId** 从 `build.raft.app` 改成 `build.raft.app` 后，Google Play / AppGallery 上的应用会被视为新应用；这不是 namespace refactor，必须单独产品/发布决策
 6. **deep link** `app.slock.ai` 改成 `app.raft.build` 后需要确保新域名已配置
 7. **grep 清零风险**：协议字段、旧 deep link、历史 migration、legacy fallback 不应为了清零而改坏；最终必须用白名单/残留分类表收口

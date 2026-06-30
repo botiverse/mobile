@@ -13,7 +13,7 @@ This is the capture shape used for the send-path audit on `#Slock-Island`
 Usage:
   python3 scripts/perf/interaction_capture.py \
       --device emulator-5554 \
-      --package ai.slock.android \
+      --package build.raft.app \
       --label send-message-slock-island \
       --out ./artifacts/perf-send-2026-06-26 \
       --stage open-channel:574:1621 \

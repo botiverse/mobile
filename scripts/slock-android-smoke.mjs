@@ -9,8 +9,8 @@ const repoRoot = resolve(scriptDir, "..");
 
 const defaults = {
   device: process.env.ANDROID_SERIAL || "emulator-5556",
-  packageName: "ai.slock.android",
-  component: "ai.slock.android/.MainActivity",
+  packageName: "build.raft.app",
+  component: "build.raft.app/.MainActivity",
   apk: join(repoRoot, "compose/androidApp/build/outputs/apk/debug/androidApp-debug.apk"),
   outDir: join(repoRoot, "artifacts/android-smoke", timestamp()),
   channel: "对话流专修",

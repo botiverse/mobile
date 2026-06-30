@@ -54,14 +54,14 @@ fun slockGitCommit(): String =
     }
 
 android {
-    namespace = "ai.slock.android"
+    namespace = "build.raft.app"
     compileSdk {
         version = release(36)
     }
     testBuildType = "connectedTest"
 
     defaultConfig {
-        applicationId = "ai.slock.android"
+        applicationId = "build.raft.app"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -79,7 +79,6 @@ android {
     buildTypes {
         create("connectedTest") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".alpha"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             matchingFallbacks += listOf("debug")
         }

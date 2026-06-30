@@ -757,7 +757,7 @@ def android_vector_entry(icon_file_name, prop, svg, tmpdir, package):
 
 
 def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
-    package = "ai.slock.android.ui.icons"
+    package = "build.raft.app.ui.icons"
     entries = []
     variant_entries = []
     all_imports = set()

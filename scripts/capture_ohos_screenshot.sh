@@ -11,7 +11,7 @@ HVIGORW="${HVIGORW:-$SDK_HOME/tools/hvigor/bin/hvigorw.js}"
 NODE_BIN="${NODE_BIN:-$SDK_HOME/tools/node/bin/node}"
 OHPM_BIN="${OHPM_BIN:-$SDK_HOME/tools/ohpm/bin/ohpm}"
 
-BUNDLE="ai.slock.compose"
+BUNDLE="build.raft.app"
 MODULE="entry"
 ABILITY="EntryAbility"
 TARGET_ID=""
@@ -37,7 +37,7 @@ Options:
   --hap <path>        HAP path to install. Default: entry-default-signed.hap.
   --build            Run ohpm install, hvigor sync, and assembleHap first.
   --install          Install the HAP before capture.
-  --launch           Start ai.slock.compose/entry EntryAbility before capture.
+  --launch           Start build.raft.app/entry EntryAbility before capture.
   --wait <seconds>   Wait after launch before capture. Default: 2.
   -h, --help         Show this help.
 

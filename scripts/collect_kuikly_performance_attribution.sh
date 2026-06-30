@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/artifacts/kuikly-performance/$(date +%Y%m%d-%H%M%S)"
 HDC_BIN="${HDC_BIN:-hdc}"
-APP_BUNDLE="${APP_BUNDLE:-ai.slock.compose}"
+APP_BUNDLE="${APP_BUNDLE:-build.raft.app}"
 HILOG_SECONDS="${HILOG_SECONDS:-20}"
 COLLECT_HILOG=1
 RUN_ANALYZER=1
@@ -16,7 +16,7 @@ Usage:
 
 Options:
   --out <dir>             Output directory.
-  --app-bundle <id>       App bundle name for metadata. Default: ai.slock.compose.
+  --app-bundle <id>       App bundle name for metadata. Default: build.raft.app.
   --hdc <path>            hdc executable. Default: $HDC_BIN or hdc.
   --hilog-seconds <n>     Seconds to stream hilog. Default: 20.
   --no-hilog             Skip live hilog capture.

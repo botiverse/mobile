@@ -92,9 +92,9 @@ Android pull commands:
 ```bash
 OUT=/tmp/slock-profiler-<surface>-<yyyymmdd-hhmm>
 mkdir -p "$OUT"
-adb -s <device> shell run-as ai.slock.android cat \
+adb -s <device> shell run-as build.raft.app cat \
   cache/KuiklyProfiler/profiler_report.json > "$OUT/profiler_report.json"
-adb -s <device> shell run-as ai.slock.android cat \
+adb -s <device> shell run-as build.raft.app cat \
   cache/KuiklyProfiler/profiler_frames.jsonl > "$OUT/profiler_frames.jsonl"
 adb -s <device> logcat -d > "$OUT/logcat.txt"
 ```
@@ -114,7 +114,7 @@ python3 scripts/slock_android_adb.py --device <device> capture-logcat \
   --filter-regex 'SlockPerf|SlockPerfScene|tab_switch_frame|Choreographer|Skipped|jank|Exception|FATAL'
 python3 scripts/slock_android_adb.py --device <device> pull-profiler \
   --out "$OUT" \
-  --package ai.slock.android
+  --package build.raft.app
 ```
 
 The helper prints JSON and `get-app-state` returns the `screenshot_path` and

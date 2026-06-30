@@ -20,11 +20,11 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PACKAGE = "ai.slock.android"
-DEFAULT_COMPONENT = "ai.slock.android/.MainActivity"
-DEFAULT_KUIKLY_COMPONENT = "ai.slock.android/.shared.SlockKuiklyActivity"
-DIAGNOSTICS_ACTION = "ai.slock.android.diagnostics.OPEN"
-DIAGNOSTICS_COMPONENT = "ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity"
+DEFAULT_PACKAGE = "build.raft.app"
+DEFAULT_COMPONENT = "build.raft.app/.MainActivity"
+DEFAULT_KUIKLY_COMPONENT = "build.raft.app/.shared.SlockKuiklyActivity"
+DIAGNOSTICS_ACTION = "build.raft.app.diagnostics.OPEN"
+DIAGNOSTICS_COMPONENT = "build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity"
 DEFAULT_OUT = REPO_ROOT / "artifacts" / "android-adb" / datetime.now().strftime("%Y%m%d-%H%M%S")
 KEY_ALIASES = {
     "BACK": "BACK",
@@ -87,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run adb shell am start with action/component/extras",
     )
     start_intent.add_argument("--action", "-a", help="Intent action")
-    start_intent.add_argument("--component", "-n", help="Explicit component, for example ai.slock.android/.MainActivity")
+    start_intent.add_argument("--component", "-n", help="Explicit component, for example build.raft.app/.MainActivity")
     start_intent.add_argument("--category", action="append", default=[], help="Intent category; may be repeated")
     start_intent.add_argument("--string-extra", action="append", default=[], metavar="KEY=VALUE", help="Add --es extra")
     start_intent.add_argument("--bool-extra", action="append", default=[], metavar="KEY=BOOL", help="Add --ez extra")
