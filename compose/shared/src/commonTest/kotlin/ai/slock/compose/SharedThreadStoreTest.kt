@@ -5659,6 +5659,71 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadHydratesReplyOriginWhenSnapshotParentCandidateIsSparse() = runBlocking {
+        val sparseParent = message(threadId = "thread-m1", id = "m1", seq = 10, body = "")
+        val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    sparseParent,
+                                    message(threadId = "thread-m1", id = "reply-1", seq = 11, body = "reply body")
+                                ),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(canonicalParent),
+                            conversation = conversationSummary("channel-1")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
+    }
+
+    @Test
     fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndMemoryCache() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val repository = FakeConversationRepository(

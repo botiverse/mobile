@@ -1559,8 +1559,15 @@ internal class SharedThreadDataSource(
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
                 ?: return this
-        if (parentMessage?.id?.value == parentMessageId) return this
-        if (basePayload.originStatus == "loaded" && basePayload.originMessage?.id == parentMessageId) {
+        val existingParentMessage = parentMessage?.takeIf { it.id.value == parentMessageId }
+        if (existingParentMessage != null && !existingParentMessage.needsReplyOriginContextHydration()) {
+            return this
+        }
+        if (
+            basePayload.originStatus == "loaded" &&
+            basePayload.originMessage?.id == parentMessageId &&
+            !basePayload.originMessage.needsReplyOriginContextHydration()
+        ) {
             val parentChannelId =
                 basePayload.parentChannelId?.takeIf { it.isNotBlank() }
                     ?: conversation.thread?.parentChannelId?.value
@@ -1574,7 +1581,10 @@ internal class SharedThreadDataSource(
                     )
             )
         }
-        if (messages.any { message -> message.id.value == parentMessageId }) return this
+        val messageParentCandidate = messages.firstOrNull { message -> message.id.value == parentMessageId }
+        if (messageParentCandidate != null && !messageParentCandidate.needsReplyOriginContextHydration()) {
+            return this
+        }
         val contextResult =
             fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
                 repository.getMessageContext(MessageId(parentMessageId))
@@ -1642,6 +1652,12 @@ internal class SharedThreadDataSource(
             is DataResult.NoPermission -> initialResult
         }
     }
+
+    private fun Message.needsReplyOriginContextHydration(): Boolean =
+        body.isBlank() && attachments.isEmpty()
+
+    private fun KuiklyThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
+        body.isBlank() && attachments.isEmpty()
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
         basePayload: KuiklyThreadScreenPayload
