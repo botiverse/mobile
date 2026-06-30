@@ -76,7 +76,6 @@ class RealChannelRepository(
         SharedHomeDataSource(
             sessionStore = sessionStore,
             api = NetworkSlockHomeApi(networkClient),
-            localWriteThrough = null,
             parseHome = { payload, session ->
                 parseSlockHome(payload, session, warningLogger)
             },

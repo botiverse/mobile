@@ -819,8 +819,8 @@ internal class SharedThreadDataSource(
         currentPayload: KuiklyThreadScreenPayload,
         channelLabel: String
     ): KuiklyThreadScreenPayload? {
-        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
-        val home = localWriteThrough?.readHomeSnapshot(serverId) ?: return null
+        val session = readSession() ?: return null
+        val home = currentHomeSnapshot(session) ?: return null
         return buildMarkdownChannelLaunchPayload(
             currentPayload = currentPayload,
             home = home,
@@ -1714,10 +1714,9 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         session: StoredAuthSession
     ): ConversationSummary? {
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
         val lookupIds = basePayload.conversationHeaderFallbackIds()
         if (lookupIds.isEmpty()) return null
-        val home = localWriteThrough?.readHomeSnapshot(serverId) ?: return null
+        val home = currentHomeSnapshot(session) ?: return null
         return (home.channels + home.directMessages)
             .firstOrNull { conversation -> conversation.matchesHeaderFallbackId(lookupIds) }
     }
@@ -1725,10 +1724,8 @@ internal class SharedThreadDataSource(
     private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
         val names =
-            localWriteThrough
-                ?.readHomeSnapshot(serverId)
+            currentHomeSnapshot(session)
                 ?.channels
                 .orEmpty()
                 .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
@@ -1738,6 +1735,12 @@ internal class SharedThreadDataSource(
         } else {
             copy(knownMarkdownChannelNames = names)
         }
+    }
+
+    private suspend fun currentHomeSnapshot(session: StoredAuthSession): HomeSnapshot? {
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        val repository = channelRepository ?: return null
+        return (repository.getHome(serverId) as? DataResult.Content)?.data
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSavedStatus(

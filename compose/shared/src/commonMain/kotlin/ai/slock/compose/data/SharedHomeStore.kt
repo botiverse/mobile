@@ -83,7 +83,6 @@ class SharedHomeStore(
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
-    private var refreshJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
@@ -103,9 +102,6 @@ class SharedHomeStore(
             loadJob?.cancel()
             agentDirectMessageStatusJob?.cancel()
             agentDirectMessageStatusJob = null
-            if (intent.cancelsBackgroundRefresh) {
-                refreshJob?.cancel()
-            }
             loadJob =
                 scope.launch {
                     accept(intent)
@@ -120,11 +116,10 @@ class SharedHomeStore(
     private fun debounceInFlightHomeLoad(intent: SharedHomeIntent): Boolean {
         if (!intent.debouncesInFlightHomeLoad) return false
         val activeLoad = loadJob?.isActive == true
-        val activeRefresh = refreshJob?.isActive == true
-        if (!activeLoad && !activeRefresh) return false
+        if (!activeLoad) return false
         diagnosticsLogger(
             "home_load_debounce intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
-                "reason=${if (activeLoad) "in_flight_load" else "in_flight_refresh"}"
+                "reason=in_flight_load"
         )
         return true
     }
@@ -132,8 +127,6 @@ class SharedHomeStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
-        refreshJob?.cancel()
-        refreshJob = null
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
         sidebarOrderByServer.clear()
@@ -147,7 +140,6 @@ class SharedHomeStore(
                 load(
                     _state.value.serverSwitchState,
                     showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.SkipInFlight
                 )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
@@ -155,14 +147,12 @@ class SharedHomeStore(
                 load(
                     nextSwitch,
                     showRefreshAffordance = true,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
                 )
             }
             SharedHomeIntent.ForegroundRefresh ->
                 load(
                     _state.value.serverSwitchState,
                     showRefreshAffordance = false,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
                 )
             SharedHomeIntent.ToggleServerSwitcher ->
                 reduceState(_state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded))
@@ -213,7 +203,6 @@ class SharedHomeStore(
                 load(
                     nextSwitch,
                     showRefreshAffordance = true,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
                 )
             }
             is SharedHomeIntent.SetSurfaceVisible ->
@@ -291,8 +280,7 @@ class SharedHomeStore(
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
             load(
                 nextSwitch,
-                showRefreshAffordance = false,
-                backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                showRefreshAffordance = false
             )
             return
         }
@@ -338,7 +326,6 @@ class SharedHomeStore(
                 load(
                     nextSwitch,
                     showRefreshAffordance = false,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
                 )
                 return
             }
@@ -445,11 +432,10 @@ class SharedHomeStore(
 
     private fun launchCoalescedRealtimeHomeReload(event: RealtimeRefreshRequired) {
         val activeLoad = loadJob?.takeIf { it.isActive }
-        val activeRefresh = refreshJob?.takeIf { it.isActive }
-        if (activeLoad != null || activeRefresh != null) {
+        if (activeLoad != null) {
             diagnosticsLogger(
                 "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
-                    "active=${if (activeLoad != null) "load" else "refresh"}"
+                    "active=load"
             )
             return
         }
@@ -463,8 +449,7 @@ class SharedHomeStore(
                 try {
                     load(
                         nextSwitch,
-                        showRefreshAffordance = false,
-                        backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                        showRefreshAffordance = false
                     )
                 } finally {
                     stateDiagnosticsReason = previousReason
@@ -482,8 +467,7 @@ class SharedHomeStore(
 
     private suspend fun load(
         request: HomeServerSwitchState,
-        showRefreshAffordance: Boolean,
-        backgroundRefreshPolicy: HomeBackgroundRefreshPolicy
+        showRefreshAffordance: Boolean
     ) {
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
         val previous = _state.value.content
@@ -537,60 +521,6 @@ class SharedHomeStore(
             )
             val activeServerId = requestedServerId ?: activeSession.currentServerId
             val activeServer = activeServerId?.let(::ServerId)
-            when (val cached = dataSource.readCachedHome(serverId = activeServer)) {
-                is DataResult.Content -> {
-                    val latestSwitch = _state.value.serverSwitchState
-                    val cachedServerId = cached.data.server.id
-                    if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
-                        val previousContent = _state.value.content as? SharedHomeContentState.Content
-                        // #81: cached hit also seeds the badge projection.
-                        // lastUpdated is 0L here because we don't know
-                        // exactly when the cache was written; isStale
-                        // stays false because the cache itself is a
-                        // successful previous fetch.
-                        val cachedBadge = snapshotToBadgeCount(
-                            snapshot = cached.data,
-                            selectedServerId = activeServer,
-                            isStale = false
-                        )
-                        // #81: dedup — if the projection is structurally
-                        // equal to the current one (modulo lastUpdated),
-                        // keep the previous state so the host doesn't
-                        // observe a no-op state emission.
-                        val effectiveCachedBadge =
-                            if (cachedBadge.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
-                                _state.value.appBadgeCount
-                            } else {
-                                cachedBadge
-                            }
-                        reduceState(
-                            _state.value.copy(
-                                content =
-                                    contentFromDurableSnapshot(
-                                        snapshot = cached.data,
-                                        session = activeSession,
-                                        contentRefreshing = showRefreshAffordance,
-                                        previousContent = previousContent
-                                    ),
-                                serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId),
-                                serverUnreadCounts = cached.data.serverUnreadCounts,
-                                appBadgeCount = effectiveCachedBadge
-                            )
-                        )
-                        loadNotifications()
-                        launchNetworkRefresh(
-                            request = request,
-                            activeSession = activeSession,
-                            activeServer = activeServer ?: cachedServerId,
-                            policy = backgroundRefreshPolicy
-                        )
-                        return
-                    }
-                }
-                is DataResult.Empty,
-                is DataResult.Error,
-                is DataResult.NoPermission -> Unit
-            }
             loadHomeFromNetwork(
                 request = request,
                 activeSession = activeSession,
@@ -607,45 +537,6 @@ class SharedHomeStore(
             )
             reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
         }
-    }
-
-    private fun launchNetworkRefresh(
-        request: HomeServerSwitchState,
-        activeSession: StoredAuthSession,
-        activeServer: ServerId,
-        policy: HomeBackgroundRefreshPolicy
-    ) {
-        if (policy == HomeBackgroundRefreshPolicy.SkipInFlight) {
-            if (refreshJob?.isActive == true) {
-                diagnosticsLogger("home_refresh_skip serverId=${activeServer.value} reason=in_flight")
-                return
-            }
-        }
-        refreshJob?.cancel()
-        refreshJob =
-            scope.launch {
-                val previousReason = stateDiagnosticsReason
-                stateDiagnosticsReason = "BackgroundRefresh"
-                try {
-                    loadHomeFromNetwork(
-                        request = request,
-                        activeSession = activeSession,
-                        activeServer = activeServer,
-                        priority = DataRequestPriority.Background,
-                        forceNetwork = true,
-                        refreshNotificationsAfterLoad = false
-                    )
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (throwable: Throwable) {
-                    diagnosticsLogger(
-                        "home_ui_exception source=shared_home_background_refresh errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
-                    )
-                    reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
-                } finally {
-                    stateDiagnosticsReason = previousReason
-                }
-            }
     }
 
     private suspend fun loadHomeFromNetwork(
@@ -1124,11 +1015,6 @@ class SharedHomeStore(
         return true
     }
 
-}
-
-private enum class HomeBackgroundRefreshPolicy {
-    SkipInFlight,
-    Force
 }
 
 private val ConversationSummary.isAgentDirectMessage: Boolean

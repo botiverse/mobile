@@ -57,13 +57,14 @@ internal class SqlDelightComposeLocalDataStore(
     }
 
     override fun observeHome(serverId: ServerId): Flow<HomeSnapshot?> =
-        fallback.observeHome(serverId)
+        flow { emit(null) }
 
     override suspend fun readHome(serverId: ServerId): HomeSnapshot? =
-        fallback.readHome(serverId)
+        null
 
     override suspend fun writeHome(snapshot: HomeSnapshot) {
-        fallback.writeHome(snapshot)
+        // Durable HomeSnapshot blob storage has been removed. This method is
+        // retained only for temporary source compatibility with older tests.
     }
 
     override fun observeThread(threadId: ThreadId): Flow<ThreadSnapshot?> =

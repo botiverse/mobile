@@ -35,17 +35,11 @@ class ComposeLocalWriteThrough(
     private val store: ComposeLocalDataStore,
     private val logger: (String) -> Unit = {}
 ) {
-    suspend fun readHomeSnapshot(serverId: ServerId): HomeSnapshot? {
-        val startedAt = TimeSource.Monotonic.markNow()
-        return store.readHome(serverId).also { snapshot ->
-            logger(
-                "store_hydrate domain=home source=local_read serverId=${serverId.value} " +
-                    "hit=${snapshot != null} channels=${snapshot?.channels?.size ?: 0} " +
-                    "directMessages=${snapshot?.directMessages?.size ?: 0} " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-            )
-        }
-    }
+    suspend fun readHomeSnapshot(serverId: ServerId): HomeSnapshot? =
+        null
+
+    suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String): Boolean =
+        false
 
     suspend fun readThreadSnapshot(threadId: ThreadId): ThreadSnapshot? {
         val startedAt = TimeSource.Monotonic.markNow()
@@ -56,43 +50,6 @@ class ComposeLocalWriteThrough(
                     "tasks=${snapshot?.tasks?.size ?: 0} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
         }
-    }
-
-    suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String): Boolean {
-        val startedAt = TimeSource.Monotonic.markNow()
-        val snapshot = (result as? DataResult.Content)?.data
-        if (snapshot == null) {
-            logger(
-                "store_merge_skip domain=home source=$source reason=${result.localWriteSkipReason()} " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-            )
-            return false
-        }
-        val readStartedAt = TimeSource.Monotonic.markNow()
-        val previous = store.readHome(snapshot.server.id)
-        val readMs = readStartedAt.elapsedNow().inWholeMilliseconds
-        val mergeStartedAt = TimeSource.Monotonic.markNow()
-        val updatedSnapshot =
-            snapshot
-                .withStoredDirectMessageMetadata(previous)
-                .preserveStableRowsFrom(previous)
-        val mergeMs = mergeStartedAt.elapsedNow().inWholeMilliseconds
-        if (updatedSnapshot == previous) {
-            logger(
-                "store_merge_skip domain=home source=$source reason=unchanged serverId=${snapshot.server.id.value} " +
-                    "readMs=$readMs mergeMs=$mergeMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-            )
-            return false
-        }
-        val writeStartedAt = TimeSource.Monotonic.markNow()
-        store.writeHome(updatedSnapshot)
-        val writeMs = writeStartedAt.elapsedNow().inWholeMilliseconds
-        logger(
-            "store_merge domain=home source=$source serverId=${snapshot.server.id.value} " +
-                "channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size} " +
-                "readMs=$readMs mergeMs=$mergeMs writeMs=$writeMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-        )
-        return true
     }
 
     suspend fun writeThreadResult(
@@ -147,47 +104,16 @@ class ComposeLocalWriteThrough(
         val unreadWriteStartedAt = TimeSource.Monotonic.markNow()
         store.writeUnread(snapshot)
         val unreadWriteMs = unreadWriteStartedAt.elapsedNow().inWholeMilliseconds
-        var homeReadMs = 0L
-        var homeMergeMs = 0L
-        var homeWriteMs = 0L
-        val homeReadStartedAt = TimeSource.Monotonic.markNow()
-        val home = store.readHome(snapshot.server.id)
-        homeReadMs = homeReadStartedAt.elapsedNow().inWholeMilliseconds
-        home?.let { homeSnapshot ->
-            val homeMergeStartedAt = TimeSource.Monotonic.markNow()
-            val updatedHome =
-                homeSnapshot.copy(
-                    channels = homeSnapshot.channels.map { it.withUnreadCounts(snapshot.unreadCounts) },
-                    directMessages =
-                        homeSnapshot.directMessages.map { it.withUnreadCounts(snapshot.unreadCounts) },
-                    unreadTotal = snapshot.totalUnreadCount
-                ).preserveStableRowsFrom(homeSnapshot)
-            homeMergeMs = homeMergeStartedAt.elapsedNow().inWholeMilliseconds
-            if (updatedHome != homeSnapshot) {
-                val homeWriteStartedAt = TimeSource.Monotonic.markNow()
-                store.writeHome(updatedHome)
-                homeWriteMs = homeWriteStartedAt.elapsedNow().inWholeMilliseconds
-            }
-        }
         logger(
             "store_merge domain=home_unread source=$source serverId=${snapshot.server.id.value} " +
                 "counts=${snapshot.unreadCounts.size} total=${snapshot.totalUnreadCount} " +
-                "unreadWriteMs=$unreadWriteMs homeReadMs=$homeReadMs homeMergeMs=$homeMergeMs " +
-                "homeWriteMs=$homeWriteMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                "unreadWriteMs=$unreadWriteMs durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
     }
 
     suspend fun clearConversationUnread(channelId: ChannelId, source: String, serverId: ServerId? = null) {
         val startedAt = TimeSource.Monotonic.markNow()
         store.clearChannelUnread(channelId)
-        serverId?.let { id ->
-            store.readHome(id)?.let { home ->
-                val updatedHome = home.clearConversationUnread(channelId)
-                if (updatedHome != home) {
-                    store.writeHome(updatedHome)
-                }
-            }
-        }
         logger(
             "store_merge domain=home_unread source=$source operation=clear_channel channelId=${channelId.value} " +
                 "serverId=${serverId?.value.orEmpty()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
@@ -204,12 +130,6 @@ class ComposeLocalWriteThrough(
                 )
             if (updatedUnread != unread) {
                 store.writeUnread(updatedUnread)
-            }
-        }
-        store.readHome(serverId)?.let { home ->
-            val updatedHome = home.clearAllUnread()
-            if (updatedHome != home) {
-                store.writeHome(updatedHome)
             }
         }
         logger(
@@ -415,7 +335,6 @@ class ComposeLocalWriteThrough(
     ): Boolean {
         val startedAt = TimeSource.Monotonic.markNow()
         if (messages.isEmpty()) return false
-        var wroteHome = false
         var wroteThread = false
         var streamCount = 0
         messages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
@@ -423,11 +342,6 @@ class ComposeLocalWriteThrough(
                 streamCount += 1
                 val threadId = ThreadId(streamChannelId.value)
                 val existing = store.readThread(threadId)
-                val existingMessageIds = existing?.messages.orEmpty().map { it.id }.toSet()
-                val unreadCandidateMessages =
-                    streamMessages
-                        .distinctBy { it.id }
-                        .filterNot { it.id in existingMessageIds }
                 if (existing != null) {
                     val updated =
                         existing.copy(
@@ -470,110 +384,15 @@ class ComposeLocalWriteThrough(
                             ) || wroteThread
                     }
                 }
-                wroteHome =
-                    updateHomePreview(
-                        serverId = serverId,
-                        streamChannelId = streamChannelId,
-                        messages = streamMessages,
-                        unreadCandidateMessages = unreadCandidateMessages,
-                        incrementUnread = incrementUnread,
-                        activeConversationId = activeConversationId
-                    ) || wroteHome
             }
         logger(
             "store_merge domain=realtime_messages serverId=${serverId.value} streams=$streamCount " +
-                "messages=${messages.size} incrementUnread=$incrementUnread wroteThread=$wroteThread wroteHome=$wroteHome " +
+                "messages=${messages.size} incrementUnread=$incrementUnread wroteThread=$wroteThread " +
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
-        return wroteHome || wroteThread
-    }
-
-    private suspend fun updateHomePreview(
-        serverId: ServerId,
-        streamChannelId: ChannelId,
-        messages: List<Message>,
-        unreadCandidateMessages: List<Message>,
-        incrementUnread: Boolean,
-        activeConversationId: String?
-    ): Boolean {
-        val startedAt = TimeSource.Monotonic.markNow()
-        val home = store.readHome(serverId) ?: return false
-        val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return false
-        fun ConversationSummary.updatedPreview(): HomePreviewUpdate {
-            val isActiveConversation =
-                activeConversationId != null &&
-                    (
-                        threadId.value == activeConversationId ||
-                            channelId?.value == activeConversationId ||
-                            messageStreamChannelId().value == activeConversationId
-                        )
-            val unreadIncrement =
-                if (!incrementUnread || isActiveConversation) {
-                    0
-                } else {
-                    unreadCandidateMessages.count { message ->
-                        message.id != lastMessageId &&
-                        message.author.id != home.currentMember.id
-                    }
-                }
-            val updated =
-                copy(
-                    lastMessageId = latest.id,
-                    lastMessagePreview = latest.body,
-                    lastMessageAt = latest.timestampLabel,
-                    lastMessageSenderName = latest.author.displayName,
-                    unreadCount = unreadCount + unreadIncrement,
-                    firstUnreadMessageId =
-                        firstUnreadMessageId
-                            ?: unreadCandidateMessages
-                                .firstOrNull { message ->
-                                    unreadIncrement > 0 &&
-                                        message.id != lastMessageId &&
-                                        message.author.id != home.currentMember.id
-                                }
-                                ?.id,
-                    unreadCountKnown = unreadCountKnown || unreadIncrement > 0
-                )
-            return HomePreviewUpdate(updated, unreadIncrement)
-        }
-        val channelIndex = home.channels.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
-        val directMessageIndex =
-            if (channelIndex < 0) {
-                home.directMessages.indexOfFirst { it.messageStreamChannelId() == streamChannelId }
-            } else {
-                -1
-            }
-        if (channelIndex < 0 && directMessageIndex < 0) return false
-        val currentConversation =
-            if (channelIndex >= 0) home.channels[channelIndex] else home.directMessages[directMessageIndex]
-        val previewUpdate = currentConversation.updatedPreview()
-        if (previewUpdate.conversation == currentConversation) return false
-        val updatedHome =
-            if (channelIndex >= 0) {
-                home.copy(
-                    channels = home.channels.replaceAt(channelIndex, previewUpdate.conversation),
-                    unreadTotal = home.unreadTotal + previewUpdate.unreadIncrement
-                )
-            } else {
-                home.copy(
-                    directMessages = home.directMessages.replaceAt(directMessageIndex, previewUpdate.conversation),
-                    unreadTotal = home.unreadTotal + previewUpdate.unreadIncrement
-                )
-            }
-        store.writeHome(updatedHome)
-        logger(
-            "store_merge domain=home_preview source=realtime_message serverId=${serverId.value} " +
-                "streamChannelId=${streamChannelId.value} messages=${messages.size} unreadCandidates=${unreadCandidateMessages.size} " +
-                "unreadIncrement=${previewUpdate.unreadIncrement} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-        )
-        return true
+        return wroteThread
     }
 }
-
-private data class HomePreviewUpdate(
-    val conversation: ConversationSummary,
-    val unreadIncrement: Int
-)
 
 private data class ThreadTimelineSelector(
     val messageIds: List<MessageId>,
@@ -819,37 +638,6 @@ private fun String?.withStoredChannelTypeFallback(storedChannelType: String?): S
     }
 }
 
-private fun HomeSnapshot.withStoredDirectMessageMetadata(previous: HomeSnapshot?): HomeSnapshot {
-    if (previous == null) return this
-    val previousDirectMessages =
-        previous.directMessages.associateBy { it.channelId?.value ?: it.threadId.value }
-    return copy(
-        directMessages =
-            directMessages.map { conversation ->
-                val previousConversation =
-                    previousDirectMessages[conversation.channelId?.value ?: conversation.threadId.value]
-                if (previousConversation == null) {
-                    conversation
-                } else {
-                    val nameLooksSparse = conversation.nameIsBlankOrIdentity()
-                    conversation.copy(
-                        name =
-                            if (nameLooksSparse && !previousConversation.nameIsBlankOrIdentity()) {
-                                previousConversation.name
-                            } else {
-                                conversation.name
-                            },
-                        subtitle = conversation.subtitle ?: previousConversation.subtitle,
-                        directMessagePeerType =
-                            conversation.directMessagePeerType ?: previousConversation.directMessagePeerType,
-                        presenceMemberId =
-                            conversation.presenceMemberId ?: previousConversation.presenceMemberId
-                    )
-                }
-            }
-    )
-}
-
 internal fun HomeSnapshot.preserveStableRowsFrom(previous: HomeSnapshot?): HomeSnapshot {
     previous ?: return this
     val stableChannels = channels.preserveStableItemsFrom(previous.channels) { conversation -> conversation.homeRowKey() }
@@ -891,72 +679,6 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
 private fun ConversationSummary.homeRowKey(): String =
     channelId?.value ?: threadId.value
 
-private fun ConversationSummary.withUnreadCounts(
-    unreadCounts: Map<ChannelId, Int>
-): ConversationSummary {
-    val channelKey = channelId ?: ChannelId(threadId.value)
-    val unread = unreadCounts[channelKey] ?: return copy(unreadCount = 0, unreadCountKnown = true)
-    return copy(unreadCount = unread, unreadCountKnown = true)
-}
-
-private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnapshot {
-    fun ConversationSummary.matches(): Boolean =
-        messageStreamChannelId() == channelId || this.channelId == channelId || threadId.value == channelId.value
-
-    fun ConversationSummary.clearedUnread(): ConversationSummary =
-        copy(
-            unreadCount = 0,
-            unreadCountKnown = true,
-            mentionCount = 0,
-            mentionCountKnown = true,
-            firstUnreadMessageId = null
-        )
-
-    val channelIndex = channels.indexOfFirst { it.matches() }
-    if (channelIndex >= 0) {
-        val current = channels[channelIndex]
-        val updated = current.clearedUnread()
-        return if (updated == current) {
-            this
-        } else {
-            copy(
-                channels = channels.replaceAt(channelIndex, updated),
-                unreadTotal = (unreadTotal - current.unreadCount).coerceAtLeast(0)
-            )
-        }
-    }
-    val directMessageIndex = directMessages.indexOfFirst { it.matches() }
-    if (directMessageIndex >= 0) {
-        val current = directMessages[directMessageIndex]
-        val updated = current.clearedUnread()
-        return if (updated == current) {
-            this
-        } else {
-            copy(
-                directMessages = directMessages.replaceAt(directMessageIndex, updated),
-                unreadTotal = (unreadTotal - current.unreadCount).coerceAtLeast(0)
-            )
-        }
-    }
-    return this
-}
-
-private fun HomeSnapshot.clearAllUnread(): HomeSnapshot {
-    fun ConversationSummary.clearUnread(): ConversationSummary =
-        copy(
-            unreadCount = 0,
-            unreadCountKnown = true,
-            mentionCount = 0,
-            mentionCountKnown = true,
-            firstUnreadMessageId = null
-        )
-    return copy(
-        channels = channels.map { it.clearUnread() },
-        directMessages = directMessages.map { it.clearUnread() },
-        unreadTotal = 0
-    )
-}
-
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(
         compareBy<Message> { it.timestampLabel.isBlank() }
@@ -964,12 +686,6 @@ private fun List<Message>.dedupeAndSortMessages(): List<Message> =
             .thenBy { it.seq ?: Long.MIN_VALUE }
             .thenBy { it.id.value }
     )
-
-private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
-    val updated = toMutableList()
-    updated[index] = value
-    return updated
-}
 
 private fun List<Message>.mergeRealtimeMessages(incoming: List<Message>): List<Message> {
     val byId = associateBy { it.id }.toMutableMap()

@@ -133,15 +133,14 @@ class RelationalComposeLocalDataStore(
     }
 
     override fun observeHome(serverId: ServerId): Flow<HomeSnapshot?> =
-        flow { emit(readHome(serverId)) }
+        flow { emit(null) }
 
     override suspend fun readHome(serverId: ServerId): HomeSnapshot? =
-        readSnapshot(HOME_SCOPE, serverId.value)?.let { encoded ->
-            decodeLocalSnapshot("home", encoded) { json.decodeFromString<HomeSnapshot>(encoded) }
-        }
+        null
 
     override suspend fun writeHome(snapshot: HomeSnapshot) {
-        writeSnapshot(HOME_SCOPE, snapshot.server.id.value, json.encodeToString(snapshot))
+        // Durable HomeSnapshot blob storage has been removed. Keep the
+        // interface method only while older tests/fakes migrate away from it.
     }
 
     override fun observeThread(threadId: ThreadId): Flow<ThreadSnapshot?> =
@@ -255,7 +254,6 @@ class RelationalComposeLocalDataStore(
     private companion object {
         const val SESSION_SCOPE = "session"
         const val SESSION_ID = "current"
-        const val HOME_SCOPE = "home"
         const val THREAD_SCOPE = "thread"
         const val UNREAD_SCOPE = "unread"
     }

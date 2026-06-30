@@ -38,7 +38,8 @@ class SharedHomeDataSource(
     computersApi: SlockComputersApi? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
-    private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    @Suppress("UNUSED_PARAMETER")
+    localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
@@ -77,16 +78,6 @@ class SharedHomeDataSource(
             }
 
         diagnosticsLogger("home_bootstrap_start priority=$priority serverSelected=true")
-
-        localWriteThrough?.readHomeSnapshot(resolvedServerId)?.let { cached ->
-            if (priority == DataRequestPriority.Background) {
-                if (!forceNetwork) {
-                    diagnosticsLogger("home_bootstrap_result result=content source=cache priority=$priority")
-                    return DataResult.Content(cached)
-                }
-                diagnosticsLogger("home_bootstrap_cache_bypass priority=$priority reason=force_network")
-            }
-        }
 
         val payload =
             try {
@@ -129,7 +120,6 @@ class SharedHomeDataSource(
             )
         }
         diagnosticsLogger("home_bootstrap_result ${result.homeDiagnosticsSummary()} stage=parse")
-        localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
     }
 
@@ -162,43 +152,10 @@ class SharedHomeDataSource(
     }
 
     suspend fun writeHomeSnapshot(snapshot: HomeSnapshot, source: String): Boolean =
-        localWriteThrough?.writeHomeResult(DataResult.Content(snapshot), source) ?: false
+        false
 
-    suspend fun readCachedHome(serverId: ServerId? = null): DataResult<HomeSnapshot> {
-        val session = sessionStore.readSession()
-            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
-        val resolvedServerId = serverId ?: session.currentServerId?.let(::ServerId)
-            ?: return DataResult.Empty(EmptyReason.NoChannels)
-        val cached = localWriteThrough?.readHomeSnapshot(resolvedServerId)
-            ?: return DataResult.Empty(EmptyReason.NoChannels)
-        return DataResult.Content(cached)
-    }
-
-    suspend fun applyRealtimeEvent(
-        serverId: ServerId,
-        event: RealtimeEvent,
-        activeConversationId: String? = null,
-        projectUpdatedSnapshot: Boolean = true
-    ): DataResult<HomeSnapshot> =
-        applyRealtimeEvents(serverId, listOf(event), activeConversationId, projectUpdatedSnapshot)
-
-    suspend fun applyRealtimeEvents(
-        serverId: ServerId,
-        events: List<RealtimeEvent>,
-        activeConversationId: String? = null,
-        projectUpdatedSnapshot: Boolean = true
-    ): DataResult<HomeSnapshot> {
-        val homeUpdated =
-            localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
-                ?: return DataResult.Empty(EmptyReason.NoChannels)
-        if (!homeUpdated || events.none { event -> event.updatesHomeSnapshot() }) {
-            return DataResult.Empty(EmptyReason.NoChannels)
-        }
-        if (!projectUpdatedSnapshot) {
-            return DataResult.Empty(EmptyReason.NoChannels)
-        }
-        return readCachedHome(serverId)
-    }
+    suspend fun readCachedHome(serverId: ServerId? = null): DataResult<HomeSnapshot> =
+        DataResult.Empty(EmptyReason.NoChannels)
 
     suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> =
         loadMachineNotifications()

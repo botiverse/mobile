@@ -767,13 +767,12 @@ private fun HomeActivityRouterContent(
 @Composable
 private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) {
     val homeDataSource =
-        remember(environment.authStore, environment.networkClient, environment.localWriteThrough) {
+        remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
                 sessionStore = environment.authStore,
                 api = NetworkSlockHomeApi(environment.networkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
                 computersApi = SlockComputersNetworkApi(environment.networkClient),
-                localWriteThrough = environment.localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> environment.bridge.log(message) }
                 },
