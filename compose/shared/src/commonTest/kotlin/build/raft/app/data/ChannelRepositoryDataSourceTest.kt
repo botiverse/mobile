@@ -115,59 +115,49 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun channelSummaryCacheKeepsServerBucketsAcrossSelectedServerSwitches() = runBlocking {
-        val sessionStore = sampleStore()
+    fun channelRepositoryDoesNotReusePreviousChannelDisplayFields() = runBlocking {
         val network =
             FakeChannelNetworkClient(
                 responseBody = """[{"id":"channel-1","name":"General Team","type":"channel","description":"Team room","joined":true}]"""
             )
-        val repository = RealChannelRepository(sessionStore, network)
+        val repository = RealChannelRepository(sampleStore(), network)
+        val serverId = ServerId("server-1")
 
-        val server1Rich = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(ServerId("server-1"))).data.channels.single()
-        assertEquals("General Team", server1Rich.name)
-        assertEquals("Team room", server1Rich.subtitle)
+        val rich = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(serverId)).data.channels.single()
+        assertEquals("General Team", rich.name)
+        assertEquals("Team room", rich.subtitle)
 
-        sessionStore.updateSelectedServer("server-2", "work")
-        network.responseBody = """[{"id":"channel-2","name":"Work Team","type":"channel","description":"Work room","joined":true}]"""
-        val server2 = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(ServerId("server-2"))).data.channels.single()
-        assertEquals("Work Team", server2.name)
-
-        sessionStore.updateSelectedServer("server-1", "android")
         network.responseBody = """[{"id":"channel-1","name":"channel-1","type":"channel","joined":true}]"""
-        val server1Generic = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(ServerId("server-1"))).data.channels.single()
+        val generic = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(serverId)).data.channels.single()
 
-        assertEquals("General Team", server1Generic.name)
-        assertEquals("Team room", server1Generic.subtitle)
+        assertEquals("channel-1", generic.name)
+        assertEquals(null, generic.subtitle)
     }
 
     @Test
-    fun directMessageCacheKeepsServerBucketsAcrossSelectedServerSwitches() = runBlocking {
-        val sessionStore = sampleStore()
+    fun channelRepositoryDoesNotReusePreviousDirectMessageDisplayFields() = runBlocking {
         val network =
             FakeChannelNetworkClient(
-                responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"Product UX"}]"""
+                responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"Product UX","peerDescription":"Design system"}]"""
             )
-        val repository = RealChannelRepository(sessionStore, network)
+        val repository = RealChannelRepository(sampleStore(), network)
+        val serverId = ServerId("server-1")
 
-        val server1Rich = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(ServerId("server-1"))).data.directMessages.single()
-        assertEquals("Product UX", server1Rich.name)
-        assertEquals("agent", server1Rich.directMessagePeerType)
+        val rich = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(serverId)).data.directMessages.single()
+        assertEquals("Product UX", rich.name)
+        assertEquals("Design system", rich.subtitle)
+        assertEquals("agent", rich.directMessagePeerType)
 
-        sessionStore.updateSelectedServer("server-2", "work")
-        network.responseBody = """[{"id":"dm-2","name":"dm-2","type":"dm","peerType":"agent","peerId":"agent-2","peerName":"Android Dev"}]"""
-        val server2 = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(ServerId("server-2"))).data.directMessages.single()
-        assertEquals("Android Dev", server2.name)
+        network.responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"human","peerId":"agent-1","peerName":"dm-1"}]"""
+        val generic = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(serverId)).data.directMessages.single()
 
-        sessionStore.updateSelectedServer("server-1", "android")
-        network.responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"dm-1"}]"""
-        val server1Generic = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(ServerId("server-1"))).data.directMessages.single()
-
-        assertEquals("Product UX", server1Generic.name)
-        assertEquals("agent", server1Generic.directMessagePeerType)
+        assertEquals("dm-1", generic.name)
+        assertEquals(null, generic.subtitle)
+        assertEquals("human", generic.directMessagePeerType)
     }
 
     @Test
-    fun getHomePreservesServerUnreadSummaryAfterCacheMerge() = runBlocking {
+    fun getHomePreservesServerUnreadSummary() = runBlocking {
         val network =
             FakeChannelNetworkClient(
                 pathResponses =
