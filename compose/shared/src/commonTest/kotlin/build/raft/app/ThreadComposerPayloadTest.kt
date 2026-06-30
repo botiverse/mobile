@@ -405,6 +405,14 @@ class ThreadComposerPayloadTest {
         assertTrue(action.supportsMentionAction("invite"))
         assertTrue(action.supportsMentionAction("notify"))
         assertEquals("@outside", action.targetLabel())
+        assertEquals(
+            "@outside isn't in #channel. Add them to #channel or send a one-time notify.",
+            action.pendingMentionActionDescription("#channel")
+        )
+        assertEquals(
+            "@outside was added to #channel",
+            action.mentionActionDeliveredNotice("add", "#channel")
+        )
     }
 
     @Test
@@ -445,7 +453,7 @@ class ThreadComposerPayloadTest {
             )
         )
         assertEquals(
-            "This mention action could not be applied.",
+            "This mention action could not be applied. Refresh the thread and try again.",
             formatMentionActionStatusNotice(null)
         )
     }

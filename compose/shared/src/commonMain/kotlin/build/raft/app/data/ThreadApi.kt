@@ -125,7 +125,10 @@ internal class SlockThreadApiClient(
         action: String,
         resolutionIds: List<String>
     ): ThreadApiResult<List<PendingMentionActionExecuteResult>> =
-        transport.executePendingMentionActions(action = action, resolutionIds = resolutionIds)
+        transport.executePendingMentionActions(
+            action = action.canonicalPendingMentionActionVerb(),
+            resolutionIds = resolutionIds
+        )
             .mapThreadBody(
                 contractCode = "thread_mention_action_contract_mismatch",
                 serializer = MentionActionExecuteResponseDto.serializer(),
@@ -280,7 +283,10 @@ internal class NetworkSlockThreadApi(
             priority = DataRequestPriority.Foreground,
             path = "messages/mention-actions/execute",
             method = "POST",
-            bodyText = buildPendingMentionActionExecuteBody(action = action, resolutionIds = resolutionIds)
+            bodyText = buildPendingMentionActionExecuteBody(
+                action = action.canonicalPendingMentionActionVerb(),
+                resolutionIds = resolutionIds
+            )
         )
 
     override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
@@ -723,10 +729,16 @@ fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): Str
 internal fun buildPendingMentionActionExecuteBody(action: String, resolutionIds: List<String>): String =
     threadApiJson.encodeToString(
         PendingMentionActionExecuteRequestBody(
-            action = action,
+            action = action.canonicalPendingMentionActionVerb(),
             resolutionIds = resolutionIds
         )
     )
+
+internal fun String.canonicalPendingMentionActionVerb(): String =
+    when (trim()) {
+        "invite" -> "add"
+        else -> trim()
+    }
 
 internal fun buildSharedCreateOrOpenThreadBody(parentMessageId: String): String =
     threadApiJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId))

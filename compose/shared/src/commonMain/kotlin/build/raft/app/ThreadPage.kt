@@ -3598,6 +3598,18 @@ internal fun SharedThreadRouteContent(
         )
         sendPendingLocalMessage(pending.localMessageId, readyContext, startedFromComposer = true)
     }
+
+    suspend fun refreshComposerMemberSuggestionsAfterMembershipMutation() {
+        val store = serverMembersStore ?: return
+        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return
+        store.ensureMemberSuggestionsForServer(
+            serverId = serverId,
+            mentionChannelId = memberSuggestionScopeChannelId,
+            memberScopedMentions = memberSuggestionScopedMentions,
+            force = true
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
@@ -4165,6 +4177,7 @@ internal fun SharedThreadRouteContent(
                                         force = true
                                     )
                                 }
+                                refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -4215,6 +4228,7 @@ internal fun SharedThreadRouteContent(
                                         force = true
                                     )
                                 }
+                                refreshComposerMemberSuggestionsAfterMembershipMutation()
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -4626,7 +4640,7 @@ internal fun SharedThreadRouteContent(
                     val pendingAction =
                         currentDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
                             ?: return@ThreadPageContent
-                    val verb = if (action == "inviteMention") "invite" else "notify"
+                    val verb = if (action == "inviteMention") "add" else "notify"
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction(resolutionId))
                     coroutineScope.launch {
                         val result =
@@ -4654,6 +4668,9 @@ internal fun SharedThreadRouteContent(
                                 delivered = delivered
                             )
                         )
+                        if (delivered && verb == "add") {
+                            refreshComposerMemberSuggestionsAfterMembershipMutation()
+                        }
                     }
                 }
                 "retryThreadLoad" -> {
@@ -6240,7 +6257,7 @@ internal fun KuiklyPendingMentionActionItem.mentionActionDeliveredNotice(
     channelLabel: String
 ): String {
     val label = targetLabel()
-    return if (action == "invite") {
+    return if (action == "invite" || action == "add") {
         "$label was added to $channelLabel"
     } else {
         "Notified $label once - still not in $channelLabel"
@@ -6259,7 +6276,7 @@ internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecute
         "expired" -> "This mention action has expired."
         "not_found" -> "This mention action is no longer available."
         "ambiguous" -> "This mention action matched more than one target. Refresh and try again."
-        else -> "This mention action could not be applied."
+        else -> "This mention action could not be applied. Refresh the thread and try again."
     }
 
 private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(

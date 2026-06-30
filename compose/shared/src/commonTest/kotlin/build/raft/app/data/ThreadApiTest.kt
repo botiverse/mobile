@@ -240,7 +240,7 @@ class ThreadApiTest {
                               "targetType": "agent",
                               "targetHandle": "outside",
                               "reason": "not_member",
-                              "availableActions": ["invite", "notify"],
+                              "availableActions": ["add", "notify"],
                               "expiresAt": "2026-06-21T00:00:00Z"
                             }
                           ]
@@ -260,11 +260,11 @@ class ThreadApiTest {
         assertEquals("对话流专修", pending.channelName)
         assertEquals("agent", pending.targetType)
         assertEquals("outside", pending.targetHandle)
-        assertEquals(listOf("invite", "notify"), pending.availableActions)
+        assertEquals(listOf("add", "notify"), pending.availableActions)
     }
 
     @Test
-    fun executePendingMentionActionsMapsCanonicalResults() = runBlocking {
+    fun executePendingMentionActionsNormalizesLegacyInviteToCanonicalAdd() = runBlocking {
         val transport =
             FakeThreadNetworkApi(
                 mentionActionBody = """{"results":[{"resolutionId":"res-1","status":"delivered","reason":null}]}"""
@@ -276,7 +276,7 @@ class ThreadApiTest {
         val row = assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(result).data.single()
         assertEquals("res-1", row.resolutionId)
         assertEquals("delivered", row.status)
-        assertEquals("""{"action":"invite","resolutionIds":["res-1"]}""", transport.lastMentionActionBody)
+        assertEquals("""{"action":"add","resolutionIds":["res-1"]}""", transport.lastMentionActionBody)
     }
 
     @Test

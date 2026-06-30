@@ -1166,6 +1166,22 @@ internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
 private fun KuiklyPendingMentionActionItem.targetInitial(): String =
     targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
 
+internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(channelLabel: String): String {
+    val target = targetLabel()
+    val actionHint =
+        when {
+            supportsMentionAction("invite") && supportsMentionAction("notify") ->
+                "Add them to $channelLabel or send a one-time notify."
+            supportsMentionAction("invite") ->
+                "Add them to $channelLabel so future mentions notify them."
+            supportsMentionAction("notify") ->
+                "Send a one-time notify without adding them."
+            else ->
+                "Dismiss this reminder when no action is needed."
+        }
+    return "$target isn't in $channelLabel. $actionHint"
+}
+
 @Composable
 private fun ComposerMemberSuggestionPanel(
     title: String,
@@ -1419,35 +1435,44 @@ private fun PendingMentionActionRow(
     val targetLabel = action.targetLabel()
     val canInvite = action.supportsMentionAction("invite")
     val canNotify = action.supportsMentionAction("notify")
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
-        Box(
-            modifier = Modifier.size(22.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(action.targetInitial(), style = SlockType.Caption.withSlockFontWeight(FontWeight.Black), color = SlockColor.TextBlack)
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = targetLabel,
-                style = SlockType.Button.copy(fontSize = 12.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
+            SlockAvatar(
+                avatarWireValue = null,
+                label = action.targetInitial(),
+                avatarSize = 24.dp,
+                borderWidth = SlockStroke.Default
             )
-            Text(
-                text = "$targetLabel isn't in $channelLabel - won't be notified by default",
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = targetLabel,
+                    style = SlockType.Button.copy(fontSize = 12.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = action.pendingMentionActionDescription(channelLabel),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (canInvite) {
                 ComposerTextChip(if (executing) "Adding" else "Add", enabled = !executing, onClick = onInvite)
             }
