@@ -95,7 +95,7 @@ Add an `<activity-alias>` (not a new full Activity) so the existing
 
 ### Receiver handler (shared KMP)
 
-Add `ai.slock.compose.diagnostics.DiagnosticsDeepLink.kt` in `compose/shared/src/commonMain/kotlin/`:
+Add `build.raft.app.diagnostics.DiagnosticsDeepLink.kt` in `compose/shared/src/commonMain/kotlin/`:
 
 ```kotlin
 @Composable

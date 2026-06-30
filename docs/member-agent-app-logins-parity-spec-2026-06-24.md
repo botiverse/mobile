@@ -15,7 +15,7 @@ React agent detail uses an `integrations` tab labelled `Apps`:
 
 Android / KMP currently conflates these two domains:
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/DataSnapshots.kt:168-175` defines `AgentDetailSnapshot` with only `skills` for this part of the detail model.
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt:168-175` defines `AgentDetailSnapshot` with only `skills` for this part of the detail model.
 - `MemberRepositoryDataSource.kt:280-301` fetches `GET agents/:id/skills` as part of agent detail.
 - `MembersPage.kt:3553-3568` correctly renders a `SKILLS` section from `detail.skills`.
 - `MembersPage.kt:4040-4050` incorrectly renders the `APPS` tab from `detail.skills.groups`, showing skill group names as app rows.

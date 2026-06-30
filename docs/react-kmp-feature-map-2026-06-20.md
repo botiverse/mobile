@@ -412,14 +412,14 @@ React 源：
 
 KMP/Android 源：
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadFilesContent.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SharedSettingsStore.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SettingsRepositoryDataSource.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/network/realtime/*`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadFilesContent.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedSettingsStore.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberRepositoryDataSource.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/network/realtime/*`

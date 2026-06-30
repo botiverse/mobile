@@ -5,7 +5,7 @@
 Implemented in `ad3/task258-visual-gating`.
 
 - `compose/shared/build.gradle.kts` defines `slockVisualFixtures` / `SLOCK_VISUAL_FIXTURES` and only adds `src/visualFixtures/kotlin` to `commonMain` when the opt-in is true.
-- KMP visual `@Page` registrations now live in `compose/shared/src/visualFixtures/kotlin/ai/slock/compose/VisualFixturePages.kt`.
+- KMP visual `@Page` registrations now live in `compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixturePages.kt`.
 - Product `commonMain` keeps reusable visual fixture composables only where they wrap real product components; production builds no longer register the `compose_*_visual` pages.
 - `RouterPage` no longer links visual-only fixture routes from the production developer router.
 - `:shared:verifyNoProductionVisualPages` scans production source sets and is wired into `check`.
@@ -45,7 +45,7 @@ Runtime guards leave the class and KSP annotation in the build. The safe boundar
 Create a dedicated fixture source directory under the shared module:
 
 ```text
-compose/shared/src/visualFixtures/kotlin/ai/slock/compose/
+compose/shared/src/visualFixtures/kotlin/build/raft/app/
 ```
 
 Move visual-only code there:
@@ -130,7 +130,7 @@ Do not rely on `BuildConfig.SLOCK_VISUAL_FIXTURES` alone for the `@Page` classes
 ## Migration Plan
 
 1. Add the `slockVisualFixtures` Gradle property gate in `compose/shared/build.gradle.kts`.
-2. Create `compose/shared/src/visualFixtures/kotlin/ai/slock/compose/`.
+2. Create `compose/shared/src/visualFixtures/kotlin/build/raft/app/`.
 3. Move each visual-only `@Page` class and its fixture-only screen/payload code out of product files.
 4. Keep public/product composables in `commonMain`; fixture files should call those real components instead of copying UI.
 5. Update Android visual capture docs/scripts to pass `-PslockVisualFixtures=true`.

@@ -5,20 +5,20 @@ import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.InboxFilter
-import ai.slock.compose.data.InMemorySlockAuthSessionStore
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.data.RealChannelRepository
-import ai.slock.compose.data.RealInboxRepository
-import ai.slock.compose.data.RealMemberRepository
-import ai.slock.compose.data.RealSavedRepository
-import ai.slock.compose.model.ConversationKind
-import ai.slock.compose.model.ConversationSummary
-import ai.slock.compose.model.MemberProfile
-import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.avatarWireValueForRenderedAvatar
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
+import build.raft.app.data.InboxFilter
+import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.RealInboxRepository
+import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.RealSavedRepository
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationSummary
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
+import build.raft.app.model.avatarWireValueForRenderedAvatar
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -317,7 +317,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private fun Int.displayCount(): String =
             if (this > 99) "99+" else this.coerceAtLeast(0).toString()
 
-        private fun ai.slock.compose.data.HomeSnapshot.toWidgetRows(
+        private fun build.raft.app.data.HomeSnapshot.toWidgetRows(
             context: Context,
             membersById: Map<String, MemberProfile>
         ): List<SlockWidgetHomeRow> =

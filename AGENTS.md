@@ -22,7 +22,7 @@ git submodule update --init --recursive third_party/slock-source
 ## Shared DTO API Contract Rule
 
 - Iron rule: every Android API wire contract must go through an explicit shared
-  DTO/parser in `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/`.
+  DTO/parser in `compose/shared/src/commonMain/kotlin/build/raft/app/data/`.
   Do not add new app-side Gson/JsonObject response mappers for API payloads in
   `compose/androidApp/src/main/java/.../network/`.
 - For any new or changed API endpoint, first verify the canonical field names
@@ -237,7 +237,7 @@ where the branch is), then push. Do not push a divergent / non-fast-forward
 - Iron rule: when React parity or Product feedback identifies a reusable
   control pattern (select/dropdown, textarea counter, clear action, refresh
   affordance, section label accessory, etc.), first add or extend a shared
-  component under `compose/shared/src/commonMain/kotlin/ai/slock/compose/components/`
+  component under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
   and then wire pages to that component. Do not fix the same visual primitive
   separately inside each page; page-local UI is only allowed for one-off layout
   composition around shared controls.
@@ -408,7 +408,7 @@ sh ohosApp/runOhosApp.sh
 
 - The Android app lives at `compose/androidApp` and consumes Kuikly Compose shared code
   through `implementation(project(":shared"))` in the same compose Gradle project.
-- When changing code under package `ai.slock.compose.*`, make the source change in
+- When changing code under package `build.raft.app.*`, make the source change in
   `compose/shared/src/commonMain/kotlin/...`, not in `compose/androidApp/src/main/java/...`.
 - After changing `compose/shared`, compile the shared module and Android app from the
   compose Gradle root:
@@ -426,7 +426,7 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 ```
 
 - Do not keep shadow copies of shared classes in
-  `compose/androidApp/src/main/java/ai/slock/compose/...`.
+  `compose/androidApp/src/main/java/build/raft/app/...`.
   Temporary app-side shims can make one APK build, but they drift from the real shared
   artifact and should be removed before handoff.
 
@@ -441,7 +441,7 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 
 ## Network Priority Workflow
 
-- Every Android request that reaches `ai.slock.compose.network.SlockApiClient`
+- Every Android request that reaches `build.raft.app.network.SlockApiClient`
   must run inside `withSlockRequestPriority(...)`; missing priority is a bug.
 - New product API routes live in `compose/shared` behind shared
   `@Serializable` request/response DTOs and `SlockNetworkClient`. Do not add
@@ -496,7 +496,7 @@ Core constraints every agent must follow:
   Never clear content on failure.
 - **Cache / realtime**: must flow back through the Store reducer. Never bypass MVI
   to directly mutate UI state from a socket event or local cache read.
-- **Shared MVI runtime**: `ai.slock.compose.mvi` provides the lightweight foundation
+- **Shared MVI runtime**: `build.raft.app.mvi` provides the lightweight foundation
   (`Intent`, `State`, `Effect`, `Store`, `dispatch`, `no-op gate`, `single-flight`,
   `stale token`, `transition log`, `test harness`). Feature stores (Home, Thread,
   Settings, Tasks) extend this contract, but keep their own state shape, selectors,

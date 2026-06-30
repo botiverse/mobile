@@ -18,7 +18,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt` (~6000 lines)
+`compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt` (~6000 lines)
 + `SharedAgentDetailStore.kt` (per #56 phase 2A AD-1)
 + `SharedCreateAgentDialog.kt` / `SharedInviteHumanDialog.kt`
 + `AgentScopeSet` data class (per AD-3 #89 spec)

@@ -4,10 +4,10 @@ import android.net.Uri
 import android.util.Base64
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.compose.network.HttpClientConfig
-import ai.slock.compose.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
-import ai.slock.compose.network.TimeoutConfig
-import ai.slock.compose.network.createPriorityHttpClient
+import build.raft.app.network.HttpClientConfig
+import build.raft.app.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+import build.raft.app.network.TimeoutConfig
+import build.raft.app.network.createPriorityHttpClient
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.File

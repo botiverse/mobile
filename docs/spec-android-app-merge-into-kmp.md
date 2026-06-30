@@ -18,7 +18,7 @@ application:
 | Inner KMP | `Slock/compose/` | `:androidApp` | Thin Kuikly dev shell — barely used in production |
 
 The outer `:app` consumes `:shared` as a **MavenLocal artifact**
-(`ai.slock.compose:shared-android:1.0.0`), not as a Gradle project dependency. This forces every
+(`build.raft.app:shared-android:1.0.0`), not as a Gradle project dependency. This forces every
 shared change to go through a publish round-trip:
 
 ```bash
@@ -56,7 +56,7 @@ Slock/                          ← git repo root (no longer a Gradle project ro
 │   │   └── src/
 │   │       ├── main/
 │   │       │   ├── AndroidManifest.xml      ← merged
-│   │       │   ├── java/ai/slock/android/   ← all outer app source
+│   │       │   ├── java/build/raft/app/   ← all outer app source
 │   │       │   ├── res/                     ← all outer app resources
 │   │       │   └── assets/                  ← brand assets
 │   │       ├── test/                        ← outer unit tests
@@ -95,7 +95,7 @@ would reintroduce ambiguity about which directory is the Gradle project root.
 ### 3.1 Source Code: `app/src/main/java/` → `compose/androidApp/src/main/java/`
 
 All packages under `build.raft.app.*` move as-is. The `compose/androidApp` already has
-`ai.slock.compose` sources that will be **replaced** by the production versions.
+`build.raft.app` sources that will be **replaced** by the production versions.
 
 | Outer app file | Merge action |
 |---|---|
@@ -184,7 +184,7 @@ Move `app/proguard-rules.pro` → `compose/androidApp/proguard-rules.pro`.
 
 The `compose/androidApp/build.gradle.kts` is completely rewritten. Key changes:
 
-1. **Namespace** changes from `ai.slock.compose` → `build.raft.app`
+1. **Namespace** changes from `build.raft.app` → `build.raft.app`
 2. **applicationId** stays `build.raft.app`
 3. **compileSdk** bumps from 34 → 36 (match outer)
 4. **minSdk** stays 24, **targetSdk** bumps from 30 → 36
@@ -312,11 +312,11 @@ Update all build/validation instructions:
 ## 5. Risks & Mitigations
 
 ### 5.1 Namespace Collision
-The inner `compose/androidApp` uses namespace `ai.slock.compose`; the shared module's
-androidMain source set also lives under `ai.slock.compose`. After merge, the androidApp
+The inner `compose/androidApp` uses namespace `build.raft.app`; the shared module's
+androidMain source set also lives under `build.raft.app`. After merge, the androidApp
 will switch to `build.raft.app` namespace. Ensure no package conflicts.
 
-**Mitigation**: The outer app already imports from `ai.slock.compose.*` — these will
+**Mitigation**: The outer app already imports from `build.raft.app.*` — these will
 resolve through the `:shared` project dependency normally.
 
 ### 5.2 Duplicate SQLDelight Database Names

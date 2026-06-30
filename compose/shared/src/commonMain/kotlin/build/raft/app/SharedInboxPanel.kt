@@ -1,0 +1,1336 @@
+package build.raft.app
+
+import build.raft.app.base.BridgeModule
+import build.raft.app.components.SegmentedControl
+import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.data.InboxFilter
+import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.RealConversationRepository
+import build.raft.app.data.RealInboxRepository
+import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.RealReadReceiptRepository
+import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedActivitySenderProfile
+import build.raft.app.data.SharedActivityState
+import build.raft.app.data.SharedActivityStateCache
+import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.markdown.traceMarkdownSection
+import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationSummary
+import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
+import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.ThreadConversation
+import build.raft.app.model.threadIdentity
+import build.raft.app.model.topLevelThreadId
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.withStyle
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+
+private val ActivitySelectedRowShadowOffset = 2.dp
+private const val ActivityNearTopThresholdPx = 50
+private const val ActivityUpdateSignatureWindow = 20
+
+@Composable
+internal fun SharedHomeActivityScreen(
+    bridge: BridgeModule,
+    authStore: SlockAuthSessionStore,
+    activityStateCache: SharedActivityStateCache? = null,
+    routeVisibleTick: Int = 0,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = true,
+    timeContext: SlockTimeContext? = null,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
+    val networkClient = sharedStores.networkClient
+    val repository =
+        remember(authStore, networkClient) {
+            RealInboxRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("shared_activity $message") },
+                warningLogger = { message -> bridge.log("shared_activity_warning $message") }
+            )
+        }
+    val readReceiptRepository =
+        remember(authStore, networkClient) {
+            RealReadReceiptRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("shared_activity_read $message") },
+                warningLogger = { message -> bridge.log("shared_activity_read_warning $message") }
+            )
+        }
+    val conversationRepository =
+        remember(authStore, networkClient) {
+            RealConversationRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("shared_activity_thread_warning $message") }
+            )
+        }
+    val memberRepository =
+        remember(authStore, networkClient) {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("shared_activity_member $message") },
+                warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
+            )
+        }
+    val scope = rememberCoroutineScope()
+    val activityStore =
+        remember(
+            authStore,
+            repository,
+            readReceiptRepository,
+            conversationRepository,
+            memberRepository,
+            activityStateCache,
+            scope
+        ) {
+            sharedStores.getOrCreateHomeActivityStore(
+                inboxRepository = repository,
+                readReceiptRepository = readReceiptRepository,
+                conversationRepository = conversationRepository,
+                memberRepository = memberRepository,
+                activityStateCache = activityStateCache ?: sharedStores.activityStateCache,
+                scope = scope
+            )
+        }
+    val state by activityStore.state.collectAsState()
+    LaunchedEffect(activityStore) {
+        activityStore.dispatch(SharedActivityIntent.LoadInitial)
+    }
+    LaunchedEffect(routeVisibleTick) {
+        if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+    }
+    SharedActivityPanelContent(
+        state = state,
+        onOpenMessage = onOpenMessage,
+        onClose = onClose,
+        onIntent = activityStore::dispatch,
+        bottomContentPadding = bottomContentPadding,
+        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+        timeContext = timeContext,
+        listState = listState,
+        onTitleClick = onTitleClick,
+        modifier = modifier
+    )
+}
+
+internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
+    routeVisibleTick > 0
+
+@Composable
+internal fun SharedHomeActivityScreen(
+    state: SharedActivityState,
+    onIntent: (SharedActivityIntent) -> Unit,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = true,
+    timeContext: SlockTimeContext? = null,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    SharedActivityPanelContent(
+        state = state,
+        onOpenMessage = onOpenMessage,
+        onClose = onClose,
+        onIntent = onIntent,
+        bottomContentPadding = bottomContentPadding,
+        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+        timeContext = timeContext,
+        listState = listState,
+        onTitleClick = onTitleClick,
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun SharedHomeActivityPanel(
+    snapshot: InboxSnapshot,
+    selectedFilter: InboxFilter = InboxFilter.All,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit = {},
+    onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = false,
+    timeContext: SlockTimeContext? = null,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    onTitleClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
+    // recomposed on every state snapshot change; this marker tells us how much
+    // wall-time the panel render itself costs on the UI thread (excluding
+    // inner List measure which we'd add separately if this shows hot).
+    traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
+        SharedActivityPanelContent(
+            state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
+            onOpenMessage = onOpenMessage,
+            onClose = onClose,
+            onIntent = {},
+            bottomContentPadding = bottomContentPadding,
+            topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+            timeContext = timeContext,
+            listState = listState,
+            onTitleClick = onTitleClick,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityPanelContent(
+    state: SharedActivityState,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onClose: (() -> Unit)?,
+    onIntent: (SharedActivityIntent) -> Unit,
+    bottomContentPadding: Dp,
+    topSafeAreaPadding: Dp,
+    timeContext: SlockTimeContext?,
+    listState: LazyListState,
+    onTitleClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+    ) {
+        SharedActivityHeader(
+            totalCount = state.totalCount,
+            totalUnreadCount = state.totalUnreadCount,
+            onClose = onClose,
+            topSafeAreaPadding = topSafeAreaPadding,
+            refreshing = state.refreshing && !state.pullRefreshing,
+            onTitleClick = onTitleClick
+        )
+        SharedActivityFilterBar(
+            selectedFilter = state.selectedFilter,
+            totalUnreadCount = state.totalUnreadCount,
+            onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
+            onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
+        )
+        SharedActivityBodyContent(
+            state = state,
+            onOpenMessage = onOpenMessage,
+            onIntent = onIntent,
+            bottomContentPadding = bottomContentPadding,
+            timeContext = timeContext,
+            listState = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityBodyContent(
+    state: SharedActivityState,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onIntent: (SharedActivityIntent) -> Unit,
+    bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?,
+    listState: LazyListState,
+    modifier: Modifier = Modifier
+) {
+    val snapshot = state.snapshot
+    Box(modifier = modifier) {
+        when {
+            snapshot == null && state.loading ->
+                SharedActivityStateBody(
+                    title = "Loading...",
+                    detail = "",
+                    loading = true,
+                    bottomContentPadding = bottomContentPadding
+                )
+            snapshot == null && state.errorCode != null ->
+                SharedActivityRefreshableStateBody(
+                    title = "Could not load activity",
+                    detail = state.errorCode,
+                    actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
+                    onAction = { onIntent(SharedActivityIntent.Refresh) },
+                    refreshing = state.refreshing,
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
+                )
+            snapshot == null ->
+                SharedActivityRefreshableStateBody(
+                    title = "Activity is empty",
+                    detail = state.selectedFilter.emptyCopy(),
+                    refreshing = state.refreshing,
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
+                )
+            snapshot.items.isEmpty() ->
+                SharedActivityRefreshableStateBody(
+                    title =
+                        when (state.selectedFilter) {
+                            InboxFilter.Mentions -> "No mentions yet"
+                            InboxFilter.Unread -> "No unread chats"
+                            InboxFilter.All -> "Activity is empty"
+                        },
+                    detail = state.selectedFilter.emptyCopy(),
+                    refreshing = state.refreshing,
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
+                )
+            else ->
+                SharedActivityList(
+                    snapshot = snapshot,
+                    senderProfiles = state.senderProfiles,
+                    refreshing = state.refreshing,
+                    pullRefreshing = state.pullRefreshing,
+                    loadingMore = state.loadingMore,
+                    loadMoreErrorCode = state.loadMoreErrorCode,
+                    onOpenMessage = onOpenMessage,
+                    onIntent = onIntent,
+                    bottomContentPadding = bottomContentPadding,
+                    timeContext = timeContext,
+                    listState = listState
+                )
+        }
+    }
+}
+
+@Composable
+private fun SharedActivityHeader(
+    totalCount: Int,
+    totalUnreadCount: Int,
+    onClose: (() -> Unit)?,
+    topSafeAreaPadding: Dp,
+    refreshing: Boolean,
+    onTitleClick: (() -> Unit)? = null
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().height(SlockSize.PageHeaderHeight + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(SlockSize.PageHeaderContentHeight + topSafeAreaPadding)
+                    .padding(start = 20.dp, top = topSafeAreaPadding + 10.dp, end = 20.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (onClose != null) {
+                SlockBrutalIconButton(iconName = SlockLucideIconName.ArrowLeft, onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
+            }
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "Activity",
+                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "$totalCount active" + if (totalUnreadCount > 0) " · $totalUnreadCount unread" else "",
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
+}
+
+@Composable
+private fun SharedActivityFilterBar(
+    selectedFilter: InboxFilter,
+    totalUnreadCount: Int,
+    onFilterSelected: (InboxFilter) -> Unit,
+    onMarkAllRead: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SegmentedControl(
+                selectedValue = selectedFilter.wireValue,
+                options =
+                    InboxFilter.entries.map { filter ->
+                        SegmentedControlOption(value = filter.wireValue, label = filter.label)
+                    },
+                onValueSelected = { value ->
+                    InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
+                },
+                modifier = Modifier.weight(1f)
+            )
+            if (totalUnreadCount > 0) {
+                SlockBrutalActionButton(
+                    label = "Mark all read",
+                    minHeight = 28.dp,
+                    minWidth = 0.dp,
+                    shadowOffset = 2.dp,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    onClick = onMarkAllRead
+                )
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
+}
+
+@Composable
+private fun SharedActivityList(
+    snapshot: InboxSnapshot,
+    senderProfiles: Map<String, SharedActivitySenderProfile>,
+    refreshing: Boolean,
+    pullRefreshing: Boolean,
+    loadingMore: Boolean,
+    loadMoreErrorCode: String?,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onIntent: (SharedActivityIntent) -> Unit,
+    bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?,
+    listState: LazyListState = rememberLazyListState()
+) {
+    var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
+    var previousTopItemKey by remember { mutableStateOf<String?>(null) }
+    var previousUpdateSignature by remember { mutableStateOf<String?>(null) }
+    var pendingUpdateCount by remember { mutableStateOf(0) }
+    val scrollScope = rememberCoroutineScope()
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+    LaunchedEffect(snapshot.items) {
+        val selected = selectedItemKey
+        if (selected != null && snapshot.items.none { it.key == selected }) {
+            selectedItemKey = null
+        }
+    }
+    LaunchedEffect(snapshot.items) {
+        val nearTop = listState.isActivityNearTop()
+        val currentSignature = activityUpdateSignature(snapshot.items)
+        val increment =
+            activityPendingUpdateIncrement(
+                previousItems = previousItems,
+                previousTopItemKey = previousTopItemKey,
+                previousUpdateSignature = previousUpdateSignature,
+                currentItems = snapshot.items,
+                nearTop = nearTop
+            )
+        if (increment > 0) {
+            pendingUpdateCount += increment
+        }
+        if (nearTop && snapshot.items.isNotEmpty()) {
+            pendingUpdateCount = 0
+            listState.scrollToItem(0)
+        }
+        previousItems = snapshot.items.take(ActivityUpdateSignatureWindow)
+        previousTopItemKey = snapshot.items.firstOrNull()?.key
+        previousUpdateSignature = currentSignature
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isActivityNearTop() }
+            .distinctUntilChanged()
+            .collect { nearTop ->
+                if (nearTop) {
+                    pendingUpdateCount = 0
+                }
+            }
+    }
+    LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
+        snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
+            .distinctUntilChanged()
+            .collect { shouldLoad ->
+                if (shouldLoad && snapshot.hasMore && !loadingMore) {
+                    onIntent(SharedActivityIntent.LoadMore)
+                }
+            }
+    }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            pullToRefreshItem(
+                state = pullToRefreshState,
+                scrollState = listState,
+                onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                content = { pullProgress, isRefreshing, _ ->
+                    SlockRaftPullRefreshIndicator(
+                        pullProgress = pullProgress,
+                        isRefreshing = isRefreshing
+                    )
+                }
+            )
+            items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
+                val item = snapshot.items[index]
+                SharedActivityRow(
+                    item = item,
+                    senderProfiles = senderProfiles,
+                    selected = selectedItemKey == item.key,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    timeContext = timeContext,
+                    captureMenuAnchor = !listState.isScrollInProgress,
+                    onOpen = {
+                        selectedItemKey = item.key
+                        if (item.unreadCount > 0) {
+                            onIntent(SharedActivityIntent.MarkRead(item))
+                        }
+                        onOpenMessage(item.toHomeMessageOpenRequest())
+                    },
+                    onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
+                    onOpenMenu = { anchor ->
+                        activeMenuItem = item
+                        menuAnchor = anchor
+                    }
+                )
+            }
+            when {
+                loadingMore -> {
+                    item(key = "activity_load_more") {
+                        SharedActivityLoadingMoreRow()
+                    }
+                }
+                snapshot.hasMore && loadMoreErrorCode != null -> {
+                    item(key = "activity_load_more_error") {
+                        SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(bottomContentPadding)) }
+        }
+        if (pendingUpdateCount > 0) {
+            SlockBrutalActionButton(
+                label = "↑ $pendingUpdateCount new update${if (pendingUpdateCount == 1) "" else "s"}",
+                onClick = {
+                    scrollScope.launch {
+                        listState.scrollToItem(0)
+                        pendingUpdateCount = 0
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                minHeight = 30.dp,
+                minWidth = 0.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
+        }
+        activeMenuItem?.let { item ->
+            SlockBaseMenuOverlay(
+                anchor = menuAnchor,
+                items =
+                    listOf(
+                        SlockBaseMenuItem(
+                            id = "toggle-read",
+                            label = if (item.unreadCount > 0) "Mark as Read" else "Mark as Unread",
+                            icon = SlockLucideIconName.Mail
+                        ),
+                        SlockBaseMenuItem(id = "done", label = "Done", icon = SlockLucideIconName.Check)
+                    ),
+                selectedId = "",
+                uppercaseLabels = false,
+                onDismiss = { activeMenuItem = null },
+                onSelect = { id ->
+                    when (id) {
+                        "toggle-read" ->
+                            if (item.unreadCount > 0) {
+                                onIntent(SharedActivityIntent.MarkRead(item))
+                            } else {
+                                onIntent(SharedActivityIntent.MarkUnread(item))
+                            }
+                        "done" -> onIntent(SharedActivityIntent.MarkDone(item))
+                    }
+                    activeMenuItem = null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedActivitySelectedRowSurface(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(end = ActivitySelectedRowShadowOffset, bottom = ActivitySelectedRowShadowOffset)
+    ) {
+        if (selected) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+        }
+        content(
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(
+                    SlockStroke.Default,
+                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
+                )
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityRow(
+    item: InboxItem,
+    senderProfiles: Map<String, SharedActivitySenderProfile>,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    timeContext: SlockTimeContext?,
+    captureMenuAnchor: Boolean = true,
+    onOpen: () -> Unit,
+    onDone: () -> Unit,
+    onOpenMenu: (Offset) -> Unit
+) {
+    SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
+        Row(
+            modifier = surfaceModifier.padding(12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, captureMenuAnchor, onOpen, onOpenMenu)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = item.channelLabel(),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.activityTimeLabel(timeContext),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (item.kind == InboxItemKind.Thread) {
+                        SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                    }
+                    val primaryPreview = item.primaryActivityPreviewText(senderProfiles)
+                    Text(
+                        text = primaryPreview.toAnnotatedString(),
+                        style =
+                            if (item.unreadCount > 0) {
+                                SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
+                            } else {
+                                SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                            },
+                        color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                        maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                item.secondaryActivityPreviewText(senderProfiles)?.let { secondary ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = secondary.toAnnotatedString(),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                SharedActivityFooter(item)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Modifier.activityRowGestures(
+    itemKey: String,
+    captureMenuAnchor: Boolean,
+    onClick: () -> Unit,
+    onOpenMenu: (Offset) -> Unit
+): Modifier {
+    val rootPos = remember { SlockMutableOffsetRef() }
+    return this
+        .then(
+            if (captureMenuAnchor) {
+                Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+            } else {
+                Modifier
+            }
+        )
+        .pointerInput(itemKey) {
+            detectTapGestures(
+                onTap = { onClick() },
+                onLongPress = { localOffset ->
+                    val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                    onOpenMenu(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                }
+            )
+        }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun SharedActivityFooter(item: InboxItem) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        item.activityFooterSlots().forEach { slot ->
+            when (slot) {
+                SharedActivityFooterSlot.Replies ->
+                    Text(
+                        text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                        maxLines = 1
+                    )
+                SharedActivityFooterSlot.Task -> SharedActivityTaskBadge(item)
+                SharedActivityFooterSlot.Mention ->
+                    SharedActivityCountPill("you", iconName = SlockLucideIconName.AtSign, backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+                SharedActivityFooterSlot.New ->
+                    SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedActivityTaskBadge(item: InboxItem) {
+    val background =
+        when (item.taskStatus) {
+            build.raft.app.model.TaskStatus.Todo -> SlockColor.AccentOrange
+            build.raft.app.model.TaskStatus.InProgress -> SlockColor.AccentCyan
+            build.raft.app.model.TaskStatus.InReview -> SlockColor.AccentLavender
+            build.raft.app.model.TaskStatus.Done -> SlockColor.AccentLime
+            build.raft.app.model.TaskStatus.Closed -> SlockColor.AccentRed
+            null -> SlockColor.SurfaceWhite
+        }
+    SharedActivityCountPill(
+        text = "#${item.taskNumber}" + item.taskClaimedByName?.let { "\n@$it" }.orEmpty(),
+        iconName = item.taskStatus?.activityTaskIconName(),
+        backgroundColor = background,
+        textColor = SlockColor.TextBlack,
+        modifier = item.taskClaimedByName?.let { Modifier.width(82.dp) } ?: Modifier
+    )
+}
+
+@Composable
+private fun SharedActivityCountPill(
+    text: String,
+    iconName: SlockLucideIconName? = null,
+    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.AccentPink,
+    textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack,
+    modifier: Modifier = Modifier
+) {
+    val pillShape = RoundedCornerShape(SlockRadius.Sm)
+    Box(
+        modifier =
+            modifier
+                .widthIn(min = 22.dp)
+                .background(backgroundColor, pillShape)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack, pillShape)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (iconName != null) 4.dp else 0.dp)
+        ) {
+            iconName?.let { name ->
+                SlockLucideIcon(name, modifier = Modifier.size(10.dp), color = "#FF000000")
+            }
+            Text(
+                text = text,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = textColor,
+                maxLines = if (text.contains('\n')) 4 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedActivitySmallIconButton(
+    iconName: SlockLucideIconName,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    SlockBrutalIconButton(iconName = iconName, modifier = modifier, onClick = onClick, size = 28.dp, shadowOffset = 2.dp)
+}
+
+@Composable
+private fun SharedActivitySmallButton(
+    label: String,
+    iconName: SlockLucideIconName,
+    onClick: () -> Unit
+) {
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = iconName,
+        minHeight = 30.dp,
+        minWidth = 0.dp,
+        shadowOffset = 2.dp,
+        backgroundColor = SlockColor.SurfaceWhite,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun SharedActivityLoadingMoreRow() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 2.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Loading more...",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 2.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Could not load more.",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        SlockBrutalActionButton(
+            label = "Retry",
+            minHeight = 30.dp,
+            minWidth = 0.dp,
+            shadowOffset = 2.dp,
+            backgroundColor = SlockColor.SurfaceWhite,
+            textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            onClick = onClick
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityRefreshableStateBody(
+    title: String,
+    detail: String,
+    actionLabel: String? = null,
+    refreshing: Boolean,
+    pullRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    bottomContentPadding: Dp,
+    listState: LazyListState,
+    onAction: () -> Unit = {}
+) {
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        pullToRefreshItem(
+            state = pullToRefreshState,
+            scrollState = listState,
+            onRefresh = onRefresh,
+            content = { pullProgress, isRefreshing, _ ->
+                SlockRaftPullRefreshIndicator(
+                    pullProgress = pullProgress,
+                    isRefreshing = isRefreshing
+                )
+            }
+        )
+        item(key = "activity_state") {
+            SharedActivityStateBody(
+                title = title,
+                detail = detail,
+                actionLabel = actionLabel,
+                bottomContentPadding = bottomContentPadding,
+                onAction = onAction,
+                modifier = Modifier.fillParentMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedActivityStateBody(
+    title: String,
+    detail: String,
+    loading: Boolean = false,
+    actionLabel: String? = null,
+    bottomContentPadding: Dp,
+    onAction: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    if (loading) {
+        SlockCenteredLoading(message = title)
+        return
+    }
+    SlockEmptyState(
+        title = title,
+        detail = detail,
+        iconName = SlockLucideIconName.Activity,
+        actionLabel = actionLabel,
+        onAction = onAction.takeIf { actionLabel != null },
+        modifier = modifier.padding(bottom = bottomContentPadding)
+    )
+}
+
+private val InboxFilter.label: String
+    get() =
+        when (this) {
+            InboxFilter.All -> "All"
+            InboxFilter.Unread -> "Unread"
+            InboxFilter.Mentions -> "Mentions"
+        }
+
+private fun InboxFilter.emptyCopy(): String =
+    when (this) {
+        InboxFilter.All -> "No unread conversations or mentions yet."
+        InboxFilter.Unread -> "No unread conversations."
+        InboxFilter.Mentions -> "No mentions yet."
+    }
+
+private fun InboxItem.displayTitle(): String =
+    when (kind) {
+        InboxItemKind.Thread -> parentChannelName ?: channelName
+        InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.MentionAction, InboxItemKind.System -> channelName
+    }.ifBlank { channelId.value }
+
+private fun InboxItem.channelLabel(): String =
+    when (kind) {
+        InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
+        InboxItemKind.Thread -> "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+        InboxItemKind.MentionAction ->
+            if (channelKind == ConversationKind.DirectMessage) {
+                "@${channelName.ifBlank { channelId.value }}"
+            } else {
+                "#${channelName.ifBlank { channelId.value }}"
+            }
+        InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
+    }
+
+private fun InboxItem.senderDisplayName(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String? =
+    if (kind == InboxItemKind.Thread) {
+        latestActivitySenderId
+            ?.let(senderProfiles::get)
+            ?.displayName
+            ?: latestActivitySenderName
+            ?: lastMessageSenderId
+                ?.let(senderProfiles::get)
+                ?.displayName
+            ?: lastMessageSenderName
+    } else {
+        lastMessageSenderId
+            ?.let(senderProfiles::get)
+            ?.displayName
+            ?: lastMessageSenderName
+            ?: latestActivitySenderId
+                ?.let(senderProfiles::get)
+                ?.displayName
+            ?: latestActivitySenderName
+    }
+
+internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String =
+    timeContext?.formatTimestampLabel(latestActivityAt ?: lastMessageAt)
+        ?: latestActivityAt
+        ?: lastMessageAt
+        ?: ""
+
+private fun InboxItem.previewText(): String =
+    when (kind) {
+        InboxItemKind.Thread -> parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: "Thread update"
+        InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: "Action required"
+        else -> lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
+    }
+
+internal fun InboxItem.primaryPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String =
+    primaryActivityPreviewText(senderProfiles).fullText
+
+internal fun InboxItem.secondaryPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String? =
+    secondaryActivityPreviewText(senderProfiles)?.fullText
+
+internal data class ActivityPreviewText(
+    val senderName: String?,
+    val body: String
+) {
+    val fullText: String =
+        if (senderName.isNullOrBlank()) {
+            body
+        } else {
+            "$senderName: $body"
+        }
+
+    fun toAnnotatedString(): AnnotatedString =
+        buildAnnotatedString {
+            if (!senderName.isNullOrBlank()) {
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(senderName)
+                    append(": ")
+                }
+            }
+            append(body)
+        }
+}
+
+internal fun InboxItem.primaryActivityPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): ActivityPreviewText =
+    ActivityPreviewText(
+        senderName = if (kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction) null else senderDisplayName(senderProfiles),
+        body = previewText()
+    )
+
+internal fun InboxItem.secondaryActivityPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): ActivityPreviewText? =
+    latestActivityPreview
+        ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
+        ?.let { preview ->
+            ActivityPreviewText(senderName = senderDisplayName(senderProfiles), body = preview)
+        }
+
+internal enum class SharedActivityFooterSlot {
+    Replies,
+    Task,
+    Mention,
+    New
+}
+
+internal fun InboxItem.activityFooterSlots(): List<SharedActivityFooterSlot> {
+    val slots = mutableListOf<SharedActivityFooterSlot>()
+    if (kind == InboxItemKind.Thread) {
+        slots += SharedActivityFooterSlot.Replies
+    }
+    if (taskNumber != null && taskStatus != null) {
+        slots += SharedActivityFooterSlot.Task
+    }
+    if (hasMention && unreadCount > 0) {
+        slots += SharedActivityFooterSlot.Mention
+    }
+    if (unreadCount > 0) {
+        slots += SharedActivityFooterSlot.New
+    }
+    return slots
+}
+
+private fun build.raft.app.model.TaskStatus.activityTaskIconName(): SlockLucideIconName =
+    when (this) {
+        build.raft.app.model.TaskStatus.Todo -> SlockLucideIconName.Circle
+        build.raft.app.model.TaskStatus.InProgress -> SlockLucideIconName.Play
+        build.raft.app.model.TaskStatus.InReview -> SlockLucideIconName.Eye
+        build.raft.app.model.TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
+        build.raft.app.model.TaskStatus.Closed -> SlockLucideIconName.Ban
+    }
+
+private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int): Boolean {
+    if (lastActivityRowIndex < 1) return false
+    val visibleLastIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return false
+    return visibleLastIndex >= lastActivityRowIndex - 3
+}
+
+private fun LazyListState.isActivityNearTop(): Boolean =
+    firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
+
+internal fun activityPendingUpdateIncrement(
+    previousItems: List<InboxItem>,
+    previousTopItemKey: String?,
+    previousUpdateSignature: String?,
+    currentItems: List<InboxItem>,
+    nearTop: Boolean
+): Int {
+    if (nearTop || previousTopItemKey == null || previousUpdateSignature == null) return 0
+    val currentTopItemKey = currentItems.firstOrNull()?.key ?: return 0
+    if (currentTopItemKey == previousTopItemKey) {
+        if (activityCurrentWindowIsRemovalOnly(previousItems, currentItems)) return 0
+        return if (activityUpdateSignature(currentItems) != previousUpdateSignature) 1 else 0
+    }
+    val previousTopIndex = currentItems.indexOfFirst { it.key == previousTopItemKey }
+    if (previousTopIndex < 0 && activityCurrentWindowIsRemovalOnly(previousItems, currentItems)) {
+        return 0
+    }
+    return if (previousTopIndex > 0) previousTopIndex else 1
+}
+
+private fun activityCurrentWindowIsRemovalOnly(
+    previousItems: List<InboxItem>,
+    currentItems: List<InboxItem>
+): Boolean {
+    if (previousItems.isEmpty()) return false
+    val currentWindow = currentItems.take(ActivityUpdateSignatureWindow)
+    if (currentWindow.isEmpty()) return false
+    val previousByKey = previousItems.associateBy { it.key }
+    var lastPreviousIndex = -1
+    var knownCurrentCount = 0
+    val lastKnownCurrentIndex = currentWindow.indexOfLast { it.key in previousByKey }
+    if (lastKnownCurrentIndex < 0) return false
+    currentWindow.forEachIndexed { currentIndex, current ->
+        val previous = previousByKey[current.key]
+            ?: return currentIndex > lastKnownCurrentIndex
+        val previousIndex = previousItems.indexOfFirst { it.key == current.key }
+        if (previousIndex <= lastPreviousIndex) return false
+        if (current.activityUpdateSignaturePart() != previous.activityUpdateSignaturePart()) return false
+        lastPreviousIndex = previousIndex
+        knownCurrentCount += 1
+    }
+    return knownCurrentCount < previousItems.size
+}
+
+internal fun activityUpdateSignature(items: List<InboxItem>): String =
+    items
+        .take(ActivityUpdateSignatureWindow)
+        .joinToString(separator = "|") { item -> item.activityUpdateSignaturePart() }
+
+private fun InboxItem.activityUpdateSignaturePart(): String =
+    listOf(
+        key,
+        unreadCount.toString(),
+        hasMention.toString(),
+        firstUnreadMessageId?.value.orEmpty(),
+        latestActivityMessageId?.value.orEmpty(),
+        latestActivityAt.orEmpty(),
+        lastMessageId?.value.orEmpty(),
+        taskStatus?.name.orEmpty()
+    ).joinToString(separator = ":")
+
+internal fun InboxItem.toConversationSummary(): ConversationSummary {
+    val streamChannelId = resolveInboxStreamChannelId()
+    val parentId = parentMessageId
+    val parentChannel = parentChannelId
+    val stableThreadIdentity =
+        if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
+            threadIdentity(parentChannel, parentId)
+        } else {
+            null
+        }
+    return ConversationSummary(
+        threadId = stableThreadIdentity ?: topLevelThreadId(channelId),
+        channelId = if (kind == InboxItemKind.Thread) parentChannel else channelId,
+        thread =
+            if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
+                ThreadConversation(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentId,
+                    streamChannelId = streamChannelId,
+                    parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull(),
+                    parentChannelKind = parentChannelKind.threadChannelKindWireValue()
+                )
+            } else {
+                null
+            },
+        kind =
+            when (kind) {
+                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+                InboxItemKind.Thread -> ConversationKind.Thread
+                InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
+                InboxItemKind.System -> ConversationKind.System
+                InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
+            },
+        name = displayTitle(),
+        subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
+        unreadCount = unreadCount,
+        unreadCountKnown = true,
+        mentionCount = if (hasMention) 1 else 0,
+        mentionCountKnown = hasMention,
+        lastMessageId = latestActivityMessageId ?: lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId,
+        lastMessagePreview = latestActivityPreview ?: lastMessagePreview,
+        lastMessageAt = latestActivityAt ?: lastMessageAt,
+        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
+    )
+}
+
+internal data class ThreadLaunchOriginFallback(
+    val parentChannelId: String?,
+    val parentMessageId: String,
+    val preview: String?,
+    val senderId: String?,
+    val senderKind: MemberKind?,
+    val expected: Boolean = true
+)
+
+internal data class HomeMessageOpenRequest(
+    val conversation: ThreadLaunchConversationIdentity,
+    val anchorMessageId: String?,
+    val originFallback: ThreadLaunchOriginFallback? = null
+)
+
+/**
+ * Per-kind stream channel id resolver. Replaces the prior silent fallback
+ * `if (kind == Thread) threadChannelId else threadChannelId ?: channelId` (反例 1 in #280 audit).
+ *
+ * - Thread items resolve to their explicit `threadChannelId` (v0.2 contract requires the
+ *   thread stream id to be distinct from `channelId`).
+ * - Non-thread items resolve to `null`. The downstream `ThreadConversation` field is only
+ *   populated for Thread items, so this is the safe default.
+ *
+ * Future sealed `InboxItem.Thread` (Phase 3 #3 (B)) will encode this in the type system:
+ * `threadChannelId` becomes a required non-null constructor parameter on the Thread subclass.
+ */
+internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
+    when (kind) {
+        InboxItemKind.Thread -> threadChannelId
+        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.MentionAction, InboxItemKind.System -> null
+    }
+
+/**
+ * 3-level anchor chain used by [InboxItem.toHomeMessageOpenRequest] and Saved store anchor
+ * resolution. Thread items must NOT fall back to `parentMessageId` — that field is the parent
+ * channel origin, not a thread reply id; mixing it in would silently degrade the reply-stream
+ * anchor (regression covered by `appShellActivityThreadItemShowsLatestReplyAsAnchorWhenUnreadIsEmpty`
+ * and `SharedInboxPanelTest.inboxPanelThreadItemAnchor3LevelChain`).
+ *
+ * Replaces the prior 4-level chain `firstUnreadMessageId ?: latestActivityMessageId
+ * ?: lastMessageId ?: parentMessageId` (反例 11 in #280 audit).
+ */
+internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
+    firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId
+
+internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
+    HomeMessageOpenRequest(
+        conversation = toConversationSummary().toThreadLaunchConversationIdentity(),
+        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
+        originFallback = toThreadLaunchOriginFallback()
+    )
+
+private fun InboxItem.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    if (kind != InboxItemKind.Thread) return null
+    val parentId = parentMessageId?.value?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = parentChannelId?.value?.takeIf { it.isNotBlank() },
+        parentMessageId = parentId,
+        preview = parentMessagePreview?.takeIf { it.isNotBlank() },
+        senderId = parentMessageSenderId?.takeIf { it.isNotBlank() },
+        senderKind = parentMessageSenderKind,
+        expected = true
+    )
+}

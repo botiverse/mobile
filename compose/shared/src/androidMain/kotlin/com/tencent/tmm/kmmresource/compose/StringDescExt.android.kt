@@ -3,7 +3,7 @@
  */
 package com.tencent.tmm.kmmresource.compose
 
-import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import androidx.compose.runtime.Composable
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 

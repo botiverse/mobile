@@ -71,13 +71,13 @@ React / CLI 这轮迁移不是一次性把所有 `Slock` 文本清零，而是�
 
 | 文件 | 改动 |
 |------|------|
-| `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SlockApiEndpoints.kt` | `https://api.slock.ai/api/` → `https://api.raft.build/api/`，`https://api.slock.ai` → `https://api.raft.build` |
+| `compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockApiEndpoints.kt` | `https://api.slock.ai/api/` → `https://api.raft.build/api/`，`https://api.slock.ai` → `https://api.raft.build` |
 
 ### 1.2 Web Link / Deep Link（需要向后兼容）
 
 | 文件 | 行号 | 改动 |
 |------|------|------|
-| `compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt` | 2088 | `"app.slock.ai"` → `setOf("app.slock.ai", "app.raft.build").contains(host)` 同时认两个域名 |
+| `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt` | 2088 | `"app.slock.ai"` → `setOf("app.slock.ai", "app.raft.build").contains(host)` 同时认两个域名 |
 | `compose/androidApp/src/main/AndroidManifest.xml` | 46 | 新增 `app.raft.build` intent-filter，**保留** `app.slock.ai` 旧域名兼容（至少一个大版本周期） |
 
 ### 1.3 strings.xml 中的域名
@@ -175,26 +175,26 @@ React / CLI 这轮迁移不是一次性把所有 `Slock` 文本清零，而是�
 - `raft.build` → `build.raft`
 
 **替换映射**：
-- `ai.slock.compose` → `build.raft.compose`
-- `ai.slock.compose.data` → `build.raft.compose.data`
-- `ai.slock.compose.model` → `build.raft.compose.model`
-- `ai.slock.compose.network` → `build.raft.compose.network`
-- `ai.slock.compose.markdown` → `build.raft.compose.markdown`
-- `ai.slock.compose.components` → `build.raft.compose.components`
+- `build.raft.app` → `build.raft.compose`
+- `build.raft.app.data` → `build.raft.compose.data`
+- `build.raft.app.model` → `build.raft.compose.model`
+- `build.raft.app.network` → `build.raft.compose.network`
+- `build.raft.app.markdown` → `build.raft.compose.markdown`
+- `build.raft.app.components` → `build.raft.compose.components`
 - `build.raft.app` → `build.raft.app`
 - `build.raft.app.core` → `build.raft.app.core`
 - `build.raft.app.feature` → `build.raft.app.feature`
 - `build.raft.app.ui` → `build.raft.app.ui`
 - `build.raft.app.shared` → `build.raft.app.shared`
-- `ai.slock.shared` → `build.raft.shared`
+- `build.raft.app.shared` → `build.raft.shared`
 
 ### 3.2 目录结构
 
 ```
 # 旧
-compose/shared/src/commonMain/kotlin/ai/slock/compose/
-compose/shared/src/androidMain/kotlin/ai/slock/compose/
-compose/shared/src/commonMain/sqldelight/ai/slock/shared/data/local/
+compose/shared/src/commonMain/kotlin/build/raft/app/
+compose/shared/src/androidMain/kotlin/build/raft/app/
+compose/shared/src/commonMain/sqldelight/build/raft/app/shared/data/local/
 compose/androidApp/src/main/java/ai/slock/android/
 
 # 新
@@ -209,13 +209,13 @@ compose/androidApp/src/main/java/build/raft/android/
 | 文件 | 改动 |
 |------|------|
 | `compose/androidApp/build.gradle.kts` | `namespace = "build.raft.app"` → `"build.raft.app"`，`applicationId = "build.raft.app"` → `"build.raft.app"` |
-| `compose/shared/build.gradle.kts` | `namespace = "ai.slock.compose.shared"` → `"build.raft.compose.shared"` |
+| `compose/shared/build.gradle.kts` | `namespace = "build.raft.app.shared"` → `"build.raft.compose.shared"` |
 
 ### 3.4 SQLDelight
 
 | 文件 | 改动 |
 |------|------|
-| `compose/shared/src/commonMain/sqldelight/ai/slock/shared/data/local/SlockDatabase.sq` | package 声明 + 文件路径 `ai/slock/` → `build/raft/`，文件名 → `RaftDatabase.sq` |
+| `compose/shared/src/commonMain/sqldelight/build/raft/app/shared/data/local/SlockDatabase.sq` | package 声明 + 文件路径 `ai/slock/` → `build/raft/`，文件名 → `RaftDatabase.sq` |
 
 ### 3.5 AndroidManifest
 

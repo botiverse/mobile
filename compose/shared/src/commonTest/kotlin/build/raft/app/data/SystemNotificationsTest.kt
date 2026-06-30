@@ -1,0 +1,209 @@
+package build.raft.app.data
+
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
+import build.raft.app.model.ThreadId
+import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class SystemNotificationsTest {
+    @Test
+    fun notificationPreferenceDefaultsToEnabledWhenNoPreferenceExists() = runBlocking {
+        val repository = PersistentNotificationPreferenceRepository(
+            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+        )
+
+        val snapshot = repository.getNotificationPreference()
+
+        assertTrue(snapshot.enabled)
+        assertFalse(snapshot.foregroundKeepAliveEnabled)
+    }
+
+    @Test
+    fun notificationPreferencePersistsSelectedState() = runBlocking {
+        val repository = PersistentNotificationPreferenceRepository(
+            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+        )
+
+        val enabled = repository.setNotificationEnabled(true)
+        val restoredEnabled = repository.getNotificationPreference()
+        val disabled = repository.setNotificationEnabled(false)
+        val restoredDisabled = repository.getNotificationPreference()
+
+        assertTrue(enabled.enabled)
+        assertTrue(restoredEnabled.enabled)
+        assertFalse(disabled.enabled)
+        assertFalse(restoredDisabled.enabled)
+    }
+
+    @Test
+    fun foregroundKeepAlivePreferenceDefaultsOffAndPersistsSelectedState() = runBlocking {
+        val repository = PersistentNotificationPreferenceRepository(
+            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+        )
+
+        val initial = repository.getNotificationPreference()
+        val enabled = repository.setForegroundKeepAliveEnabled(true)
+        val restoredEnabled = repository.getNotificationPreference()
+        val disabled = repository.setForegroundKeepAliveEnabled(false)
+        val restoredDisabled = repository.getNotificationPreference()
+
+        assertFalse(initial.foregroundKeepAliveEnabled)
+        assertTrue(enabled.foregroundKeepAliveEnabled)
+        assertTrue(restoredEnabled.foregroundKeepAliveEnabled)
+        assertFalse(disabled.foregroundKeepAliveEnabled)
+        assertFalse(restoredDisabled.foregroundKeepAliveEnabled)
+        assertTrue(restoredDisabled.enabled)
+    }
+
+    @Test
+    fun inboxNotificationPolicySuppressesForegroundAndOwnVisibleMessages() {
+        assertEquals(
+            false,
+            shouldShowSystemInboxNotification(
+                messageAuthorId = "member-1",
+                currentMemberId = "member-1",
+                isVisibleThread = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowSystemInboxNotification(
+                messageAuthorId = "member-2",
+                currentMemberId = "member-1",
+                isVisibleThread = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowSystemInboxNotification(
+                messageAuthorId = "member-2",
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                isAppInForeground = true
+            )
+        )
+    }
+
+    @Test
+    fun inboxNotificationPolicyAllowsOtherUnreadBackgroundMessages() {
+        assertTrue(
+            shouldShowSystemInboxNotification(
+                messageAuthorId = "member-2",
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                isAppInForeground = false
+            )
+        )
+    }
+
+    @Test
+    fun unreadNotificationRequestBuildsChannelPayload() {
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = "server-1",
+                message = message(body = "  Hello\nteam  "),
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                conversationName = "general",
+                conversationKind = ConversationKind.Channel
+            )
+
+        requireNotNull(request)
+        assertEquals(SystemUnreadNotificationCategory.ChannelUnread, request.category)
+        assertEquals("#general", request.title)
+        assertEquals("Ada: Hello team", request.body)
+        assertEquals("unread:server-1:channel-1:message-1", request.notificationKey)
+    }
+
+    @Test
+    fun unreadNotificationRequestSuppressesVisibleThread() {
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = "server-1",
+                message = message(),
+                currentMemberId = "member-1",
+                isVisibleThread = true,
+                conversationName = "general",
+                conversationKind = ConversationKind.Channel
+            )
+
+        assertEquals(null, request)
+    }
+
+    @Test
+    fun unreadNotificationRequestPromotesMentions() {
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = "server-1",
+                message = message(body = "@me please check this"),
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                conversationName = "ops",
+                conversationKind = ConversationKind.Channel,
+                currentMemberHandle = "me"
+            )
+
+        requireNotNull(request)
+        assertEquals(SystemUnreadNotificationCategory.Mention, request.category)
+        assertEquals("#ops", request.title)
+    }
+
+    @Test
+    fun unreadNotificationRequestUsesThreadChannelAsLaunchStream() {
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = "server-1",
+                message =
+                    message(
+                        threadId = "channel-1",
+                        channelId = "channel-1",
+                        threadChannelId = "thread-message-1",
+                        parentMessageId = "message-1"
+                    ),
+                currentMemberId = "member-1",
+                isVisibleThread = false,
+                conversationName = "general",
+                conversationKind = ConversationKind.Thread
+            )
+
+        requireNotNull(request)
+        assertEquals("thread-message-1", request.threadId)
+        assertEquals("thread-message-1", request.channelId)
+        assertEquals("channel-1", request.parentChannelId)
+        assertEquals("message-1", request.parentMessageId)
+        assertEquals("unread:server-1:thread-message-1:message-1", request.notificationKey)
+    }
+
+    private fun message(
+        body: String = "Hello",
+        threadId: String = "thread-1",
+        channelId: String = "channel-1",
+        threadChannelId: String? = null,
+        parentMessageId: String? = null
+    ): Message =
+        Message(
+            id = MessageId("message-1"),
+            threadId = ThreadId(threadId),
+            channelId = ChannelId(channelId),
+            threadChannelId = threadChannelId?.let(::ChannelId),
+            author =
+                MemberProfile(
+                    id = MemberId("member-2"),
+                    displayName = "Ada",
+                    handle = "ada",
+                    kind = MemberKind.Human
+                ),
+            timestampLabel = "now",
+            body = body,
+            parentMessageId = parentMessageId?.let(::MessageId)
+        )
+}

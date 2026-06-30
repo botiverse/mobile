@@ -22,9 +22,9 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt` (~2000 lines)
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SharedActivityStore.kt` (per `fix(activity): share activity store across shells` 06-25)
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedHomeStore.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt` (~2000 lines)
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt` (per `fix(activity): share activity store across shells` 06-25)
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedHomeStore.kt`
 
 ## Feature points inventory (06-23 → 06-26)
 

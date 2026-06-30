@@ -1,21 +1,21 @@
 package build.raft.app.core.data.network
 
-import ai.slock.compose.data.StoredAuthSession as AuthSession
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.StoredAuthSession as AuthSession
+import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
-import ai.slock.compose.data.AttachmentUploadFile
-import ai.slock.compose.data.AttachmentUploadRequest
-import ai.slock.compose.data.ComposeLocalWriteThrough
-import ai.slock.compose.data.CreateChannelRequest
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.InMemoryComposeLocalDataStore
-import ai.slock.compose.data.RealChannelRepository
-import ai.slock.compose.data.RealConversationRepository
-import ai.slock.compose.model.ChannelId
-import ai.slock.compose.model.MessageId
-import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.ThreadId
-import ai.slock.compose.model.parentChannelIdOrNull
+import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.AttachmentUploadRequest
+import build.raft.app.data.ComposeLocalWriteThrough
+import build.raft.app.data.CreateChannelRequest
+import build.raft.app.data.DataResult
+import build.raft.app.data.InMemoryComposeLocalDataStore
+import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.RealConversationRepository
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
+import build.raft.app.model.parentChannelIdOrNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.net.HttpURLConnection
@@ -241,13 +241,13 @@ class LiveSlockDbFlowTest {
         val baseUrl = env("SLOCK_BASE_URL") ?: AndroidAuthApiFactory.BASE_URL
 
         val authStore = InMemoryAuthSessionStore()
-        val authDataSource = ai.slock.compose.data.SharedAuthDataSource(
+        val authDataSource = build.raft.app.data.SharedAuthDataSource(
                 api = AndroidAuthApiFactory.createAuthApi(baseUrl),
                 sessionStore = authStore
             )
 
         val login = runSuspend { authDataSource.login(email, password) }
-        assertTrue("Expected live login to succeed but got: $login", login is ai.slock.compose.data.SharedAuthResult.Success)
+        assertTrue("Expected live login to succeed but got: $login", login is build.raft.app.data.SharedAuthResult.Success)
         val session = requireNotNull(authStore.session) { "Login succeeded but no session was stored." }
         val serverId = requireNotNull(session.currentServerId) { "Live account has no selected server." }
 

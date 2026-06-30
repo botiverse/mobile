@@ -32,7 +32,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun memberRepositoryMethodsRequireExplicitPriorityParameter() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SlockRepositories.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockRepositories.kt")
         val lines = file.readLines()
         val start = lines.indexOfFirst { it.trim() == "interface MemberRepository {" }
         val end = lines.drop(start + 1).indexOfFirst { it.trim() == "}" }.let { start + 1 + it }
@@ -65,7 +65,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun realMemberRepositoryDoesNotUseRuntimePriorityGuard() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberRepositoryDataSource.kt")
         val text = file.readText()
         val start = text.indexOf("class RealMemberRepository")
         val end = text.indexOf("@Serializable", start)
@@ -80,7 +80,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun sharedSlockApiClientRequiresExplicitPriorityAndDoesNotUseRuntimeGuard() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/androidMain/kotlin/ai/slock/compose/network/SlockApiClient.android.kt")
+        val file = File(root, "compose/shared/src/androidMain/kotlin/build/raft/app/network/SlockApiClient.android.kt")
         val text = file.readText()
         val publicClientMethods =
                 Regex("""^\s*suspend fun (\w+)\(([^)]*)\): KmpHttpResponse""", RegexOption.MULTILINE)
@@ -114,7 +114,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun sharedSlockNetworkClientMethodsRequireExplicitPriority() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberRepositoryDataSource.kt")
         val text = file.readText()
         val start = text.indexOf("interface SlockNetworkClient {")
         val end = text.indexOf("\n}\n\nprivate suspend fun", start)
@@ -190,8 +190,8 @@ class NetworkPriorityCallSiteTest {
         val root = findRepoRoot()
         val productFiles =
                 listOf(
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt"
+                        "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt",
+                        "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt"
                 )
 
         val offenders =
@@ -216,7 +216,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun sharedCommonMainDoesNotKeepBridgeBusinessRestHelpers() {
         val root = findRepoRoot()
-        val commonMain = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose")
+        val commonMain = File(root, "compose/shared/src/commonMain/kotlin/build/raft/app")
         val bannedSymbols =
                 listOf(
                         "AUTH_REQUEST",

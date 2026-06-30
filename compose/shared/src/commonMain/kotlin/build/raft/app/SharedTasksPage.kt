@@ -1,0 +1,1474 @@
+package build.raft.app
+
+import build.raft.app.components.SegmentedControl
+import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.components.SlockAnchoredMetaChip
+import build.raft.app.components.SlockAnchoredToolbarChip
+import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockToolbarChip
+import build.raft.app.data.KeyValueTasksViewPreferenceRepository
+import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.TasksContent
+import build.raft.app.data.TasksPresentationIntent
+import build.raft.app.data.TasksPresentationState
+import build.raft.app.data.TasksUiState
+import build.raft.app.data.TasksVisibleContent
+import build.raft.app.data.TasksViewMode
+import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.boardColumns
+import build.raft.app.data.reduce
+import build.raft.app.data.tasksAssigneeDisplayName
+import build.raft.app.data.tasksDisplayTitle
+import build.raft.app.data.tasksIdentityFilterId
+import build.raft.app.data.tasksSourceLabel
+import build.raft.app.data.visibleContent
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.LazyRow
+import com.tencent.kuikly.compose.foundation.lazy.items
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.rotate
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.pager.Pager
+
+private const val TasksListDefaultBeyondBoundsItemCount = 1
+private const val TasksListMaxBeyondBoundsItemCount = 4
+
+@Composable
+internal fun SharedTasksScreen(
+    state: TasksUiState,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    modifier: Modifier = Modifier,
+    onOpenTask: ((TaskSummary) -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+) {
+    SharedTasksPanel(
+        state = state,
+        onIntent = onIntent,
+        modifier = modifier,
+        showHeader = true,
+        showChannelFilter = true,
+        onOpenTask = onOpenTask,
+        bottomContentPadding = bottomContentPadding,
+        initialListPosition = initialListPosition,
+        onListPositionSnapshot = onListPositionSnapshot
+    )
+}
+
+@Composable
+internal fun SharedTasksPanel(
+    state: TasksUiState,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    showChannelFilter: Boolean = true,
+    /** When non-null, render the New Task button and dispatch [SharedTasksRouteIntent.CreateTasks] against this channel.
+     *  Server-mode (no implicit channel) leaves this null and the button is hidden. */
+    createTasksChannelId: ChannelId? = null,
+    onOpenTask: ((TaskSummary) -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+) {
+    var lastContent by remember { mutableStateOf<TasksContent?>(null) }
+    val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
+    if (currentContent != null) {
+        lastContent = currentContent
+    }
+    val displayState =
+        if (state.refreshing && lastContent != null) {
+            ScreenLoadState.Content(lastContent!!)
+        } else {
+            state.loadState
+        }
+
+    // #no-task-new-btn: when the task list is empty (ScreenLoadState.Empty),
+    // the user still needs the New Task button and filter toolbar visible.
+    var emptyCreateDialogOpen by remember { mutableStateOf(false) }
+    var emptySelectedMode by remember { mutableStateOf(TasksViewMode.List) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        when (val loadState = displayState) {
+            ScreenLoadState.Loading -> {
+                if (showHeader) {
+                    SharedTasksHeader(refreshing = state.refreshing)
+                }
+                SharedTasksStateBody(
+                    title = "Loading...",
+                    detail = "",
+                    loading = true
+                )
+            }
+            is ScreenLoadState.Content ->
+                SharedTasksLoadedBody(
+                    state = state,
+                    content = loadState.data,
+                    showHeader = showHeader,
+                    showChannelFilter = showChannelFilter,
+                    createTasksChannelId = createTasksChannelId,
+                    onOpenTask = onOpenTask,
+                    onIntent = onIntent,
+                    bottomContentPadding = bottomContentPadding,
+                    initialListPosition = initialListPosition,
+                    onListPositionSnapshot = onListPositionSnapshot
+                )
+            is ScreenLoadState.Empty -> {
+                if (showHeader) {
+                    SharedTasksHeader(refreshing = state.refreshing)
+                }
+                val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
+                val emptyCopy =
+                    sharedTasksEmptyStateCopy(
+                        hasAnyFilter = state.selectedFilter != null,
+                        isChannelMode = createTasksChannelId != null
+                    )
+                if (showEmptyToolbar) {
+                    // #no-task-new-btn: channel empty state still needs New Task.
+                    // Server-wide empty has no create action and no task rows, so
+                    // skip the disabled filter/view toolbar on the tab-switch path.
+                    SharedTasksToolbar(
+                        channelOptions = emptyList(),
+                        selectedChannels = emptySet(),
+                        creatorOptions = emptyList(),
+                        selectedCreatorIds = emptySet(),
+                        assigneeOptions = emptyList(),
+                        selectedAssigneeIds = emptySet(),
+                        selectedMode = emptySelectedMode,
+                        showChannelFilter = showChannelFilter,
+                        openFilterId = null,
+                        showCreateButton = true,
+                        onModeSelected = { mode -> emptySelectedMode = mode },
+                        onChannelChipClick = { },
+                        onCreatorChipClick = { },
+                        onAssigneeChipClick = { },
+                        onClearAll = { },
+                        onCreateClick = { emptyCreateDialogOpen = true }
+                    )
+                }
+                SharedTasksStateBody(
+                    title = emptyCopy.title,
+                    detail = emptyCopy.description,
+                    iconName = SlockLucideIconName.SquareCheckBig
+                )
+                if (emptyCreateDialogOpen && createTasksChannelId != null) {
+                    TasksCreateDialog(
+                        refreshing = state.refreshing,
+                        onDismiss = { emptyCreateDialogOpen = false },
+                        onSubmit = { titles ->
+                            onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                            emptyCreateDialogOpen = false
+                        }
+                    )
+                }
+            }
+            is ScreenLoadState.Error -> {
+                if (showHeader) {
+                    SharedTasksHeader(refreshing = state.refreshing)
+                }
+                SharedTasksStateBody(
+                    title = "Could not load tasks",
+                    detail = loadState.error.code,
+                    actionLabel = "Retry",
+                    onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
+                )
+            }
+            is ScreenLoadState.NoPermission -> {
+                if (showHeader) {
+                    SharedTasksHeader(refreshing = state.refreshing)
+                }
+                SharedTasksStateBody(
+                    title = "Tasks unavailable",
+                    detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedTasksHeader(
+    subtitle: String = "Channel tasks",
+    refreshing: Boolean = false
+) {
+    SlockTopPageHeader(
+        title = "Tasks",
+        subtitle = subtitle,
+        iconName = SlockLucideIconName.SquareCheckBig,
+        refreshing = refreshing
+    )
+}
+
+internal fun tasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = totalTasks): String {
+    val safeTotal = totalTasks.coerceAtLeast(0)
+    val safeVisible = visibleTasks.coerceIn(0, safeTotal)
+    return if (safeVisible != safeTotal) {
+        "$safeVisible of $safeTotal channel tasks"
+    } else {
+        "$safeTotal channel tasks"
+    }
+}
+
+internal data class SharedTasksEmptyStateCopy(
+    val title: String,
+    val description: String
+)
+
+internal fun sharedTasksEmptyStateCopy(
+    hasAnyFilter: Boolean,
+    isChannelMode: Boolean
+): SharedTasksEmptyStateCopy =
+    when {
+        hasAnyFilter ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks match this filter",
+                description = "Try a different combination or clear the current selection."
+            )
+        isChannelMode ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks yet",
+                description = "Create one with the New Task button."
+            )
+        else ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks yet",
+                description = "DM and agent task boards are intentionally excluded from this server-wide view."
+            )
+    }
+
+internal fun sharedTasksEmptyToolbarVisible(createTasksChannelId: ChannelId?): Boolean =
+    createTasksChannelId != null
+
+private fun TasksVisibleContent.hasAnyPresentationFilter(): Boolean =
+    selectedChannelNames.isNotEmpty() ||
+        selectedCreatorIds.isNotEmpty() ||
+        selectedAssigneeIds.isNotEmpty()
+
+@Composable
+private fun SharedTasksLoadedBody(
+    state: TasksUiState,
+    content: TasksContent,
+    showHeader: Boolean,
+    showChannelFilter: Boolean,
+    createTasksChannelId: ChannelId?,
+    onOpenTask: ((TaskSummary) -> Unit)?,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    bottomContentPadding: Dp,
+    initialListPosition: AppShellLazyListPosition,
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        SharedTasksLoadedBodyContent(
+            state = state,
+            content = content,
+            showHeader = showHeader,
+            showChannelFilter = showChannelFilter,
+            createTasksChannelId = createTasksChannelId,
+            onOpenTask = onOpenTask,
+            onIntent = onIntent,
+            defaultViewMode = defaultTasksViewMode(maxWidth),
+            bottomContentPadding = bottomContentPadding,
+            initialListPosition = initialListPosition,
+            onListPositionSnapshot = onListPositionSnapshot
+        )
+    }
+}
+
+@Composable
+private fun SharedTasksLoadedBodyContent(
+    state: TasksUiState,
+    content: TasksContent,
+    showHeader: Boolean,
+    showChannelFilter: Boolean,
+    createTasksChannelId: ChannelId?,
+    onOpenTask: ((TaskSummary) -> Unit)?,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    defaultViewMode: TasksViewMode,
+    bottomContentPadding: Dp,
+    initialListPosition: AppShellLazyListPosition,
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
+) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val viewModeRepository =
+        remember(pager) {
+            KeyValueTasksViewPreferenceRepository(kuiklySharedPreferenceStore(pager))
+        }
+    val initialPresentationState =
+        remember(viewModeRepository, defaultViewMode) {
+            TasksPresentationState.Default.copy(
+                selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode)
+            )
+        }
+    var presentationState by remember(viewModeRepository) { mutableStateOf(initialPresentationState) }
+    val sortedContent = remember(content) {
+        content.copy(tasks = content.tasks.sortedByTaskDisplayOrder())
+    }
+    val visibleContent = remember(sortedContent, state.selectedFilter, presentationState) {
+        sortedContent.visibleContent(
+            selectedFilter = state.selectedFilter,
+            presentationState = presentationState,
+            showChannelFilter = showChannelFilter
+        )
+    }
+    val availableChannelIds = remember(visibleContent.channelOptions) {
+        visibleContent.channelOptions.toSet()
+    }
+    val availableCreatorIds = remember(visibleContent.creatorOptions) {
+        visibleContent.creatorOptions.map { it.tasksIdentityFilterId() }.toSet()
+    }
+    val availableAssigneeIds = remember(visibleContent.assigneeOptions) {
+        visibleContent.assigneeOptions.map { it.id.value }.toSet()
+    }
+    // Drop stale chip selections when the underlying option pool changes (e.g. a server
+    // refresh removed a channel that was checked in the popover).
+    LaunchedEffect(availableChannelIds) {
+        val next =
+            presentationState.reduce(
+                TasksPresentationIntent.PruneUnavailableChannels(availableChannelIds)
+            )
+        if (next != presentationState) presentationState = next
+    }
+    LaunchedEffect(availableCreatorIds) {
+        val next =
+            presentationState.reduce(
+                TasksPresentationIntent.PruneUnavailableCreators(availableCreatorIds)
+            )
+        if (next != presentationState) presentationState = next
+    }
+    LaunchedEffect(availableAssigneeIds) {
+        val next =
+            presentationState.reduce(
+                TasksPresentationIntent.PruneUnavailableAssignees(availableAssigneeIds)
+            )
+        if (next != presentationState) presentationState = next
+    }
+
+    // boardColumns always covers every TaskStatus so the user can see empty columns
+    // (you can't drop a task into a column that doesn't exist). renderLimit = 0 means
+    // "include all tasks per column" — pagination would be a separate feature.
+    val boardColumns = remember(visibleContent.filteredContent) {
+        visibleContent.filteredContent.boardColumns(renderLimit = 0)
+    }
+    // For list mode we hide totally-empty status groups; otherwise the screen looks
+    // like a wall of "No X tasks" headers.
+    val listColumns = remember(boardColumns) { boardColumns.filter { it.totalCount > 0 } }
+    val collapsedStatuses = presentationState.collapsedStatuses
+
+    // Per-card status menu coordinates. We open the single-select menu when the user
+    // long-presses a card; storing the anchor in screen-root space lets the overlay
+    // place itself near the press point without forcing a recomposition just to track
+    // a state change in the trigger composable.
+    var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
+    var statusMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    val listModeListState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
+        )
+    val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
+    DisposableEffect(listModeListState) {
+        onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
+    }
+    var listModeListRoot by remember { mutableStateOf(Offset.Zero) }
+
+    // Filter popover anchors. Captured via onGloballyPositioned on the chip
+    // so the popover floats just below it.
+    var channelAnchor by remember { mutableStateOf(Offset.Zero) }
+    var creatorAnchor by remember { mutableStateOf(Offset.Zero) }
+    var assigneeAnchor by remember { mutableStateOf(Offset.Zero) }
+    var createDialogOpen by remember { mutableStateOf(false) }
+    val channelFilterOptions = remember(visibleContent.channelOptions) {
+        visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = SlockLucideIconName.Hash) }
+    }
+    val creatorFilterOptions = remember(visibleContent.creatorOptions) {
+        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = SlockLucideIconName.CircleUser) }
+    }
+    val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
+        visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = SlockLucideIconName.User) }
+    }
+    SlockBackHandler(
+        enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
+    ) {
+        when {
+            createDialogOpen -> createDialogOpen = false
+            statusMenuTask != null -> statusMenuTask = null
+            presentationState.openFilterId != null ->
+                presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        if (showHeader) {
+            SharedTasksHeader(
+                subtitle =
+                    tasksHeaderSubtitle(
+                        totalTasks = content.tasks.size,
+                        visibleTasks = visibleContent.filteredTasks.size
+                    ),
+                refreshing = state.refreshing
+            )
+        }
+        Box(modifier = Modifier.weight(1f).background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                state.navigationErrorCode?.let { code ->
+                    SharedTasksNotice("Action unavailable", code, modifier = Modifier.padding(SlockSpacing.Md))
+                }
+                state.statusUpdateErrorCode?.let { code ->
+                    SharedTasksNotice("Could not update status", code, modifier = Modifier.padding(SlockSpacing.Md))
+                }
+                SharedTasksToolbar(
+                    channelOptions = visibleContent.channelOptions,
+                    selectedChannels = visibleContent.selectedChannelNames,
+                    creatorOptions = visibleContent.creatorOptions,
+                    selectedCreatorIds = visibleContent.selectedCreatorIds,
+                    assigneeOptions = visibleContent.assigneeOptions,
+                    selectedAssigneeIds = visibleContent.selectedAssigneeIds,
+                    selectedMode = presentationState.selectedMode,
+                    showChannelFilter = showChannelFilter,
+                    openFilterId = presentationState.openFilterId,
+                    showCreateButton = createTasksChannelId != null,
+                    onModeSelected = { mode ->
+                        viewModeRepository.selectTasksViewModeSync(mode)
+                        presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
+                    },
+                    onChannelChipClick = { anchor ->
+                        channelAnchor = anchor
+                        presentationState =
+                            presentationState.reduce(
+                                TasksPresentationIntent.SetOpenFilter(
+                                    if (presentationState.openFilterId == "channel") null else "channel"
+                                )
+                            )
+                    },
+                    onCreatorChipClick = { anchor ->
+                        creatorAnchor = anchor
+                        presentationState =
+                            presentationState.reduce(
+                                TasksPresentationIntent.SetOpenFilter(
+                                    if (presentationState.openFilterId == "creator") null else "creator"
+                                )
+                            )
+                    },
+                    onAssigneeChipClick = { anchor ->
+                        assigneeAnchor = anchor
+                        presentationState =
+                            presentationState.reduce(
+                                TasksPresentationIntent.SetOpenFilter(
+                                    if (presentationState.openFilterId == "assignee") null else "assignee"
+                                )
+                            )
+                    },
+                    onClearAll = {
+                        presentationState = presentationState.reduce(TasksPresentationIntent.ClearAllFilters)
+                    },
+                    onCreateClick = { createDialogOpen = true }
+                )
+                when (presentationState.selectedMode) {
+                    TasksViewMode.Board -> {
+                        // Horizontal board: each TaskStatus is a fixed-width column the user can
+                        // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
+                        LazyRow(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                            contentPadding = PaddingValues(SlockSpacing.Md)
+                        ) {
+                            items(boardColumns.size, key = { i -> "board-col-${boardColumns[i].status}" }) { index ->
+                                val column = boardColumns[index]
+                                SharedTasksBoardColumn(
+                                    status = column.status,
+                                    totalCount = column.totalCount,
+                                    tasks = column.tasks,
+                                    collapsed = column.status in collapsedStatuses,
+                                    updatingTaskId = state.statusUpdatingTaskId,
+                                    onToggleCollapsed = {
+                                        presentationState =
+                                            presentationState.reduce(
+                                                TasksPresentationIntent.ToggleStatusCollapsed(column.status)
+                                            )
+                                    },
+                                    onOpenTask = onOpenTask,
+                                    onStatusBadgeClick = { task, anchor ->
+                                        statusMenuTask = task
+                                        statusMenuAnchor = anchor
+                                    },
+                                    onLongPressTask = { task, anchor ->
+                                        statusMenuTask = task
+                                        statusMenuAnchor = anchor
+                                    },
+                                    bottomContentPadding = bottomContentPadding
+                                )
+                            }
+                        }
+                    }
+                    TasksViewMode.List -> {
+                        if (visibleContent.filteredTasks.isEmpty()) {
+                            val emptyCopy =
+                                sharedTasksEmptyStateCopy(
+                                    hasAnyFilter = state.selectedFilter != null || visibleContent.hasAnyPresentationFilter(),
+                                    isChannelMode = createTasksChannelId != null
+                                )
+                            SharedTasksStateBody(
+                                title = emptyCopy.title,
+                                detail = emptyCopy.description,
+                                iconName = SlockLucideIconName.SquareCheckBig
+                            )
+                        } else {
+                            var nextListItemIndex = 0
+                            LazyColumn(
+                                state = listModeListState,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .onGloballyPositioned { listModeListRoot = it.positionInRoot() },
+                                contentPadding =
+                                    PaddingValues(
+                                        start = SlockSpacing.Md,
+                                        top = SlockSpacing.Md,
+                                        end = SlockSpacing.Md,
+                                        bottom = bottomContentPadding
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                                beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(visibleContent.filteredTasks.size)
+                            ) {
+                                listColumns.forEach { column ->
+                                    nextListItemIndex += 1
+                                    item(key = "list-header-${column.status.name}") {
+                                        BoardSectionHeader(
+                                            status = column.status,
+                                            count = column.totalCount,
+                                            collapsed = column.status in collapsedStatuses,
+                                            onClick = {
+                                                presentationState =
+                                                    presentationState.reduce(
+                                                        TasksPresentationIntent.ToggleStatusCollapsed(column.status)
+                                                    )
+                                            }
+                                        )
+                                    }
+                                    if (column.status !in collapsedStatuses) {
+                                        val firstTaskListItemIndex = nextListItemIndex
+                                        nextListItemIndex += column.tasks.size
+                                        items(
+                                            column.tasks.size,
+                                            key = { index -> "list-card-${column.status.name}-${column.tasks[index].id.value}" }
+                                        ) { index ->
+                                            val task = column.tasks[index]
+                                            val taskListItemIndex = firstTaskListItemIndex + index
+                                            val taskMenuAnchor: (Offset) -> Offset = { anchor ->
+                                                listModeListState.sharedTasksVisibleLazyItemBottomAnchor(
+                                                    rawAnchor = anchor,
+                                                    lazyListRoot = listModeListRoot,
+                                                    itemIndex = taskListItemIndex
+                                                )
+                                            }
+                                            SharedTaskCard(
+                                                task = task,
+                                                updating = state.statusUpdatingTaskId == task.id.value,
+                                                captureLongPressAnchor = !listModeListState.isScrollInProgress,
+                                                onClick = { onOpenTask?.invoke(task) },
+                                                onStatusBadgeClick = { anchor ->
+                                                    statusMenuTask = task
+                                                    statusMenuAnchor = taskMenuAnchor(anchor)
+                                                },
+                                                onLongPress = { anchor ->
+                                                    statusMenuTask = task
+                                                    statusMenuAnchor = taskMenuAnchor(anchor)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+        // --- Overlays. Rendered in z-order: popovers, then status menu, then create dialog.
+        // Each overlay short-circuits on null state so unmounting tears down the gesture
+        // capture overlay too (otherwise the dim layer would swallow taps).
+        when (presentationState.openFilterId) {
+            "channel" ->
+                SlockFilterPopover(
+                    anchor = channelAnchor,
+                    title = "Filter by channel",
+                    searchPlaceholder = "Search channels",
+                    searchText = presentationState.channelSearch,
+                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
+                    options = channelFilterOptions,
+                    selectedIds = visibleContent.selectedChannelNames,
+                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
+                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels) },
+                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
+                )
+            "creator" ->
+                SlockFilterPopover(
+                    anchor = creatorAnchor,
+                    title = "Filter by creator",
+                    searchPlaceholder = "Search creators",
+                    searchText = presentationState.creatorSearch,
+                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
+                    options = creatorFilterOptions,
+                    selectedIds = visibleContent.selectedCreatorIds,
+                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id)) },
+                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators) },
+                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
+                )
+            "assignee" ->
+                SlockFilterPopover(
+                    anchor = assigneeAnchor,
+                    title = "Filter by assignee",
+                    searchPlaceholder = "Search assignees",
+                    searchText = presentationState.assigneeSearch,
+                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
+                    options = assigneeFilterOptions,
+                    selectedIds = visibleContent.selectedAssigneeIds,
+                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
+                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees) },
+                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
+                )
+            else -> Unit
+        }
+
+        statusMenuTask?.let { task ->
+            SlockBaseMenuOverlay(
+                anchor = statusMenuAnchor,
+                items = TaskStatus.values().map { next ->
+                    SlockBaseMenuItem(id = next.name, label = next.label)
+                },
+                selectedId = task.status.name,
+                uppercaseLabels = false,
+                horizontalOffset = 0.dp,
+                verticalOffset = 0.dp,
+                verticalPlacement = SlockFloatingVerticalPlacement.Below,
+                onDismiss = { statusMenuTask = null },
+                onSelect = { id ->
+                    val next = TaskStatus.values().firstOrNull { it.name == id }
+                    statusMenuTask = null
+                    if (next != null && next != task.status) {
+                        onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
+                    }
+                }
+            )
+        }
+
+        if (createDialogOpen && createTasksChannelId != null) {
+            TasksCreateDialog(
+                refreshing = state.refreshing,
+                onDismiss = { createDialogOpen = false },
+                onSubmit = { titles ->
+                    onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                    createDialogOpen = false
+                }
+            )
+        }
+        }
+    }
+}
+
+internal fun sharedTasksLazyItemCount(
+    mode: TasksViewMode,
+    filteredTasksCount: Int,
+    boardColumnCount: Int,
+    hasNavigationError: Boolean,
+    hasStatusUpdateError: Boolean
+): Int {
+    // Retained for tests. The body no longer uses a single LazyColumn but this pure
+    // helper still answers the question "how many top-level items would the loaded
+    // body render?" given the same inputs as before.
+    val fixedItems = 1 + 1 // toolbar + bottom spacer
+    val errorItems = (if (hasNavigationError) 1 else 0) + (if (hasStatusUpdateError) 1 else 0)
+    val bodyItems =
+        when (mode) {
+            TasksViewMode.Board -> boardColumnCount
+            TasksViewMode.List -> filteredTasksCount.takeIf { it > 0 } ?: 1
+        }
+    return fixedItems + errorItems + bodyItems
+}
+
+internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceIn(
+        minimumValue = TasksListDefaultBeyondBoundsItemCount,
+        maximumValue = TasksListMaxBeyondBoundsItemCount
+    )
+
+internal data class SharedTasksLazyItemAnchorInfo(
+    val index: Int,
+    val offset: Int,
+    val size: Int
+)
+
+private fun LazyListState.sharedTasksVisibleLazyItemBottomAnchor(
+    rawAnchor: Offset,
+    lazyListRoot: Offset,
+    itemIndex: Int
+): Offset =
+    sharedTasksVisibleLazyItemBottomAnchor(
+        rawAnchor = rawAnchor,
+        lazyListRoot = lazyListRoot,
+        itemIndex = itemIndex,
+        visibleItems =
+            layoutInfo.visibleItemsInfo.map { item ->
+                SharedTasksLazyItemAnchorInfo(
+                    index = item.index,
+                    offset = item.offset,
+                    size = item.size
+                )
+            }
+    )
+
+internal fun sharedTasksVisibleLazyItemBottomAnchor(
+    rawAnchor: Offset,
+    lazyListRoot: Offset,
+    itemIndex: Int,
+    visibleItems: List<SharedTasksLazyItemAnchorInfo>
+): Offset {
+    val visibleItem = visibleItems.firstOrNull { it.index == itemIndex } ?: return rawAnchor
+    return Offset(
+        x = rawAnchor.x,
+        y = lazyListRoot.y + visibleItem.offset + visibleItem.size
+    )
+}
+
+private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
+    if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
+
+@Composable
+private fun SharedTasksToolbar(
+    channelOptions: List<String>,
+    selectedChannels: Set<String>,
+    creatorOptions: List<MemberProfile>,
+    selectedCreatorIds: Set<String>,
+    assigneeOptions: List<MemberProfile>,
+    selectedAssigneeIds: Set<String>,
+    selectedMode: TasksViewMode,
+    showChannelFilter: Boolean,
+    openFilterId: String?,
+    showCreateButton: Boolean,
+    onModeSelected: (TasksViewMode) -> Unit,
+    onChannelChipClick: (Offset) -> Unit,
+    onCreatorChipClick: (Offset) -> Unit,
+    onAssigneeChipClick: (Offset) -> Unit,
+    onClearAll: () -> Unit,
+    onCreateClick: () -> Unit
+) {
+    val anyFilterActive = selectedChannels.isNotEmpty() || selectedCreatorIds.isNotEmpty() || selectedAssigneeIds.isNotEmpty()
+    val channelChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
+            iconName = SlockLucideIconName.Hash,
+            active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
+            enabled = channelOptions.isNotEmpty(),
+            onClick = onChannelChipClick
+        )
+    }
+    val creatorChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
+            iconName = SlockLucideIconName.CircleUser,
+            active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
+            enabled = creatorOptions.isNotEmpty(),
+            onClick = onCreatorChipClick
+        )
+    }
+    val assigneeChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
+            iconName = SlockLucideIconName.User,
+            active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
+            enabled = assigneeOptions.isNotEmpty(),
+            onClick = onAssigneeChipClick
+        )
+    }
+    val clearAllChip: @Composable () -> Unit = {
+        SlockToolbarChip(
+            label = "Clear all",
+            iconName = SlockLucideIconName.X,
+            active = false,
+            onClick = onClearAll
+        )
+    }
+    val newTaskButton: @Composable () -> Unit = {
+        SlockBrutalActionButton(
+            label = "NEW TASK",
+            leadingIcon = SlockLucideIconName.Plus,
+            backgroundColor = SlockColor.AccentPink,
+            minWidth = 0.dp,
+            minHeight = 30.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            onClick = onCreateClick
+        )
+    }
+    val viewSwitch: @Composable () -> Unit = {
+        SharedTasksSegmentedControl(
+            selectedMode = selectedMode,
+            onModeSelected = onModeSelected
+        )
+    }
+    val filterControls =
+        buildList {
+            if (showChannelFilter) add("channel")
+            add("creator")
+            add("assignee")
+            if (anyFilterActive) add("clear")
+        }
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                items(filterControls.size, key = { index -> "tasks-filter-${filterControls[index]}" }) { index ->
+                    when (filterControls[index]) {
+                        "channel" -> channelChip()
+                        "creator" -> creatorChip()
+                        "assignee" -> assigneeChip()
+                        "clear" -> clearAllChip()
+                    }
+                }
+            }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                tasksToolbarActionRows(maxWidth = maxWidth, showCreateButton = showCreateButton).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            if (row.size == 1 && row.first() == TasksToolbarActionControl.ViewSwitch) {
+                                Arrangement.End
+                            } else {
+                                Arrangement.spacedBy(SlockSpacing.Sm)
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        row.forEachIndexed { index, control ->
+                            if (control == TasksToolbarActionControl.ViewSwitch && index > 0) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                            when (control) {
+                                TasksToolbarActionControl.NewTask -> newTaskButton()
+                                TasksToolbarActionControl.ViewSwitch -> viewSwitch()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+        )
+    }
+}
+
+internal enum class TasksToolbarActionControl {
+    NewTask,
+    ViewSwitch
+}
+
+internal fun tasksToolbarActionRows(
+    maxWidth: Dp,
+    showCreateButton: Boolean
+): List<List<TasksToolbarActionControl>> =
+    if (!showCreateButton) {
+        listOf(listOf(TasksToolbarActionControl.ViewSwitch))
+    } else if (maxWidth >= 480.dp) {
+        listOf(listOf(TasksToolbarActionControl.NewTask, TasksToolbarActionControl.ViewSwitch))
+    } else {
+        listOf(
+            listOf(TasksToolbarActionControl.NewTask),
+            listOf(TasksToolbarActionControl.ViewSwitch)
+        )
+    }
+
+/** Vertical board column. Header is always visible (so collapsed columns can re-expand). */
+@Composable
+private fun SharedTasksBoardColumn(
+    status: TaskStatus,
+    totalCount: Int,
+    tasks: List<TaskSummary>,
+    collapsed: Boolean,
+    updatingTaskId: String?,
+    onToggleCollapsed: () -> Unit,
+    onOpenTask: ((TaskSummary) -> Unit)?,
+    onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
+    onLongPressTask: (TaskSummary, Offset) -> Unit,
+    bottomContentPadding: Dp
+) {
+    val columnListState = rememberLazyListState()
+    var columnListRoot by remember { mutableStateOf(Offset.Zero) }
+    // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
+    // LazyColumn a bounded constraint to scroll within. Without this, the inner list
+    // tries to take infinite height and silently drops scrollability.
+    Column(
+        modifier =
+            Modifier
+                .width(320.dp)
+                .fillMaxHeight()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        BoardSectionHeader(
+            status = status,
+            count = totalCount,
+            collapsed = collapsed,
+            onClick = onToggleCollapsed
+        )
+        if (!collapsed) {
+            if (tasks.isEmpty()) {
+                Text(
+                    text = "No ${status.label.lowercase()} tasks",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            } else {
+                // Nested LazyColumn inside the outer LazyRow lets each column scroll its
+                // own cards independently — mirrors the React board's per-column overflow.
+                LazyColumn(
+                    state = columnListState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { columnListRoot = it.positionInRoot() },
+                    contentPadding = PaddingValues(bottom = bottomContentPadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(tasks.size)
+                ) {
+                    items(tasks.size, key = { i -> "board-task-${tasks[i].id.value}" }) { index ->
+                        val task = tasks[index]
+                        val taskMenuAnchor: (Offset) -> Offset = { anchor ->
+                            columnListState.sharedTasksVisibleLazyItemBottomAnchor(
+                                rawAnchor = anchor,
+                                lazyListRoot = columnListRoot,
+                                itemIndex = index
+                            )
+                        }
+                        SharedTaskCard(
+                            task = task,
+                            updating = updatingTaskId == task.id.value,
+                            captureLongPressAnchor = !columnListState.isScrollInProgress,
+                            onClick = { onOpenTask?.invoke(task) },
+                            onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, taskMenuAnchor(anchor)) },
+                            onLongPress = { anchor -> onLongPressTask(task, taskMenuAnchor(anchor)) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoardSectionHeader(
+    status: TaskStatus,
+    count: Int,
+    collapsed: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        // Rotate chevron to encode collapse direction; mirrors the React `rotate-[-90deg]`.
+        SlockLucideIcon(
+            "chevron-down",
+            modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
+            color = "#FF000000"
+        )
+        SharedTasksStatusLabel(status)
+        Text(
+            text = count.toString(),
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+            color = SlockColor.TextBlack.copy(alpha = 0.5f),
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/** React's TaskCard equivalent: brutalist shadow, source label, title, status badge. */
+@Composable
+private fun SharedTaskCard(
+    task: TaskSummary,
+    updating: Boolean,
+    captureLongPressAnchor: Boolean = true,
+    onClick: () -> Unit,
+    onStatusBadgeClick: (Offset) -> Unit,
+    onLongPress: (Offset) -> Unit
+) {
+    // Capture the card root so a long-press offset reported in card-local coords can be
+    // converted to root coords for the overlay menu anchor.
+    val rootPos = remember { SlockMutableOffsetRef() }
+    val description: String? = null // TaskSummary doesn't carry a description today; placeholder for forward-compat.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(end = 3.dp, bottom = 3.dp)
+            .then(
+                if (captureLongPressAnchor) {
+                    Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = 3.dp, y = 3.dp)
+                .background(SlockColor.ShadowBlack)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .pointerInput(task.id.value, updating) {
+                    // tap = open task; long-press = open status menu. Wrapping both in the
+                    // same pointerInput keeps gesture semantics consistent and avoids
+                    // clickable() swallowing the long-press.
+                    detectTapGestures(
+                        onTap = { if (!updating) onClick() },
+                        onLongPress = { localOffset ->
+                            if (!updating) {
+                                val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                                onLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                            }
+                        }
+                    )
+                }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
+                    Text(
+                        text = source,
+                        style = SlockType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                task.taskNumber?.let { taskNumber ->
+                    Text(
+                        text = "#$taskNumber",
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        maxLines = 1
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+            }
+            Text(
+                text = task.tasksMeaningfulDisplayTitle(),
+                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            description?.let { desc ->
+                Text(
+                    text = desc,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = task.tasksAssigneeDisplayName() ?: "Unassigned",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextBlack.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                // Use the same anchored Button(onClick2) model as thread meta chips so the
+                // status pill reliably wins the tap instead of the parent card gesture.
+                SlockAnchoredMetaChip(
+                    label = if (updating) "Updating" else task.status.label.uppercase(),
+                    iconName = null,
+                    color = task.status.color,
+                    onClick = if (updating) null else onStatusBadgeClick,
+                    modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedTasksStatusLabel(
+    status: TaskStatus,
+    label: String = status.label,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = Modifier
+            .then(modifier)
+            .background(status.color)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = SlockType.TabLabel,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SharedTasksPillButton(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .padding(end = if (selected) 2.dp else 0.dp, bottom = if (selected) 2.dp else 0.dp)
+                .widthIn(min = 44.dp)
+                .heightIn(min = 30.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+        }
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier
+                .matchParentSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
+                    .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Xs))
+                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label.uppercase(),
+                    style = SlockType.SectionLabel,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedTasksSegmentedControl(
+    selectedMode: TasksViewMode,
+    onModeSelected: (TasksViewMode) -> Unit
+) {
+    SegmentedControl(
+        selectedValue = selectedMode.name,
+        options =
+            listOf(
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = "Board", iconName = SlockLucideIconName.Columns3),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = "List", iconName = SlockLucideIconName.LayoutList)
+            ),
+        onValueSelected = { value ->
+            when (value) {
+                TasksViewMode.Board.name -> onModeSelected(TasksViewMode.Board)
+                TasksViewMode.List.name -> onModeSelected(TasksViewMode.List)
+            }
+        }
+    )
+}
+
+@Composable
+private fun SharedTasksNotice(
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.AccentRed.copy(alpha = 0.12f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(text = title, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
+        Text(text = detail, style = SlockType.Caption, color = SlockColor.AccentRed)
+    }
+}
+
+@Composable
+private fun SharedTasksStateBody(
+    title: String,
+    detail: String?,
+    loading: Boolean = false,
+    iconName: SlockLucideIconName = SlockLucideIconName.SquareCheckBig,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    if (loading) {
+        SlockCenteredLoading(message = title)
+        return
+    }
+    SlockEmptyState(
+        title = title,
+        detail = detail,
+        iconName = iconName,
+        actionLabel = actionLabel,
+        onAction = onAction
+    )
+}
+
+private val TaskStatus.label: String
+    get() =
+        when (this) {
+            TaskStatus.Todo -> "Todo"
+            TaskStatus.InProgress -> "In Progress"
+            TaskStatus.InReview -> "In Review"
+            TaskStatus.Done -> "Done"
+            TaskStatus.Closed -> "Closed"
+        }
+
+private val TaskStatus.shortLabel: String
+    get() =
+        when (this) {
+            TaskStatus.Todo -> "Todo"
+            TaskStatus.InProgress -> "Doing"
+            TaskStatus.InReview -> "Review"
+            TaskStatus.Done -> "Done"
+            TaskStatus.Closed -> "Closed"
+        }
+
+private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
+    get() =
+        when (this) {
+            TaskStatus.Todo -> SlockColor.AccentOrange
+            TaskStatus.InProgress -> SlockColor.AccentCyan
+            TaskStatus.InReview -> SlockColor.AccentLavender
+            TaskStatus.Done -> SlockColor.AccentLime
+            TaskStatus.Closed -> SlockColor.EmptyStateGray
+        }
+
+private val SharedTaskCardStatusChipMinWidth = 78.dp
+
+private val TaskStatus.iconName: SlockLucideIconName
+    get() =
+        when (this) {
+            TaskStatus.Todo -> SlockLucideIconName.Circle
+            TaskStatus.InProgress -> SlockLucideIconName.Play
+            TaskStatus.InReview -> SlockLucideIconName.Eye
+            // Registry only ships "circle-check-big"; the smaller variant is not bundled.
+            TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
+            TaskStatus.Closed -> SlockLucideIconName.Ban
+        }
+
+private fun TaskStatus.nextStatus(): TaskStatus =
+    when (this) {
+        TaskStatus.Todo -> TaskStatus.InProgress
+        TaskStatus.InProgress -> TaskStatus.InReview
+        TaskStatus.InReview -> TaskStatus.Done
+        TaskStatus.Done -> TaskStatus.Closed
+        TaskStatus.Closed -> TaskStatus.Todo
+    }
+
+private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
+    val raw = tasksDisplayTitle()
+    val numberLabel = taskNumber?.let { "#$it" } ?: return raw
+    return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
+}
+
+private fun List<TaskSummary>.sortedByTaskDisplayOrder(): List<TaskSummary> =
+    sortedWith(
+        compareByDescending<TaskSummary> { it.updatedAtLabel.toTaskSortValue() }
+            .thenByDescending { it.taskNumber ?: Int.MIN_VALUE }
+            .thenBy { it.title.lowercase() }
+    )
+
+private fun String.toTaskSortValue(): Long {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return Long.MIN_VALUE
+    if (trimmed.all { it.isDigit() }) {
+        val value = trimmed.toLongOrNull() ?: return Long.MIN_VALUE
+        return when (trimmed.length) {
+            10 -> value * 1_000L
+            13 -> value
+            else -> value
+        }
+    }
+    return Long.MIN_VALUE
+}
+
+
+@Composable
+private fun TasksCreateDialog(
+    refreshing: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (List<String>) -> Unit
+) {
+    var titles by remember { mutableStateOf(listOf("")) }
+    val anyNonBlank = titles.any { it.isNotBlank() }
+    Modal(onWillDismiss = { onDismiss() }) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SlockColor.ShadowBlack.copy(alpha = 0.4f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(SlockSpacing.Md)
+                    .widthIn(min = 280.dp, max = 360.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(enabled = false, onClick = {})
+                    .padding(SlockSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Text(text = "New tasks", style = SlockType.PageTitle, color = SlockColor.TextBlack)
+                Text(
+                    text = "Add one or more task titles. Empty rows are ignored.",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+                titles.forEachIndexed { index, value ->
+                    TextField(
+                        value = value,
+                        onValueChange = { next ->
+                            titles = titles.toMutableList().also { it[index] = next }
+                        },
+                        placeholder = "Task title",
+                        placeholderColor = SlockColor.TextMutedGray,
+                        autoFocus = index == 0,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 36.dp)
+                            .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
+                    )
+                }
+                SlockToolbarChip(
+                    label = "Add another",
+                    iconName = SlockLucideIconName.Plus,
+                    active = false,
+                    onClick = { titles = titles + "" }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    SlockToolbarChip(
+                        label = "Cancel",
+                        iconName = null,
+                        active = false,
+                        onClick = onDismiss
+                    )
+                    SlockToolbarChip(
+                        label = if (refreshing) "Creating\u2026" else "Create",
+                        iconName = SlockLucideIconName.Check,
+                        active = true,
+                        enabled = anyNonBlank && !refreshing,
+                        onClick = { onSubmit(titles) }
+                    )
+                }
+            }
+        }
+    }
+}

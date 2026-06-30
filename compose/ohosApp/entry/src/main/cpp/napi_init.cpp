@@ -83,7 +83,7 @@ static char *SlockFontAdapter(const char *fontFamily,
 static std::once_flag g_slockFontAdaptersOnceFlag;
 static std::once_flag g_slockLogAdapterOnceFlag;
 static std::mutex g_slockRealtimeEngineMutex;
-static libshared_kref_ai_slock_compose_data_realtime_SlockRealtimeAppScopeEngine g_slockRealtimeEngine{nullptr};
+static libshared_kref_build_raft_app_data_realtime_SlockRealtimeAppScopeEngine g_slockRealtimeEngine{nullptr};
 
 static void SlockKuiklyLogAdapter(int /*logLevel*/, const char *tag, const char *message) {
     const char *safeTag = tag != nullptr && tag[0] != '\0' ? tag : "KuiklyRender";
@@ -201,11 +201,11 @@ static libshared_ExportedSymbols *SharedSymbols() {
     return libshared_symbols();
 }
 
-static libshared_kref_ai_slock_compose_data_realtime_SlockRealtimeAppScopeEngine EnsureRealtimeEngineLocked() {
+static libshared_kref_build_raft_app_data_realtime_SlockRealtimeAppScopeEngine EnsureRealtimeEngineLocked() {
     if (g_slockRealtimeEngine.pinned == nullptr) {
         auto api = SharedSymbols();
         g_slockRealtimeEngine =
-            api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+            api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
                 .SlockRealtimeAppScopeEngine();
         OH_LOG_Print(LOG_APP, LOG_INFO, kSlockRealtimeLogDomain, "SlockRealtimeEngine",
                      "Created shared app-scope realtime engine");
@@ -230,7 +230,7 @@ static napi_value SlockRealtimeConnectDecision(napi_env env, napi_callback_info 
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
     auto decision =
-        api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+        api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
             .connectDecisionForHost(
                 engine,
                 serverId.c_str(),
@@ -239,7 +239,7 @@ static napi_value SlockRealtimeConnectDecision(napi_env env, napi_callback_info 
                 forceReconnect,
                 connectionStateName.c_str());
 
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeConnectDecision;
+    auto decisionApi = api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeConnectDecision;
     SetBoolProperty(env, result, "shouldConnect", decisionApi.get_shouldConnect(decision));
     SetInt64Property(env, result, "resumeSeq", decisionApi.get_resumeSeq(decision));
     SetBoolProperty(env, result, "sessionChanged", decisionApi.get_sessionChanged(decision));
@@ -259,7 +259,7 @@ static napi_value SlockRealtimeDisconnectForSessionEnd(napi_env env, napi_callba
         auto api = SharedSymbols();
         auto engine = EnsureRealtimeEngineLocked();
         shouldDisconnect =
-            api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+            api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
                 .disconnectForSessionEnd(engine, reason.c_str());
     }
     napi_value result;
@@ -280,10 +280,10 @@ static napi_value SlockRealtimeJoinChannelDecision(napi_env env, napi_callback_i
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
     auto decision =
-        api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+        api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
             .joinChannelDecisionForHost(engine, channelId.c_str(), reason.c_str());
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
-    auto modelApi = api->kotlin.root.ai.slock.compose.model;
+    auto decisionApi = api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
+    auto modelApi = api->kotlin.root.build.raft.app.model;
     auto decidedChannel = decisionApi.get_channelId(decision);
     const char *decidedChannelValue =
         decidedChannel.pinned != nullptr ? modelApi.ChannelId.get_value(decidedChannel) : nullptr;
@@ -311,10 +311,10 @@ static napi_value SlockRealtimeRoomCommandDecision(napi_env env, napi_callback_i
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
     auto decision =
-        api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+        api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
             .roomCommandDecisionForHost(engine, action.c_str(), channelId.c_str(), reason.c_str());
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
-    auto modelApi = api->kotlin.root.ai.slock.compose.model;
+    auto decisionApi = api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeRoomCommandDecision;
+    auto modelApi = api->kotlin.root.build.raft.app.model;
     auto decidedChannel = decisionApi.get_channelId(decision);
     const char *decidedChannelValue =
         decidedChannel.pinned != nullptr ? modelApi.ChannelId.get_value(decidedChannel) : nullptr;
@@ -341,10 +341,10 @@ static napi_value SlockRealtimeRawDecision(napi_env env, napi_callback_info info
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
     auto decision =
-        api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine
+        api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine
             .onRawEvent(engine, eventName.c_str(), rawPayload.c_str());
-    auto decisionApi = api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeRawDecision;
-    auto modelApi = api->kotlin.root.ai.slock.compose.model;
+    auto decisionApi = api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeRawDecision;
+    auto modelApi = api->kotlin.root.build.raft.app.model;
     auto decidedServer = decisionApi.get_serverId(decision);
     const char *decidedServerValue =
         decidedServer.pinned != nullptr ? modelApi.ServerId.get_value(decidedServer) : nullptr;
@@ -361,7 +361,7 @@ static napi_value SlockRealtimeOnAppShown(napi_env env, napi_callback_info /*inf
     std::lock_guard<std::mutex> lock(g_slockRealtimeEngineMutex);
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
-    api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine.onAppShown(engine);
+    api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine.onAppShown(engine);
     napi_value result;
     napi_get_undefined(env, &result);
     return result;
@@ -371,7 +371,7 @@ static napi_value SlockRealtimeOnAppHidden(napi_env env, napi_callback_info /*in
     std::lock_guard<std::mutex> lock(g_slockRealtimeEngineMutex);
     auto api = SharedSymbols();
     auto engine = EnsureRealtimeEngineLocked();
-    api->kotlin.root.ai.slock.compose.data.realtime.SlockRealtimeAppScopeEngine.onAppHidden(engine);
+    api->kotlin.root.build.raft.app.data.realtime.SlockRealtimeAppScopeEngine.onAppHidden(engine);
     napi_value result;
     napi_get_undefined(env, &result);
     return result;

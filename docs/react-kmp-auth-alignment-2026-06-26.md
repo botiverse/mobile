@@ -23,7 +23,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthComponents.kt` + `AuthPages.kt` + `LoginContract.kt`
+`compose/shared/src/commonMain/kotlin/build/raft/app/AuthComponents.kt` + `AuthPages.kt` + `LoginContract.kt`
 - 单文件 vs React 9 files
 - 主要实现: login / register / forgot / auth diagnostics / server gate / choose server / create server
 

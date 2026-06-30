@@ -22,7 +22,7 @@ Use this as the initial scan:
 
 ```bash
 rg -n "collectAsState|DisposableEffect|LaunchedEffect|rememberUpdatedState|bridge\\.log|console\\.log|SlockOhosDiagnostics.record" \
-  compose/shared/src/commonMain/kotlin/ai/slock/compose \
+  compose/shared/src/commonMain/kotlin/build/raft/app \
   compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets
 ```
 

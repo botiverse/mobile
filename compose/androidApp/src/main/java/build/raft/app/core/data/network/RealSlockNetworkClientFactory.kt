@@ -1,21 +1,21 @@
 package build.raft.app.core.data.network
 
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
-import ai.slock.compose.data.KtorSlockNetworkClient
-import ai.slock.compose.data.SharedAuthTokenProvider
-import ai.slock.compose.data.SharedKtorSlockAuthTransport
-import ai.slock.compose.data.SlockAuthApiClient
-import ai.slock.compose.data.SlockNetworkClient
-import ai.slock.compose.network.AuthenticatedKtorTransport
-import ai.slock.compose.network.HttpClientConfig
-import ai.slock.compose.network.SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
-import ai.slock.compose.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
-import ai.slock.compose.network.SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS
-import ai.slock.compose.network.SlockApiClient
-import ai.slock.compose.network.SlockRequestScheduler
-import ai.slock.compose.network.TimeoutConfig
-import ai.slock.compose.network.createPriorityHttpClient
+import build.raft.app.data.KtorSlockNetworkClient
+import build.raft.app.data.SharedAuthTokenProvider
+import build.raft.app.data.SharedKtorSlockAuthTransport
+import build.raft.app.data.SlockAuthApiClient
+import build.raft.app.data.SlockNetworkClient
+import build.raft.app.network.AuthenticatedKtorTransport
+import build.raft.app.network.HttpClientConfig
+import build.raft.app.network.SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
+import build.raft.app.network.SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+import build.raft.app.network.SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS
+import build.raft.app.network.SlockApiClient
+import build.raft.app.network.SlockRequestScheduler
+import build.raft.app.network.TimeoutConfig
+import build.raft.app.network.createPriorityHttpClient
 
 object RealSlockNetworkClientFactory {
     fun create(

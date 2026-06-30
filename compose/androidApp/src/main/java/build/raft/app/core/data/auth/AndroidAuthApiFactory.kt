@@ -1,11 +1,11 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
-import ai.slock.compose.data.SlockAuthApi
-import ai.slock.compose.data.SlockAuthApiClient
-import ai.slock.compose.data.SlockAuthTransport
-import ai.slock.compose.data.SharedKtorSlockAuthTransport
-import ai.slock.compose.data.SLOCK_API_BASE_URL
+import build.raft.app.data.SlockAuthApi
+import build.raft.app.data.SlockAuthApiClient
+import build.raft.app.data.SlockAuthTransport
+import build.raft.app.data.SharedKtorSlockAuthTransport
+import build.raft.app.data.SLOCK_API_BASE_URL
 
 object AndroidAuthApiFactory {
     const val BASE_URL = SLOCK_API_BASE_URL

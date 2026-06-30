@@ -8,8 +8,8 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import build.raft.app.BuildConfig
-import ai.slock.compose.data.SharedAuthDataSource
-import ai.slock.compose.data.SharedAuthResult
+import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedAuthResult
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
@@ -98,18 +98,18 @@ sealed interface GoogleSocialAuthResult {
 
 suspend fun SharedAuthDataSource.completeGoogleSocialAuth(
     result: GoogleSocialAuthResult
-): SharedAuthResult<ai.slock.compose.data.StoredAuthSession> =
+): SharedAuthResult<build.raft.app.data.StoredAuthSession> =
     when (result) {
         is GoogleSocialAuthResult.IdToken ->
             completeGoogleIdTokenLogin(idToken = result.idToken, nonce = result.nonce)
         GoogleSocialAuthResult.Cancelled ->
             SharedAuthResult.Failure(
-                ai.slock.compose.data.SharedAuthErrorCode.Validation,
+                build.raft.app.data.SharedAuthErrorCode.Validation,
                 "Google sign-in canceled."
             )
         is GoogleSocialAuthResult.Failure ->
             SharedAuthResult.Failure(
-                ai.slock.compose.data.SharedAuthErrorCode.Network,
+                build.raft.app.data.SharedAuthErrorCode.Network,
                 result.message
             )
     }

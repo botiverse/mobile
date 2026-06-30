@@ -15,9 +15,9 @@ N/A — React is web, no native. PUX scans KMP/Android + OHOS native layer.
 
 ## KMP source
 
-- `compose/androidApp/src/main/java/ai/slock/android/shared/AndroidAppScopeRealtimeOwner.kt`
-- `compose/androidApp/src/main/java/ai/slock/android/shared/AndroidUnreadNotificationPoster.kt`
-- `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt`
+- `compose/androidApp/src/main/java/build/raft/app/shared/AndroidAppScopeRealtimeOwner.kt`
+- `compose/androidApp/src/main/java/build/raft/app/shared/AndroidUnreadNotificationPoster.kt`
+- `compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt`
 - `compose/ohosApp/entry/src/main/ets/kuikly/`
 - `compose/ohosApp/entry/src/main/ets/kuikly/KuiklyViewDelegate.ets`
 

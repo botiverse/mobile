@@ -1,16 +1,16 @@
 package build.raft.app.core.data.realtime
 
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.PermissionBlocker
-import ai.slock.compose.data.RealtimeRepository
-import ai.slock.compose.data.RealtimeSubscription
-import ai.slock.compose.data.SharedAuthTokenProvider
-import ai.slock.compose.data.realtime.RealtimeAuth
-import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.compose.model.ChannelId
-import ai.slock.compose.model.RealtimeEvent
-import ai.slock.compose.model.ServerId
+import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.DataResult
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RealtimeRepository
+import build.raft.app.data.RealtimeSubscription
+import build.raft.app.data.SharedAuthTokenProvider
+import build.raft.app.data.realtime.RealtimeAuth
+import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.model.ChannelId
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 
 class SessionRealtimeRepository(
@@ -85,7 +85,7 @@ class SessionRealtimeRepository(
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         client.observeEvents(listener)
 
-    private fun ai.slock.compose.data.StoredAuthSession.toRealtimeAuthForSelectedServer(): RealtimeAuth? {
+    private fun build.raft.app.data.StoredAuthSession.toRealtimeAuthForSelectedServer(): RealtimeAuth? {
         val selectedServerId = currentServerId ?: return null
         return RealtimeAuth(
             token = accessToken,

@@ -1,19 +1,19 @@
 package build.raft.app.core.data.realtime
 
-import ai.slock.compose.data.StoredAuthSession as AuthSession
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.StoredAuthSession as AuthSession
+import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.compose.data.CreateChannelRequest
-import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.RealChannelRepository
-import ai.slock.compose.data.RealConversationRepository
-import ai.slock.compose.data.realtime.RealtimeAuth
-import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.compose.data.realtime.RealtimeSocketEvents
-import ai.slock.compose.model.MessageNew
-import ai.slock.compose.model.ServerId
+import build.raft.app.data.CreateChannelRequest
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
+import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.RealConversationRepository
+import build.raft.app.data.realtime.RealtimeAuth
+import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.model.MessageNew
+import build.raft.app.model.ServerId
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -276,13 +276,13 @@ class LiveRealtimeServerScopeTest {
             val password = requireEnv("SLOCK_TEST_PASSWORD")
             val baseUrl = env("SLOCK_BASE_URL") ?: AndroidAuthApiFactory.BASE_URL
             val authStore = InMemoryAuthSessionStore()
-            val authDataSource = ai.slock.compose.data.SharedAuthDataSource(
+            val authDataSource = build.raft.app.data.SharedAuthDataSource(
                 api = AndroidAuthApiFactory.createAuthApi(baseUrl),
                 sessionStore = authStore
             )
 
             val login = runBlocking { authDataSource.login(email, password) }
-            assertTrue(login is ai.slock.compose.data.SharedAuthResult.Success)
+            assertTrue(login is build.raft.app.data.SharedAuthResult.Success)
             return Session(
                 authStore = authStore,
                 session = requireNotNull(authStore.session),

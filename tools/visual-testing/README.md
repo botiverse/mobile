@@ -140,7 +140,7 @@ not by manually navigating the app to an equivalent state. The connected test
 entry point is:
 
 ```text
-compose/androidApp/src/androidTest/java/ai/slock/android/visual/KmpVisualScreenshotCaptureTest.kt
+compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt
 ```
 
 Each test method launches `SlockKuiklyActivity` with a `compose_*_visual` page

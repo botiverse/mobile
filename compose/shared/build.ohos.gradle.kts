@@ -35,7 +35,7 @@ val stageTmmCommonSources by tasks.registering(Sync::class) {
 }
 
 multiplatformResources {
-    multiplatformResourcesPackage = "ai.slock.compose.resources"
+    multiplatformResourcesPackage = "build.raft.app.resources"
     multiplatformResourcesPrefix = "slock_"
     multiplatformResourcesClassName = "MR"
 }
@@ -186,7 +186,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>().configureEa
     }
 }
 
-group = "ai.slock.compose"
+group = "build.raft.app"
 version = System.getenv("kuiklyBizVersion") ?: "1.0.0"
 
 publishing {
@@ -204,7 +204,7 @@ publishing {
 sqldelight {
     databases {
         create("SlockDatabase") {
-            packageName.set("ai.slock.shared.data.local")
+            packageName.set("build.raft.app.shared.data.local")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
             verifyMigrations.set(true)
         }
@@ -259,7 +259,7 @@ dependencies {
 }
 
 android {
-    namespace = "ai.slock.compose.shared"
+    namespace = "build.raft.app.shared"
     compileSdk = 34
     defaultConfig {
         minSdk = 21

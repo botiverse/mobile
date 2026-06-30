@@ -111,10 +111,10 @@ UI render order (top to bottom):
 
 ## 7. File touches
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/DataSnapshots.kt` — add `AgentScopeSet` data class
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/AgentsApi.kt` — add `AgentScopeSet` wire DTO + extension + 3 API methods on `SlockAgentsApiClient`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt` — replace `MembersAgentPlaceholderTab` call with new `MembersAgentPermissionsTab` Composable + helper functions for `AgentScopeGroup` / `AgentScopeRow` data classes (mirroring `AGENT_SCOPE_GROUPS` shape)
-- `compose/shared/src/commonTest/kotlin/ai/slock/compose/SharedCreateAgentDialogTest.kt` (or new test file) — add tests for `loadScopes / saveScopes / resetScopes / dirty detection`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt` — add `AgentScopeSet` data class
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/AgentsApi.kt` — add `AgentScopeSet` wire DTO + extension + 3 API methods on `SlockAgentsApiClient`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt` — replace `MembersAgentPlaceholderTab` call with new `MembersAgentPermissionsTab` Composable + helper functions for `AgentScopeGroup` / `AgentScopeRow` data classes (mirroring `AGENT_SCOPE_GROUPS` shape)
+- `compose/shared/src/commonTest/kotlin/build/raft/app/SharedCreateAgentDialogTest.kt` (or new test file) — add tests for `loadScopes / saveScopes / resetScopes / dirty detection`
 
 ## 8. Acceptance
 

@@ -19,7 +19,7 @@ final class SlockIosRealtimeHost: NSObject {
         let lastSeq: Int64
     }
 
-    private let queue = DispatchQueue(label: "ai.slock.ios.realtime.host")
+    private let queue = DispatchQueue(label: "build.raft.app.ios.realtime.host")
     private var manager: SocketManager?
     private var socket: SocketIOClient?
     private var connectParams: ConnectParams?

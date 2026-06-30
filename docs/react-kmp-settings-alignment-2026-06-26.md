@@ -16,7 +16,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt` (~10000 lines, 巨型文件)
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt` (~10000 lines, 巨型文件)
 - `SettingsAccountPage.kt` / `SettingsBillingPage.kt` / `SettingsComputersPage.kt` / `SettingsStandalonePageData.kt` / `SettingsStandaloneStore.kt`
 - @Android-Settings-Integrator lane
 

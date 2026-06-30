@@ -270,13 +270,13 @@ These claims from the older draft should not be repeated:
 
 ```bash
 ./gradlew :shared:testDebugUnitTest \
-  --tests ai.slock.compose.data.SharedAgentDetailStoreTest \
-  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityPreservesServerSeq \
-  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityCompactionEntryProjectsWorkingStatus \
-  --tests ai.slock.compose.data.realtime.RealtimeEventMapperTest.agentActivityPreservesTrajectoryEntries \
-  --tests ai.slock.compose.data.SharedServerMembersStoreTest.applyPresencePatchesCachedAgentRoster \
-  --tests ai.slock.compose.data.SharedServerMembersStoreTest.applyPresenceRetainsFactBeforeRosterLoads \
-  --tests ai.slock.compose.data.SharedHomeStoreTest.realtimePresenceFlushKeepsNewestSequencedPresence
+  --tests build.raft.app.data.SharedAgentDetailStoreTest \
+  --tests build.raft.app.data.realtime.RealtimeEventMapperTest.agentActivityPreservesServerSeq \
+  --tests build.raft.app.data.realtime.RealtimeEventMapperTest.agentActivityCompactionEntryProjectsWorkingStatus \
+  --tests build.raft.app.data.realtime.RealtimeEventMapperTest.agentActivityPreservesTrajectoryEntries \
+  --tests build.raft.app.data.SharedServerMembersStoreTest.applyPresencePatchesCachedAgentRoster \
+  --tests build.raft.app.data.SharedServerMembersStoreTest.applyPresenceRetainsFactBeforeRosterLoads \
+  --tests build.raft.app.data.SharedHomeStoreTest.realtimePresenceFlushKeepsNewestSequencedPresence
 ```
 
 What this pins:
@@ -295,9 +295,9 @@ What this pins:
 
 ```bash
 ./gradlew :shared:testDebugUnitTest \
-  --tests ai.slock.compose.data.SharedServerMembersStoreTest.memberStatusFlowEmitsOnlyForTargetMemberStatusChanges \
-  --tests ai.slock.compose.ThreadPayloadTest.serverMembersPresenceFactResolvesAgentStatusWithoutLoadedRoster \
-  --tests ai.slock.compose.ThreadPayloadTest.threadAgentStatusLookupUsesServerMembersStateInsteadOfPayloadSnapshot
+  --tests build.raft.app.data.SharedServerMembersStoreTest.memberStatusFlowEmitsOnlyForTargetMemberStatusChanges \
+  --tests build.raft.app.ThreadPayloadTest.serverMembersPresenceFactResolvesAgentStatusWithoutLoadedRoster \
+  --tests build.raft.app.ThreadPayloadTest.threadAgentStatusLookupUsesServerMembersStateInsteadOfPayloadSnapshot
 ```
 
 What this pins:

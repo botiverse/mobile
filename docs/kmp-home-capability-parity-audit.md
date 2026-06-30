@@ -36,7 +36,7 @@ regression coverage.
 
 ## Code Evidence
 
-- Real shared shell creates `ComposeLocalWriteThrough` from `RelationalComposeLocalDataStore` and passes it into `SharedHomeDataSource` in `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt`.
+- Real shared shell creates `ComposeLocalWriteThrough` from `RelationalComposeLocalDataStore` and passes it into `SharedHomeDataSource` in `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`.
 - `SharedHomeDataSource.loadHome()` only returns cached Home when `priority == DataRequestPriority.Background`; otherwise it fetches network and writes through the now-injected `localWriteThrough`.
 - `SharedHomeStore.load()` calls `dataSource.loadHome(..., priority = DataRequestPriority.Visible)` for Start, Refresh, and SelectServer.
 

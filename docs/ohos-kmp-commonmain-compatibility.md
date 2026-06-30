@@ -27,7 +27,7 @@ not available to the OHOS Kotlin/Native compiler.
 Use the existing expect/actual clock instead:
 
 ```kotlin
-import ai.slock.compose.data.defaultNowMillis
+import build.raft.app.data.defaultNowMillis
 
 val now = defaultNowMillis()
 ```

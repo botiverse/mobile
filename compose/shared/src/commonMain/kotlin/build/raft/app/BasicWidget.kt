@@ -1,0 +1,840 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.coil3.AsyncImagePainter
+import com.tencent.kuikly.compose.extension.RefFunc
+import com.tencent.kuikly.compose.extension.keyboardHeightChange
+import com.tencent.kuikly.compose.extension.nativeRef
+import com.tencent.kuikly.compose.extension.setProp
+import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
+import com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi
+import com.tencent.kuikly.compose.foundation.Image
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.calculatePan
+import com.tencent.kuikly.compose.foundation.gestures.calculateZoom
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.absoluteOffset
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.lazy.LazyItemScope
+import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.foundation.text.BasicTextField
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
+import com.tencent.kuikly.compose.foundation.text.KeyboardActions
+import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.clip
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
+import com.tencent.kuikly.compose.ui.draw.scale
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
+import com.tencent.kuikly.compose.ui.focus.focusRequester
+import com.tencent.kuikly.compose.ui.focus.onFocusChanged
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Brush
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.SolidColor
+import com.tencent.kuikly.compose.ui.input.pointer.PointerId
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
+import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
+import com.tencent.kuikly.compose.ui.layout.layout
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.TextLayoutResult
+import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.IntSize
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.max
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.window.Dialog
+import com.tencent.kuikly.compose.ui.window.DialogProperties
+import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.event.EventHandlerFn
+import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.views.KeyboardParams
+import com.tencent.kuikly.core.views.ModalView
+import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
+
+fun Modifier.backgroundColor(color: Color): Modifier {
+    return this.background(color)
+}
+
+@Composable
+fun SlockCachedImage(
+    source: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+    onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
+) {
+    val painter = rememberAsyncImagePainter(source)
+    if (onImageStateChange != null) {
+        val imageState by painter.state.collectAsState()
+        val stateCallback by rememberUpdatedState(onImageStateChange)
+        LaunchedEffect(imageState) {
+            stateCallback.invoke(imageState)
+        }
+    }
+    Image(
+        painter = painter,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = contentScale
+    )
+}
+
+@Composable
+internal fun SlockAspectFitImagePreviewSurface(
+    source: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    placeholderLabel: String = "IMG",
+    backgroundColor: Color = SlockColor.SurfaceCream,
+    borderWidth: Dp = SlockStroke.Default,
+    zoomable: Boolean = false,
+    showLoadingIndicator: Boolean = false
+) {
+    var imageState by remember(source) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    Box(
+        modifier = modifier
+            .background(backgroundColor)
+            .border(borderWidth, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        if (source != null) {
+            if (zoomable) {
+                SlockZoomableCachedImage(
+                    source = source,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    onImageStateChange = { imageState = it }
+                )
+            } else {
+                SlockCachedImage(
+                    source = source,
+                    contentDescription = contentDescription,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                    onImageStateChange = { imageState = it }
+                )
+            }
+            if (showLoadingIndicator && imageState !is AsyncImagePainter.State.Success) {
+                SlockImagePreviewLoadingOverlay(
+                    failed = imageState is AsyncImagePainter.State.Error,
+                    placeholderLabel = placeholderLabel,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else {
+            Text(
+                text = placeholderLabel,
+                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockZoomableCachedImage(
+    source: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
+) {
+    var scale by remember(source) { mutableStateOf(1f) }
+    var pan by remember(source) { mutableStateOf(Offset.Zero) }
+    var viewportSize by remember(source) { mutableStateOf(IntSize.Zero) }
+
+    fun clampedPan(candidate: Offset, currentScale: Float): Offset {
+        if (currentScale <= 1f || viewportSize.width == 0 || viewportSize.height == 0) {
+            return Offset.Zero
+        }
+        val maxX = viewportSize.width * (currentScale - 1f) / 2f
+        val maxY = viewportSize.height * (currentScale - 1f) / 2f
+        return Offset(
+            x = candidate.x.coerceIn(-maxX, maxX),
+            y = candidate.y.coerceIn(-maxY, maxY)
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .clipToBounds()
+            .onSizeChanged { viewportSize = it }
+            .pointerInput(source) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pastTouchSlop = false
+                    val touchSlop = viewConfiguration.touchSlop
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.any { it.isConsumed }) {
+                            break
+                        }
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        val shouldHandle =
+                            zoomChange != 1f ||
+                                scale > 1f
+                        if (!pastTouchSlop && shouldHandle) {
+                            val zoomMotion = abs(1f - zoomChange) * max(viewportSize.width, viewportSize.height)
+                            val panMotion = panChange.getDistance()
+                            pastTouchSlop = zoomMotion > touchSlop || panMotion > touchSlop
+                        }
+                        if (pastTouchSlop && shouldHandle) {
+                            val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
+                            scale = nextScale
+                            pan = clampedPan(pan + panChange, nextScale)
+                            event.changes.forEach {
+                                if (it.positionChanged()) {
+                                    it.consume()
+                                }
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        SlockCachedImage(
+            source = source,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            onImageStateChange = onImageStateChange,
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(pan.x.roundToInt(), pan.y.roundToInt()) }
+                .scale(scale)
+        )
+    }
+}
+
+@Composable
+private fun SlockImagePreviewLoadingOverlay(
+    failed: Boolean,
+    placeholderLabel: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        if (failed) {
+            Text(
+                text = placeholderLabel,
+                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        } else {
+            SlockHeaderRefreshIndicator()
+        }
+    }
+}
+
+fun Modifier.margin(
+    start: Float = 0f,
+    top: Float = 0f,
+    end: Float = 0f,
+    bottom: Float = 0f
+): Modifier {
+    val ntop = max(0f, top)
+    return this.padding(
+        start = start.dp,
+        top = ntop.dp,
+        end = end.dp,
+        bottom = bottom.dp
+    )
+}
+
+//@Deprecated(message = "Use Image(painter, contentDescription) instead")
+//@Composable
+//@NonRestartableComposable
+//fun Image(
+//    src: String? = null,
+//    contentDescription: String? = null,
+//    modifier: Modifier = Modifier,
+//    alignment: Alignment = Alignment.Center,
+//    contentScale: ContentScale = ContentScale.Fit,
+//    alpha: Float = DefaultAlpha,
+//    placeholderSrc: Any? = null,
+//    borderRadius: Float = 0f,
+//) {
+//    val placeholder = when (placeholderSrc) {
+//        is Painter -> placeholderSrc
+//        is DrawableResource -> painterResource(placeholderSrc)
+//        is String -> rememberAsyncImagePainter(placeholderSrc)
+//        else -> null
+//    }
+//    val painter = if (src.isNullOrEmpty()) {
+//        ColorPainter(Color.Transparent)
+//    } else {
+//        rememberAsyncImagePainter(src, placeholder = placeholder)
+//    }
+//    Image(
+//        painter = painter,
+//        contentDescription = contentDescription,
+//        modifier = if (borderRadius > 0f) modifier.clip(RoundedCornerShape(borderRadius)) else modifier,
+//        alignment = alignment,
+//        contentScale = contentScale,
+//        alpha = alpha,
+//    )
+//}
+
+fun Modifier.margin(
+    start: Dp = 0.dp,
+    top: Dp = 0.dp,
+    end: Dp = 0.dp,
+    bottom: Dp = 0.dp
+): Modifier {
+    val ntop = max(0.dp, top)
+    return this.padding(
+        start = start,
+        top = ntop,
+        end = end,
+        bottom = bottom
+    )
+}
+
+fun Modifier.padding(
+    start: Float = 0f,
+    top: Float = 0f,
+    end: Float = 0f,
+    bottom: Float = 0f
+): Modifier {
+    return this.padding(
+        start = start.dp,
+        top = top.dp,
+        end = end.dp,
+        bottom = bottom.dp
+    )
+}
+
+fun Modifier.height(height: Float = 0f): Modifier {
+    return this.height(height.dp)
+}
+
+fun Modifier.width(width: Float = 0f): Modifier {
+    return this.width(width.dp)
+}
+
+fun Modifier.absoluteOffset(x: Float, y: Float): Modifier {
+    return this.absoluteOffset(x.dp, y.dp)
+}
+
+fun Modifier.offset(x: Float, y: Float): Modifier {
+    return this.offset(x.dp, y.dp)
+}
+
+fun Modifier.offsetWithParentAdjustment(
+    x: Dp = 0.dp,
+    y: Dp = 0.dp
+) = this.layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val xPx = x.roundToPx()
+    val yPx = y.roundToPx()
+
+    // 计算实际需要的宽度和高度
+    val width = placeable.width + xPx
+    val height = placeable.height + yPx
+
+    layout(width, height) {
+        placeable.placeRelative(xPx, yPx)
+    }
+}
+
+fun LazyListScope.Hover(
+    modifier: Modifier,
+    key: Any? = null,
+    hoverMarginTop: Dp = 0.dp,
+    listState: LazyListState,
+    content: @Composable LazyItemScope.() -> Unit
+) {
+    stickyHeaderWithMarginTop(
+        key = key,
+        hoverMarginTop = hoverMarginTop,
+        listState = listState
+    ) {
+        Box(modifier = modifier) {
+            content()
+        }
+    }
+}
+
+fun Modifier.borderRadius(radius: Dp) = clip(RoundedCornerShape(radius))
+
+fun Color.changeAlpha(alpha: Float) = this.copy(alpha = alpha)
+
+/**
+ * 实现类似 iOS viewWillAppear 事件的 Modifier 扩展
+ * @param onAppear 组件首次组合时触发的回调（仅执行一次）
+ * @param key 可选控制触发条件的重组键值
+ */
+@Composable
+fun Modifier.willAppear(onAppear: () -> Unit): Modifier {
+    var hasAppeared by remember { mutableStateOf(false) }
+    if (!hasAppeared) {
+        return this.onGloballyPositioned {
+            if (!hasAppeared) {
+                hasAppeared = true
+                onAppear()
+            }
+        }
+    } else {
+        return this
+    }
+}
+
+fun Modifier.touchListener(
+    onTouchEvent: (type: TouchType, position: Offset) -> Unit
+) = pointerInput(Unit) {
+    forEachGesture {
+        awaitPointerEventScope {
+            // 初始化触控点跟踪
+            var currentPointerId: PointerId? = null
+
+            while (true) {
+                val event = awaitPointerEvent()
+                event.changes.forEach { change ->
+                    when {
+                        // 按下事件
+                        change.pressed && currentPointerId == null -> {
+                            currentPointerId = change.id
+                            onTouchEvent(TouchType.Down, change.position)
+                        }
+
+                        // 移动事件（需匹配当前跟踪的指针）
+                        change.id == currentPointerId && change.positionChanged() -> {
+                            onTouchEvent(TouchType.Move, change.position)
+                        }
+
+                        // 抬起/取消事件
+                        !change.pressed && change.id == currentPointerId -> {
+                            onTouchEvent(TouchType.Up, change.position)
+                            currentPointerId = null
+                            return@awaitPointerEventScope
+                        }
+                    }
+//                    change.consume() // 阻止事件冒泡
+                }
+            }
+        }
+    }
+}
+
+enum class TouchType { Down, Move, Up }
+
+private object SlockPressTokens {
+    val ButtonOffset = 2.dp
+}
+
+private fun Modifier.slockPressedOffset(
+    pressed: Boolean,
+    pressOffset: Dp
+): Modifier {
+    return if (pressed && pressOffset > 0.dp) {
+        this.offset(x = pressOffset, y = pressOffset)
+    } else {
+        this
+    }
+}
+
+/**
+ * 创建一个 Modal 实例。Modal 是一个自定义的模态窗口组件，用于在当前页面上显示一个浮动窗口。
+ * 当模态窗口显示时，用户无法与背景页面进行交互，只能与模态窗口内的内容进行交互。
+ * 模态窗口可以用于显示表单、提示信息、详细信息等场景。
+ * 注：1.Modal容器尺寸和屏幕等大
+ *    2.若想关闭模态，可直接通过if为false条件不创建Modal即可
+ *  @param modifier 可不用设置size，因为默认固定和屏幕等大
+ *  @param content 构建全屏模态下的UI内容
+ */
+@Composable
+fun Modal(
+    modifier: Modifier = Modifier,
+    ref: RefFunc<ModalView>? = null,
+    /* 物理键触发时调用该事件（目前仅支持鸿蒙平台） */
+    onWillDismiss: EventHandlerFn? = null,
+    content: (@Composable () -> Unit)
+) {
+    Dialog(
+        onDismissRequest = { onWillDismiss?.invoke("") },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            scrimColor = Color.Transparent
+        )
+    ) {
+        Box(modifier = modifier.fillMaxSize()) {
+            content()
+        }
+    }
+}
+
+@Composable
+fun Modifier.dragEnable(enable: Boolean): Modifier {
+    return this.setProp("dragEnable", enable)
+}
+
+@Composable
+internal fun Button(
+    onClick: () -> Unit = {},
+    onClick2: ((Offset) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    pressFeedback: Boolean = true,
+    pressOffset: Dp = SlockPressTokens.ButtonOffset,
+    content: (@Composable () -> Unit) = {}
+) {
+    val rootPosition = remember { SlockMutableOffsetRef() }
+    var pressed by remember { mutableStateOf(false) }
+    val onClickUpdate = rememberUpdatedState(onClick)
+    val onClick2Update = rememberUpdatedState(onClick2)
+    val enabledUpdate = rememberUpdatedState(enabled)
+    Box(
+        modifier = Modifier
+            .then(
+                if (onClick2 != null) {
+                    Modifier.onGloballyPositioned {
+                        rootPosition.update(it.positionInRoot())
+                    }
+                } else {
+                    Modifier
+                }
+            )
+            .pointerInput(enabled, pressFeedback) {
+                detectTapGestures(
+                    onPress = {
+                        if (enabledUpdate.value && pressFeedback) {
+                            pressed = true
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                pressed = false
+                            }
+                        }
+                    },
+                    onTap = { offset ->
+                        if (enabledUpdate.value) {
+                            onClickUpdate.value.invoke()
+                            onClick2Update.value?.invoke(
+                                Offset(
+                                    offset.x + rootPosition.value.x,
+                                    offset.y + rootPosition.value.y
+                                )
+                            )
+                        }
+                    }
+                )
+            }
+            .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
+            .then(modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+internal class Border(
+    val lineWidth: Dp,
+    val lineStyle: BorderStyle,
+    val color: Color
+)
+
+internal fun Modifier.border(border: Border) =
+    this.border(width = border.lineWidth, color = border.color)
+
+@Composable
+internal fun TextField(
+    modifier: Modifier = Modifier,
+    value: String = "",
+    placeholder: String = "",
+    autoFocus: Boolean = true,
+    onValueChange: (String) -> Unit,
+    onBlur: () -> Unit = {},
+    onFocus: () -> Unit = {},
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    textStyle: TextStyle = TextStyle.Default,
+    placeholderColor: Color? = null,
+    cursorBrush: Brush = SolidColor(Color.Black),
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: (TextLayoutResult) -> Unit = {},
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    systemNewlineAction: Boolean = false,
+    /**
+     * Task #43 QA-4: visual transformation for password-typed inputs.
+     * When non-null (e.g. [PasswordVisualTransformation()]), the
+     * underlying value stays intact but the rendered text is masked.
+     * Show/Hide toggles in the caller just switch this parameter.
+     */
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    contentAlignment: Alignment = Alignment.CenterStart
+) {
+    var lastFocus by remember { mutableStateOf(false) }
+
+    val currentOnBlur by rememberUpdatedState(onBlur)
+    val currentOnFocus by rememberUpdatedState(onFocus)
+    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+
+    val updatedModifier = modifier
+        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        .keyboardHeightChange(currentKeyboardHeightChange)
+        .focusRequester(focusRequester)
+        .onFocusChanged {
+            if (it.isFocused) {
+                if (!lastFocus) {
+                    currentOnFocus()
+                    lastFocus = true
+                }
+            } else if (lastFocus) {
+                currentOnBlur()
+                lastFocus = false
+            }
+        }
+    BasicTextField(
+        modifier = updatedModifier,
+        value = value,
+        onValueChange = currentOnValueChange,
+        textStyle = textStyle,
+        maxLines = maxLines,
+        onTextLayout = currentOnTextLayout,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        cursorBrush = cursorBrush,
+        visualTransformation = visualTransformation,
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = contentAlignment) {
+                if (value.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
+                        color = placeholderColor ?: textStyle.color,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+        }
+    )
+
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+}
+
+@Composable
+internal fun TextField(
+    modifier: Modifier = Modifier,
+    value: TextFieldValue,
+    placeholder: String = "",
+    autoFocus: Boolean = true,
+    onValueChange: (TextFieldValue) -> Unit,
+    onBlur: () -> Unit = {},
+    onFocus: () -> Unit = {},
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    textStyle: TextStyle = TextStyle.Default,
+    placeholderColor: Color? = null,
+    cursorBrush: Brush = SolidColor(Color.Black),
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: (TextLayoutResult) -> Unit = {},
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    systemNewlineAction: Boolean = false,
+    contentAlignment: Alignment = Alignment.CenterStart
+) {
+    var lastFocus by remember { mutableStateOf(false) }
+
+    val currentOnBlur by rememberUpdatedState(onBlur)
+    val currentOnFocus by rememberUpdatedState(onFocus)
+    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+
+    val updatedModifier = modifier
+        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        .keyboardHeightChange(currentKeyboardHeightChange)
+        .focusRequester(focusRequester)
+        .onFocusChanged {
+            if (it.isFocused) {
+                if (!lastFocus) {
+                    currentOnFocus()
+                    lastFocus = true
+                }
+            } else if (lastFocus) {
+                currentOnBlur()
+                lastFocus = false
+            }
+        }
+    BasicTextField(
+        modifier = updatedModifier,
+        value = value,
+        onValueChange = currentOnValueChange,
+        textStyle = textStyle,
+        maxLines = maxLines,
+        onTextLayout = currentOnTextLayout,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        cursorBrush = cursorBrush,
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = contentAlignment) {
+                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
+                        color = placeholderColor ?: textStyle.color,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+        }
+    )
+
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+}
+
+private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
+private const val SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP = "numberOfLines"
+
+@Composable
+fun Modifier.dtReport(enable: Boolean): Modifier {
+    var ref1 = remember { 0 }
+    var ref2 = remember { 9 }
+    return this.setProp("dragEnable", enable)
+        .nativeRef {
+            println("<top>.dtReport1")
+            ref1 = this.nativeRef
+        }.nativeRef {
+            println("<top>.dtReport2")
+            ref2 = this.nativeRef
+
+        }.clickable {
+            println("<top>.clickable1 ref1=${ref1} ${ref2}")
+        }.clickable {
+            println("<top>.clickable2 ref1=${ref1} ${ref2}")
+        }
+}
+
+fun Modifier.appearPercentage(
+    onPercentageChanged: (Float) -> Unit
+): Modifier = this.then(
+    Modifier.onGloballyPositioned { layoutCoordinates ->
+        val windowBounds =
+            layoutCoordinates.parentLayoutCoordinates?.size?.let { IntSize(it.width, it.height) }
+        val layoutBounds = layoutCoordinates.boundsInRoot()
+        windowBounds?.let { bounds ->
+            val visibleHeight = layoutBounds.height.coerceAtMost(bounds.height.toFloat())
+            val visibleWidth = layoutBounds.width.coerceAtMost(bounds.width.toFloat())
+            val percentageHeight = visibleHeight / bounds.height.toFloat()
+            val percentageWidth = visibleWidth / bounds.width.toFloat()
+            onPercentageChanged(kotlin.math.min(percentageWidth, percentageHeight))
+        }
+    }
+)
+
+@Composable
+internal fun Modifier.onSizeChangedDp(
+    onSizeChanged: (IntSize) -> Unit
+): Modifier {
+    val density = LocalDensity.current
+    return this.onSizeChanged {
+        with(density) {
+            val dpSize = IntSize(
+                width = it.width.toDp().value.toInt(),
+                height = it.height.toDp().value.toInt()
+            )
+            onSizeChanged(dpSize)
+        }
+    }
+}
+
+@Composable
+fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Unit) {
+    val localPager = LocalActivity.current.getPager()
+    val routerModule = localPager.getModule<RouterModule>(RouterModule.MODULE_NAME)
+    val title = localPager.pageData.params.optString("pageTitle", titleInput)
+
+    Column {
+        Spacer(modifier = Modifier.height(40.dp))
+        Box {
+            Text(
+                text = "<",
+                style = SlockType.PageTitle
+                    .copy(fontSize = 22.sp, lineHeight = 28.sp)
+                    .withSlockFontWeight(FontWeight.SemiBold),
+                modifier = Modifier
+                    .padding(vertical = 12.dp, horizontal = 12.dp)
+                    .clickable {
+                        routerModule?.closePage()
+                    }
+            )
+            Text(
+                title,
+                style = SlockType.PageTitle
+                    .copy(fontSize = 22.sp, lineHeight = 28.sp)
+                    .withSlockFontWeight(FontWeight.SemiBold),
+                textAlign = TextAlign.Center,
+                color = Color(0xFF333333),
+                modifier = Modifier
+                    .padding(vertical = 12.dp, horizontal = 12.dp)
+                    .fillMaxWidth(),
+            )
+        }
+        content.invoke()
+    }
+}

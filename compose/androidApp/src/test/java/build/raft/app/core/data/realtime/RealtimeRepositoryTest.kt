@@ -1,41 +1,41 @@
 package build.raft.app.core.data.realtime
 
-import ai.slock.compose.data.StoredAuthServer as AuthServer
-import ai.slock.compose.data.StoredAuthSession as AuthSession
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
-import ai.slock.compose.data.StoredAuthUser as AuthUser
-import ai.slock.compose.data.AuthApiResult
-import ai.slock.compose.data.AuthLoginResponse
-import ai.slock.compose.data.AuthMobileOAuthStartResponse
-import ai.slock.compose.data.AuthRefreshResponse
-import ai.slock.compose.data.AuthSocialCompleteResponse
-import ai.slock.compose.data.SlockAuthApi
-import ai.slock.compose.data.StoredAuthServer
-import ai.slock.compose.data.StoredAuthUser
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.RealtimeSubscription
-import ai.slock.compose.data.SharedAuthTokenProvider
-import ai.slock.compose.data.realtime.RealtimeAuth
-import ai.slock.compose.data.realtime.RealtimeConnectRequest
-import ai.slock.compose.data.realtime.RealtimeSocketEvents
-import ai.slock.compose.data.realtime.RealtimeSocketTransport
-import ai.slock.compose.model.AgentStatus
-import ai.slock.compose.model.ChannelId
-import ai.slock.compose.model.Heartbeat
-import ai.slock.compose.model.MemberKind
-import ai.slock.compose.model.MemberPresenceUpdated
-import ai.slock.compose.model.MessageNew
-import ai.slock.compose.model.MessageType
-import ai.slock.compose.model.Presence
-import ai.slock.compose.model.RealtimeEvent
-import ai.slock.compose.model.RealtimeRefreshRequired
-import ai.slock.compose.model.RealtimeRefreshScope
-import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.ServerMembershipRemoved
-import ai.slock.compose.model.SyncResumeResponse
-import ai.slock.compose.model.TaskStatus
-import ai.slock.compose.model.TaskUpdated
-import ai.slock.compose.model.ThreadUpdated
+import build.raft.app.data.StoredAuthServer as AuthServer
+import build.raft.app.data.StoredAuthSession as AuthSession
+import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.StoredAuthUser as AuthUser
+import build.raft.app.data.AuthApiResult
+import build.raft.app.data.AuthLoginResponse
+import build.raft.app.data.AuthMobileOAuthStartResponse
+import build.raft.app.data.AuthRefreshResponse
+import build.raft.app.data.AuthSocialCompleteResponse
+import build.raft.app.data.SlockAuthApi
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.DataResult
+import build.raft.app.data.RealtimeSubscription
+import build.raft.app.data.SharedAuthTokenProvider
+import build.raft.app.data.realtime.RealtimeAuth
+import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.RealtimeSocketTransport
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.ChannelId
+import build.raft.app.model.Heartbeat
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageType
+import build.raft.app.model.Presence
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerMembershipRemoved
+import build.raft.app.model.SyncResumeResponse
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskUpdated
+import build.raft.app.model.ThreadUpdated
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine

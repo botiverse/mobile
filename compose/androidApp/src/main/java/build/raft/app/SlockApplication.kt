@@ -5,8 +5,8 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import build.raft.app.core.data.diagnostics.SlockCrashReporter
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.data.warmUpSlockJsonParseDispatcher
+import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.warmUpSlockJsonParseDispatcher
 import com.tencent.kuiklybase.markdown.model.warmUpSlockMarkdownParseDispatcher
 import kotlinx.coroutines.runBlocking
 

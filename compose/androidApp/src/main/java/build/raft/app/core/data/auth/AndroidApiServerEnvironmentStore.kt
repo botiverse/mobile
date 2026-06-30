@@ -1,9 +1,9 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
-import ai.slock.compose.data.SharedApiEnvironmentStore
-import ai.slock.compose.data.SharedSettingsApiEnvironmentOption
-import ai.slock.compose.data.SharedSettingsApiEnvironmentRequest
+import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.data.SharedSettingsApiEnvironmentOption
+import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 
 data class AndroidApiServerEnvironment(
     val key: String,

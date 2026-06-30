@@ -1,0 +1,2795 @@
+package build.raft.app
+
+import build.raft.app.base.BridgeAttachmentDownloadProgress
+import build.raft.app.base.Utils
+import build.raft.app.base.toBridgeAttachmentDownloadProgress
+import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
+import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.ThreadApiResult
+import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.model.MemberId
+import build.raft.app.model.SlockWorkspaceFilePreview
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.layout.aspectRatio
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.extension.nativeRef
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
+import com.tencent.kuikly.compose.material3.LinearProgressIndicator
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.StrokeCap
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.DeclarativeBaseView
+import com.tencent.kuikly.core.base.ViewRef
+import com.tencent.kuikly.core.module.NotifyModule
+import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.core.views.PlayState
+import com.tencent.kuikly.core.views.VideoPlayControl
+import com.tencent.kuikly.core.views.VideoView
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlin.time.TimeSource
+
+internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
+internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+private const val SlockFilePreviewOpenWithActionId = "open-with"
+private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
+private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
+private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
+private const val SlockFilePreviewMarkdownMaxChars = 80_000
+private const val SlockFilePreviewTextMaxChars = 96_000
+private const val SlockFilePreviewLoadingLabel = "Loading..."
+private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
+
+private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
+
+@Serializable
+internal data class WireSlockFilePreviewLaunchPayload(
+    val previewId: String = ""
+)
+
+internal class SlockFilePreviewStore(
+    private val maxEntries: Int = 32
+) {
+    private var nextId = 0
+    private val entries = LinkedHashMap<String, SlockFilePreviewPayload>()
+
+    fun put(payload: SlockFilePreviewPayload): String {
+        nextId += 1
+        val id = "file-preview-$nextId"
+        entries[id] = payload
+        while (entries.size > maxEntries) {
+            val firstKey = entries.keys.firstOrNull() ?: break
+            entries.remove(firstKey)
+        }
+        return id
+    }
+
+    fun get(id: String): SlockFilePreviewPayload? =
+        entries[id]
+}
+
+@Serializable
+internal data class SlockFilePreviewPayload(
+    val kind: String = "unsupported",
+    val title: String = "File preview",
+    val subtitle: String = "",
+    val name: String = "",
+    val path: String = "",
+    val meta: String = "",
+    val content: String = "",
+    val markdown: Boolean = false,
+    val imageUrl: String? = null,
+    val message: String = "",
+    val error: String? = null,
+    val externalUrl: String? = null,
+    val videoUrl: String? = null,
+    val externalFileName: String = "",
+    val externalMimeType: String = "",
+    val source: String = "",
+    val attachmentId: String = "",
+    val agentId: String = "",
+    val imageGallery: List<SlockFilePreviewGalleryImage> = emptyList(),
+    val imageGalleryIndex: Int = 0,
+    val composerImageThreadKey: String = "",
+    val composerImageActionId: String = "",
+    val composerImageFileRef: String = "",
+    val composerImageFileName: String = "",
+    val composerImageMimeType: String = "",
+    val composerImageSizeBytes: Long? = null,
+    val composerImagePreviewUri: String = "",
+    val composerImageReplaceAttachmentId: String = "",
+    val composerImageCanComplete: Boolean = false,
+    val composerImageCanEdit: Boolean = false
+)
+
+@Serializable
+internal data class SlockFilePreviewGalleryImage(
+    val attachmentId: String,
+    val name: String = "",
+    val mimeType: String = "",
+    val sizeLabel: String = "",
+    val thumbnailUrl: String? = null
+)
+
+@Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
+internal class ComposeSlockFilePreviewPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockFilePreviewStandalonePageContent() }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewStandalonePageContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val notifyModule = remember(pager.pagerId) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val networkClient = sharedStores.networkClient
+    val threadApi =
+        remember(networkClient) {
+            SlockThreadApiClient(
+                transport = NetworkSlockThreadApi(networkClient),
+                diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+            )
+        }
+    val memberRepository =
+        remember(networkClient) {
+            RealMemberRepository(
+                sessionStore = sharedStores.authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("file_preview_member_warning $message") },
+                logger = { message -> bridge.log("file_preview_member $message") }
+            )
+        }
+    val coroutineScope = rememberCoroutineScope()
+    val launchPayloadTrace =
+        remember(pager.pageData.params.toString()) {
+            val source = pager.pageData.params.optString("payload")
+            val startedAt = TimeSource.Monotonic.markNow()
+            val parsedLaunch =
+                source
+                    .takeIf { it.isNotBlank() }
+                    ?.let {
+                        runCatching { SlockFilePreviewJson.decodeFromString(WireSlockFilePreviewLaunchPayload.serializer(), it) }
+                    }
+            val previewId = parsedLaunch?.getOrNull()?.previewId.orEmpty()
+            val resolvedPayload = previewId.takeIf { it.isNotBlank() }?.let(sharedStores.filePreviewStore::get)
+            FilePreviewLaunchPayloadTrace(
+                payload =
+                    resolvedPayload ?: SlockFilePreviewPayload(
+                        title = "Preview unavailable",
+                        subtitle = "File preview",
+                        message = "Preview payload could not be loaded.",
+                        error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
+                    ),
+                responseBytes = source.encodeToByteArray().size,
+                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                result =
+                    when {
+                        resolvedPayload != null -> "success"
+                        parsedLaunch?.isSuccess == true -> "missing_preview"
+                        else -> "failure"
+                    }
+            )
+        }
+    LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
+        bridge.log(
+            "file_preview_launch_payload_parse source=pageData result=${launchPayloadTrace.result} " +
+                "responseBytes=${launchPayloadTrace.responseBytes} durationMs=${launchPayloadTrace.durationMs} dispatcher=caller"
+        )
+    }
+    var payload by remember(launchPayloadTrace.payload) {
+        mutableStateOf(launchPayloadTrace.payload)
+    }
+    var resolvedImageGalleryPayloads by remember(launchPayloadTrace.payload.imageGallery) {
+        mutableStateOf<Map<String, SlockFilePreviewPayload>>(emptyMap())
+    }
+    var composerImageEditMode by remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
+        mutableStateOf(false)
+    }
+    var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    var composerImageEditCaptureRef by remember(payload.composerImageActionId) {
+        mutableStateOf<ViewRef<DeclarativeBaseView<*, *>>?>(null)
+    }
+    var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
+    var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
+    var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
+    var activeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
+    var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
+    val attachmentCacheId = payload.attachmentCacheId()
+    val attachmentCacheFileName = payload.attachmentCacheFileName()
+    DisposableEffect(notifyModule) {
+        val callbackRef =
+            notifyModule.addNotify(SlockFilePreviewAttachmentDownloadEvent) { data ->
+                val progress = data?.toBridgeAttachmentDownloadProgress() ?: return@addNotify
+                val currentDownloadId = activeDownloadId ?: return@addNotify
+                if (progress.downloadId != currentDownloadId) return@addNotify
+                downloadProgress = progress
+                when (progress.status) {
+                    "paused" -> downloadStatus = "paused"
+                    "progress", "resumed" -> downloadStatus = "downloading"
+                    "cancelled" -> {
+                        downloadStatus = "idle"
+                        downloadMessage = "Download stopped"
+                        activeDownloadId = null
+                    }
+                    "failed" -> {
+                        downloadStatus = "failed"
+                        downloadMessage = "Download failed"
+                        activeDownloadId = null
+                    }
+                }
+            }
+        onDispose {
+            notifyModule.removeNotify(SlockFilePreviewAttachmentDownloadEvent, callbackRef)
+        }
+    }
+    LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
+        val nextPayload =
+            when (payload.source) {
+                SlockFilePreviewSourceThreadAttachment ->
+                    payload.loadThreadAttachmentPreview(threadApi, networkClient)
+                SlockFilePreviewSourceAgentWorkspace ->
+                    payload.loadAgentWorkspacePreview(memberRepository)
+                else -> null
+        }
+        if (nextPayload != null) {
+            payload = nextPayload
+            if (
+                nextPayload.source == SlockFilePreviewSourceThreadAttachment &&
+                nextPayload.attachmentId.isNotBlank() &&
+                nextPayload.imageGallery.isNotEmpty() &&
+                nextPayload.kind != "loading"
+            ) {
+                resolvedImageGalleryPayloads =
+                    resolvedImageGalleryPayloads + (nextPayload.attachmentId to nextPayload)
+            }
+        }
+    }
+    val canOpenWith = canOpenPayloadWithExternalViewer(payload)
+    LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
+        attachmentCacheState = false
+        if (!canOpenWith) return@LaunchedEffect
+        val result =
+            bridge.attachmentCacheStatus(
+                attachmentId = attachmentCacheId,
+                fileName = attachmentCacheFileName,
+                mimeType = payload.externalMimeType
+            )
+        attachmentCacheState = result?.optBoolean("cached") == true
+    }
+    suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload, trackProgress: Boolean): String? {
+        val externalUrl =
+            currentPayload.externalUrl?.takeIf { it.isNotBlank() }
+                ?: currentPayload.threadAttachmentExternalUrl(threadApi)
+                ?: return "Unable to download attachment"
+        val downloadId =
+            if (trackProgress) {
+                activeDownloadId ?: currentPayload.filePreviewDownloadId()
+            } else {
+                null
+            }
+        if (trackProgress) {
+            activeDownloadId = downloadId
+        }
+        val result =
+            bridge.openAttachment(
+                url = externalUrl,
+                attachmentId = currentPayload.attachmentCacheId(),
+                fileName = currentPayload.attachmentCacheFileName(),
+                mimeType = currentPayload.externalMimeType,
+                downloadId = downloadId,
+                onProgress =
+                    if (trackProgress) {
+                        { progress ->
+                            if (progress.downloadId.isBlank() || progress.downloadId == activeDownloadId) {
+                                downloadProgress = progress
+                            }
+                        }
+                    } else {
+                        null
+                    }
+            )
+        return when (result?.optString("status").orEmpty()) {
+            "opened", "" -> {
+                attachmentCacheState = result?.optBoolean("cached", true) ?: true
+                activeDownloadId = null
+                null
+            }
+            "cancelled" -> {
+                activeDownloadId = null
+                "Download stopped"
+            }
+            "no_app" -> result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
+            "storage_failed" -> result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+            else -> result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
+        }
+    }
+    fun requestExternalOpen() {
+        if (!canOpenWith || downloadStatus == "downloading" || downloadStatus == "paused") return
+        val trackProgress = slockFilePreviewShouldTrackOpenProgress(attachmentCacheState)
+        downloadMessage = ""
+        if (trackProgress) {
+            downloadStatus = "downloading"
+            activeDownloadId = payload.filePreviewDownloadId()
+            downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
+        } else {
+            downloadStatus = "idle"
+            activeDownloadId = null
+            downloadProgress = null
+        }
+        coroutineScope.launch {
+            val error = openPayloadExternally(payload, trackProgress)
+            if (error == null) {
+                downloadStatus = "idle"
+                downloadMessage = ""
+                downloadProgress = null
+                activeDownloadId = null
+            } else {
+                downloadStatus = if (error == "Download stopped") "idle" else "failed"
+                downloadMessage = error
+                downloadProgress = null
+                activeDownloadId = null
+                bridge.toast(error)
+            }
+        }
+    }
+    fun requestDownloadControl(action: String) {
+        val downloadId = activeDownloadId ?: return
+        when (action) {
+            "pause" -> downloadStatus = "paused"
+            "resume" -> downloadStatus = "downloading"
+            "stop" -> {
+                downloadStatus = "idle"
+                downloadMessage = "Download stopped"
+            }
+        }
+        coroutineScope.launch {
+            bridge.attachmentDownloadControl(downloadId = downloadId, action = action)
+        }
+    }
+    fun requestDeleteDownload() {
+        if (!canOpenWith || !attachmentCacheState || downloadStatus == "downloading" || downloadStatus == "paused") return
+        coroutineScope.launch {
+            val result =
+                bridge.deleteAttachmentCache(
+                    attachmentId = attachmentCacheId,
+                    fileName = attachmentCacheFileName,
+                    mimeType = payload.externalMimeType
+                )
+            val status = result?.optString("status").orEmpty()
+            if (status == "ok" || status.isBlank()) {
+                attachmentCacheState = false
+                downloadStatus = "idle"
+                downloadMessage = ""
+                downloadProgress = null
+                bridge.toast("Downloaded file deleted")
+            } else {
+                val error = result?.optString("message").orEmpty().ifBlank { "Unable to delete downloaded file" }
+                bridge.toast(error)
+            }
+        }
+    }
+    fun selectImageGalleryIndex(index: Int) {
+        payload.withImageGalleryIndex(index, resolvedImageGalleryPayloads)?.let { nextPayload ->
+            payload = nextPayload
+            downloadStatus = "idle"
+            downloadMessage = ""
+            downloadProgress = null
+            activeDownloadId = null
+        }
+    }
+    fun postComposerImageResult(fileRef: String, previewUri: String?) {
+        if (payload.composerImageActionId.isBlank() || fileRef.isBlank()) return
+        notifyModule.postNotify(
+            SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
+            JSONObject().apply {
+                put("threadKey", payload.composerImageThreadKey)
+                put("actionId", payload.composerImageActionId)
+                put("action", if (payload.composerImageReplaceAttachmentId.isBlank()) "complete" else "replace")
+                put("fileRef", fileRef)
+                put("previewUri", previewUri.orEmpty())
+                put("fileName", payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } })
+                put("mimeType", payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } })
+                payload.composerImageSizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
+                put("replaceAttachmentId", payload.composerImageReplaceAttachmentId)
+            },
+            crossProcess = true
+        )
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
+    fun requestComposerImageEditSave() {
+        if (composerImageEditSaving) return
+        val captureView = composerImageEditCaptureRef?.view
+        if (captureView == null) {
+            bridge.toast("Image editor is still loading")
+            return
+        }
+        composerImageEditSaving = true
+        captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
+            val code = result?.optInt("code", -1) ?: -1
+            val fileRef = result?.optString("data").orEmpty()
+            composerImageEditSaving = false
+            if (code == 0 && fileRef.isNotBlank()) {
+                postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+            } else {
+                bridge.toast(result?.optString("message").orEmpty().ifBlank { "Image edit export failed" })
+            }
+        }
+    }
+    SlockFilePreviewPageScaffold(
+        title = payload.previewHeaderTitle(),
+        subtitle = payload.previewHeaderSubtitle(),
+        iconName = payload.previewIconName(),
+        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        contentPadding = 0.dp,
+        overflowMenuItems =
+            if (canOpenWith) {
+                listOfNotNull(
+                    SlockBrutalDropdownMenuItem(
+                        id = SlockFilePreviewOpenWithActionId,
+                        label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState),
+                        icon = SlockLucideIconName.ExternalLink
+                    ),
+                    if (attachmentCacheState) {
+                        SlockBrutalDropdownMenuItem(
+                            id = SlockFilePreviewDeleteDownloadActionId,
+                            label = "Delete downloaded file",
+                            icon = SlockLucideIconName.Trash2
+                        )
+                    } else {
+                        null
+                    }
+                )
+            } else {
+                emptyList()
+            },
+        onOverflowMenuSelect = { id ->
+            when (id) {
+                SlockFilePreviewOpenWithActionId -> requestExternalOpen()
+                SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
+            }
+        }
+    ) {
+        val downloadActive = downloadStatus == "downloading" || downloadStatus == "paused"
+        if (composerImageEditMode) {
+            SlockFilePreviewComposerImageEditor(
+                payload = payload,
+                saving = composerImageEditSaving,
+                onCaptureRef = { composerImageEditCaptureRef = it },
+                onCancel = { composerImageEditMode = false },
+                onSave = ::requestComposerImageEditSave,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+        } else {
+            SlockFilePreviewPayloadContent(
+                payload = payload,
+                onOpenUrl = {},
+                downloadStatusLabel =
+                    when (downloadStatus) {
+                        "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
+                        "failed" -> downloadMessage.ifBlank { "Download failed" }
+                        else -> null
+                    },
+                downloadInProgress = downloadActive,
+                downloadPaused = downloadStatus == "paused",
+                downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
+                downloadCached = attachmentCacheState,
+                onDownload = if (canOpenWith) ::requestExternalOpen else null,
+                onPauseDownload = { requestDownloadControl("pause") },
+                onResumeDownload = { requestDownloadControl("resume") },
+                onStopDownload = { requestDownloadControl("stop") },
+                onImageGalleryIndexChange = ::selectImageGalleryIndex,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+            SlockFilePreviewComposerImageActionBar(
+                payload = payload,
+                enabled = !downloadActive,
+                onEdit = { composerImageEditMode = true },
+                onComplete = {
+                    postComposerImageResult(
+                        fileRef = payload.composerImageFileRef,
+                        previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewComposerImageActionBar(
+    payload: SlockFilePreviewPayload,
+    enabled: Boolean,
+    onEdit: () -> Unit,
+    onComplete: () -> Unit
+) {
+    if (payload.composerImageActionId.isBlank()) return
+    if (!payload.composerImageCanEdit && !payload.composerImageCanComplete) return
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (payload.composerImageCanEdit) {
+            SlockBrutalActionButton(
+                label = "Edit",
+                onClick = onEdit,
+                enabled = enabled && payload.imageUrl != null,
+                leadingIcon = SlockLucideIconName.Pencil,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        if (payload.composerImageCanComplete) {
+            SlockBrutalActionButton(
+                label = "Done",
+                onClick = onComplete,
+                enabled = enabled && payload.composerImageFileRef.isNotBlank(),
+                leadingIcon = SlockLucideIconName.Check,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+private enum class SlockComposerImageEditorTool {
+    Pen,
+    Text,
+    Eraser
+}
+
+private data class SlockComposerImageTextAnnotation(
+    val id: Int,
+    val text: String,
+    val position: Offset
+)
+
+@Composable
+private fun SlockFilePreviewComposerImageEditor(
+    payload: SlockFilePreviewPayload,
+    saving: Boolean,
+    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var strokes by remember(payload.imageUrl) { mutableStateOf<List<List<Offset>>>(emptyList()) }
+    var activeStroke by remember(payload.imageUrl) { mutableStateOf<List<Offset>>(emptyList()) }
+    var textAnnotations by remember(payload.imageUrl) { mutableStateOf<List<SlockComposerImageTextAnnotation>>(emptyList()) }
+    var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
+    var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
+    var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
+    var tool by remember(payload.imageUrl) { mutableStateOf(SlockComposerImageEditorTool.Pen) }
+    fun eraseAt(point: Offset) {
+        val nextStrokes = slockComposerImageEraseStrokes(strokes, point)
+        val shouldClearActiveStroke = slockComposerImageStrokeHit(activeStroke, point)
+        val nextTexts = textAnnotations.filterNot { annotation -> annotation.hitTest(point) }
+        if (nextStrokes.size != strokes.size) {
+            strokes = nextStrokes
+        }
+        if (shouldClearActiveStroke) {
+            activeStroke = emptyList()
+        }
+        if (nextTexts.size != textAnnotations.size) {
+            textAnnotations = nextTexts
+        }
+    }
+    fun addTextAnnotation() {
+        val nextText = textDraft.trim()
+        if (nextText.isBlank()) return
+        textAnnotations =
+            textAnnotations +
+                SlockComposerImageTextAnnotation(
+                    id = nextTextAnnotationId,
+                    text = nextText,
+                    position = textPosition
+                )
+        nextTextAnnotationId += 1
+        textDraft = ""
+    }
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(Color(0xFF000000))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .nativeRef { ref -> onCaptureRef(ref) }
+                    .pointerInput(payload.imageUrl, tool) {
+                        detectTapGestures { position ->
+                            when (tool) {
+                                SlockComposerImageEditorTool.Pen -> Unit
+                                SlockComposerImageEditorTool.Text -> textPosition = position
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(position)
+                            }
+                        }
+                    }
+                    .pointerInput(payload.imageUrl, tool) {
+                        detectDragGestures(
+                            onDragStart = { start ->
+                                when (tool) {
+                                    SlockComposerImageEditorTool.Pen -> activeStroke = listOf(start)
+                                    SlockComposerImageEditorTool.Text -> textPosition = start
+                                    SlockComposerImageEditorTool.Eraser -> eraseAt(start)
+                                }
+                            },
+                            onDragEnd = {
+                                if (tool == SlockComposerImageEditorTool.Pen && activeStroke.size > 1) {
+                                    strokes = strokes + listOf(activeStroke)
+                                }
+                                activeStroke = emptyList()
+                            },
+                            onDragCancel = { activeStroke = emptyList() }
+                        ) { change, _ ->
+                            when (tool) {
+                                SlockComposerImageEditorTool.Pen -> activeStroke = activeStroke + change.position
+                                SlockComposerImageEditorTool.Text -> textPosition = change.position
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(change.position)
+                            }
+                        }
+                    },
+            contentAlignment = Alignment.Center
+        ) {
+            payload.imageUrl?.let { source ->
+                SlockAspectFitImagePreviewSurface(
+                    source = source,
+                    contentDescription = payload.name.ifBlank { payload.path },
+                    modifier = Modifier.fillMaxSize(),
+                    backgroundColor = Color(0xFF000000),
+                    borderWidth = 0.dp,
+                    zoomable = false,
+                    showLoadingIndicator = true
+                )
+            }
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                (strokes + listOf(activeStroke).filter { it.size > 1 }).forEach { stroke ->
+                    stroke.windowed(2).forEach { segment ->
+                        drawLine(
+                            color = Color(0xFFFF3B30),
+                            start = segment[0],
+                            end = segment[1],
+                            strokeWidth = 6f,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+            textAnnotations.forEach { annotation ->
+                Text(
+                    text = annotation.text,
+                    modifier =
+                        Modifier
+                            .offset(x = annotation.position.x, y = annotation.position.y)
+                            .background(Color(0xCCFFFFFF))
+                            .border(1.dp, SlockColor.BorderBlack)
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    style = SlockType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)),
+                    color = Color(0xFFFF3B30),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockFilePreviewEditorToolButton(
+                    label = "Pen",
+                    icon = SlockLucideIconName.Pencil,
+                    selected = tool == SlockComposerImageEditorTool.Pen,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Pen },
+                    modifier = Modifier.weight(1f)
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = "Text",
+                    icon = SlockLucideIconName.Type,
+                    selected = tool == SlockComposerImageEditorTool.Text,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Text },
+                    modifier = Modifier.weight(1f)
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = "Erase",
+                    icon = SlockLucideIconName.Eraser,
+                    selected = tool == SlockComposerImageEditorTool.Eraser,
+                    enabled = !saving,
+                    onClick = { tool = SlockComposerImageEditorTool.Eraser },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (tool == SlockComposerImageEditorTool.Text) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = textDraft,
+                        onValueChange = { textDraft = it.take(80) },
+                        placeholder = "Tap image to place text",
+                        placeholderColor = SlockColor.TextMutedGray,
+                        autoFocus = false,
+                        maxLines = 1,
+                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 36.dp)
+                                .background(SlockColor.SurfaceCream)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                    SlockBrutalActionButton(
+                        label = "Add",
+                        onClick = ::addTextAnnotation,
+                        enabled = !saving && textDraft.isNotBlank(),
+                        leadingIcon = SlockLucideIconName.Check,
+                        minWidth = 60.dp,
+                        minHeight = 34.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = "Cancel",
+                    onClick = onCancel,
+                    enabled = !saving,
+                    leadingIcon = SlockLucideIconName.X,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = "Undo",
+                    onClick = {
+                        when {
+                            textAnnotations.isNotEmpty() -> textAnnotations = textAnnotations.dropLast(1)
+                            strokes.isNotEmpty() -> strokes = strokes.dropLast(1)
+                        }
+                    },
+                    enabled = !saving && (strokes.isNotEmpty() || textAnnotations.isNotEmpty()),
+                    leadingIcon = SlockLucideIconName.RotateCcw,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = "Clear",
+                    onClick = {
+                        strokes = emptyList()
+                        activeStroke = emptyList()
+                        textAnnotations = emptyList()
+                        textDraft = ""
+                    },
+                    enabled = !saving && (strokes.isNotEmpty() || activeStroke.isNotEmpty() || textAnnotations.isNotEmpty()),
+                    leadingIcon = SlockLucideIconName.Trash2,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+                SlockBrutalActionButton(
+                    label = if (saving) "Saving" else "Save",
+                    onClick = onSave,
+                    enabled = !saving && payload.imageUrl != null,
+                    leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
+                    minHeight = 34.dp,
+                    shadowOffset = 2.dp,
+                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewEditorToolButton(
+    label: String,
+    icon: SlockLucideIconName,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SlockBrutalActionButton(
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        leadingIcon = icon,
+        minWidth = 0.dp,
+        minHeight = 32.dp,
+        shadowOffset = if (selected) 2.dp else 0.dp,
+        backgroundColor = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+        textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 13.sp),
+        modifier = modifier
+    )
+}
+
+private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
+    val width = (text.length * 13f + 18f).coerceIn(48f, 260f)
+    val height = 34f
+    return point.x >= position.x - 10f &&
+        point.x <= position.x + width &&
+        point.y >= position.y - 10f &&
+        point.y <= position.y + height
+}
+
+internal fun slockComposerImageEraseStrokes(strokes: List<List<Offset>>, point: Offset): List<List<Offset>> =
+    strokes.filterNot { stroke -> slockComposerImageStrokeHit(stroke, point) }
+
+internal fun slockComposerImageStrokeHit(stroke: List<Offset>, point: Offset): Boolean {
+    if (stroke.isEmpty()) return false
+    val thresholdSquared = 22f * 22f
+    return stroke.any { it.slockDistanceSquaredTo(point) <= thresholdSquared } ||
+        stroke.windowed(2).any { segment ->
+            slockDistanceToSegmentSquared(point = point, start = segment[0], end = segment[1]) <= thresholdSquared
+        }
+}
+
+private fun Offset.slockDistanceSquaredTo(other: Offset): Float {
+    val dx = x - other.x
+    val dy = y - other.y
+    return dx * dx + dy * dy
+}
+
+private fun slockDistanceToSegmentSquared(point: Offset, start: Offset, end: Offset): Float {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val lengthSquared = dx * dx + dy * dy
+    if (lengthSquared == 0f) return point.slockDistanceSquaredTo(start)
+    val t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared).coerceIn(0f, 1f)
+    val projection = Offset(start.x + t * dx, start.y + t * dy)
+    return point.slockDistanceSquaredTo(projection)
+}
+
+private data class FilePreviewLaunchPayloadTrace(
+    val payload: SlockFilePreviewPayload,
+    val responseBytes: Int,
+    val durationMs: Long,
+    val result: String
+)
+
+internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
+    val bridge = Utils.bridgeModule(pagerId)
+    val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
+    val previewId = sharedStores.filePreviewStore.put(payload)
+    val pageData = slockFilePreviewLaunchPageData(previewId)
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
+}
+
+internal fun slockFilePreviewLaunchPageData(previewId: String): JSONObject =
+    JSONObject().apply {
+        put("pageName", SLOCK_FILE_PREVIEW_PAGE)
+        put(
+            "payload",
+            SlockFilePreviewJson.encodeToString(
+                WireSlockFilePreviewLaunchPayload.serializer(),
+                WireSlockFilePreviewLaunchPayload(previewId = previewId)
+            )
+        )
+    }
+
+internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
+    kind: String,
+    imageGallery: List<KuiklyThreadAttachmentItem> = emptyList(),
+    imageGalleryIndex: Int = 0
+): SlockFilePreviewPayload =
+    SlockFilePreviewPayload(
+        kind = "loading",
+        title = when (kind) {
+            "image" -> "Image preview"
+            "markdown" -> "Markdown preview"
+            "text" -> "Text preview"
+            "video" -> "Video preview"
+            else -> "File preview"
+        },
+        subtitle = name.ifBlank { "Attachment" },
+        name = name.ifBlank { "Attachment" },
+        path = name,
+        meta = genericAttachmentMetaLine(),
+        message = SlockFilePreviewLoadingLabel,
+        externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
+        externalMimeType = mimeType,
+        source = SlockFilePreviewSourceThreadAttachment,
+        attachmentId = id,
+        imageGallery = imageGallery.map { it.toSlockFilePreviewGalleryImage() },
+        imageGalleryIndex = imageGalleryIndex.coerceAtLeast(0)
+    )
+
+internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
+    SlockFilePreviewPayload(
+        kind = "loading",
+        title = "File preview",
+        subtitle = path,
+        name = path,
+        path = path,
+        message = SlockFilePreviewLoadingLabel,
+        source = SlockFilePreviewSourceAgentWorkspace,
+        agentId = agentId
+    )
+
+private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkClient: SlockNetworkClient
+): SlockFilePreviewPayload? {
+    if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
+    val wantsMarkdown =
+        slockFilePreviewIsMarkdownAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
+    val wantsImage = externalMimeType.substringBefore(';').trim().startsWith("image/", ignoreCase = true)
+    val wantsMp4Video =
+        slockFilePreviewIsMp4VideoAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
+    val wantsHtml =
+        slockFilePreviewIsHtmlAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
+    val wantsText =
+        !wantsMarkdown &&
+            !wantsHtml &&
+            slockFilePreviewIsTextLikeAttachment(
+                fileName = name.ifBlank { path.ifBlank { externalFileName } },
+                mimeType = externalMimeType
+            )
+    return when {
+        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
+        wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
+        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
+        else ->
+            copy(
+                kind = "unsupported",
+                title = "File preview",
+                message = "No preview is available for this file type."
+            )
+    }
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val remoteImageUrl =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        }
+    val resolvedImageUrl = remoteImageUrl ?: imageUrl
+    return copy(
+        kind = "image",
+        title = "Image preview",
+        imageUrl = resolvedImageUrl,
+        message = if (resolvedImageUrl == null) "Image preview is unavailable." else "",
+        error = if (resolvedImageUrl == null) "image_preview_unavailable" else null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadHtmlAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentHtmlPreviewUrl(attachmentId)) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load HTML preview.",
+            error = "html_preview_url_failed"
+        )
+    return copy(
+        kind = "html",
+        title = "HTML preview",
+        content = "",
+        imageUrl = null,
+        videoUrl = null,
+        externalUrl = target,
+        message = "",
+        error = null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load video preview.",
+            error = "video_preview_url_failed"
+        )
+    return copy(
+        kind = "video",
+        title = "Video preview",
+        videoUrl = target,
+        message = "",
+        error = null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkClient: SlockNetworkClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load text preview.",
+            error = "text_preview_url_failed"
+        )
+    val response =
+        try {
+            networkClient.requestRawAbsoluteUrl(
+                priority = DataRequestPriority.Visible,
+                url = target
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Unable to load text preview.",
+                error = "text_preview_fetch_failed"
+            )
+        }
+    if (response.code !in 200..299) {
+        return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load text preview.",
+            error = "text_preview_fetch_failed"
+        )
+    }
+    val body = response.bodyText.orEmpty()
+    val previewBody =
+        if (body.length > SlockFilePreviewTextMaxChars) {
+            body.take(SlockFilePreviewTextMaxChars) +
+                "\n\nPreview truncated. Open with system viewer for the full file."
+        } else {
+            body
+        }
+    return copy(
+        kind = "text",
+        title = "Text preview",
+        content = previewBody,
+        markdown = false,
+        message = "",
+        error = null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkClient: SlockNetworkClient
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load markdown preview.",
+            error = "markdown_preview_url_failed"
+        )
+    val response =
+        try {
+            networkClient.requestRawAbsoluteUrl(
+                priority = DataRequestPriority.Visible,
+                url = target
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Unable to load markdown preview.",
+                error = "markdown_preview_fetch_failed"
+            )
+        }
+    if (response.code !in 200..299) {
+        return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load markdown preview.",
+            error = "markdown_preview_fetch_failed"
+        )
+    }
+    val body =
+        response.bodyText?.takeIf { it.isNotBlank() }
+            ?: return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Markdown file is empty.",
+                error = "markdown_preview_empty"
+            )
+    val previewBody =
+        if (body.length > SlockFilePreviewMarkdownMaxChars) {
+            body.take(SlockFilePreviewMarkdownMaxChars) +
+                "\n\n_Preview truncated. Open with system viewer for the full file._"
+        } else {
+            body
+        }
+    return copy(
+        kind = "markdown",
+        title = "Markdown preview",
+        content = previewBody,
+        markdown = true,
+        message = "",
+        error = null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.threadAttachmentExternalUrl(
+    threadApi: SlockThreadApiClient
+): String? {
+    if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank()) return null
+    return when (val response = threadApi.attachmentUrl(attachmentId, disposition = "attachment")) {
+        is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+        is ThreadApiResult.Failure -> null
+    }
+}
+
+private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
+    memberRepository: RealMemberRepository
+): SlockFilePreviewPayload? {
+    if (source != SlockFilePreviewSourceAgentWorkspace || agentId.isBlank() || path.isBlank() || kind != "loading") return null
+    return when (val result = memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, MemberId(agentId), path)) {
+        is DataResult.Content -> result.data.preview.toSlockFilePreviewPayload(result.data.path).copy(source = source, agentId = agentId)
+        is DataResult.Empty ->
+            copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "File content is unavailable.",
+                error = "empty_preview"
+            )
+        is DataResult.Error ->
+            copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Failed to load: ${result.error.code}",
+                error = result.error.code
+            )
+        is DataResult.NoPermission ->
+            copy(
+                kind = "error",
+                title = "Preview hidden",
+                message = "File hidden: ${result.blocker.code}",
+                error = result.blocker.code
+            )
+    }
+}
+
+internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    return normalizedMime.equals("text/markdown", ignoreCase = true) ||
+        normalizedMime.equals("text/x-markdown", ignoreCase = true) ||
+        fileName.endsWith(".md", ignoreCase = true) ||
+        fileName.endsWith(".markdown", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    val normalizedName = fileName.substringBefore('?').substringBefore('#')
+    return normalizedMime.equals("text/html", ignoreCase = true) ||
+        normalizedName.endsWith(".html", ignoreCase = true) ||
+        normalizedName.endsWith(".htm", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    if (normalizedMime.equals("video/mp4", ignoreCase = true)) return true
+    return fileName.substringBefore('?').substringBefore('#').endsWith(".mp4", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    if (normalizedMime.startsWith("text/")) return true
+    if (normalizedMime in SlockFilePreviewTextMimeTypes) return true
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return extension in SlockFilePreviewTextFileExtensions
+}
+
+private val SlockFilePreviewTextMimeTypes =
+    setOf(
+        "application/csv",
+        "application/ecmascript",
+        "application/javascript",
+        "application/json",
+        "application/ld+json",
+        "application/sql",
+        "application/toml",
+        "application/typescript",
+        "application/x-javascript",
+        "application/x-ndjson",
+        "application/x-python-code",
+        "application/x-sh",
+        "application/x-yaml",
+        "application/xml",
+        "image/svg+xml"
+    )
+
+private val SlockFilePreviewTextFileExtensions =
+    setOf(
+        "bash",
+        "c",
+        "cc",
+        "cfg",
+        "cjs",
+        "conf",
+        "cpp",
+        "cs",
+        "css",
+        "csv",
+        "diff",
+        "env",
+        "go",
+        "h",
+        "hpp",
+        "htm",
+        "html",
+        "ini",
+        "java",
+        "js",
+        "json",
+        "jsonl",
+        "jsx",
+        "kt",
+        "kts",
+        "less",
+        "log",
+        "mjs",
+        "patch",
+        "php",
+        "properties",
+        "py",
+        "rb",
+        "rs",
+        "sass",
+        "scss",
+        "sh",
+        "sql",
+        "svg",
+        "swift",
+        "text",
+        "toml",
+        "ts",
+        "tsx",
+        "tsv",
+        "txt",
+        "xml",
+        "yaml",
+        "yml",
+        "zsh"
+    )
+
+internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): SlockFilePreviewPayload =
+    when (this) {
+        is SlockWorkspaceFilePreview.Text ->
+            SlockFilePreviewPayload(
+                kind = if (markdown) "markdown" else "text",
+                title = if (markdown) "Markdown preview" else "Text preview",
+                subtitle = path.ifBlank { this.path },
+                name = path.ifBlank { this.path },
+                path = this.path,
+                meta = membersWorkspaceMetaLine(path),
+                content = content,
+                markdown = markdown
+            )
+        is SlockWorkspaceFilePreview.Image ->
+            SlockFilePreviewPayload(
+                kind = "image",
+                title = "Image preview",
+                subtitle = path.ifBlank { this.path },
+                name = path.ifBlank { this.path },
+                path = this.path,
+                meta = membersWorkspaceMetaLine(path),
+                imageUrl = imageUrl,
+                message = description.orEmpty().ifBlank { "Image preview is unavailable." }
+            )
+        is SlockWorkspaceFilePreview.Unsupported ->
+            SlockFilePreviewPayload(
+                kind = "unsupported",
+                title = "File preview",
+                subtitle = path.ifBlank { this.path },
+                name = path.ifBlank { this.path },
+                path = this.path,
+                meta = membersWorkspaceMetaLine(path),
+                message = reason
+            )
+        is SlockWorkspaceFilePreview.Error ->
+            SlockFilePreviewPayload(
+                kind = "error",
+                title = "Preview unavailable",
+                subtitle = path,
+                name = path,
+                path = path,
+                message = reason,
+                error = reason
+            )
+        is SlockWorkspaceFilePreview.Loading ->
+            SlockFilePreviewPayload(
+                kind = "loading",
+                title = "File preview",
+                subtitle = path,
+                name = path,
+                path = path,
+                message = detail.ifBlank { SlockFilePreviewLoadingLabel }
+            )
+    }
+
+@Composable
+internal fun SlockFilePreviewPayloadContent(
+    payload: SlockFilePreviewPayload,
+    onOpenUrl: (String) -> Unit,
+    downloadStatusLabel: String? = null,
+    downloadInProgress: Boolean = false,
+    downloadPaused: Boolean = false,
+    downloadProgressPercent: Int? = null,
+    downloadCached: Boolean = false,
+    onDownload: (() -> Unit)? = null,
+    onPauseDownload: (() -> Unit)? = null,
+    onResumeDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
+    onImageGalleryIndexChange: ((Int) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
+    when (payload.kind) {
+        "markdown" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewMarkdownPanel(
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    statusLabel = null,
+                    status = "content",
+                    body = payload.content,
+                    error = null,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    performanceKey = "preview:${payload.path}",
+                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    showChrome = false
+                )
+            }
+        "text" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewTextPanel(
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    content = payload.content,
+                    modifier = Modifier.fillMaxSize(),
+                    showChrome = false
+                )
+            }
+        "image" ->
+            SlockFilePreviewImageGallerySurface(
+                payload = payload,
+                onImageGalleryIndexChange = onImageGalleryIndexChange,
+                modifier = modifier.fillMaxSize()
+            ) {
+                if (payload.imageUrl != null) {
+                    SlockFilePreviewDownloadStatusOverlay(
+                        statusLabel = downloadStatusLabel,
+                        showProgress = downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        SlockFilePreviewImagePanel(
+                            source = payload.imageUrl,
+                            contentDescription = payload.name.ifBlank { payload.path },
+                            modifier = Modifier.fillMaxSize(),
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            borderWidth = 0.dp,
+                            zoomable = true
+                        )
+                    }
+                } else {
+                    SlockFilePreviewGenericCard(
+                        iconName = SlockLucideIconName.Image,
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        message = payload.message.ifBlank { "Image preview is unavailable." },
+                        statusLabel = downloadStatusLabel,
+                        showProgress = downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                        actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                        actionEnabled = true,
+                        onAction = onDownload,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md)
+                    )
+                }
+            }
+        "html" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                val previewUrl = payload.externalUrl.orEmpty()
+                if (previewUrl.isNotBlank()) {
+                    SlockSandboxWebView(
+                        url = previewUrl,
+                        allowScripts = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    SlockFilePreviewMessage(
+                        iconName = SlockLucideIconName.TriangleAlert,
+                        title = "Preview unavailable",
+                        detail = payload.message.ifBlank { "Unable to load HTML preview." },
+                        modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md)
+                    )
+                }
+            }
+        "video" ->
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewVideoPanel(
+                    source = payload.videoUrl.orEmpty(),
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    fallbackMessage = payload.message,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        "loading" -> {
+            SlockFilePreviewImageGallerySurface(
+                payload = payload,
+                onImageGalleryIndexChange = onImageGalleryIndexChange,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewLoadingIndicator(
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        "error" ->
+            SlockFilePreviewMessage(
+                iconName = SlockLucideIconName.TriangleAlert,
+                title = "Preview unavailable",
+                detail = payload.error ?: payload.message.ifBlank { "Unable to load this file preview." },
+                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
+            )
+        else ->
+            SlockFilePreviewGenericCard(
+                iconName = slockFilePreviewFileIconName(payload),
+                name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
+                meta = payload.meta,
+                message = slockFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null),
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                actionEnabled = true,
+                onAction = onDownload,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
+            )
+    }
+}
+
+@Composable
+private fun SlockFilePreviewImageGallerySurface(
+    payload: SlockFilePreviewPayload,
+    onImageGalleryIndexChange: ((Int) -> Unit)?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val progressLabel = payload.imageGalleryProgressLabel()
+    var dragOffsetPx by remember(payload.imageGalleryIndex, payload.imageGallery.size) { mutableStateOf(0f) }
+    val swipeThresholdPx =
+        with(LocalDensity.current) {
+            56.dp.toPx()
+        }
+    val galleryModifier =
+        if (progressLabel != null && onImageGalleryIndexChange != null) {
+            Modifier.pointerInput(payload.imageGalleryIndex, payload.imageGallery.size) {
+                var dragDistance = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
+                    },
+                    onDragEnd = {
+                        val nextIndex = payload.nextImageGalleryIndex(dragDistance, swipeThresholdPx)
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
+                        nextIndex?.let(onImageGalleryIndexChange)
+                    },
+                    onDragCancel = {
+                        dragDistance = 0f
+                        dragOffsetPx = 0f
+                    }
+                ) { _, dragAmount ->
+                    dragDistance += dragAmount
+                    dragOffsetPx = payload.imageGalleryDragOffsetWithResistance(dragDistance)
+                }
+            }
+        } else {
+            Modifier
+        }
+    Box(modifier = modifier.clipToBounds().then(galleryModifier)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
+        ) {
+            content()
+        }
+        if (progressLabel != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = progressLabel,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
+    when (kind) {
+        "markdown", "text" -> SlockLucideIconName.FileText
+        "image" -> SlockLucideIconName.Image
+        "video" -> SlockLucideIconName.Film
+        "loading" -> SlockLucideIconName.LoaderCircle
+        "error" -> SlockLucideIconName.TriangleAlert
+        else -> slockFilePreviewFileIconName(this)
+    }
+
+@Composable
+private fun SlockFilePreviewVideoPanel(
+    source: String,
+    name: String,
+    meta: String,
+    fallbackMessage: String,
+    modifier: Modifier = Modifier
+) {
+    var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
+    var playState by remember(source) { mutableStateOf(PlayState.NONE) }
+    var firstFrameVisible by remember(source) { mutableStateOf(false) }
+    var currentTimeMs by remember(source) { mutableStateOf(0) }
+    var totalTimeMs by remember(source) { mutableStateOf(0) }
+    val canPlay = source.isNotBlank()
+    val isPlaying = playState == PlayState.PLAYING
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF000000))
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .heightIn(max = 420.dp)
+                    .background(Color(0xFF000000))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            if (canPlay) {
+                SlockFilePreviewKuiklyVideo(
+                    source = source,
+                    playControl = playControl,
+                    onPlayStateChanged = { playState = it },
+                    onPlayTimeChanged = { current, total ->
+                        currentTimeMs = current
+                        totalTimeMs = total
+                    },
+                    onFirstFrame = {
+                        firstFrameVisible = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (!canPlay) {
+                SlockFilePreviewVideoOverlayText(
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    title = fallbackMessage.ifBlank { "Video preview is unavailable." },
+                    detail = name.ifBlank { meta }
+                )
+            } else if (!firstFrameVisible && !isPlaying) {
+                SlockFilePreviewVideoOverlayText(
+                    iconName = SlockLucideIconName.Play,
+                    title = name.ifBlank { "Video preview" },
+                    detail = meta
+                )
+            }
+        }
+        Box(modifier = Modifier.height(SlockSpacing.Md))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = if (isPlaying) "Pause" else "Play",
+                onClick = {
+                    if (!canPlay) return@SlockBrutalActionButton
+                    playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                },
+                enabled = canPlay,
+                leadingIcon = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+                minWidth = 94.dp,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
+            Text(
+                text = slockFilePreviewVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewVideoOverlayText(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String
+) {
+    Column(
+        modifier =
+            Modifier
+                .background(Color(0xCC000000))
+                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FFFFFFFF")
+        Text(
+            text = title,
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.SurfaceWhite,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = SlockType.Caption,
+                color = SlockColor.SurfaceWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewKuiklyVideo(
+    source: String,
+    playControl: VideoPlayControl,
+    onPlayStateChanged: (PlayState) -> Unit,
+    onPlayTimeChanged: (Int, Int) -> Unit,
+    onFirstFrame: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    MakeKuiklyComposeNode(
+        factory = { VideoView() },
+        modifier = modifier,
+        viewUpdate = { view ->
+            view.getViewAttr().apply {
+                src(source)
+                resizeModeToContain()
+                muted(false)
+                rate(1f)
+                playControl(playControl)
+            }
+            view.getViewEvent().apply {
+                playStateDidChanged { state, _ -> onPlayStateChanged(state) }
+                playTimeDidChanged { current, total -> onPlayTimeChanged(current, total) }
+                firstFrameDidDisplay { onFirstFrame() }
+            }
+        }
+    )
+}
+
+internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int, playState: PlayState): String {
+    val stateLabel =
+        when (playState) {
+            PlayState.PLAYING -> "Playing"
+            PlayState.BUFFERING -> "Buffering"
+            PlayState.PAUSED -> "Paused"
+            PlayState.PLAY_END -> "Ended"
+            PlayState.ERROR -> "Playback failed"
+            PlayState.NONE -> "Ready"
+        }
+    val current = currentTimeMs.slockFilePreviewVideoDurationLabel()
+    val total = totalTimeMs.takeIf { it > 0 }?.slockFilePreviewVideoDurationLabel()
+    return if (total == null) {
+        "$stateLabel · $current"
+    } else {
+        "$stateLabel · $current / $total"
+    }
+}
+
+private fun Int.slockFilePreviewVideoDurationLabel(): String {
+    val totalSeconds = (coerceAtLeast(0) / 1000)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
+}
+
+internal fun SlockFilePreviewPayload.imageGalleryProgressLabel(): String? {
+    val size = imageGallery.size
+    if (size <= 1) return null
+    val index = imageGalleryIndex.coerceIn(0, size - 1)
+    return "${index + 1}/$size"
+}
+
+internal fun SlockFilePreviewPayload.withImageGalleryIndex(
+    index: Int,
+    resolvedPayloadByAttachmentId: Map<String, SlockFilePreviewPayload> = emptyMap()
+): SlockFilePreviewPayload? {
+    if (imageGallery.isEmpty()) return null
+    val nextIndex = index.coerceIn(0, imageGallery.lastIndex)
+    val nextImage = imageGallery.getOrNull(nextIndex) ?: return null
+    resolvedPayloadByAttachmentId[nextImage.attachmentId]?.let { resolvedPayload ->
+        return resolvedPayload.copy(
+            imageGallery = imageGallery,
+            imageGalleryIndex = nextIndex
+        )
+    }
+    return nextImage.toPreviewPayload(previous = this, imageGalleryIndex = nextIndex)
+}
+
+internal fun SlockFilePreviewPayload.nextImageGalleryIndex(
+    dragDistancePx: Float,
+    thresholdPx: Float
+): Int? {
+    if (imageGallery.size <= 1) return null
+    return when {
+        dragDistancePx <= -thresholdPx && imageGalleryIndex < imageGallery.lastIndex -> imageGalleryIndex + 1
+        dragDistancePx >= thresholdPx && imageGalleryIndex > 0 -> imageGalleryIndex - 1
+        else -> null
+    }
+}
+
+private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDistancePx: Float): Float {
+    if (imageGallery.size <= 1) return 0f
+    val index = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    return when {
+        dragDistancePx > 0f && index == 0 -> dragDistancePx * 0.35f
+        dragDistancePx < 0f && index == imageGallery.lastIndex -> dragDistancePx * 0.35f
+        else -> dragDistancePx
+    }
+}
+
+private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
+    val source =
+        name
+            .ifBlank { path }
+            .ifBlank { externalFileName }
+            .ifBlank { title }
+            .ifBlank { "File" }
+    return source.slockFilePreviewFileName()
+}
+
+private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
+    val headerTitle = previewHeaderTitle()
+    return listOf(meta, path, subtitle, externalMimeType)
+        .asSequence()
+        .map { it.trim() }
+        .firstOrNull { candidate ->
+            candidate.isNotBlank() &&
+                candidate != headerTitle &&
+                candidate.slockFilePreviewFileName() != headerTitle &&
+                !candidate.endsWith("preview", ignoreCase = true)
+        }
+}
+
+private fun String.slockFilePreviewFileName(): String {
+    val normalized = trim().replace('\\', '/')
+    return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { "File" } }
+}
+
+private fun KuiklyThreadAttachmentItem.toSlockFilePreviewGalleryImage(): SlockFilePreviewGalleryImage =
+    SlockFilePreviewGalleryImage(
+        attachmentId = id,
+        name = name,
+        mimeType = mimeType,
+        sizeLabel = sizeLabel,
+        thumbnailUrl = thumbnailUrl
+    )
+
+private fun SlockFilePreviewGalleryImage.toPreviewPayload(
+    previous: SlockFilePreviewPayload,
+    imageGalleryIndex: Int
+): SlockFilePreviewPayload {
+    val title = name.ifBlank { "Attachment" }
+    val meta = listOf(sizeLabel, mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+    return previous.copy(
+        kind = "loading",
+        title = "Image preview",
+        subtitle = title,
+        name = title,
+        path = title,
+        meta = meta,
+        content = "",
+        markdown = false,
+        imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
+        message = SlockFilePreviewLoadingLabel,
+        error = null,
+        externalUrl = null,
+        videoUrl = null,
+        externalFileName = title.ifBlank { "attachment-${attachmentId.take(8)}" },
+        externalMimeType = mimeType,
+        source = SlockFilePreviewSourceThreadAttachment,
+        attachmentId = attachmentId,
+        imageGalleryIndex = imageGalleryIndex
+    )
+}
+
+@Composable
+internal fun SlockFilePreviewOverflowMenuButton(
+    onOpenMenu: (Offset) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    SlockBrutalIconButton(
+        iconName = SlockLucideIconName.Ellipsis,
+        onClick = { onOpenMenu(menuAnchor) },
+        size = 30.dp,
+        shadowOffset = 2.dp,
+        modifier = modifier.onGloballyPositioned { coordinates ->
+            val pos = coordinates.positionInRoot()
+            menuAnchor =
+                slockAnchoredTriggerGeometryAnchor(
+                    root = pos,
+                    width = coordinates.size.width.toFloat(),
+                    height = coordinates.size.height.toFloat(),
+                    placement = SlockAnchorPlacement.BottomEnd
+                )
+        }
+    )
+}
+
+private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =
+    listOfNotNull(
+        mimeType?.takeIf { it.isNotBlank() },
+        sizeBytes.slockFilePreviewSizeLabel(),
+        modifiedAt?.takeIf { it.isNotBlank() }
+    ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
+
+private fun SlockWorkspaceFilePreview.Image.membersWorkspaceMetaLine(fallbackPath: String): String =
+    listOfNotNull(
+        mimeType?.takeIf { it.isNotBlank() },
+        sizeBytes.slockFilePreviewSizeLabel(),
+        modifiedAt?.takeIf { it.isNotBlank() }
+    ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
+
+private fun SlockWorkspaceFilePreview.Unsupported.membersWorkspaceMetaLine(fallbackPath: String): String =
+    listOfNotNull(
+        mimeType?.takeIf { it.isNotBlank() },
+        sizeBytes.slockFilePreviewSizeLabel(),
+        modifiedAt?.takeIf { it.isNotBlank() }
+    ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
+
+private fun Long?.slockFilePreviewSizeLabel(): String? {
+    val bytes = this ?: return null
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${bytes / (1024 * 1024)} MB"
+    }
+}
+
+internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownloadProgress?): String {
+    val percent = progress?.percent
+    val speedLabel = progress?.bytesPerSecond.slockFilePreviewSpeedLabel()
+    val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.slockFilePreviewSizeLabel()
+    val verb = if (progress?.status == "paused") "Paused" else "Downloading"
+    val primary =
+        when {
+            percent != null -> "$verb $percent%"
+            downloadedLabel != null -> "$verb $downloadedLabel"
+            else -> "$verb..."
+        }
+    return listOfNotNull(primary, speedLabel).joinToString(" · ")
+}
+
+internal fun slockFilePreviewActiveDownloadStatusLabel(
+    progress: BridgeAttachmentDownloadProgress?,
+    status: String
+): String {
+    val activeProgress =
+        progress
+            ?: SlockFilePreviewInitialDownloadProgress.copy(
+                status = if (status == "paused") "paused" else "progress"
+            )
+    return slockFilePreviewDownloadStatusLabel(activeProgress)
+}
+
+internal val SlockFilePreviewInitialDownloadProgress =
+    BridgeAttachmentDownloadProgress(
+        downloadId = "",
+        status = "progress",
+        percent = 0,
+        downloadedBytes = 0L,
+        totalBytes = null,
+        bytesPerSecond = null
+    )
+
+internal fun slockFilePreviewPrimaryActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+    when {
+        !cached -> "Download"
+        payload.isAndroidPackageArchive() -> "Install"
+        else -> "Open"
+    }
+
+internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPayload, downloadable: Boolean): String =
+    when {
+        downloadable -> "Download this file to open it with another app."
+        else -> payload.message.ifBlank { "No preview is available for this file type." }
+    }
+
+internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+    when {
+        !cached -> "Download and open..."
+        payload.isAndroidPackageArchive() -> "Install"
+        else -> "Open with..."
+    }
+
+internal fun slockFilePreviewShouldTrackOpenProgress(cached: Boolean): Boolean = !cached
+
+internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): SlockLucideIconName {
+    val mime = payload.externalMimeType.substringBefore(';').trim().lowercase()
+    val fileName = payload.attachmentCacheFileName().substringBefore('?').substringBefore('#')
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return when {
+        payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
+        mime.startsWith("image/") || extension in SlockFilePreviewImageExtensions ->
+            SlockLucideIconName.FileImage
+        mime.startsWith("video/") || extension in SlockFilePreviewVideoExtensions ->
+            SlockLucideIconName.FileVideoCamera
+        mime.startsWith("audio/") || extension in SlockFilePreviewAudioExtensions ->
+            SlockLucideIconName.FileMusic
+        mime in SlockFilePreviewArchiveMimeTypes || extension in SlockFilePreviewArchiveExtensions ->
+            SlockLucideIconName.FileArchive
+        mime in SlockFilePreviewSpreadsheetMimeTypes || extension in SlockFilePreviewSpreadsheetExtensions ->
+            SlockLucideIconName.FileSpreadsheet
+        mime in SlockFilePreviewPresentationMimeTypes || extension in SlockFilePreviewPresentationExtensions ->
+            SlockLucideIconName.Presentation
+        mime in SlockFilePreviewJsonMimeTypes || extension in SlockFilePreviewJsonExtensions ->
+            SlockLucideIconName.FileBraces
+        mime in SlockFilePreviewTerminalMimeTypes || extension in SlockFilePreviewTerminalExtensions ->
+            SlockLucideIconName.FileTerminal
+        mime in SlockFilePreviewCodeMimeTypes || extension in SlockFilePreviewCodeExtensions ->
+            SlockLucideIconName.FileCode
+        extension in SlockFilePreviewTypedTextExtensions ->
+            SlockLucideIconName.FileType
+        mime.startsWith("text/") ||
+            extension in SlockFilePreviewDocumentExtensions ->
+            SlockLucideIconName.FileText
+        else -> SlockLucideIconName.File
+    }
+}
+
+private val SlockFilePreviewImageExtensions =
+    setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp")
+
+private val SlockFilePreviewVideoExtensions =
+    setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
+
+private val SlockFilePreviewAudioExtensions =
+    setOf("aac", "aiff", "flac", "m4a", "mid", "midi", "mp3", "oga", "ogg", "opus", "wav", "weba", "wma")
+
+private val SlockFilePreviewArchiveExtensions =
+    setOf("7z", "aar", "bz2", "dmg", "gz", "jar", "rar", "tar", "tgz", "war", "xz", "zip")
+
+private val SlockFilePreviewSpreadsheetExtensions =
+    setOf("csv", "numbers", "ods", "tsv", "xls", "xlsm", "xlsx")
+
+private val SlockFilePreviewPresentationExtensions =
+    setOf("key", "odp", "pps", "ppsx", "ppt", "pptx")
+
+private val SlockFilePreviewJsonExtensions =
+    setOf("geojson", "json", "json5")
+
+private val SlockFilePreviewTerminalExtensions =
+    setOf("bash", "bat", "cmd", "fish", "ps1", "sh", "zsh")
+
+private val SlockFilePreviewCodeExtensions =
+    setOf(
+        "c", "cc", "cpp", "cs", "css", "dart", "go", "h", "hpp", "html", "java", "js", "jsx",
+        "kt", "kts", "lua", "m", "mm", "php", "py", "rb", "rs", "sql", "swift", "toml", "ts",
+        "tsx", "vue", "xml", "yaml", "yml"
+    )
+
+private val SlockFilePreviewTypedTextExtensions =
+    setOf("log", "text", "txt")
+
+private val SlockFilePreviewDocumentExtensions =
+    setOf("doc", "docx", "md", "markdown", "odt", "pages", "pdf", "rtf")
+
+private val SlockFilePreviewArchiveMimeTypes =
+    setOf(
+        "application/gzip",
+        "application/java-archive",
+        "application/vnd.rar",
+        "application/x-7z-compressed",
+        "application/x-bzip2",
+        "application/x-gzip",
+        "application/x-rar-compressed",
+        "application/x-tar",
+        "application/zip"
+    )
+
+private val SlockFilePreviewSpreadsheetMimeTypes =
+    setOf(
+        "application/vnd.ms-excel",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/tab-separated-values"
+    )
+
+private val SlockFilePreviewPresentationMimeTypes =
+    setOf(
+        "application/vnd.ms-powerpoint",
+        "application/vnd.oasis.opendocument.presentation",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+
+private val SlockFilePreviewJsonMimeTypes =
+    setOf("application/geo+json", "application/json", "application/ld+json")
+
+private val SlockFilePreviewTerminalMimeTypes =
+    setOf("application/x-sh", "application/x-shellscript", "text/x-shellscript")
+
+private val SlockFilePreviewCodeMimeTypes =
+    setOf(
+        "application/javascript",
+        "application/typescript",
+        "application/x-javascript",
+        "application/xml",
+        "text/css",
+        "text/html",
+        "text/javascript",
+        "text/xml"
+    )
+
+private fun slockFilePreviewPrimaryActionIcon(payload: SlockFilePreviewPayload, cached: Boolean): SlockLucideIconName =
+    when {
+        !cached -> SlockLucideIconName.Download
+        payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
+        else -> SlockLucideIconName.ExternalLink
+    }
+
+private fun canOpenPayloadWithExternalViewer(payload: SlockFilePreviewPayload): Boolean =
+    payload.externalUrl?.isNotBlank() == true ||
+        (payload.source == SlockFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
+
+private fun SlockFilePreviewPayload.attachmentCacheId(): String =
+    attachmentId.ifBlank { path.ifBlank { name.ifBlank { externalFileName.ifBlank { "attachment" } } } }
+
+private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
+    externalFileName
+        .ifBlank { name }
+        .ifBlank { path }
+        .ifBlank { "attachment" }
+
+private fun SlockFilePreviewPayload.filePreviewDownloadId(): String =
+    listOf(source, attachmentCacheId(), attachmentCacheFileName())
+        .joinToString(":")
+        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
+        .take(160)
+        .ifBlank { "file-preview-download" }
+
+private fun SlockFilePreviewPayload.isAndroidPackageArchive(): Boolean {
+    val mime = externalMimeType.substringBefore(';').trim()
+    if (mime.equals("application/vnd.android.package-archive", ignoreCase = true)) return true
+    val name = attachmentCacheFileName().substringBefore('?').substringBefore('#')
+    return name.endsWith(".apk", ignoreCase = true)
+}
+
+private fun Long?.slockFilePreviewSpeedLabel(): String? {
+    val bytesPerSecond = this?.takeIf { it > 0L } ?: return null
+    return "${bytesPerSecond.slockFilePreviewSizeLabel()}/s"
+}
+
+@Composable
+internal fun SlockFilePreviewPageScaffold(
+    title: String,
+    subtitle: String? = null,
+    iconName: SlockLucideIconName,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
+    overflowMenuItems: List<SlockBrutalDropdownMenuItem> = emptyList(),
+    onOverflowMenuSelect: (String) -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = title,
+                subtitle = subtitle,
+                iconName = iconName,
+                backgroundColor = SlockColor.SurfaceWhite,
+                leadingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.ArrowLeft,
+                        onClick = onBack,
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                },
+                trailingContent =
+                    if (overflowMenuItems.isNotEmpty()) {
+                        {
+                            SlockFilePreviewOverflowMenuButton(
+                                onOpenMenu = { anchor ->
+                                    menuAnchor = anchor
+                                    menuOpen = true
+                                }
+                            )
+                        }
+                    } else {
+                        null
+                    }
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                content()
+            }
+        }
+        if (menuOpen && overflowMenuItems.isNotEmpty()) {
+            SlockBrutalDropdownMenu(
+                anchor = menuAnchor,
+                items = overflowMenuItems,
+                onSelect = { id ->
+                    menuOpen = false
+                    onOverflowMenuSelect(id)
+                },
+                onDismiss = { menuOpen = false },
+                widthDp = 180f
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewGenericCard(
+    iconName: SlockLucideIconName,
+    name: String,
+    meta: String,
+    message: String,
+    statusLabel: String? = null,
+    showProgress: Boolean = false,
+    progressPercent: Int? = null,
+    actionLabel: String? = null,
+    actionIcon: SlockLucideIconName? = null,
+    actionEnabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(SlockColor.SurfaceWhite)
+            .padding(SlockSpacing.Xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(72.dp), color = "#FF000000")
+        Box(modifier = Modifier.height(SlockSpacing.Md))
+        Text(
+            text = name.ifBlank { "File" },
+            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        if (meta.isNotBlank()) {
+            Box(modifier = Modifier.height(4.dp))
+            Text(
+                text = meta,
+                style = SlockType.Body,
+                color = SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+        Box(modifier = Modifier.height(SlockSpacing.Md))
+        Text(
+            text = message,
+            style = SlockType.Body,
+            color = SlockColor.TextMutedGray,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        if (showProgress) {
+            Box(modifier = Modifier.height(SlockSpacing.Md))
+            SlockFilePreviewDownloadStatusBar(
+                statusLabel = statusLabel ?: "Downloading 0%",
+                showProgress = true,
+                progressPercent = progressPercent ?: 0,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload
+            )
+        } else if (statusLabel != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Sm))
+            Text(
+                text = statusLabel,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+        if (!showProgress && actionLabel != null && onAction != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Lg))
+            SlockBrutalActionButton(
+                label = actionLabel,
+                onClick = onAction,
+                enabled = actionEnabled,
+                leadingIcon = actionIcon,
+                minWidth = 132.dp,
+                minHeight = 40.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewProgressBar(progressPercent: Int?) {
+    val percent = progressPercent?.coerceIn(0, 100)
+    if (percent == null) {
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth().height(4.dp),
+            color = SlockColor.AccentCyan,
+            trackColor = SlockColor.SurfaceCream
+        )
+        return
+    }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    ) {
+        if (percent > 0) {
+            Box(
+                modifier =
+                    Modifier
+                        .weight(percent.toFloat())
+                        .fillMaxSize()
+                        .background(SlockColor.AccentCyan)
+            )
+        }
+        if (percent < 100) {
+            Box(
+                modifier =
+                    Modifier
+                        .weight((100 - percent).toFloat())
+                        .fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadStatusOverlay(
+    statusLabel: String?,
+    showProgress: Boolean,
+    progressPercent: Int?,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        content()
+        if (statusLabel != null || showProgress) {
+            SlockFilePreviewDownloadStatusBar(
+                statusLabel = statusLabel ?: "Downloading...",
+                showProgress = showProgress,
+                progressPercent = progressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadStatusBar(
+    statusLabel: String,
+    showProgress: Boolean,
+    progressPercent: Int?,
+    downloadPaused: Boolean = false,
+    onToggleDownload: (() -> Unit)? = null,
+    onStopDownload: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = statusLabel,
+            style = SlockType.Caption,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (showProgress) {
+            SlockFilePreviewProgressBar(progressPercent = progressPercent)
+        }
+        if (showProgress && onToggleDownload != null && onStopDownload != null) {
+            SlockFilePreviewDownloadControls(
+                paused = downloadPaused,
+                onToggle = onToggleDownload,
+                onStop = onStopDownload
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadControls(
+    paused: Boolean,
+    onToggle: () -> Unit,
+    onStop: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockBrutalActionButton(
+            label = if (paused) "Resume" else "Pause",
+            onClick = onToggle,
+            leadingIcon = if (paused) SlockLucideIconName.Play else SlockLucideIconName.Pause,
+            minWidth = 92.dp,
+            minHeight = 34.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+        )
+        SlockBrutalActionButton(
+            label = "Stop",
+            onClick = onStop,
+            leadingIcon = SlockLucideIconName.Square,
+            minWidth = 82.dp,
+            minHeight = 34.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+        )
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewMarkdownPanel(
+    name: String,
+    meta: String,
+    statusLabel: String?,
+    status: String,
+    body: String?,
+    error: String?,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    performanceKey: String? = null,
+    textStyle: TextStyle? = null,
+    showChrome: Boolean = true
+) {
+    if (!showChrome && status == "content") {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            item {
+                SlockMarkdownBody(
+                    body = body.orEmpty(),
+                    textStyle = textStyle ?: SlockType.Body,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.fillMaxWidth(),
+                    performanceKey = performanceKey
+                )
+            }
+        }
+        return
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        SlockFilePreviewPanelHeader(
+            name = name.ifBlank { "Markdown" },
+            meta = meta,
+            statusLabel = statusLabel
+        )
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        when (status) {
+            "content" ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(SlockSpacing.Md),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    item {
+                        SlockMarkdownBody(
+                            body = body.orEmpty(),
+                            textStyle = textStyle ?: SlockType.Body,
+                            onOpenUrl = onOpenUrl,
+                            modifier = Modifier.fillMaxWidth(),
+                            performanceKey = performanceKey
+                        )
+                    }
+                }
+            "error" ->
+                SlockFilePreviewMessage(
+                    iconName = SlockLucideIconName.FileText,
+                    title = "Markdown preview unavailable",
+                    detail = error.orEmpty().ifBlank { "Open with system viewer to inspect this file." },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            else ->
+                SlockFilePreviewLoadingIndicator(
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewTextPanel(
+    name: String,
+    meta: String,
+    content: String,
+    modifier: Modifier = Modifier,
+    showChrome: Boolean = true
+) {
+    if (!showChrome) {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(SlockSpacing.Md)
+        ) {
+            item {
+                Text(
+                    text = content,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = Int.MAX_VALUE,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        }
+        return
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        SlockFilePreviewPanelHeader(name = name.ifBlank { "Text file" }, meta = meta, statusLabel = null)
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 280.dp, max = 560.dp)
+                .background(SlockColor.SurfaceCream)
+                .padding(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = content,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 28,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewImagePanel(
+    source: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    placeholderLabel: String = "IMG",
+    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
+    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default,
+    zoomable: Boolean = true
+) {
+    SlockAspectFitImagePreviewSurface(
+        source = source,
+        contentDescription = contentDescription,
+        placeholderLabel = placeholderLabel,
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = backgroundColor,
+        borderWidth = borderWidth,
+        zoomable = zoomable,
+        showLoadingIndicator = true
+    )
+}
+
+@Composable
+internal fun SlockFilePreviewMessage(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(SlockSpacing.Lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FF000000")
+        Text(
+            text = title,
+            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewLoadingIndicator(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.padding(SlockSpacing.Lg),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockHeaderRefreshIndicator()
+    }
+}
+
+@Composable
+private fun SlockFilePreviewPanelHeader(
+    name: String,
+    meta: String,
+    statusLabel: String?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceCream)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = name,
+            style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (meta.isNotBlank()) {
+            Text(
+                text = meta,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        statusLabel?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}

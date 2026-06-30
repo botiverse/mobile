@@ -61,7 +61,7 @@ This means the right insertion point is:
 ### 1. Mark Code Spans In Slock Markdown
 
 Add a Slock-only annotation tag, for example
-`ai.slock.markdown.inlineCode`, around every Markdown `CODE_SPAN` range.
+`build.raft.app.markdown.inlineCode`, around every Markdown `CODE_SPAN` range.
 
 Use the existing `slockMarkdownAnnotator` interception path so Slock controls
 code-span output instead of relying on the vendored markdown default that

@@ -13,7 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import build.raft.app.MainActivity
 import build.raft.app.R
-import ai.slock.compose.data.SystemUnreadNotificationRequest
+import build.raft.app.data.SystemUnreadNotificationRequest
 import org.json.JSONObject
 
 internal object AndroidUnreadNotificationPoster {

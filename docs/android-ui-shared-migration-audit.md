@@ -30,7 +30,7 @@ runtime product callers from `MainActivity.kt` into Android-owned UI/theme:
   `SlockTextField`, `SlockModal`, `SlockKeySurface`, and `SlockPageHeader`.
 
 So the current answer is: Android should not own final theme, but deleting
-`compose/androidApp/src/main/java/ai/slock/android/ui/theme` today would break runtime
+`compose/androidApp/src/main/java/build/raft/app/ui/theme` today would break runtime
 screens and connected tests. The remaining work is to remove those runtime
 callers, not to blindly delete token files.
 
@@ -99,7 +99,7 @@ These are the main remaining runtime roots that keep Android product theme alive
 | `InboxScreen` | Inbox route remains native Compose UI | Move Inbox list/filter/actions to shared store/page, then remove Android screen/theme usage |
 | Settings home/detail native screens | Some Settings sections still render native rows/cards/actions | Continue Settings #35-#39 shared MVI/page migration; delete native Settings screens once shared sections replace them |
 | `SlockTestBuildFrame`, restore/error/empty host fragments in `MainActivity.kt` | Host still paints small branded fragments during startup/error | Replace with shared splash/error components or make them plain host-only wrappers with no product token ownership |
-| Android visual tests under `compose/androidApp/src/androidTest/java/ai/slock/android/visual` | Some visual cases still import Android components/tokens directly | Keep only cases that render true shared product routes; move component baselines to shared providers or mark pending |
+| Android visual tests under `compose/androidApp/src/androidTest/java/build/raft/app/visual` | Some visual cases still import Android components/tokens directly | Keep only cases that render true shared product routes; move component baselines to shared providers or mark pending |
 
 ### Keep Android-Owned
 
@@ -147,7 +147,7 @@ This rule prevents startup white screens caused by reading Kuikly `viewModelScop
 
 ## Current State
 
-The Android `compose/androidApp/src/main/java/ai/slock/android/ui` tree still contains native Compose design-system code from the pre-shared-shell migration:
+The Android `compose/androidApp/src/main/java/build/raft/app/ui` tree still contains native Compose design-system code from the pre-shared-shell migration:
 
 - `ui/theme`: native Material theme, Android font resources, hard-shadow helpers, colors, spacing, stroke, radius, size.
 - `ui/components`: native buttons, text fields, bottom tab/scaffold, feedback states, modals, member/task/thread widgets, pull refresh, previews.

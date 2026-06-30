@@ -2,7 +2,7 @@ package build.raft.app.widget
 
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidMMKVKeyValueStore
-import ai.slock.compose.data.SlockKeyValueStore
+import build.raft.app.data.SlockKeyValueStore
 import org.json.JSONArray
 import org.json.JSONObject
 

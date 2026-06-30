@@ -80,7 +80,7 @@ Audit pattern:
 
 ```bash
 rg -n "collectAsState|DisposableEffect|LaunchedEffect|rememberUpdatedState|bridge\\.log" \
-  compose/shared/src/commonMain/kotlin/ai/slock/compose
+  compose/shared/src/commonMain/kotlin/build/raft/app
 ```
 
 Flag any effect that:
@@ -137,7 +137,7 @@ Audit pattern:
 
 ```bash
 rg -n "bridge\\.log|console\\.log|SlockOhosDiagnostics.record" \
-  compose/shared/src/commonMain/kotlin/ai/slock/compose \
+  compose/shared/src/commonMain/kotlin/build/raft/app \
   compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets
 ```
 

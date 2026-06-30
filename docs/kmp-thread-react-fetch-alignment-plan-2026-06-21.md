@@ -14,9 +14,9 @@ P0 React alignment Subtasks A-E land in main so that Activity → Thread (and Se
 ### A. Repository: `getThread(threadId)` → `getReplyThread(parentChannelId, parentMessageId)`
 
 **Files to touch**:
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ConversationRepositoryDataSource.kt` — add `getReplyThread(parentChannelId, parentMessageId, ...)`; delete `getThread(threadId)`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedThreadStore.kt` — 2 call sites (`fetchInitialThreadSnapshot` line 1305, `fetchResolvedReplyThreadSnapshot` line 1344)
-- `compose/shared/src/commonTest/kotlin/ai/slock/compose/data/ConversationRepositoryDataSourceTest.kt` — add tests for new signature; delete `getThread` tests
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/ConversationRepositoryDataSource.kt` — add `getReplyThread(parentChannelId, parentMessageId, ...)`; delete `getThread(threadId)`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt` — 2 call sites (`fetchInitialThreadSnapshot` line 1305, `fetchResolvedReplyThreadSnapshot` line 1344)
+- `compose/shared/src/commonTest/kotlin/build/raft/app/data/ConversationRepositoryDataSourceTest.kt` — add tests for new signature; delete `getThread` tests
 
 **Implementation outline**:
 1. `getReplyThread` flow:
@@ -34,8 +34,8 @@ P0 React alignment Subtasks A-E land in main so that Activity → Thread (and Se
 ### B. Delete `matchesReplyThreadParent` + same-source checks + fallback cleanup
 
 **Files**:
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedThreadStore.kt` — delete `matchesReplyThreadParent` (line 2305-2317), delete same-source check at line 1311 + 1348, clean `toKuiklyThreadPayload` fallback chain (line 3183-3252)
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ThreadCandidateProofGate.kt` — re-audit `ThreadSnapshot.toThreadRouteId()` & `ThreadFallbackProof.resolve()`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt` — delete `matchesReplyThreadParent` (line 2305-2317), delete same-source check at line 1311 + 1348, clean `toKuiklyThreadPayload` fallback chain (line 3183-3252)
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadCandidateProofGate.kt` — re-audit `ThreadSnapshot.toThreadRouteId()` & `ThreadFallbackProof.resolve()`
 - Tests: `ThreadPayloadTest` + `ThreadCandidateProofGateTest` + `SharedThreadStoreTest`
 
 **Implementation outline**:
@@ -53,8 +53,8 @@ P0 React alignment Subtasks A-E land in main so that Activity → Thread (and Se
 ### C. Persistent cache redesign
 
 **Files**:
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ComposeLocalDataStore.kt` (or similar) — bump cache version + change cache key shape
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedThreadStore.kt` — update cache write/read paths
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/ComposeLocalDataStore.kt` (or similar) — bump cache version + change cache key shape
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt` — update cache write/read paths
 
 **Implementation outline**:
 1. Bump cache version constant → invalidate old cache (one-time slowness on first launch after deploy)
@@ -66,7 +66,7 @@ P0 React alignment Subtasks A-E land in main so that Activity → Thread (and Se
 ### D. Realtime path replacement
 
 **Files**:
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SlockRealtimeHandler.kt` (or similar) — replace `message:new` filter
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockRealtimeHandler.kt` (or similar) — replace `message:new` filter
 - `compose/shared/src/commonTest/kotlin/...` — add unit tests for filter logic + integration smoke
 
 **Implementation outline**:

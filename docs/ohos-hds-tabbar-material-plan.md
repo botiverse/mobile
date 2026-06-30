@@ -13,7 +13,7 @@ material is active.
 ## Current Implementation
 
 - Shared entry point:
-  `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockTabBar.kt`
+  `compose/shared/src/commonMain/kotlin/build/raft/app/SlockTabBar.kt`
   selects the OHOS native renderer when page data contains
   `slockNativeTabBarRenderer=ohosHdsImmersive`.
 - OHOS host:

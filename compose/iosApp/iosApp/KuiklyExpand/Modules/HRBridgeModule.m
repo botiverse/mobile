@@ -134,7 +134,7 @@ static dispatch_queue_t SlockDiagnosticsWriterQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("ai.slock.ios.diagnostics.writer", DISPATCH_QUEUE_SERIAL);
+        queue = dispatch_queue_create("build.raft.app.ios.diagnostics.writer", DISPATCH_QUEUE_SERIAL);
     });
     return queue;
 }

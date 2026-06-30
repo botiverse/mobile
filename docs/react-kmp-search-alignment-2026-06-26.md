@@ -17,7 +17,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedHomeSearchSavedStore.kt` (含 search + saved + activity 三合一)
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SharedHomeSearchSavedStore.kt` (含 search + saved + activity 三合一)
 - `SharedSearchRepository` (search query logic)
 
 ## Feature points inventory (06-23 → 06-26)

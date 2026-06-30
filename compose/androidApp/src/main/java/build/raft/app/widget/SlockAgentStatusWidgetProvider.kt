@@ -5,10 +5,10 @@ import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.InMemorySlockAuthSessionStore
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.model.AgentStatus
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.model.AgentStatus
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider

@@ -2,8 +2,8 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.compose.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
-import ai.slock.compose.data.SlockLocalPreferenceStore
+import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.SlockLocalPreferenceStore
 import com.tencent.mmkv.MMKV
 
 internal object AndroidRealtimeKeepAliveController {

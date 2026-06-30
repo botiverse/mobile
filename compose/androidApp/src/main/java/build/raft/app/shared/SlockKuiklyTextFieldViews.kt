@@ -9,7 +9,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.inputmethod.EditorInfo
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.compose.localizedThreadComposerInsertNewlineTitle
+import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView

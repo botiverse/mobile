@@ -1,0 +1,1103 @@
+package build.raft.app.data
+
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.MessageId
+import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class SharedTasksStoreTest {
+    @Test
+    fun sharedTasksUseCaseReturnsTypedErrorWhenSelectedServerIsMissing() = runBlocking {
+        val repository = FakeTasksRepository()
+        val useCase =
+            SharedTasksUseCase(
+                authStore = InMemorySlockAuthSessionStore(),
+                repository = repository
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest())
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("selected_server_missing", error.error.code)
+        assertEquals(0, repository.loadCalls)
+    }
+
+    @Test
+    fun sharedTasksUseCaseLoadsThroughRepositoryWithSelectedServer() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest(TaskFilter(statuses = setOf(TaskStatus.Todo))))
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(ServerId("server-1"), repository.lastServerId)
+        assertEquals(SharedTasksScope.Server, repository.lastScope)
+        assertEquals(setOf(TaskStatus.Todo), repository.lastFilter?.statuses)
+    }
+
+    @Test
+    fun sharedTasksUseCaseLoadsChannelScopeThroughRepository() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val channelId = ChannelId("thread-channel-1")
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository,
+                scope = SharedTasksScope.Channel(channelId)
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest())
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(ServerId("server-1"), repository.lastServerId)
+        assertEquals(SharedTasksScope.Channel(channelId), repository.lastScope)
+    }
+
+    @Test
+    fun sharedTasksUseCasePropagatesBackgroundRefreshPriority() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest(priority = DataRequestPriority.Background))
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(DataRequestPriority.Background, repository.lastPriority)
+    }
+
+    @Test
+    fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
+        val serverId = ServerId("server-1")
+        val local = InMemorySharedTasksLocalDataSource()
+        val remote =
+            FakeTasksRemoteDataSource(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks =
+                                listOf(
+                                    task("task-1", TaskStatus.Todo),
+                                    task("task-2", TaskStatus.Done)
+                                ),
+                            summaryCounts = emptyMap()
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        val refreshResult =
+            repository.refreshTasks(
+                serverId,
+                SharedTasksScope.Server,
+                TaskFilter(statuses = setOf(TaskStatus.Todo))
+            )
+        val observed =
+            repository.observeTasks(
+                serverId,
+                SharedTasksScope.Server,
+                TaskFilter(statuses = setOf(TaskStatus.Todo))
+            ).first()
+
+        val refreshContent = assertIs<DataResult.Content<TaskSnapshot>>(refreshResult).data
+        val observedContent = assertIs<DataResult.Content<TaskSnapshot>>(observed).data
+        assertEquals(listOf("task-1"), refreshContent.tasks.map { it.id.value })
+        assertEquals(listOf("task-1"), observedContent.tasks.map { it.id.value })
+        assertEquals(TaskFilter(), remote.lastFilter)
+        assertEquals(DataRequestPriority.Visible, remote.lastPriority)
+    }
+
+    @Test
+    fun sharedTasksRepositoryUsesRequestedRefreshPriority() = runBlocking {
+        val serverId = ServerId("server-1")
+        val local = InMemorySharedTasksLocalDataSource()
+        val remote =
+            FakeTasksRemoteDataSource(
+                channelLoadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        repository.refreshTasks(
+            serverId,
+            SharedTasksScope.Channel(ChannelId("channel-1")),
+            TaskFilter(),
+            DataRequestPriority.Background
+        )
+
+        assertEquals(ChannelId("channel-1"), remote.lastChannelId)
+        assertEquals(DataRequestPriority.Background, remote.lastPriority)
+    }
+
+    @Test
+    fun sharedTasksDataStoreProjectsChannelTasksFromServerSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"), channelName = "general"),
+                            task("task-2", TaskStatus.Done, channelId = ChannelId("channel-2"), channelName = "random")
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreProjectsServerScopeFromServerSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1")),
+                            task("task-2", TaskStatus.InReview, channelId = ChannelId("channel-2"))
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val slice = store.projectionFlow("server-1", SharedTasksScope.Server).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1", "task-2"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStorePrefersChannelSnapshotOverServerProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-server", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-channel", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-channel"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreUpsertTaskUpdatesPublishedChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val original = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+        val updated = original.copy(status = TaskStatus.InReview)
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(original),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        store.upsertTask("server-1", updated)
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(TaskStatus.InReview, slice.tasks.single().status)
+    }
+
+    @Test
+    fun sharedTasksDataStoreUpsertTaskCreatesMissingChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val task = task("task-1", TaskStatus.Done, channelId = ChannelId("channel-1"))
+
+        store.upsertTask("server-1", task)
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
+        assertEquals(TaskStatus.Done, slice.tasks.single().status)
+    }
+
+    @Test
+    fun sharedTasksRepositoryKeepsChannelRefreshScopedToChannelCache() = runBlocking {
+        val serverId = ServerId("server-1")
+        val channelId = ChannelId("channel-thread")
+        val local =
+            InMemorySharedTasksLocalDataSource(
+                mapOf(
+                    serverId to
+                        TaskSnapshot(
+                            tasks = listOf(task("task-server", TaskStatus.Todo, channelName = "general")),
+                            summaryCounts = emptyMap()
+                        )
+                )
+            )
+        val remote =
+            FakeTasksRemoteDataSource(
+                channelLoadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-channel", TaskStatus.InProgress, channelName = "thread")),
+                            summaryCounts = emptyMap()
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        val channelResult =
+            repository.refreshTasks(
+                serverId = serverId,
+                scope = SharedTasksScope.Channel(channelId),
+                filter = TaskFilter()
+            )
+        val serverObserved = repository.observeTasks(serverId, SharedTasksScope.Server, TaskFilter()).first()
+        val channelObserved = repository.observeTasks(serverId, SharedTasksScope.Channel(channelId), TaskFilter()).first()
+
+        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelResult).data.tasks.map { it.id.value })
+        assertEquals(listOf("task-server"), assertIs<DataResult.Content<TaskSnapshot>>(serverObserved).data.tasks.map { it.id.value })
+        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelObserved).data.tasks.map { it.id.value })
+        assertEquals(channelId, remote.lastChannelId)
+    }
+
+    @Test
+    fun tasksRefreshGateSkipsDuplicateInFlightAndFreshSnapshotButAllowsManualRefresh() {
+        assertEquals(
+            TasksRefreshSkipReason.InFlight,
+            tasksRefreshSkipReason(
+                inFlight = true,
+                hasSnapshot = false,
+                snapshotAgeMs = null,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+        assertEquals(
+            TasksRefreshSkipReason.FreshSnapshot,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+        assertEquals(
+            null,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = true
+            )
+        )
+        assertEquals(
+            null,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 15_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+    }
+
+    @Test
+    fun emptyTasksResultCountsAsFreshCompletedSnapshot() {
+        val emptyState = TasksUiState(ScreenLoadState.Empty(EmptyReason.NoTasks))
+        val emptyResult: DataResult<TaskSnapshot> = DataResult.Empty(EmptyReason.NoTasks)
+
+        assertTrue(emptyState.hasCompletedTasksSnapshot())
+        assertTrue(emptyResult.isCompletedTasksSnapshot())
+        assertEquals(
+            TasksRefreshSkipReason.FreshSnapshot,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = emptyState.hasCompletedTasksSnapshot(),
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+    }
+
+    @Test
+    fun sharedTasksStoreUsesMviRuntimeNoopGateAndTransitionLog() {
+        val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedTasksStore(
+                initialState = TasksUiState(ScreenLoadState.Loading),
+                scope = scope,
+                transitionLogger = transitions::add
+            )
+
+        val emitted = store.accept(SharedTasksIntent.NavigationFailed(null))
+
+        assertFalse(emitted)
+        assertEquals(TasksUiState(ScreenLoadState.Loading), store.state.value)
+        assertEquals(
+            MviTransition<SharedTasksIntent>(
+                intent = SharedTasksIntent.NavigationFailed(null),
+                emitted = false,
+                reason = "unchanged"
+            ),
+            transitions.single()
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun sharedTasksStoreNoopsEquivalentSeedContentSnapshot() {
+        val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot =
+            TaskSnapshot(
+                tasks = listOf(task("task-1", TaskStatus.Todo)),
+                summaryCounts = mapOf(TaskStatus.Todo to 1)
+            )
+        val store =
+            SharedTasksStore(
+                initialState = TasksUiState(ScreenLoadState.Loading),
+                scope = scope,
+                transitionLogger = transitions::add
+            )
+        val seed = SharedTasksIntent.SetContent(snapshot, selectedFilter = TaskStatus.Todo)
+
+        assertTrue(store.accept(seed))
+        val seeded = store.state.value
+        assertFalse(store.accept(seed))
+
+        assertTrue(seeded === store.state.value)
+        assertEquals(true, transitions.first().emitted)
+        assertEquals(null, transitions.first().reason)
+        assertEquals(false, transitions.last().emitted)
+        assertEquals("unchanged", transitions.last().reason)
+        scope.cancel()
+    }
+
+    @Test
+    fun loadingKeepsVisibleContentAndMarksRefresh() {
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(task("task-1", TaskStatus.Todo))
+                        )
+                    ),
+                navigationErrorCode = "missing_task_reference"
+            )
+
+        val next = state.reduce(SharedTasksIntent.StartLoading(filter = TaskStatus.InReview))
+
+        assertEquals(TaskStatus.InReview, next.selectedFilter)
+        assertEquals(true, next.refreshing)
+        assertEquals(null, next.navigationErrorCode)
+        assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState)
+    }
+
+    @Test
+    fun optimisticStatusUpdateAndFailureRestorePreviousTask() {
+        val previousTask = task("task-1", TaskStatus.Todo)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(previousTask)
+                        )
+                    )
+            )
+
+        val optimistic = state.reduce(SharedTasksIntent.UpdateTaskStatus("task-1", TaskStatus.Done))
+        val optimisticContent = assertIs<ScreenLoadState.Content<TasksContent>>(optimistic.loadState).data
+        assertEquals(TaskStatus.Done, optimisticContent.tasks.single().status)
+        assertEquals(1, optimisticContent.summaryCounts[TaskStatus.Done])
+        assertEquals("task-1", optimistic.statusUpdatingTaskId)
+
+        val restored =
+            optimistic.reduce(
+                SharedTasksIntent.TaskStatusUpdateFailed(
+                    previousTask = previousTask,
+                    errorCode = "task_status_failed"
+                )
+            )
+        val restoredContent = assertIs<ScreenLoadState.Content<TasksContent>>(restored.loadState).data
+        assertEquals(TaskStatus.Todo, restoredContent.tasks.single().status)
+        assertEquals(1, restoredContent.summaryCounts[TaskStatus.Todo])
+        assertEquals(null, restored.statusUpdatingTaskId)
+        assertEquals("task_status_failed", restored.statusUpdateErrorCode)
+    }
+
+    @Test
+    fun taskStatusUpdateSuccessRefreshesScopedProjectionTask() {
+        val staleTask = task("task-1", TaskStatus.Todo)
+        val canonicalTask = staleTask.copy(status = TaskStatus.Done)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(staleTask)
+                        )
+                    ),
+                statusUpdatingTaskId = "task-1",
+                statusUpdateErrorCode = "previous_error"
+            )
+
+        val next = state.reduce(SharedTasksIntent.TaskStatusUpdateSucceeded(canonicalTask))
+
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
+        assertEquals(TaskStatus.Done, content.tasks.single().status)
+        assertEquals(1, content.summaryCounts[TaskStatus.Done])
+        assertEquals(0, content.summaryCounts[TaskStatus.Todo])
+        assertEquals(null, next.statusUpdatingTaskId)
+        assertEquals(null, next.statusUpdateErrorCode)
+    }
+
+    @Test
+    fun updateTaskStatusMatchesTaskByMessageId() {
+        val task = task("task-1", TaskStatus.Todo)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(task)
+                        )
+                    )
+            )
+
+        val next = state.reduce(SharedTasksIntent.UpdateTaskStatus("message-task-1", TaskStatus.Done))
+
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
+        assertEquals(TaskStatus.Done, content.tasks.single().status)
+        assertEquals(1, content.summaryCounts[TaskStatus.Done])
+    }
+
+    @Test
+    fun taskStatusUpdateSkipReasonRejectsAlreadyAppliedAndStaleActions() {
+        val currentTask = task("task-1", TaskStatus.InProgress)
+        val staleTask = currentTask.copy(status = TaskStatus.Todo)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.InProgress to 1),
+                            tasks = listOf(currentTask)
+                        )
+                    )
+            )
+
+        assertEquals(
+            TaskStatusUpdateSkipReason.AlreadyCurrent,
+            state.taskStatusUpdateSkipReason(staleTask, TaskStatus.InProgress)
+        )
+        assertEquals(
+            TaskStatusUpdateSkipReason.StaleTaskStatus,
+            state.taskStatusUpdateSkipReason(staleTask, TaskStatus.InReview)
+        )
+        assertEquals(null, state.taskStatusUpdateSkipReason(currentTask, TaskStatus.InReview))
+    }
+
+    @Test
+    fun setContentDerivesSummaryCountsWhenSnapshotCountsAreMissing() {
+        val state = TasksUiState(ScreenLoadState.Loading)
+
+        val next =
+            state.reduce(
+                SharedTasksIntent.SetContent(
+                    snapshot =
+                        TaskSnapshot(
+                            tasks =
+                                listOf(
+                                    task("task-1", TaskStatus.Todo),
+                                    task("task-2", TaskStatus.InProgress)
+                                ),
+                            summaryCounts = emptyMap()
+                        ),
+                    selectedFilter = TaskStatus.Todo
+                )
+            )
+
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
+        assertEquals(TaskStatus.Todo, next.selectedFilter)
+        assertEquals(false, next.refreshing)
+        assertEquals(1, content.summaryCounts[TaskStatus.Todo])
+        assertEquals(1, content.summaryCounts[TaskStatus.InProgress])
+    }
+
+    @Test
+    fun seedContentFillsLoadingStateButDoesNotReplaceCompletedSnapshot() {
+        val assigned = member("KMP-专家")
+        val canonicalTask = task("task-1", TaskStatus.InProgress, assignee = assigned)
+        val staleThreadPayloadTask = task("task-1", TaskStatus.Todo, assignee = null)
+        val seedSnapshot =
+            TaskSnapshot(
+                tasks = listOf(staleThreadPayloadTask),
+                summaryCounts = mapOf(TaskStatus.Todo to 1)
+            )
+        val loading = TasksUiState(ScreenLoadState.Loading)
+
+        val seeded = loading.reduce(SharedTasksIntent.SeedContent(seedSnapshot, selectedFilter = TaskStatus.Todo))
+        val seededContent = assertIs<ScreenLoadState.Content<TasksContent>>(seeded.loadState).data
+        assertEquals(TaskStatus.Todo, seeded.selectedFilter)
+        assertEquals(listOf(staleThreadPayloadTask), seededContent.tasks)
+
+        val canonical =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.InProgress to 1),
+                            tasks = listOf(canonicalTask)
+                        )
+                    ),
+                selectedFilter = TaskStatus.InProgress,
+                refreshing = true
+            )
+
+        val preserved = canonical.reduce(SharedTasksIntent.SeedContent(seedSnapshot, selectedFilter = TaskStatus.Todo))
+        val preservedContent = assertIs<ScreenLoadState.Content<TasksContent>>(preserved.loadState).data
+        assertEquals(TaskStatus.InProgress, preserved.selectedFilter)
+        assertEquals(true, preserved.refreshing)
+        assertEquals(listOf(canonicalTask), preservedContent.tasks)
+        assertEquals(assigned, preservedContent.tasks.single().assignee)
+    }
+
+    @Test
+    fun presentationReducerPrunesChannelsAndFiltersVisibleTasks() {
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks =
+                    listOf(
+                        task("task-1", TaskStatus.Todo, channelName = "android"),
+                        task("task-2", TaskStatus.InReview, channelName = "kmp"),
+                        task("task-3", TaskStatus.Todo, channelName = "kmp")
+                    )
+            )
+
+        val presentation =
+            TasksPresentationState()
+                .reduce(TasksPresentationIntent.ToggleChannel("kmp"))
+                .reduce(TasksPresentationIntent.ToggleChannel("missing"))
+                .reduce(TasksPresentationIntent.PruneUnavailableChannels(setOf("android", "kmp")))
+                .reduce(TasksPresentationIntent.SelectMode(TasksViewMode.List))
+
+        val visible =
+            content.visibleContent(
+                selectedFilter = TaskStatus.Todo,
+                presentationState = presentation,
+                showChannelFilter = true
+            )
+
+        assertEquals(TasksViewMode.List, presentation.selectedMode)
+        assertEquals(setOf("kmp"), visible.selectedChannelNames)
+        assertEquals(listOf("android", "kmp"), visible.channelOptions)
+        assertEquals(listOf("task-3"), visible.filteredTasks.map { it.id.value })
+        assertEquals(2, visible.channelScopedContent.tasks.size)
+        assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.Todo])
+        assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun presentationReducerPrunesCreatorsAndFiltersVisibleTasks() {
+        val artin = member("Artin", MemberKind.Human)
+        val cindy = member("Cindy", MemberKind.Human)
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks =
+                    listOf(
+                        task("task-1", TaskStatus.Todo, creator = artin),
+                        task("task-2", TaskStatus.Todo, creator = cindy),
+                        task("task-3", TaskStatus.InReview, creator = artin)
+                    )
+            )
+
+        val presentation =
+            TasksPresentationState()
+                .reduce(TasksPresentationIntent.ToggleCreator(artin.tasksIdentityFilterId()))
+                .reduce(TasksPresentationIntent.ToggleCreator("missing"))
+                .reduce(TasksPresentationIntent.PruneUnavailableCreators(setOf(artin.tasksIdentityFilterId(), cindy.tasksIdentityFilterId())))
+
+        val visible =
+            content.visibleContent(
+                selectedFilter = null,
+                presentationState = presentation,
+                showChannelFilter = true
+            )
+
+        assertEquals(listOf("user:${artin.id.value}", "user:${cindy.id.value}"), visible.creatorOptions.map { it.tasksIdentityFilterId() })
+        assertEquals(setOf(artin.tasksIdentityFilterId()), visible.selectedCreatorIds)
+        assertEquals(listOf("task-1", "task-3"), visible.filteredTasks.map { it.id.value })
+        assertEquals(emptySet(), presentation.reduce(TasksPresentationIntent.ClearAllFilters).selectedCreatorIds)
+    }
+
+    @Test
+    fun refreshResultKeepsContentVisibleOnEmptyAndError() {
+        val current =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.Todo to 1),
+                            tasks = listOf(task("task-1", TaskStatus.Todo))
+                        )
+                    ),
+                refreshing = true
+            )
+
+        val empty = current.mergeTasksRefreshResult(DataResult.Empty(EmptyReason.NoTasks), TaskStatus.Done)
+        val emptyContent = assertIs<ScreenLoadState.Content<TasksContent>>(empty.loadState).data
+        assertEquals(listOf("task-1"), emptyContent.tasks.map { it.id.value })
+        assertEquals(TaskStatus.Done, empty.selectedFilter)
+        assertEquals("NoTasks", empty.navigationErrorCode)
+        assertEquals(false, empty.refreshing)
+
+        val failed =
+            current.mergeTasksRefreshResult(
+                DataResult.Error(ScreenError("tasks_refresh_failed")),
+                TaskStatus.InReview
+            )
+        assertIs<ScreenLoadState.Content<TasksContent>>(failed.loadState)
+        assertEquals(TaskStatus.InReview, failed.selectedFilter)
+        assertEquals("tasks_refresh_failed", failed.navigationErrorCode)
+    }
+
+    @Test
+    fun taskSnapshotFilteringAndThreadTaskStateAreShared() {
+        val snapshot =
+            TaskSnapshot(
+                tasks =
+                    listOf(
+                        task("task-1", TaskStatus.Todo, channelName = "android"),
+                        task("task-2", TaskStatus.Done, channelName = "kmp")
+                    ),
+                summaryCounts = emptyMap()
+            )
+
+        val filteredByStatus = snapshot.filteredForTasksFilter(TaskStatus.Todo)
+        assertEquals(listOf("task-1"), filteredByStatus.tasks.map { it.id.value })
+        assertEquals(1, filteredByStatus.summaryCounts[TaskStatus.Todo])
+        assertEquals(1, filteredByStatus.summaryCounts[TaskStatus.Done])
+
+        val filteredByConversation = snapshot.filteredForConversationIds(setOf("channel-1"))
+        assertEquals(listOf("task-1", "task-2"), filteredByConversation.tasks.map { it.id.value })
+
+        val threadState = snapshot.tasks.toTasksUiStateForThreadTasks()
+        val threadContent = assertIs<ScreenLoadState.Content<TasksContent>>(threadState.loadState).data
+        assertEquals(2, threadContent.tasks.size)
+        assertEquals(1, threadContent.summaryCounts[TaskStatus.Done])
+    }
+
+    @Test
+    fun boardColumnsAndTaskDisplayLabelsAreShared() {
+        val assignedTask =
+            task(
+                "task-42",
+                TaskStatus.InProgress,
+                channelName = "kmp",
+                title = "Task #42: migrate state",
+                assignee = member("stdrc")
+            )
+        val uuidAssigneeTask =
+            task(
+                "task-43",
+                TaskStatus.InProgress,
+                title = "#43",
+                assignee = member("550e8400-e29b-41d4-a716-446655440000")
+            )
+
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks = listOf(assignedTask, uuidAssigneeTask, task("task-44", TaskStatus.Done))
+            )
+
+        val columns = content.boardColumns(renderLimit = 1)
+        val inProgressColumn = columns.single { it.status == TaskStatus.InProgress }
+        assertEquals(2, inProgressColumn.totalCount)
+        assertEquals(listOf("task-42"), inProgressColumn.tasks.map { it.id.value })
+
+        assertEquals("#kmp", assignedTask.tasksSourceLabel())
+        assertEquals("#42 migrate state", assignedTask.tasksDisplayTitle())
+        assertEquals("stdrc", assignedTask.tasksAssigneeDisplayName())
+        assertEquals("Task #43", uuidAssigneeTask.tasksDisplayTitle())
+        assertEquals(null, uuidAssigneeTask.tasksAssigneeDisplayName())
+    }
+
+    @Test
+    fun taskNetworkResponseParsesCanonicalReactShape() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "tasks": [
+                        {
+                          "id": "task-65",
+                          "channelId": "channel-kmp",
+                          "channelName": "KMP",
+                          "taskNumber": 65,
+                          "title": "migrate Android UI to shared MVI",
+                          "status": "in_review",
+                          "createdByType": "user",
+                          "createdById": "user-1",
+                          "claimedById": "agent-kmp",
+                          "claimedByName": "KMP-专家",
+                          "claimedByType": "agent"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result = response.toTasksResult()
+        val content = assertIs<DataResult.Content<TaskSnapshot>>(result)
+        val task = content.data.tasks.single()
+
+        assertEquals("task-65", task.id.value)
+        assertEquals(TaskStatus.InReview, task.status)
+        assertEquals("#65 migrate Android UI to shared MVI", task.tasksDisplayTitle())
+        assertEquals("KMP", task.channelName)
+        assertEquals("user:user-1", task.creator?.tasksIdentityFilterId())
+        assertEquals("KMP-专家", task.tasksAssigneeDisplayName())
+        assertEquals(1, content.data.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun taskNetworkResponseOffUiParseEmitsRefreshDiagnosticsMarkers() = runBlocking {
+        val logs = mutableListOf<String>()
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "tasks": [
+                        {
+                          "id": "task-65",
+                          "channelId": "channel-kmp",
+                          "channelName": "KMP",
+                          "taskNumber": 65,
+                          "title": "migrate Android UI to shared MVI",
+                          "status": "in_review"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result =
+            response.toTasksResultOffUi(
+                source = "tasks_server",
+                diagnosticsLogger = logs::add
+            )
+
+        val content = assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(1, content.data.tasks.size)
+        assertTrue(logs.any { it.contains("tasks_network_body_received source=tasks_server") })
+        assertTrue(logs.any { it.contains("tasks_parse_start source=tasks_server") && it.contains("dispatcher=JsonParse") })
+        assertTrue(logs.any { it.contains("tasks_parse_result source=tasks_server result=content tasks=1") })
+        assertTrue(logs.any { it.contains("tasks_map_result source=tasks_server result=content tasks=1") })
+    }
+
+    @Test
+    fun taskNetworkResponseRejectsGuessedListWrappers() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "data": [
+                        {
+                          "taskId": "task-65",
+                          "number": 65,
+                          "messagePreview": "Task #65: migrate Android UI to shared MVI"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result = response.toTasksResult(source = "tasks_server")
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("tasks_server_contract_mismatch", error.error.code)
+    }
+
+    @Test
+    fun taskActionResponseRejectsGuessedActionWrappers() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"data":{"taskId":"task-65","messagePreview":"Task #65: migrate Android UI to shared MVI"}}"""
+            )
+
+        val result = response.toTaskActionResult(source = "tasks_status")
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("tasks_status_contract_mismatch", error.error.code)
+    }
+
+    private fun task(
+        id: String,
+        status: TaskStatus,
+        channelId: ChannelId = ChannelId("channel-1"),
+        channelName: String? = null,
+        title: String = "Task $id",
+        assignee: MemberProfile? = null,
+        creator: MemberProfile? = null
+    ): TaskSummary =
+        TaskSummary(
+            id = TaskId(id),
+            title = title,
+            status = status,
+            taskNumber = id.substringAfter("task-").toIntOrNull(),
+            messageId = MessageId("message-$id"),
+            channelId = channelId,
+            channelName = channelName,
+            assignee = assignee,
+            creator = creator,
+            updatedAtLabel = "now"
+        )
+
+    private fun member(displayName: String, kind: MemberKind = MemberKind.Agent): MemberProfile =
+        MemberProfile(
+            id = MemberId("member-$displayName"),
+            displayName = displayName,
+            handle = displayName,
+            kind = kind,
+            presence = Presence.Active
+        )
+
+    private class FakeTasksRepository(
+        private val loadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val createResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured"))
+    ) : SharedTasksRepository {
+        var loadCalls = 0
+            private set
+        var lastServerId: ServerId? = null
+            private set
+        var lastScope: SharedTasksScope? = null
+            private set
+        var lastFilter: TaskFilter? = null
+            private set
+        var lastPriority: DataRequestPriority? = null
+            private set
+
+        override fun observeTasks(
+            serverId: ServerId,
+            scope: SharedTasksScope,
+            filter: TaskFilter
+        ): Flow<DataResult<TaskSnapshot>> =
+            flowOf(loadResult)
+
+        override suspend fun refreshTasks(
+            serverId: ServerId,
+            scope: SharedTasksScope,
+            filter: TaskFilter,
+            priority: DataRequestPriority
+        ): DataResult<TaskSnapshot> {
+            loadCalls += 1
+            lastServerId = serverId
+            lastScope = scope
+            lastFilter = filter
+            lastPriority = priority
+            return loadResult
+        }
+
+        override suspend fun updateTaskStatus(
+            serverId: ServerId,
+            taskId: TaskId,
+            status: TaskStatus
+        ): DataResult<TaskActionResult> =
+            updateResult
+
+        override suspend fun createTasks(
+            serverId: ServerId,
+            channelId: ChannelId,
+            titles: List<String>
+        ): DataResult<TaskSnapshot> =
+            createResult
+    }
+
+    private class FakeTasksRemoteDataSource(
+        private val loadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val channelLoadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val createResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured"))
+    ) : SharedTasksRemoteDataSource {
+        var lastFilter: TaskFilter? = null
+            private set
+        var lastChannelId: ChannelId? = null
+            private set
+        var lastPriority: DataRequestPriority? = null
+            private set
+
+        override suspend fun loadTasks(
+            serverId: ServerId,
+            filter: TaskFilter,
+            priority: DataRequestPriority
+        ): DataResult<TaskSnapshot> {
+            lastFilter = filter
+            lastPriority = priority
+            return loadResult
+        }
+
+        override suspend fun loadChannelTasks(
+            channelId: ChannelId,
+            filter: TaskFilter,
+            priority: DataRequestPriority
+        ): DataResult<TaskSnapshot> {
+            lastChannelId = channelId
+            lastFilter = filter
+            lastPriority = priority
+            return channelLoadResult
+        }
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
+            updateResult
+
+        override suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot> =
+            createResult
+    }
+}

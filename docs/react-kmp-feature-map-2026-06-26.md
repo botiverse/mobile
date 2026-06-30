@@ -26,7 +26,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 - ServerSelector.tsx (172 lines): last server / create / join / community
 - SocialAuthCallbackPage.tsx (179 lines): OAuth provider callback
 
-**KMP 现状** (`compose/shared/src/commonMain/kotlin/ai/slock/compose/`):
+**KMP 现状** (`compose/shared/src/commonMain/kotlin/build/raft/app/`):
 - AuthComponents.kt / AuthPages.kt / LoginContract.kt — 单文件 vs React 9 files
 - 主要: login / register / forgot / auth diagnostics / server gate / choose server / create server
 - 缺 (per `screens.auth.*` 走 capture): register / verify / invite / social callback / device login / human setup / reset

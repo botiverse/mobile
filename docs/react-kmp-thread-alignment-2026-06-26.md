@@ -21,7 +21,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt` (~6000 lines, 主页面)
+`compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt` (~6000 lines, 主页面)
 + SharedThreadStore.kt / SharedThreadComposerDraftStore.kt / SharedThreadFilesStore.kt / SharedThreadHeaderContextStore.kt
 
 ## Feature points inventory (per main commit log 06-23 → 06-26)

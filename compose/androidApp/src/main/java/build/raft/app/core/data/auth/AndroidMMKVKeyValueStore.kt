@@ -1,8 +1,8 @@
 package build.raft.app.core.data.auth
 
 import build.raft.app.shared.SlockKuiklyMMKVModule
-import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-import ai.slock.compose.data.SlockKeyValueStore
+import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+import build.raft.app.data.SlockKeyValueStore
 import android.content.Context
 
 class AndroidMMKVKeyValueStore(

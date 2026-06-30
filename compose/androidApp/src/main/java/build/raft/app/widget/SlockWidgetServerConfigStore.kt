@@ -1,9 +1,9 @@
 package build.raft.app.widget
 
 import build.raft.app.core.data.auth.AndroidMMKVKeyValueStore
-import ai.slock.compose.data.SlockKeyValueStore
-import ai.slock.compose.data.StoredAuthServer
-import ai.slock.compose.data.StoredAuthSession
+import build.raft.app.data.SlockKeyValueStore
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
 import android.content.Context
 
 data class SlockWidgetServerSelection(

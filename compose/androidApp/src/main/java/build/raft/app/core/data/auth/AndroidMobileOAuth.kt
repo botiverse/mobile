@@ -1,6 +1,6 @@
 package build.raft.app.core.data.auth
 
-import ai.slock.compose.data.SlockKeyValueStore
+import build.raft.app.data.SlockKeyValueStore
 import android.content.Context
 import android.util.Base64
 import java.security.MessageDigest

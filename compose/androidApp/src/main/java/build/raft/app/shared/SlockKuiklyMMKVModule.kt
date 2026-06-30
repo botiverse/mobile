@@ -3,11 +3,11 @@ package build.raft.app.shared
 import android.content.Context
 import android.util.Base64
 import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
-import ai.slock.compose.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
-import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
-import ai.slock.compose.data.SlockLocalPreferenceStore
-import ai.slock.compose.data.StoredAuthSession
+import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
+import build.raft.app.data.SlockLocalPreferenceStore
+import build.raft.app.data.StoredAuthSession
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.google.gson.Gson

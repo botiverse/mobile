@@ -19,7 +19,7 @@ paths, **not** the original spec's assumed-from-research state. Findings are con
    AND the adapter **class itself does not exist in main** as of `cd76a396`. Confirmed:
 
    ```
-   $ git log --oneline -- 'compose/androidApp/src/main/java/ai/slock/android/shared/SlockKRVideoViewAdapter.kt'
+   $ git log --oneline -- 'compose/androidApp/src/main/java/build/raft/app/shared/SlockKRVideoViewAdapter.kt'
    fea59f89 Revert "merge task424 android video view adapter"
 
    $ rg krVideoViewAdapter compose/androidApp/src/main
@@ -45,7 +45,7 @@ paths, **not** the original spec's assumed-from-research state. Findings are con
    `third_party/kuikly-ui/ohosApp/entry/src/main/ets/kuikly/adapters/AppKRVideoAdapter.ets`.
 
 3. **Shared DTO exists in skeleton form, needs full typed payload.**
-   `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/FilesMessagesApi.kt`
+   `compose/shared/src/commonMain/kotlin/build/raft/app/data/FilesMessagesApi.kt`
    already has:
 
    ```kotlin
@@ -97,7 +97,7 @@ paths, **not** the original spec's assumed-from-research state. Findings are con
    the mobile-side contract change must not depend on it being merged first).
 
 5. **Shared text preview currently bypasses the server preview contract.**
-   `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockFilePreview.kt`
+   `compose/shared/src/commonMain/kotlin/build/raft/app/SlockFilePreview.kt`
    `loadThreadTextAttachmentPreview()` and `loadThreadMarkdownAttachmentPreview()`
    both:
 
@@ -143,7 +143,7 @@ Files to read for context before editing:
 
 Files to read for context before editing:
 
-- `java/ai/slock/android/shared/SlockKuiklyAdapters.kt` (or wherever the
+- `java/build/raft/app/shared/SlockKuiklyAdapters.kt` (or wherever the
   `KuiklyRenderAdapterManager` block lives in main — search for `krImageAdapter =`
   to find the exact file; was `SlockKuiklyActivity.kt:965` in the reverted `a78bf775`
   but I need to confirm the post-revert location before adding `krVideoViewAdapter`).

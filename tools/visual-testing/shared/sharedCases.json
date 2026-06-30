@@ -3030,7 +3030,7 @@
             "AuthTextField",
             "RegisterContent"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthComponents.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureAuthRegisterInputs"
         },
         {
@@ -3065,7 +3065,7 @@
             "SlockShadow",
             "SlockType"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/TokenPaletteVisualPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
           "fixture": "Slock design token constants",
           "source": "kmp-shared-android",
           "route": "compose_tokens_palette_visual",
@@ -3074,7 +3074,7 @@
             "SlockSpacing",
             "SlockType"
           ],
-          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose"
+          "sharedPath": "compose/shared/src/commonMain/kotlin/build/raft/app"
         },
         "harmony": {
           "status": "pending",
@@ -3083,7 +3083,7 @@
             "SlockSpacing",
             "SlockType"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app",
           "reason": "Needs OHOS connected capture/Hypium provider.",
           "source": "kmp-shared-ohos"
         }
@@ -3111,7 +3111,7 @@
             "SharedHomeStore",
             "SlockHomeComponents server switcher"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.homeServerSwitcherPageData",
           "reason": "Captured through real SlockKuiklyActivity PAGE_HOME with serverSwitcherExpanded=true, cropped to raw server switcher content.",
           "source": "kmp-shared"
@@ -3121,7 +3121,7 @@
           "components": [
             "SlockHomeComponents server switcher"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "reason": "Depends on KMP/shared fixture route and OHOS capture.",
           "source": "kmp-shared-ohos"
         }
@@ -3150,7 +3150,7 @@
           "components": [
             "ThreadMessageCard"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRow",
           "source": "kmp-shared"
         },
@@ -3160,7 +3160,7 @@
           "components": [
             "ThreadMessageCard"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Depends on shared thread fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3192,7 +3192,7 @@
             "ThreadMessageCard"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowDeletedHuman"
         },
         {
@@ -3202,7 +3202,7 @@
             "ThreadMessageCard"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -3237,7 +3237,7 @@
             "ThreadMessageMenuItem"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageMenuDefault"
         },
         {
@@ -3247,7 +3247,7 @@
             "ThreadMessageMenuChrome"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android menu cases are stable."
         }
       ]
@@ -3282,7 +3282,7 @@
             "ThreadMessageMenuItem"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageMenuTask"
         },
         {
@@ -3292,7 +3292,7 @@
             "ThreadMessageMenuChrome"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android menu cases are stable."
         }
       ]
@@ -3325,7 +3325,7 @@
             "ThreadShareSelectionToolbar"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageShareSelection"
         },
         {
@@ -3335,7 +3335,7 @@
             "ThreadShareSelectionToolbar"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after Android shared fixture lands."
         }
       ]
@@ -3366,7 +3366,7 @@
             "ThreadSharePreviewModal"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageSharePreview",
           "reason": "The user flow has a native screenshot/export bridge, but this visual fixture still instantiates the modal directly and cannot yet produce the real captured PNG preview."
         },
@@ -3377,7 +3377,7 @@
             "ThreadSharePreviewModal"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after Android shared fixture lands."
         }
       ]
@@ -3405,7 +3405,7 @@
           "components": [
             "ThreadComposerContent visual-only page"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerEmpty",
           "source": "kmp-shared"
         },
@@ -3415,7 +3415,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3444,7 +3444,7 @@
           "components": [
             "ThreadComposerContent visual-only page"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerStates",
           "source": "kmp-shared"
         },
@@ -3454,7 +3454,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3483,7 +3483,7 @@
           "components": [
             "ThreadComposerContent visual-only page"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerAsTaskSelected",
           "source": "kmp-shared"
         },
@@ -3493,7 +3493,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3525,7 +3525,7 @@
             "ThreadComposerContent visual-only page",
             "ComposerMemberSuggestionPanel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerMemberSuggestions",
           "source": "kmp-shared"
         },
@@ -3535,7 +3535,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3565,7 +3565,7 @@
             "ThreadComposerContent visual-only page",
             "ComposerSuggestionPanel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerChannelSuggestions",
           "source": "kmp-shared"
         },
@@ -3575,7 +3575,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3607,7 +3607,7 @@
             "ComposerAttachmentTray",
             "ComposerAttachmentTile"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerImagePreview",
           "source": "kmp-shared"
         },
@@ -3617,7 +3617,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3649,7 +3649,7 @@
             "ComposerAttachmentTray",
             "ComposerAttachmentTile"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerFilePreviews",
           "source": "kmp-shared"
         },
@@ -3659,7 +3659,7 @@
           "components": [
             "ThreadComposerPage composer"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt",
           "reason": "Depends on shared composer fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3691,7 +3691,7 @@
             "ThreadFileRow",
             "ThreadFileThumbnail"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadFilesContent.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadFilesContent.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadFilesList",
           "source": "kmp-shared"
         },
@@ -3701,7 +3701,7 @@
           "components": [
             "ThreadFilesContent"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadFilesContent.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadFilesContent.kt",
           "reason": "Depends on shared files fixture route and OHOS capture.",
           "source": "kmp-shared"
         }
@@ -3733,7 +3733,7 @@
             "ThreadPageHeader",
             "ThreadPageTabs"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadHeaderStates"
         },
         {
@@ -3744,7 +3744,7 @@
             "ThreadPageHeader",
             "ThreadPageTabs"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -3771,7 +3771,7 @@
             "SharedTasksPage",
             "SharedTasksStore"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt",
           "reason": "Needs shared Tasks visual fixture after recent MVI route migration stabilizes.",
           "source": "kmp-shared"
         },
@@ -3780,7 +3780,7 @@
           "components": [
             "SharedTasksPage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt",
           "reason": "Depends on shared Tasks fixture route and OHOS capture.",
           "source": "kmp-shared-ohos"
         }
@@ -3810,7 +3810,7 @@
           "components": [
             "SlockBottomTabBar"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockTabBar.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTabBar.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureNavigationTabbarStates"
         },
         {
@@ -3847,7 +3847,7 @@
             "HomeWorkspaceHeader",
             "HomeNotificationCenter"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeTitlebarStates"
         },
         {
@@ -3858,7 +3858,7 @@
             "HomeWorkspaceHeader",
             "HomeNotificationCenter"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -3887,7 +3887,7 @@
           "components": [
             "HomeNotificationPopover"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeNotificationCenterStates"
         },
         {
@@ -3897,7 +3897,7 @@
           "components": [
             "HomeNotificationPopover"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -3930,7 +3930,7 @@
             "SlockFilterPopover",
             "SharedHomeInboxResultRow"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSearchResults"
         },
         {
@@ -3942,7 +3942,7 @@
             "SlockFilterPopover",
             "SharedHomeInboxResultRow"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -3973,7 +3973,7 @@
             "SharedHomeSearchPanel",
             "SlockFilterPopover"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSearchChannelDropdown"
         },
         {
@@ -3984,7 +3984,7 @@
             "SharedHomeSearchPanel",
             "SlockFilterPopover"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4017,7 +4017,7 @@
             "SharedHomeInboxResultRow",
             "SharedHomeLoadMoreRow"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSavedResults"
         },
         {
@@ -4029,7 +4029,7 @@
             "SharedHomeInboxResultRow",
             "SharedHomeLoadMoreRow"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4064,7 +4064,7 @@
             "SharedActivityRow",
             "SegmentedControl"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeActivityResults"
         },
         {
@@ -4074,7 +4074,7 @@
           "components": [
             "SharedHomeActivityScreen"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4107,7 +4107,7 @@
             "SharedCreateChannelField",
             "SharedCreateChannelMemberPicker"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureHomeCreateChannelDialog"
         },
         {
@@ -4117,7 +4117,7 @@
           "components": [
             "SharedCreateChannelDialog"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4157,7 +4157,7 @@
             "AdvancedRuntimeSection",
             "SlockUnifiedDialog"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedCreateAgentDialog.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedCreateAgentDialog.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersCreateAgent*Dialog"
         },
         {
@@ -4167,7 +4167,7 @@
           "components": [
             "SharedCreateAgentDialog"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedCreateAgentDialog.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedCreateAgentDialog.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4199,7 +4199,7 @@
             "ThreadMembersModal",
             "Shared channel members panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureChannelMembersPanel"
         },
         {
@@ -4209,7 +4209,7 @@
           "components": [
             "Shared channel members panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4244,7 +4244,7 @@
             "MembersAgentProfileTab",
             "MembersAgentLifecycleSection"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailProfile"
         },
         {
@@ -4254,7 +4254,7 @@
           "components": [
             "MembersDetailContent"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4285,7 +4285,7 @@
             "ThreadSettingsModal",
             "Shared channel settings panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureChannelSettingsPanel"
         },
         {
@@ -4295,7 +4295,7 @@
           "components": [
             "Shared channel settings panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4327,7 +4327,7 @@
             "ThreadAddMemberModal",
             "Shared add-member panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureChannelAddMemberPanel"
         },
         {
@@ -4337,7 +4337,7 @@
           "components": [
             "Shared add-member panel"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4367,7 +4367,7 @@
             "Shared Settings page",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsPageStates"
         },
         {
@@ -4378,7 +4378,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4408,7 +4408,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountPage",
           "route": "compose_settings_page_visual:account"
         },
@@ -4420,7 +4420,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4450,7 +4450,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountProviderLinked",
           "route": "compose_settings_page_visual:account-provider-linked"
         },
@@ -4462,7 +4462,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4492,7 +4492,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountPasswordExpanded",
           "route": "compose_settings_page_visual:account-password-expanded"
         },
@@ -4504,7 +4504,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4534,7 +4534,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountErrorState",
           "route": "compose_settings_page_visual:account-error"
         },
@@ -4546,7 +4546,7 @@
             "SettingsAccountPage",
             "SettingsHomePage"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
@@ -4576,7 +4576,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerProfile",
           "route": "compose_settings_page_visual:server-profile"
         },
@@ -4588,7 +4588,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4618,7 +4618,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationAdmins",
           "route": "compose_settings_page_visual:administration-admins"
         },
@@ -4630,7 +4630,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4660,7 +4660,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationInvites",
           "route": "compose_settings_page_visual:administration-invites"
         },
@@ -4672,7 +4672,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4702,7 +4702,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationJoinLinks",
           "route": "compose_settings_page_visual:administration-join-links"
         },
@@ -4714,7 +4714,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4744,7 +4744,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationPreJoinAgreement",
           "route": "compose_settings_page_visual:administration-pre-join-agreement"
         },
@@ -4756,7 +4756,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4786,7 +4786,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationOnboarding",
           "route": "compose_settings_page_visual:administration-onboarding"
         },
@@ -4798,7 +4798,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4828,7 +4828,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationMemberPermissions",
           "route": "compose_settings_page_visual:administration-member-permissions"
         },
@@ -4840,7 +4840,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4870,7 +4870,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationTranslation",
           "route": "compose_settings_page_visual:administration-translation"
         },
@@ -4882,7 +4882,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4912,7 +4912,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsBillingPage",
           "route": "compose_settings_page_visual:billing"
         },
@@ -4924,7 +4924,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4954,7 +4954,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsLanguageRegionPage",
           "route": "compose_settings_page_visual:language-region"
         },
@@ -4966,7 +4966,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -4997,7 +4997,7 @@
             "SettingsPageVisualContent",
             "SettingsAppearanceContent"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAppearancePage",
           "route": "compose_settings_page_visual:appearance"
         },
@@ -5009,7 +5009,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -5039,7 +5039,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsNotificationsPage",
           "route": "compose_settings_page_visual:notifications"
         },
@@ -5051,7 +5051,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -5081,7 +5081,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsConnectedAppsPage",
           "route": "compose_settings_page_visual:connected-apps"
         },
@@ -5093,7 +5093,7 @@
             "SettingsHomePage",
             "SettingsDetailShell"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
@@ -5119,14 +5119,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5152,14 +5152,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5185,14 +5185,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5218,14 +5218,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs real Android ThreadPage route launch capture with seeded repository/store state, not pageData-only visual fixture."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5251,14 +5251,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs real Android ThreadPage DM route launch capture with seeded peer/member state, not pageData-only visual fixture."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5284,14 +5284,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs real Android task-thread route launch plus seeded task data/status controls; pageData-only fixture would not prove the product path."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5317,14 +5317,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs real Android MEMBERS_PAGE route launch with seeded Members store data; the component visual page is not sufficient for a full-screen route case."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5354,7 +5354,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailProfileScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=profile",
           "components": [
@@ -5367,7 +5367,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5397,7 +5397,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailPermissionsScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=permissions",
           "components": [
@@ -5410,7 +5410,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5440,7 +5440,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailDmsScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=dms",
           "components": [
@@ -5453,7 +5453,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5483,7 +5483,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailRemindersScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=reminders",
           "components": [
@@ -5496,7 +5496,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5526,7 +5526,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailWorkspaceScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=workspace",
           "components": [
@@ -5539,7 +5539,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5569,7 +5569,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailAppsScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=apps",
           "components": [
@@ -5582,7 +5582,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5612,7 +5612,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailActivityScreen",
           "route": "compose_member_detail:memberId=agent-product-ux,memberKind=agent,initialAgentTab=activity",
           "components": [
@@ -5625,7 +5625,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5655,7 +5655,7 @@
           "id": "android",
           "status": "ready",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersHumanDetailProfileScreen",
           "route": "compose_member_detail:memberId=visual-human-1,memberKind=human",
           "components": [
@@ -5668,7 +5668,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5698,7 +5698,7 @@
           "id": "android",
           "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentLifecycleActions",
           "components": [
             "MembersDetailContent",
@@ -5710,7 +5710,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersAgentProfileTab.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5740,7 +5740,7 @@
           "id": "android",
           "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAvatarManagement",
           "components": [
             "MembersDetailContent",
@@ -5752,7 +5752,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/MembersAgentProfileTab.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5781,7 +5781,7 @@
           "id": "android",
           "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsComputersScreen",
           "route": "compose_settings_computers",
           "components": [
@@ -5793,7 +5793,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5822,7 +5822,7 @@
           "id": "android",
           "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsComputerDetailScreen",
           "route": "compose_settings_computer_detail",
           "components": [
@@ -5834,7 +5834,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5860,14 +5860,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsStoragePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStoragePage.kt",
           "reason": "Needs real Android Settings Storage route capture with seeded storage rows, not the generic settings visual page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsStoragePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStoragePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5893,14 +5893,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs real Android Settings route launch capture for Appearance, not the shared component visual page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5935,7 +5935,7 @@
             "SettingsServerDeleteConfirmationDialog",
             "Modal"
           ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerDangerModal",
           "route": "compose_settings_page_visual:server-danger-modal",
           "notes": "Fixture-only safe modal state; delete confirmation is empty and the Delete Server action button is disabled."
@@ -5944,7 +5944,7 @@
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -5970,14 +5970,14 @@
           "id": "android",
           "status": "external",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Android opens https://raft.build/settings/billing in the system browser when available; no in-app route exists."
         },
         {
           "id": "harmony",
           "status": "external",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
           "reason": "Portal management is external-web behavior; no Harmony in-app route is expected."
         }
       ]
@@ -6003,14 +6003,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -6036,14 +6036,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -6069,14 +6069,14 @@
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs real Android page/route launch capture, not a visual fixture page."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/HomePage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -6107,7 +6107,7 @@
             "ThreadMessageCard"
           ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowRichContent"
         },
         {
@@ -6117,7 +6117,7 @@
             "ThreadMessageCard"
           ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "path": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]

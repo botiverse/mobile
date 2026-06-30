@@ -59,9 +59,9 @@ run_in "$ROOT_DIR/compose" "$COMPOSE_GRADLE" \
   -Dkotlin.compiler.execution.strategy=in-process \
   :shared:generateCommonMainSlockDatabaseInterface \
   :shared:testDebugUnitTest \
-  --tests ai.slock.compose.data.SqlDelightComposeLocalDataStoreTest \
-  --tests ai.slock.compose.data.ComposeLocalWriteThroughTest \
-  --tests ai.slock.compose.SharedThreadStoreTest
+  --tests build.raft.app.data.SqlDelightComposeLocalDataStoreTest \
+  --tests build.raft.app.data.ComposeLocalWriteThroughTest \
+  --tests build.raft.app.SharedThreadStoreTest
 
 run_in "$ROOT_DIR/compose" "$COMPOSE_GRADLE" \
   --no-daemon \

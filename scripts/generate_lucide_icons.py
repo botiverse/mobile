@@ -1148,7 +1148,7 @@ def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
 def generate_shared_catalog(icons, output):
     brand_entries = ", ".join(f'"{name}"' for name in BRAND_SVGS.keys())
     lines = [
-        "package ai.slock.compose",
+        "package build.raft.app",
         "",
         "import kotlinx.serialization.KSerializer",
         "import kotlinx.serialization.Serializable",

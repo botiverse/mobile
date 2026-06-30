@@ -4,10 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.view.ViewGroup
 import build.raft.app.R
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.InMemorySlockAuthSessionStore
-import ai.slock.compose.data.SharedSettingsDataSource
-import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
+import build.raft.app.data.DataResult
+import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.SharedSettingsDataSource
+import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry

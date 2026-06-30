@@ -10,9 +10,9 @@ class UserFacingCopyQualityTest {
         val root = findRepoRoot()
         val scannedFiles =
                 listOf(
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsBillingPage.kt",
-                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SettingsRepositoryDataSource.kt"
+                        "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+                        "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsBillingPage.kt",
+                        "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt"
                 )
         val bannedPhrases =
                 listOf(

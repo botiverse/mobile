@@ -36,9 +36,9 @@ Disallowed responsibilities:
 The current model still mixes several layers:
 
 - Directory identity and row summary live in
-  `compose/shared/src/commonMain/kotlin/ai/slock/compose/model/SlockModels.kt`.
+  `compose/shared/src/commonMain/kotlin/build/raft/app/model/SlockModels.kt`.
 - Home API parsing creates channel/DM summaries in
-  `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/HomeParser.kt`.
+  `compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeParser.kt`.
 - Directory persistence stores a subset in
   `SharedConversationDirectoryStore` and SQLDelight `ChannelEntity`.
 - Home row rendering already projects `ConversationSummary` into

@@ -6,9 +6,9 @@ import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.shared.SlockKuiklyActivity
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import ai.slock.compose.data.SharedAuthDataSource
-import ai.slock.compose.data.SharedAuthResult
+import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedAuthResult
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle

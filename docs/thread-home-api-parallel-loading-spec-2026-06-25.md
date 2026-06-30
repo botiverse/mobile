@@ -47,9 +47,9 @@ References:
 
 Android already parses the message wire contract correctly:
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MessageParser.kt` lines 24-44 documents `/api/messages` and strict `WireMessage` fields.
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ThreadMessagesParser.kt` lines 19-45 mirrors the React/server enriched message shape and explicitly treats member-profile-only fields as dedicated upstream joins.
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ConversationRepositoryDataSource.kt` lines 43-59 maps KMP repository calls directly to `/messages/channel/:id` and `/messages/context/:id`.
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/MessageParser.kt` lines 24-44 documents `/api/messages` and strict `WireMessage` fields.
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadMessagesParser.kt` lines 19-45 mirrors the React/server enriched message shape and explicitly treats member-profile-only fields as dedicated upstream joins.
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/ConversationRepositoryDataSource.kt` lines 43-59 maps KMP repository calls directly to `/messages/channel/:id` and `/messages/context/:id`.
 
 The risk is in KMP-side post-fetch enrichment:
 

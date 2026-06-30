@@ -53,5 +53,5 @@ val next = Offset(root.x, root.y + coords.size.height.toFloat())
 
 ## Relevant Code
 
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockFloatingOverlay.kt`
-- `compose/shared/src/commonMain/kotlin/ai/slock/compose/components/SlockBrutalComponents.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SlockFloatingOverlay.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/components/SlockBrutalComponents.kt`

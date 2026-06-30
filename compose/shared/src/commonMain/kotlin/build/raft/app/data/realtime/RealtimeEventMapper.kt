@@ -1,0 +1,982 @@
+package build.raft.app.data.realtime
+
+import build.raft.app.model.AgentProfile
+import build.raft.app.model.AgentCreated
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelId
+import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.Heartbeat
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageCommentHostSource
+import build.raft.app.model.MessageCommentRef
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageReaction
+import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageType
+import build.raft.app.model.MessageUpdated
+import build.raft.app.model.Presence
+import build.raft.app.model.RealtimeAgentActivityDetail
+import build.raft.app.model.RealtimeAgentActivityEntry
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerDeleted
+import build.raft.app.model.ServerPlanUpdated
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerMembershipRemoved
+import build.raft.app.model.SyncResumeResponse
+import build.raft.app.model.TaskCreated
+import build.raft.app.model.TaskDeleted
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
+import build.raft.app.model.TaskUpdated
+import build.raft.app.model.ThreadId
+import build.raft.app.model.ThreadUpdated
+import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.toThreadActionCard
+import build.raft.app.data.toMessageMetadata
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlin.time.TimeSource
+
+/**
+ * Decodes raw Socket.IO payloads into typed [RealtimeEvent]s.
+ *
+ * Field names mirror the canonical server emit shapes documented in
+ *  - `packages/server/src/services/messageService.ts` — enriched message rows
+ *  - `packages/server/src/services/taskService.ts` — `TaskInfo`
+ *  - `packages/server/src/services/channelService.ts::getThreadInfo`
+ *  - `packages/server/src/services/taskRealtimeEvents.ts`
+ *  - `packages/server/src/socket/index.ts` — `sync:resume:response` / `heartbeat`
+ *
+ * Do NOT add speculative snake_case / alias fallbacks here. If the server
+ * renames a field, change it in the DTO with a doc comment pointing at the
+ * server commit.
+ *
+ * Input is a JSON string. Platform glue (Android Socket.IO `JSONObject`,
+ * iOS dictionaries, etc.) must stringify the payload before calling [map].
+ */
+class RealtimeEventMapper(
+    private val diagnosticsLogger: (String) -> Unit = {}
+) {
+
+    /**
+     * Single entry point for all platforms.
+     *
+     * Accepts whatever the Socket.IO / bridge layer happens to hand us:
+     *  - `null` → `null`
+     *  - `String` (raw JSON, e.g. `"{...}"`)
+     *  - `JsonElement` (already parsed)
+     *  - `Map` / `List` / primitives (test fixtures, Kuikly bridge dictionaries)
+     *  - Any other type whose `toString()` is valid JSON (e.g. Android
+     *    `org.json.JSONObject` / `JSONArray`, iOS dictionaries via
+     *    `NSJSONSerialization`). We never reach into platform classes from
+     *    commonMain — we just rely on their `toString()` contract.
+     *
+     * Returns `null` for anything we can't decode into a known event.
+     */
+    fun map(eventName: String, payload: Any?): RealtimeEvent? {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val element = payload.toJsonObjectOrNull()
+        val event = element?.let { mapElement(eventName, it) }
+        diagnosticsLogger(
+            "realtime_payload_parse eventName=$eventName payloadType=${payload.realtimePayloadType()} " +
+                "mapped=${if (event != null) "typed" else ""} result=${if (event != null) "success" else "ignored"} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
+        )
+        return event
+    }
+
+    private fun Any?.realtimePayloadType(): String =
+        when (this) {
+            null -> "null"
+            is String -> "String"
+            is JsonObject -> "JsonObject"
+            is JsonElement -> "JsonElement"
+            is Map<*, *> -> "Map"
+            is List<*> -> "List"
+            is Number -> "Number"
+            is Boolean -> "Boolean"
+            else -> "Other"
+        }
+
+    private fun Any?.toJsonObjectOrNull(): JsonObject? {
+        val element = when (this) {
+            null -> return null
+            is JsonObject -> this
+            is JsonElement -> this
+            is String -> {
+                if (isBlank()) return null
+                runCatching { json.parseToJsonElement(this) }.getOrNull() ?: return null
+            }
+            is Map<*, *>, is List<*>, is Number, is Boolean ->
+                this.toJsonElement() ?: return null
+            else -> runCatching { json.parseToJsonElement(toString()) }.getOrNull() ?: return null
+        }
+        return element as? JsonObject
+    }
+
+    private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {
+        when (eventName) {
+            RealtimeSocketEvents.MessageNew ->
+                decodeMessageWire(element)?.toDomain()?.let(::MessageNew)
+            RealtimeSocketEvents.MessageUpdated ->
+                decodeMessageWire(element)?.toDomain()?.let(::MessageUpdated)
+            RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
+            RealtimeSocketEvents.ThreadUpdated ->
+                decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ChannelUpdated ->
+                decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
+            RealtimeSocketEvents.ChannelMembersUpdated ->
+                decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
+            RealtimeSocketEvents.TaskCreated ->
+                decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.TaskUpdated ->
+                decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.TaskDeleted ->
+                decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
+            RealtimeSocketEvents.AgentActivity ->
+                decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.AgentSession ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.AgentCreated ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.AgentDeleted ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.MachineStatus,
+            RealtimeSocketEvents.MachineCapabilities,
+            RealtimeSocketEvents.MachineUpdated,
+            RealtimeSocketEvents.ComputerUpgradeProgress,
+            RealtimeSocketEvents.ComputerUpgradeDone,
+            RealtimeSocketEvents.DaemonStatus ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Machines, eventName)
+            RealtimeSocketEvents.ServerMemberAdded,
+            RealtimeSocketEvents.ServerMemberUpdated,
+            RealtimeSocketEvents.ServerMemberLeft,
+            RealtimeSocketEvents.ServerMemberRemoved ->
+                decodeServerMemberRefresh(element, eventName)
+            RealtimeSocketEvents.ServerMembershipRemoved ->
+                decodeOrNull(ServerMembershipRemovedDto.serializer(), element)?.serverId?.let {
+                    ServerMembershipRemoved(ServerId(it))
+                }
+            RealtimeSocketEvents.ServerDeleted -> {
+                val dto = decodeOrNull(ServerDeletedDto.serializer(), element)
+                dto?.serverId?.let { ServerDeleted(ServerId(it)) }
+            }
+            RealtimeSocketEvents.ServerPlanUpdated -> {
+                val dto = decodeOrNull(ServerPlanUpdatedDto.serializer(), element)
+                dto?.let { ServerPlanUpdated(ServerId(it.serverId), it.plan) }
+            }
+            RealtimeSocketEvents.AnnouncementNew ->
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Announcements,
+                    reason = RealtimeSocketEvents.AnnouncementNew
+                )
+            RealtimeSocketEvents.ReminderFired,
+            RealtimeSocketEvents.ReminderScheduled,
+            RealtimeSocketEvents.ReminderCanceled ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Reminders, eventName)
+            RealtimeSocketEvents.SyncResumeResponse ->
+                decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.Heartbeat ->
+                decodeOrNull(HeartbeatDto.serializer(), element)?.let { Heartbeat(it.seq) }
+            else -> null
+        }
+    } catch (_: SerializationException) {
+        null
+    }
+
+    private fun decodeDirectMessageNew(element: JsonObject): RealtimeEvent? {
+        if ("id" in element || "senderId" in element || "senderType" in element || "content" in element) return null
+        val channelId = (element["channelId"] as? JsonPrimitive)?.contentOrNull
+            ?: return null
+        return DirectMessageCreated(ChannelId(channelId))
+    }
+
+    private fun decodeChannelRefresh(
+        element: JsonObject,
+        scope: RealtimeRefreshScope,
+        reason: String
+    ): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = scope,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            channelId =
+                stringField(element, "channelId")
+                    ?.let(::ChannelId)
+                    ?: stringField(element, "id")?.let(::ChannelId)
+        )
+
+    private fun decodeServerMemberRefresh(element: JsonObject, reason: String): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = RealtimeRefreshScope.ServerMembers,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            memberId =
+                stringField(element, "userId")
+                    ?.let(::MemberId)
+                    ?: stringField(element, "memberId")?.let(::MemberId)
+        )
+
+    private fun decodeSubjectRefresh(
+        element: JsonObject,
+        scope: RealtimeRefreshScope,
+        reason: String
+    ): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = scope,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            subjectId =
+                stringField(element, "agentId")
+                    ?: stringField(element, "machineId")
+                    ?: stringField(element, "daemonId")
+                    ?: stringField(element, "reminderId")
+                    ?: stringField(element, "id")
+        )
+
+    private fun stringField(element: JsonObject, name: String): String? =
+        (element[name] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    private fun decodeMessageWire(element: JsonObject): MessageWireDto? =
+        decodeOrNull(MessageWireDto.serializer(), element)
+
+    private fun <T> decodeOrNull(
+        serializer: kotlinx.serialization.KSerializer<T>,
+        element: JsonObject,
+    ): T? = try {
+        json.decodeFromJsonElement(serializer, element)
+    } catch (_: SerializationException) {
+        null
+    }
+
+    internal companion object {
+        internal val json: Json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+            explicitNulls = false
+        }
+    }
+}
+
+private fun Any?.toJsonElement(): JsonElement? = when (this) {
+    null -> null
+    is JsonElement -> this
+    is Map<*, *> -> buildJsonObject {
+        for ((key, value) in this@toJsonElement) {
+            val name = key?.toString() ?: continue
+            put(name, value.toJsonElement() ?: JsonPrimitive(null as String?))
+        }
+    }
+    is List<*> -> buildJsonArray {
+        for (v in this@toJsonElement) {
+            add(v.toJsonElement() ?: JsonPrimitive(null as String?))
+        }
+    }
+    is String -> JsonPrimitive(this)
+    is Number -> JsonPrimitive(this)
+    is Boolean -> JsonPrimitive(this)
+    else -> JsonPrimitive(toString())
+}
+
+// ── Wire DTOs ────────────────────────────────────────────────────────────────
+// Field names match the canonical server emit shapes. See class-level docstring.
+
+@Serializable
+private data class MessageWireDto(
+    val id: String,
+    val seq: Long? = null,
+    val channelId: String? = null,
+    val senderType: String? = null,
+    val senderId: String? = null,
+    val messageType: String? = null,
+    val content: String = "",
+    val threadId: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val senderName: String? = null,
+    val senderDescription: String? = null,
+    val senderMembershipStatus: String? = null,
+    val roleDescription: String? = null,
+    val attachments: List<AttachmentWireDto> = emptyList(),
+    val reactions: List<MessageReactionWireDto>? = null,
+    val actionMetadata: WireActionCardMetadata? = null,
+    val commentRef: CommentRefWireDto? = null,
+)
+
+@Serializable
+private data class MessageReactionWireDto(
+    val emoji: String,
+    val count: Int = 0,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList(),
+)
+
+@Serializable
+private data class AttachmentWireDto(
+    val id: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long? = null,
+    val thumbnailUrl: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val commentCount: Int = 0,
+)
+
+@Serializable
+private data class CommentHostSourceWireDto(
+    val type: String = "",
+    val routeKind: String = "",
+    val channelId: String = "",
+    val parentMessageId: String? = null,
+    val threadChannelId: String? = null,
+    val rootThreadChannelId: String? = null,
+)
+
+@Serializable
+private data class CommentRefWireDto(
+    val attachmentId: String = "",
+    val filename: String = "",
+    val hostMessageId: String? = null,
+    val hostSource: CommentHostSourceWireDto? = null,
+    val anchorLabel: String? = null,
+)
+
+@Serializable
+private data class ThreadUpdatedDto(
+    val parentMessageId: String,
+    val threadChannelId: String? = null,
+    val channelId: String? = null,
+    val threadId: String? = null,
+    val replyCount: Int = 0,
+    val lastReplyAt: String? = null,
+    val participantIds: List<String> = emptyList(),
+    val unreadCount: Int? = null,
+    val firstUnreadMessageId: String? = null,
+)
+
+@Serializable
+private data class TaskInfoWireDto(
+    val id: String,
+    val messageId: String? = null,
+    val channelId: String? = null,
+    val channelName: String? = null,
+    val channelType: String? = null,
+    val taskNumber: Int? = null,
+    val title: String,
+    val status: String? = null,
+    val createdByType: String? = null,
+    val createdById: String? = null,
+    val createdByName: String? = null,
+    val claimedByType: String? = null,
+    val claimedById: String? = null,
+    val claimedByName: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+private data class TaskCreatedDto(
+    val channelId: String? = null,
+    val tasks: List<TaskInfoWireDto> = emptyList(),
+)
+
+@Serializable
+private data class TaskUpdatedDto(
+    val channelId: String? = null,
+    val task: TaskInfoWireDto,
+)
+
+@Serializable
+private data class TaskDeletedDto(
+    val channelId: String? = null,
+    val taskId: String,
+)
+
+@Serializable
+private data class AgentActivityDto(
+    val agentId: String,
+    val activity: String? = null,
+    val detail: String? = null,
+    val entries: List<JsonObject> = emptyList(),
+    val timestamp: JsonElement? = null,
+    val serverSeq: Long? = null,
+)
+
+@Serializable
+private data class ServerMembershipRemovedDto(
+    val serverId: String,
+)
+
+@Serializable
+private data class ServerDeletedDto(
+    val serverId: String,
+)
+
+@Serializable
+private data class ServerPlanUpdatedDto(
+    val serverId: String,
+    val plan: String,
+)
+
+@Serializable
+private data class SyncResumeResponseDto(
+    val messages: List<MessageWireDto> = emptyList(),
+    val currentSeq: Long = 0L,
+    val hasMore: Boolean = false,
+)
+
+@Serializable
+private data class HeartbeatDto(
+    val seq: Long,
+    val ts: Long? = null,
+)
+
+// ── DTO → domain mappers ─────────────────────────────────────────────────────
+
+private fun MessageWireDto.toDomain(): Message {
+    val authorId = senderId ?: "unknown"
+    val author = MemberProfile(
+        id = MemberId(authorId),
+        displayName = senderName ?: authorId,
+        handle = senderName ?: authorId,
+        kind =
+            when {
+                senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
+                messageType.equals("system", ignoreCase = true) -> MemberKind.System
+                else -> MemberKind.Human
+            },
+        description = senderDescription,
+        roleDescription = roleDescription,
+        avatarLabel = (senderName ?: authorId).take(1).uppercase(),
+        presence = Presence.Offline,
+    )
+    val channelIdValue = channelId
+    // The message wire row only carries the channel it lives in. Thread linkage
+    // (`threadChannelId`, `parentMessageId`, `replyCount`) is delivered via
+    // `thread:updated` events and REST responses, not via `message:*` events.
+    return Message(
+        id = MessageId(id),
+        threadId = ThreadId(channelIdValue ?: threadId ?: id),
+        channelId = channelIdValue?.let(::ChannelId),
+        threadChannelId = null,
+        seq = seq,
+        author = author,
+        timestampLabel = updatedAt ?: createdAt ?: "",
+        body = content,
+        messageType = if (messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        systemEventType = null,
+        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        attachments = attachments.map { it.toDomain() },
+        senderMembershipStatus = senderMembershipStatus,
+        replyCount = 0,
+        parentMessageId = null,
+        updatedAtLabel = updatedAt,
+        reactions = reactions?.mapNotNull { it.toDomain() },
+        commentRef = commentRef?.toDomain(),
+    )
+}
+
+private fun MessageReactionWireDto.toDomain(): MessageReaction? {
+    val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
+    if (count < 0) return null
+    return MessageReaction(
+        emoji = cleanEmoji,
+        count = count,
+        reactorIds = reactorIds,
+        reactorNames = reactorNames
+    )
+}
+
+private fun AttachmentWireDto.toDomain(): Attachment = Attachment(
+    id = AttachmentId(id),
+    name = filename,
+    mimeType = mimeType,
+    sizeLabel = sizeBytes?.let { "$it B" } ?: "",
+    thumbnailUrl = thumbnailUrl,
+    width = width,
+    height = height,
+    commentCount = commentCount.coerceAtLeast(0),
+)
+
+private fun CommentRefWireDto.toDomain(): MessageCommentRef? {
+    val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentRef(
+        attachmentId = AttachmentId(cleanAttachmentId),
+        filename = cleanFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        hostSource = hostSource?.toDomain(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun CommentHostSourceWireDto.toDomain(): MessageCommentHostSource? {
+    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
+    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentHostSource(
+        type = cleanType,
+        routeKind = cleanRouteKind,
+        channelId = ChannelId(cleanChannelId),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    )
+}
+
+private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
+    val cleanParentMessageId = parentMessageId.takeIf { it.isNotBlank() } ?: return null
+    val cleanThreadChannelId =
+        threadChannelId?.takeIf { it.isNotBlank() }
+            ?: channelId?.takeIf { it.isNotBlank() }
+            ?: threadId?.takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadUpdated(
+        parentMessageId = MessageId(cleanParentMessageId),
+        threadChannelId = ChannelId(cleanThreadChannelId),
+        replyCount = replyCount,
+        lastReplyAt = lastReplyAt,
+        participantIds = participantIds.map(::MemberId),
+        unreadCount = unreadCount,
+        firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+    )
+}
+
+private fun TaskCreatedDto.toDomain(): TaskCreated? {
+    val list = tasks.map { it.toDomain(envelopeChannelId = channelId) }
+    return if (list.isEmpty()) null else TaskCreated(list)
+}
+
+private fun TaskUpdatedDto.toDomain(): TaskUpdated =
+    TaskUpdated(task.toDomain(envelopeChannelId = channelId))
+
+private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSummary = TaskSummary(
+    id = TaskId(id),
+    title = title,
+    status = TaskStatus.fromWireValue(status) ?: TaskStatus.Todo,
+    taskNumber = taskNumber,
+    messageId = messageId?.let(::MessageId),
+    parentMessageId = null,
+    channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+    threadId = null,
+    isThreadTask = channelType?.lowercase() == "thread",
+    assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName),
+    creator = memberFrom(type = createdByType, id = createdById, name = createdByName),
+    channelName = channelName,
+    updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
+    canClaim = true,
+)
+
+private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
+    val projectedActivity = entries.latestAgentActivityProjection()
+        ?: AgentActivityProjection(
+            status = AgentStatus.fromWireValue(activity),
+            detail = detail
+        )
+    val status = projectedActivity.status
+    return MemberPresenceUpdated(
+        memberId = MemberId(agentId),
+        presence = status?.presence ?: Presence.Offline,
+        kind = MemberKind.Agent,
+        agentStatus = status,
+        statusLabel = projectedActivity.detail,
+        serverSeq = serverSeq,
+        activityEntries = entries.toRealtimeAgentActivityEntries(
+            agentId = agentId,
+            timestamp = timestamp,
+            serverSeq = serverSeq
+        ),
+    )
+}
+
+private data class AgentActivityProjection(
+    val status: AgentStatus?,
+    val detail: String?
+)
+
+private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityProjection? {
+    for (index in indices.reversed()) {
+        val projection = this[index].toAgentActivityProjection()
+        if (projection != null) return projection
+    }
+    return null
+}
+
+private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
+    val kind = stringValue("kind")?.trim()?.lowercase() ?: return null
+    return when (kind) {
+        "thinking" ->
+            AgentActivityProjection(
+                status = AgentStatus.Thinking,
+                detail = stringValue("text")?.takeIf { it.isNotBlank() } ?: "Thinking..."
+            )
+        "tool_start" ->
+            AgentActivityProjection(
+                status = AgentStatus.Working,
+                detail = stringValue("toolName")?.toToolActivityLabel() ?: "Working"
+            )
+        "compaction_started" ->
+            AgentActivityProjection(
+                status = AgentStatus.Working,
+                detail = "Compacting context..."
+            )
+        "compaction_finished" ->
+            AgentActivityProjection(
+                status = AgentStatus.Online,
+                detail = ""
+            )
+        "status", "agent_status" -> {
+            val status = AgentStatus.fromWireValue(stringValue("activity")) ?: return null
+            AgentActivityProjection(
+                status = status,
+                detail = stringValue("detail") ?: ""
+            )
+        }
+        else -> null
+    }
+}
+
+private fun List<JsonObject>.toRealtimeAgentActivityEntries(
+    agentId: String,
+    timestamp: JsonElement?,
+    serverSeq: Long?
+): List<RealtimeAgentActivityEntry> {
+    val timestampLabel = timestamp.activityTimestampString()
+    return mapIndexedNotNull { index, entry ->
+        entry.toRealtimeAgentActivityEntry(
+            agentId = agentId,
+            timestamp = timestampLabel,
+            serverSeq = serverSeq,
+            index = index
+        )
+    }
+}
+
+private fun JsonObject.toRealtimeAgentActivityEntry(
+    agentId: String,
+    timestamp: String?,
+    serverSeq: Long?,
+    index: Int
+): RealtimeAgentActivityEntry? {
+    val kind = stringValue("kind")?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedKind = kind.lowercase()
+    val id = realtimeAgentActivityId(
+        agentId = agentId,
+        serverSeq = serverSeq,
+        timestamp = timestamp,
+        index = index,
+        kind = normalizedKind,
+        entry = this
+    )
+    fun entry(
+        type: String,
+        title: String,
+        body: String? = null,
+        details: List<Pair<String, String>> = body?.let { listOf("Detail" to it) } ?: emptyList(),
+        toolName: String? = null,
+        toolInput: String? = null,
+        statusActivity: String? = null,
+        statusDetail: String? = null,
+        expandable: Boolean = false,
+        refTextEnabled: Boolean = false
+    ): RealtimeAgentActivityEntry =
+        RealtimeAgentActivityEntry(
+            id = id,
+            type = type,
+            title = title,
+            body = body?.sanitizeActivityText(),
+            timestamp = timestamp,
+            details = details.map { (label, value) ->
+                RealtimeAgentActivityDetail(label = label, value = value.sanitizeActivityText())
+            },
+            toolName = toolName,
+            toolInput = toolInput?.sanitizeActivityText(),
+            statusActivity = statusActivity,
+            statusDetail = statusDetail,
+            expandable = expandable,
+            refTextEnabled = refTextEnabled
+        )
+    return when (normalizedKind) {
+        "thinking" ->
+            entry(
+                type = "thinking",
+                title = "Thinking",
+                body = stringValue("text"),
+                expandable = true
+            )
+        "tool_start" -> {
+            val toolName = stringValue("toolName").orEmpty()
+            if (toolName.shouldHideToolStartInActivityLog()) {
+                null
+            } else {
+                val input = this["toolInput"].toToolInputPreview()
+                entry(
+                    type = "tool_start",
+                    title = toolName.toToolLogLabel(),
+                    body = input,
+                    details = listOfNotNull(
+                        toolName.takeIf { it.isNotBlank() }?.let { "Tool" to it },
+                        input?.let { "Input" to it },
+                    ),
+                    toolName = toolName.takeIf { it.isNotBlank() },
+                    toolInput = input
+                )
+            }
+        }
+        "text" ->
+            entry(
+                type = "text",
+                title = "Output",
+                body = stringValue("text"),
+                expandable = true
+            )
+        "slock_action" ->
+            entry(
+                type = "slock_action",
+                title = stringValue("title")?.takeIf { it.isNotBlank() } ?: "Raft action",
+                body = stringValue("text") ?: stringValue("message"),
+                expandable = true,
+                refTextEnabled = true
+            )
+        "system" ->
+            entry(
+                type = "system",
+                title = stringValue("title")?.takeIf { it.isNotBlank() } ?: "System",
+                body = stringValue("text") ?: stringValue("message"),
+                expandable = true,
+                refTextEnabled = true
+            )
+        "compaction_started" ->
+            entry(
+                type = "compaction_started",
+                title = "Context Compaction Started"
+            )
+        "compaction_finished" ->
+            entry(
+                type = "compaction_finished",
+                title = "Context Compaction Finished"
+            )
+        "status", "agent_status" -> {
+            val activity = stringValue("activity")
+            val detail = stringValue("detail").orEmpty()
+            val display = resolveTrajectoryStatusDisplay(activity, detail)
+            entry(
+                type = "status",
+                title = display.first,
+                body = display.second.takeIf { it.isNotBlank() },
+                statusActivity = activity,
+                statusDetail = stringValue("detail"),
+                refTextEnabled = true
+            )
+        }
+        else ->
+            entry(
+                type = normalizedKind,
+                title = stringValue("summary")
+                    ?: stringValue("activity")?.toAgentActivityTitle()
+                    ?: normalizedKind.toAgentActivityTitle(),
+                body = stringValue("detail")
+                    ?: stringValue("message")
+                    ?: stringValue("text")
+                    ?: stringValue("toolName")
+                    ?: stringValue("name"),
+                details = listOfNotNull(
+                    (stringValue("detail") ?: stringValue("message") ?: stringValue("text"))?.let { "Detail" to it },
+                    stringValue("toolName")?.let { "Tool" to it },
+                ),
+            )
+    }
+}
+
+private fun realtimeAgentActivityId(
+    agentId: String,
+    serverSeq: Long?,
+    timestamp: String?,
+    index: Int,
+    kind: String,
+    entry: JsonObject
+): String {
+    val source = serverSeq?.let { "seq:$it" }
+        ?: "ts:${timestamp.orEmpty()}:h:${entry.toString().stableActivityHash()}"
+    return "realtime:$agentId:$source:$index:$kind"
+}
+
+private fun JsonElement?.activityTimestampString(): String? =
+    (this as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+private fun JsonElement?.toToolInputPreview(): String? {
+    if (this == null || this is JsonNull) return null
+    val raw =
+        when (this) {
+            is JsonPrimitive -> contentOrNull.orEmpty()
+            is JsonObject -> {
+                val keys =
+                    keys
+                        .filterNot { it.isSensitiveActivityKey() }
+                        .take(4)
+                        .joinToString(", ")
+                if (keys.isBlank()) "Structured input" else "Structured input: $keys"
+            }
+            else -> "Structured input"
+        }
+    return raw.sanitizeActivityText().takeIf { it.isNotBlank() }
+}
+
+private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): Pair<String, String> {
+    if (activity == "working" && detail == "Starting…") return "Starting" to ""
+    if (activity == "offline") {
+        val primary =
+            when {
+                detail == "Stopped" -> "Stopped"
+                detail == "Machine disconnected" -> "Disconnected"
+                detail.startsWith("Crashed") -> "Crashed"
+                else -> "Offline"
+            }
+        val secondary =
+            if (primary == "Crashed") {
+                detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
+            } else {
+                ""
+            }
+        return primary to secondary
+    }
+    val primary =
+        when (activity) {
+            "online" -> "Idle"
+            "thinking" -> "Thinking"
+            "working" -> "Working"
+            "error" -> "Error"
+            else -> activity?.toAgentActivityTitle() ?: "Status"
+        }
+    return primary to detail
+}
+
+private fun JsonObject.stringValue(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun String.toToolActivityLabel(): String {
+    val normalized = trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .takeIf { it.isNotBlank() }
+        ?: return "Working"
+    return when (normalized) {
+        "read_file" -> "Reading file..."
+        "write_file" -> "Writing file..."
+        "upload_file" -> "Uploading file..."
+        "view_file" -> "Viewing file..."
+        "schedule_reminder" -> "Scheduling reminder..."
+        "list_reminders" -> "Listing reminders..."
+        "cancel_reminder" -> "Canceling reminder..."
+        "run_command" -> "Running command..."
+        else -> "Using ${normalized.truncateToolLabel()}..."
+    }
+}
+
+private fun String.truncateToolLabel(): String =
+    if (length <= 24) this else take(22) + ".."
+
+private fun String.shouldHideToolStartInActivityLog(): Boolean =
+    normalizedToolName() == "send_message"
+
+private fun String.toToolLogLabel(): String {
+    val normalized = normalizedToolName()
+    return when (normalized) {
+        "read_file" -> "Read file"
+        "write_file" -> "Write file"
+        "upload_file" -> "Upload file"
+        "view_file" -> "View file"
+        "schedule_reminder" -> "Schedule reminder"
+        "list_reminders" -> "List reminders"
+        "cancel_reminder" -> "Cancel reminder"
+        "run_command" -> "Run command"
+        else -> normalized.toAgentActivityTitle()
+    }
+}
+
+private fun String.normalizedToolName(): String =
+    trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .ifBlank { trim() }
+
+private fun String.toAgentActivityTitle(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        .ifBlank { "Agent activity" }
+
+private fun String.isSensitiveActivityKey(): Boolean {
+    val lower = lowercase()
+    return lower == "authorization" ||
+        lower == "cookie" ||
+        lower.contains("token") ||
+        lower.contains("password") ||
+        lower.contains("secret") ||
+        lower.contains("credential")
+}
+
+private fun String.sanitizeActivityText(): String {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return ""
+    val lower = trimmed.lowercase()
+    val credentialLike =
+        "authorization" in lower ||
+            "bearer " in lower ||
+            "cookie" in lower ||
+            "access_token" in lower ||
+            "refresh_token" in lower ||
+            "password" in lower ||
+            "sk_agent_" in lower ||
+            "sk_machine_" in lower
+    if (credentialLike) return "[redacted]"
+    return if (trimmed.length > 1200) trimmed.take(1200) + "…" else trimmed
+}
+
+private fun String.stableActivityHash(): String {
+    var hash = 0
+    for (char in this) {
+        hash = hash * 31 + char.code
+    }
+    return hash.toString()
+}
+
+private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeResponse(
+    messages = messages.map { it.toDomain() },
+    currentSeq = currentSeq,
+    hasMore = hasMore,
+)
+
+private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile? {
+    if (id.isNullOrBlank()) return null
+    val label = name?.trim().orEmpty().ifBlank { id }
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = label,
+        handle = label,
+        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
+        avatarLabel = label.take(1).uppercase(),
+        presence = Presence.Offline,
+    )
+}

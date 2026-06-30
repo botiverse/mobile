@@ -2,7 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KuiklyMMKVAuthSessionStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 

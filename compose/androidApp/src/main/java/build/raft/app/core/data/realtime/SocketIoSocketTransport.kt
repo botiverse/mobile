@@ -1,9 +1,9 @@
 package build.raft.app.core.data.realtime
 
 import android.util.Log
-import ai.slock.compose.data.RealtimeSubscription
-import ai.slock.compose.data.realtime.RealtimeSocketEvents
-import ai.slock.compose.data.realtime.RealtimeSocketTransport
+import build.raft.app.data.RealtimeSubscription
+import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.RealtimeSocketTransport
 import io.socket.client.IO
 import io.socket.client.Manager
 import io.socket.client.Socket

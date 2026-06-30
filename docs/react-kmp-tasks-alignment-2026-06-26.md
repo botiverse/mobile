@@ -22,7 +22,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## KMP source
 
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt` (~3000 lines)
+`compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt` (~3000 lines)
 + `MembersAgentRuntimeChip.kt` (status chip in agent detail)
 + Task status patch logic in `SharedThreadStore` / `MembersAgentPermissionsTab`
 

@@ -47,10 +47,10 @@ Mobile, Storage, About, and Diagnostics.
 ## Current KMP State
 
 The shared Settings product path is `SettingsAppShellContent` in
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt`.
+`compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`.
 
 The current shared MVI boundary exists in
-`compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SharedSettingsStore.kt`:
+`compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedSettingsStore.kt`:
 
 - `SharedSettingsState`
 - `SharedSettingsIntent`
