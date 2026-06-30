@@ -200,6 +200,8 @@ class SharedActivityStore(
                         activityStateCache?.read(serverId.value, userId, filter)?.let { cached ->
                             _state.value =
                                 cached.copy(
+                                    senderProfiles =
+                                        cached.senderProfiles + currentSenderProfiles(serverId),
                                     refreshing = true,
                                     pullRefreshing = false,
                                     loading = false,
@@ -573,6 +575,7 @@ class SharedActivityStore(
 
     private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
+            val cachedProfiles = currentSenderProfiles(serverId)
             val profilesById =
                 serverMembersStore?.let { store ->
                     when (store.refreshMembers(serverId, DataRequestPriority.Visible)) {
@@ -586,13 +589,22 @@ class SharedActivityStore(
                             .associateBy { it.id.value.trim() }
                     else -> emptyMap()
                 }
-            profilesById.mapValues { (_, profile) ->
-                SharedActivitySenderProfile(
-                    displayName = profile.displayName.ifBlank { profile.handle.ifBlank { profile.id.value } }
-                )
-            }
+            cachedProfiles + profilesById.toActivitySenderProfiles()
         } catch (_: Throwable) {
-            emptyMap()
+            currentSenderProfiles(serverId)
+        }
+
+    private fun currentSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
+        serverMembersStore
+            ?.currentServerMemberProfilesById(serverId)
+            ?.toActivitySenderProfiles()
+            .orEmpty()
+
+    private fun Map<String, MemberProfile>.toActivitySenderProfiles(): Map<String, SharedActivitySenderProfile> =
+        mapValues { (_, profile) ->
+            SharedActivitySenderProfile(
+                displayName = profile.displayName.ifBlank { profile.handle.ifBlank { profile.id.value } }
+            )
         }
 
     private fun rememberUnreadCleared(items: List<InboxItem>) {

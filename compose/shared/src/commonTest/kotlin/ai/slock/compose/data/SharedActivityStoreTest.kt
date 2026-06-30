@@ -569,6 +569,62 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun cachedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val row =
+            threadItem("thread-channel-1", unreadCount = 1)
+                .copy(
+                    latestActivitySenderId = "agent-1",
+                    latestActivitySenderName = null,
+                    latestActivityPreview = "Latest reply"
+                )
+        val cache = SharedActivityStateCache()
+        val agentOne =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Agent One",
+                handle = "agent-one",
+                kind = MemberKind.Agent
+            )
+        cache.write(
+            serverId = "server-1",
+            userId = "user-1",
+            state =
+                SharedActivityState(
+                    selectedFilter = InboxFilter.All,
+                    snapshot = snapshot(listOf(row)),
+                    senderProfiles = emptyMap(),
+                    loaded = true
+                )
+        )
+        val membersStore =
+            SharedServerMembersStore(
+                FakeMemberRepository(
+                    members = listOf(agentOne)
+                )
+            )
+        membersStore.seedProfiles(
+            ServerId("server-1"),
+            listOf(agentOne),
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        )
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                activityStateCache = cache,
+                serverMembersStore = membersStore
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals("Agent One", store.state.value.senderProfiles.getValue("agent-1").displayName)
+        scope.cancel()
+    }
+
+    @Test
     fun doneUsesInboxDoneForChannelsAndThreadDoneForThreads() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -727,6 +783,7 @@ class SharedActivityStoreTest {
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
         memberRepository: MemberRepository? = null,
+        serverMembersStore: SharedServerMembersStore? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         activityStateCache: SharedActivityStateCache? = null,
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -738,6 +795,7 @@ class SharedActivityStoreTest {
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
+            serverMembersStore = serverMembersStore,
             localWriteThrough = localWriteThrough,
             activityStateCache = activityStateCache,
             onUnreadCountsChanged = onUnreadCountsChanged,
