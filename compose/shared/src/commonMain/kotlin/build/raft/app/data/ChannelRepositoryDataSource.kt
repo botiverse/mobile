@@ -69,9 +69,9 @@ class RealChannelRepository(
     private val warningLogger: (String) -> Unit = {}
 ) : ChannelRepository {
     private val directMessageCacheMutex = Mutex()
-    private var directMessageCache: CachedDirectMessages? = null
+    private val directMessageCaches = linkedMapOf<ServerId, CachedDirectMessages>()
     private val conversationSummaryCacheMutex = Mutex()
-    private var conversationSummaryCache: CachedConversationSummaries? = null
+    private val conversationSummaryCaches = linkedMapOf<ServerId, CachedConversationSummaries>()
     private val homeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
@@ -325,10 +325,10 @@ class RealChannelRepository(
     ): List<HomeDirectMessageRow> =
         directMessageCacheMutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()
-            val existing = directMessageCache?.takeIf { it.serverId == serverId }?.directMessages.orEmpty()
+            val existing = directMessageCaches[serverId]?.directMessages.orEmpty()
             val incomingSummaries = incoming.map { it.toConversationSummary() }
             val merged = mergeDirectMessages(existing, incomingSummaries)
-            directMessageCache = CachedDirectMessages(serverId, merged)
+            directMessageCaches[serverId] = CachedDirectMessages(serverId, merged)
             rememberConversationSummaries(serverId, merged)
             warningLogger(
                 "repository_merge domain=direct_messages source=cache_merge serverId=${serverId.value} " +
@@ -345,7 +345,7 @@ class RealChannelRepository(
         if (conversations.isEmpty()) return
         conversationSummaryCacheMutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()
-            val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
+            val existing = conversationSummaryCaches[serverId]?.summaries.orEmpty()
             val merged = existing.toMutableMap()
             var changed = 0
             conversations.forEach { conversation ->
@@ -355,7 +355,7 @@ class RealChannelRepository(
                 if (next != previous) changed += 1
                 merged[key] = next
             }
-            conversationSummaryCache = CachedConversationSummaries(serverId, merged)
+            conversationSummaryCaches[serverId] = CachedConversationSummaries(serverId, merged)
             warningLogger(
                 "repository_merge domain=conversation_summaries source=remember serverId=${serverId.value} " +
                     "existing=${existing.size} incoming=${conversations.size} changed=$changed merged=${merged.size} " +
@@ -367,12 +367,12 @@ class RealChannelRepository(
     private suspend fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
         conversationSummaryCacheMutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()
-            val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries ?: return
+            val existing = conversationSummaryCaches[serverId]?.summaries ?: return
             val filtered =
                 existing.filterValues { summary ->
                     summary.channelId != channelId && summary.threadId.value != channelId.value
                 }
-            conversationSummaryCache = CachedConversationSummaries(serverId, filtered)
+            conversationSummaryCaches[serverId] = CachedConversationSummaries(serverId, filtered)
             warningLogger(
                 "repository_merge domain=conversation_summaries source=remove serverId=${serverId.value} " +
                     "channelId=${channelId.value} existing=${existing.size} merged=${filtered.size} " +
@@ -384,7 +384,7 @@ class RealChannelRepository(
     private suspend fun List<ConversationSummary>.withCachedConversationSummaries(serverId: ServerId): List<ConversationSummary> =
         conversationSummaryCacheMutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()
-            val cached = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
+            val cached = conversationSummaryCaches[serverId]?.summaries.orEmpty()
             if (cached.isEmpty()) {
                 warningLogger(
                     "repository_merge_skip domain=conversation_summaries source=apply_cached serverId=${serverId.value} " +
