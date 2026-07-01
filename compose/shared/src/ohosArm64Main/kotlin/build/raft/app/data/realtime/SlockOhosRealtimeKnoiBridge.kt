@@ -11,7 +11,7 @@ fun slockRealtimeKnoiConnectDecision(
     requestedLastSeq: Long,
     forceReconnect: Boolean,
     connectionStateName: String
-): String {
+): Map<String, Any?> {
     val decision =
         slockOhosRealtimeKnoiEngine.connectDecisionForHost(
             serverIdValue = serverId,
@@ -20,12 +20,7 @@ fun slockRealtimeKnoiConnectDecision(
             forceReconnect = forceReconnect,
             connectionStateName = connectionStateName
         )
-    return buildJsonObject {
-        bool("shouldConnect", decision.shouldConnect)
-        number("resumeSeq", decision.resumeSeq)
-        bool("sessionChanged", decision.sessionChanged)
-        nullableString("logMessage", decision.logMessage)
-    }
+    return decision.toKnoiMap()
 }
 
 @KNExport
@@ -33,36 +28,30 @@ fun slockRealtimeKnoiDisconnectForSessionEnd(reason: String): Boolean =
     slockOhosRealtimeKnoiEngine.disconnectForSessionEnd(reason)
 
 @KNExport
-fun slockRealtimeKnoiRoomCommandDecision(action: String, channelId: String, reason: String): String {
+fun slockRealtimeKnoiRoomCommandDecision(action: String, channelId: String, reason: String): Map<String, Any?> {
     val decision =
         slockOhosRealtimeKnoiEngine.roomCommandDecisionForHost(
             action = action,
             channelIdValue = channelId,
             reason = reason
         )
-    return decision.toJson()
+    return decision.toKnoiMap()
 }
 
 @KNExport
-fun slockRealtimeKnoiJoinChannelDecision(channelId: String, reason: String): String {
+fun slockRealtimeKnoiJoinChannelDecision(channelId: String, reason: String): Map<String, Any?> {
     val decision =
         slockOhosRealtimeKnoiEngine.joinChannelDecisionForHost(
             channelIdValue = channelId,
             reason = reason
         )
-    return decision.toJson()
+    return decision.toKnoiMap()
 }
 
 @KNExport
-fun slockRealtimeKnoiRawDecision(eventName: String, rawPayload: String): String {
+fun slockRealtimeKnoiRawDecision(eventName: String, rawPayload: String): Map<String, Any?> {
     val decision = slockOhosRealtimeKnoiEngine.onRawEvent(eventName, rawPayload)
-    return buildJsonObject {
-        bool("shouldFanOut", decision.shouldFanOut)
-        nullableString("serverId", decision.serverId?.value)
-        string("eventName", decision.eventName)
-        string("rawPayload", decision.rawPayload)
-        string("logMessage", decision.logMessage)
-    }
+    return decision.toKnoiMap()
 }
 
 @KNExport
@@ -75,64 +64,29 @@ fun slockRealtimeKnoiOnAppHidden() {
     slockOhosRealtimeKnoiEngine.onAppHidden()
 }
 
-private fun SlockRealtimeAppScopeRoomCommandDecision.toJson(): String =
-    buildJsonObject {
-        bool("shouldEmit", shouldEmit)
-        nullableString("eventName", eventName)
-        nullableString("payload", payload)
-        nullableString("channelId", channelId?.value)
-        string("joinedChannelAction", joinedChannelAction)
-        string("logMessage", logMessage)
-    }
+private fun SlockRealtimeAppScopeConnectDecision.toKnoiMap(): Map<String, Any?> =
+    mapOf(
+        "shouldConnect" to shouldConnect,
+        "resumeSeq" to resumeSeq,
+        "sessionChanged" to sessionChanged,
+        "logMessage" to logMessage
+    )
 
-private inline fun buildJsonObject(body: JsonObjectBuilder.() -> Unit): String =
-    JsonObjectBuilder().apply(body).build()
+private fun SlockRealtimeAppScopeRoomCommandDecision.toKnoiMap(): Map<String, Any?> =
+    mapOf(
+        "shouldEmit" to shouldEmit,
+        "eventName" to eventName,
+        "payload" to payload,
+        "channelId" to channelId?.value,
+        "joinedChannelAction" to joinedChannelAction,
+        "logMessage" to logMessage
+    )
 
-private class JsonObjectBuilder {
-    private val fields = mutableListOf<String>()
-
-    fun bool(name: String, value: Boolean) {
-        fields += "\"${name.escapeJson()}\":$value"
-    }
-
-    fun number(name: String, value: Long) {
-        fields += "\"${name.escapeJson()}\":$value"
-    }
-
-    fun string(name: String, value: String) {
-        fields += "\"${name.escapeJson()}\":\"${value.escapeJson()}\""
-    }
-
-    fun nullableString(name: String, value: String?) {
-        fields += if (value == null) {
-            "\"${name.escapeJson()}\":null"
-        } else {
-            "\"${name.escapeJson()}\":\"${value.escapeJson()}\""
-        }
-    }
-
-    fun build(): String = fields.joinToString(prefix = "{", postfix = "}")
-}
-
-private fun String.escapeJson(): String =
-    buildString(length) {
-        for (char in this@escapeJson) {
-            when (char) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\b' -> append("\\b")
-                '\u000C' -> append("\\f")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> {
-                    if (char.code < 0x20) {
-                        append("\\u")
-                        append(char.code.toString(16).padStart(4, '0'))
-                    } else {
-                        append(char)
-                    }
-                }
-            }
-        }
-    }
+private fun SlockRealtimeAppScopeRawDecision.toKnoiMap(): Map<String, Any?> =
+    mapOf(
+        "shouldFanOut" to shouldFanOut,
+        "serverId" to serverId?.value,
+        "eventName" to eventName,
+        "rawPayload" to rawPayload,
+        "logMessage" to logMessage
+    )

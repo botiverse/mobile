@@ -32,7 +32,7 @@ class SlockOhosRealtimeKnoiBridge {
     forceReconnect: boolean,
     connectionStateName: string
   ): SlockRealtimeConnectDecision {
-    return this.invokeJson<SlockRealtimeConnectDecision>(
+    return this.invokeValue<SlockRealtimeConnectDecision>(
       'slockRealtimeKnoiConnectDecision',
       serverId,
       accessToken,
@@ -50,7 +50,7 @@ class SlockOhosRealtimeKnoiBridge {
   }
 
   joinChannelDecision(channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
-    return this.invokeJson<SlockRealtimeRoomCommandDecision>(
+    return this.invokeValue<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiJoinChannelDecision',
       channelId,
       reason
@@ -58,7 +58,7 @@ class SlockOhosRealtimeKnoiBridge {
   }
 
   roomCommandDecision(action: string, channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
-    return this.invokeJson<SlockRealtimeRoomCommandDecision>(
+    return this.invokeValue<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiRoomCommandDecision',
       action,
       channelId,
@@ -67,7 +67,7 @@ class SlockOhosRealtimeKnoiBridge {
   }
 
   rawDecision(eventName: string, rawPayload: string): SlockRealtimeRawDecision {
-    return this.invokeJson<SlockRealtimeRawDecision>(
+    return this.invokeValue<SlockRealtimeRawDecision>(
       'slockRealtimeKnoiRawDecision',
       eventName,
       rawPayload
@@ -82,16 +82,8 @@ class SlockOhosRealtimeKnoiBridge {
     this.invokeVoid('slockRealtimeKnoiOnAppHidden');
   }
 
-  private invokeJson<T>(name: string, ...args: Object[]): T {
-    return this.invokeValue<T>(name, ...args);
-  }
-
   private invokeValue<T>(name: string, ...args: Object[]): T {
-    const result = invoke<T>(name, ...args);
-    if (typeof result === 'string') {
-      return JSON.parse(result) as T;
-    }
-    return result;
+    return invoke<T>(name, ...args);
   }
 
   private invokeVoid(name: string): void {
