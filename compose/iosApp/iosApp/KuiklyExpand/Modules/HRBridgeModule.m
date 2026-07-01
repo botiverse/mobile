@@ -4,6 +4,18 @@
 #import "iosApp-Swift.h"
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
 
+#if __has_include("SlockIosBuildMetadata.h")
+#import "SlockIosBuildMetadata.h"
+#endif
+
+#ifndef SLOCK_IOS_BUILD_TIME
+#define SLOCK_IOS_BUILD_TIME @""
+#endif
+
+#ifndef SLOCK_IOS_GIT_COMMIT
+#define SLOCK_IOS_GIT_COMMIT @""
+#endif
+
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
 static NSString *const SlockDiagnosticsLogDirName = @"Slock/diagnostics";
@@ -46,6 +58,14 @@ static NSString *SlockBridgeString(id value) {
         return [[value stringValue] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     }
     return @"";
+}
+
+static NSString *SlockBridgeBuildTime(void) {
+    return SlockBridgeString(SLOCK_IOS_BUILD_TIME);
+}
+
+static NSString *SlockBridgeGitCommit(void) {
+    return SlockBridgeString(SLOCK_IOS_GIT_COMMIT);
 }
 
 static BOOL SlockBridgeBool(id value) {
@@ -296,6 +316,10 @@ static void SlockDiagnosticsRecord(NSString *level, NSString *tag, NSString *mes
     SlockDiagnosticsAppendEntry(entry);
 }
 
+void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
+    SlockDiagnosticsRecord(level, tag, message);
+}
+
 static NSString *SlockDiagnosticsExportRecentJsonl(NSUInteger maxChars) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
     for (NSDictionary *entry in SlockDiagnosticsSnapshotMemoryEntries()) {
@@ -363,7 +387,7 @@ static void SlockDiagnosticsClear(void) {
 static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
-    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel"];
+    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"buildTime", @"gitCommit", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel"];
     for (NSString *key in keys) {
         NSString *value = SlockBridgeString(about[key]);
         if (value.length > 0) {
@@ -696,7 +720,9 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
             @"versionLabel" : version,
             @"buildLabel" : build,
             @"sourceLabel" : @"iOS P0 host bridge",
-            @"packageName" : NSBundle.mainBundle.bundleIdentifier ?: @"",
+            @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
+            @"buildTime" : SlockBridgeBuildTime(),
+            @"gitCommit" : SlockBridgeGitCommit(),
             @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
             @"platformLabel" : @"iOS",
             @"sessionStatusLabel" : @"Not wired",

@@ -1,4 +1,5 @@
 #import "KuiklyRenderViewController.h"
+#import "Modules/HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import <OpenKuiklyIOSRender/KuiklyRenderViewControllerBaseDelegator.h>
 #import <OpenKuiklyIOSRender/KuiklyRenderContextProtocol.h>
@@ -11,12 +12,14 @@
 @end
 
 @implementation KuiklyRenderViewController {
+    NSString *_pageName;
     NSDictionary *_pageData;
 }
 
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
     if (self = [super init]) {
         pageData = [self p_mergeExtParamsWithOriditalParam:pageData];
+        _pageName = [pageName copy] ?: @"";
         _pageData = pageData;
         _delegator = [[KuiklyRenderViewControllerBaseDelegator alloc] initWithPageName:pageName pageData:pageData];
         _delegator.delegate = self;
@@ -88,6 +91,18 @@
         // 返回对应framework名字
         callback(@"shared", nil);
     }
+}
+
+- (void)onUnhandledException:(NSString *)exReason stack:(NSString *)callstackStr mode:(KuiklyContextMode)mode {
+    NSString *reason = exReason.length > 0 ? exReason : @"KuiklyUnhandledException";
+    NSString *stack = callstackStr ?: @"";
+    NSString *message = [NSString stringWithFormat:@"kuikly_unhandled_exception page=%@ mode=%ld reason=%@ stack=%@",
+                         _pageName.length > 0 ? _pageName : @"unknown",
+                         (long)mode,
+                         reason,
+                         stack];
+    NSLog(@"[SlockKuikly][error] %@", message);
+    SlockIosDiagnosticsRecord(@"error", @"SlockKuikly", message);
 }
 
 - (void)dealloc {

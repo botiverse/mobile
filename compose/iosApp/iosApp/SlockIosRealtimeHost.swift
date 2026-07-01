@@ -91,7 +91,7 @@ final class SlockIosRealtimeHost: NSObject {
             let next = ConnectParams(
                 serverId: cleanServerId,
                 accessToken: cleanAccessToken,
-                socketUrl: cleanSocketUrl.isEmpty ? "https://api.slock.ai" : cleanSocketUrl,
+                socketUrl: cleanSocketUrl.isEmpty ? "https://api.raft.build" : cleanSocketUrl,
                 lastSeq: lastSeq
             )
             let sameSession =

@@ -7,4 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+FOUNDATION_EXTERN void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message);
+
 NS_ASSUME_NONNULL_END
