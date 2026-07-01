@@ -805,6 +805,11 @@ private data class ThreadDeferredAttachmentSend(
     val context: KuiklyThreadPendingSendContext
 )
 
+private data class ThreadLocalSendJob(
+    val job: Job,
+    val startedFromComposer: Boolean
+)
+
 @Serializable
 internal data class KuiklyThreadMessageCommentRef(
     val attachmentId: String,
@@ -1787,6 +1792,9 @@ internal fun ThreadMessageVisualScreen() {
                     showSaveAction = true,
                     showTaskStatusAction = menuVariant == "task",
                     showConvertToTaskAction = menuVariant != "task",
+                    showCopyLinkAction = true,
+                    showShareMessagesAction = true,
+                    showCancelAction = false,
                     showDeleteAction = false,
                     onReply = {},
                     onCopyLink = {},
@@ -1798,6 +1806,7 @@ internal fun ThreadMessageVisualScreen() {
                     onUnfollowThread = {},
                     onTaskStatusChange = {},
                     onConvertToTask = {},
+                    onCancel = {},
                     onDelete = {}
                 )
             }
@@ -2410,6 +2419,9 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadJobs by remember(threadInstanceKey) {
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
+    var localSendJobs by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, ThreadLocalSendJob>>(emptyMap())
+    }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentUploadFile>>(emptyMap())
     }
@@ -2434,10 +2446,12 @@ internal fun SharedThreadRouteContent(
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
+    val currentLocalSendJobs by rememberUpdatedState(localSendJobs)
 
     DisposableEffect(threadInstanceKey) {
         onDispose {
             currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
+            currentLocalSendJobs.values.forEach { sendJob -> sendJob.job.cancel() }
         }
     }
 
@@ -3270,120 +3284,129 @@ internal fun SharedThreadRouteContent(
                     "mentionChannelId" to context.mentionChannelId.orEmpty()
                 )
         )
-        coroutineScope.launch {
-            fun markFailed(errorCode: String?, errorMessage: String? = null) {
-                threadViewModel.dispatch(
-                    SharedThreadIntent.ApplyLocalSendFailure(
-                        messageId = localMessageId,
-                        errorCode = errorCode,
-                        errorMessage = errorMessage
+        localSendJobs[localMessageId]?.job?.cancel()
+        val sendJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                fun markFailed(errorCode: String?, errorMessage: String? = null) {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyLocalSendFailure(
+                            messageId = localMessageId,
+                            errorCode = errorCode,
+                            errorMessage = errorMessage
+                        )
                     )
-                )
-                if (startedFromComposer) {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+                    if (startedFromComposer) {
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+                    }
                 }
-            }
 
-            val sendResponse =
-                runCatchingPreservingCancellation {
-                    dataSource.sendMessage(
-                        channelId = context.channelId,
-                        body = context.body,
-                        asTask = context.asTask,
-                        attachmentIds = context.attachmentIds
-                    )
-                }.getOrElse {
-                    val errorCode = threadSendExceptionErrorCode(it)
-                    val errorType = it::class.simpleName.orEmpty().ifBlank { "Throwable" }
-                    val durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds
-                    bridge.log(
-                        "thread_send_exception localMessageId=$localMessageId " +
-                            "channelId=${context.channelId} errorType=$errorType " +
-                            "mapped=$errorCode durationMs=$durationMs"
-                    )
-                    bridge.performanceMarker(
-                        phase = "composer_send",
-                        routeName = "kuikly_thread",
-                        event = "end",
-                        threadId = context.channelId,
-                        durationMs = durationMs,
-                        metadata =
-                            mapOf(
-                                "result" to "exception",
-                                "code" to errorCode,
-                                "errorType" to errorType,
-                                "localMessageId" to localMessageId
-                            )
-                    )
-                    markFailed(errorCode, threadSendExceptionErrorMessage(it))
-                    return@launch
-                }
-            val sentPage =
-                when (sendResponse) {
-                    is ThreadApiResult.Success -> sendResponse.data
-                    is ThreadApiResult.Failure -> {
-                        val errorCode =
-                            sendResponse.contractCode
-                                ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
-                                ?: "http_${sendResponse.code}"
-                        val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
+                val sendResponse =
+                    runCatchingPreservingCancellation {
+                        dataSource.sendMessage(
+                            channelId = context.channelId,
+                            body = context.body,
+                            asTask = context.asTask,
+                            attachmentIds = context.attachmentIds
+                        )
+                    }.getOrElse {
+                        val errorCode = threadSendExceptionErrorCode(it)
+                        val errorType = it::class.simpleName.orEmpty().ifBlank { "Throwable" }
+                        val durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds
+                        bridge.log(
+                            "thread_send_exception localMessageId=$localMessageId " +
+                                "channelId=${context.channelId} errorType=$errorType " +
+                                "mapped=$errorCode durationMs=$durationMs"
+                        )
                         bridge.performanceMarker(
                             phase = "composer_send",
                             routeName = "kuikly_thread",
                             event = "end",
                             threadId = context.channelId,
-                            durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                            durationMs = durationMs,
                             metadata =
                                 mapOf(
-                                    "result" to "failure",
+                                    "result" to "exception",
                                     "code" to errorCode,
-                                    "httpCode" to sendResponse.code.toString(),
-                                    "contractCode" to sendResponse.contractCode.orEmpty(),
-                                    "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
+                                    "errorType" to errorType,
                                     "localMessageId" to localMessageId
                                 )
                         )
-                        markFailed(errorCode, errorMessage)
+                        markFailed(errorCode, threadSendExceptionErrorMessage(it))
                         return@launch
                     }
+                val sentPage =
+                    when (sendResponse) {
+                        is ThreadApiResult.Success -> sendResponse.data
+                        is ThreadApiResult.Failure -> {
+                            val errorCode =
+                                sendResponse.contractCode
+                                    ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
+                                    ?: "http_${sendResponse.code}"
+                            val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
+                            bridge.performanceMarker(
+                                phase = "composer_send",
+                                routeName = "kuikly_thread",
+                                event = "end",
+                                threadId = context.channelId,
+                                durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                                metadata =
+                                    mapOf(
+                                        "result" to "failure",
+                                        "code" to errorCode,
+                                        "httpCode" to sendResponse.code.toString(),
+                                        "contractCode" to sendResponse.contractCode.orEmpty(),
+                                        "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
+                                        "localMessageId" to localMessageId
+                                    )
+                            )
+                            markFailed(errorCode, errorMessage)
+                            return@launch
+                        }
+                    }
+                if (sentPage.messages.isEmpty()) {
+                    bridge.performanceMarker(
+                        phase = "composer_send",
+                        routeName = "kuikly_thread",
+                        event = "end",
+                        threadId = context.channelId,
+                        durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                        metadata = mapOf("result" to "empty", "localMessageId" to localMessageId)
+                    )
+                    markFailed("empty_response")
+                    return@launch
                 }
-            if (sentPage.messages.isEmpty()) {
+                threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
                     event = "end",
                     threadId = context.channelId,
                     durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                    metadata = mapOf("result" to "empty", "localMessageId" to localMessageId)
+                    metadata =
+                        mapOf(
+                            "result" to "success",
+                            "messages" to sentPage.messages.size.toString(),
+                            "localMessageId" to localMessageId
+                        )
                 )
-                markFailed("empty_response")
-                return@launch
-            }
-            threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
-            bridge.performanceMarker(
-                phase = "composer_send",
-                routeName = "kuikly_thread",
-                event = "end",
-                threadId = context.channelId,
-                durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                metadata =
-                    mapOf(
-                        "result" to "success",
-                        "messages" to sentPage.messages.size.toString(),
-                        "localMessageId" to localMessageId
+                val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
+                if (startedFromComposer) {
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
                     )
-            )
-            val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
-            if (startedFromComposer) {
-                composerDraftViewModel.dispatch(
-                    SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
-                )
-            } else {
-                composerDraftViewModel.dispatch(
-                    SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
-                )
+                } else {
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                    )
+                }
+            } finally {
+                localSendJobs = localSendJobs - localMessageId
             }
         }
+        localSendJobs =
+            localSendJobs +
+                (localMessageId to ThreadLocalSendJob(sendJob, startedFromComposer))
+        sendJob.start()
     }
     fun markDeferredAttachmentSendFailed(errorCode: String?, errorMessage: String? = null) {
         val pending = deferredAttachmentSend ?: return
@@ -4496,6 +4519,29 @@ internal fun SharedThreadRouteContent(
                     val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
                     if (message.isFailedLocalSend()) {
                         threadViewModel.dispatch(SharedThreadIntent.DismissLocalFailedSend(message.id))
+                    }
+                }
+                action == "cancelLocalSend" && !itemId.isNullOrBlank() -> {
+                    val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
+                    if (message.isSendingLocalSend()) {
+                        localSendJobs[itemId]?.let { sendJob ->
+                            sendJob.job.cancel()
+                            localSendJobs = localSendJobs - itemId
+                            if (sendJob.startedFromComposer) {
+                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+                            }
+                        }
+                        deferredAttachmentSend
+                            ?.takeIf { pending -> pending.localMessageId == itemId }
+                            ?.let { pending ->
+                                val pendingAttachmentIds = pending.context.attachments.map { attachment -> attachment.id }.toSet()
+                                pendingAttachmentIds.forEach { attachmentId -> attachmentUploadJobs[attachmentId]?.cancel() }
+                                attachmentUploadJobs = attachmentUploadJobs - pendingAttachmentIds
+                                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - pendingAttachmentIds
+                                deferredAttachmentSend = null
+                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+                            }
+                        threadViewModel.dispatch(SharedThreadIntent.CancelLocalSend(message.id))
                     }
                 }
                 action == "retryLocalSend" && !itemId.isNullOrBlank() -> {
@@ -8322,7 +8368,7 @@ private fun ThreadMessagesList(
                             captureLongPressAnchor = captureMessageAnchors,
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor ->
-                                if (!message.hasLocalSendState() || message.isFailedLocalSend()) {
+                                if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
                                     actionMenuAnchor = anchor
                                     actionMessageId = message.id
                                     diagnosticsLogger(
@@ -8413,6 +8459,7 @@ private fun ThreadMessagesList(
         actionMessageId?.let { messageId ->
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
+                val isSendingLocalSend = message.isSendingLocalSend()
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 ThreadMessageActionMenu(
                     message = message,
@@ -8425,6 +8472,9 @@ private fun ThreadMessagesList(
                         renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
                             message.id !in pendingTaskConvertMessageIds,
                     showReactionActions = !message.hasLocalSendState(),
+                    showCopyLinkAction = !message.hasLocalSendState(),
+                    showShareMessagesAction = !message.hasLocalSendState(),
+                    showCancelAction = isSendingLocalSend,
                     showDeleteAction = isFailedLocalSend,
                     onDismiss = { actionMessageId = null },
                     onCopyLink = {
@@ -8470,6 +8520,10 @@ private fun ThreadMessagesList(
                     onConvertToTask = {
                         actionMessageId = null
                         onThreadEvent("convertMessageToTask", message.id, null, null)
+                    },
+                    onCancel = {
+                        actionMessageId = null
+                        onThreadEvent("cancelLocalSend", message.id, null, null)
                     },
                     onDelete = {
                         actionMessageId = null
@@ -10608,6 +10662,9 @@ private fun threadMessageMenuActions(
     showSaveAction: Boolean,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
+    showCopyLinkAction: Boolean,
+    showShareMessagesAction: Boolean,
+    showCancelAction: Boolean,
     showDeleteAction: Boolean,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -10619,27 +10676,32 @@ private fun threadMessageMenuActions(
     onUnfollowThread: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
+    onCancel: () -> Unit,
     onDelete: () -> Unit
 ): List<ThreadMessageMenuAction> =
     buildList {
-        add(
-            ThreadMessageMenuAction(
-                label = "Copy Link",
-                icon = SlockLucideIconName.Link,
-                group = "copy",
-                onClick = onCopyLink
+        if (showCopyLinkAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Copy Link",
+                    icon = SlockLucideIconName.Link,
+                    group = "copy",
+                    onClick = onCopyLink
+                )
             )
-        )
+        }
         add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
         add(ThreadMessageMenuAction("Select Text", SlockLucideIconName.FileText, "copy", onClick = onSelectText))
-        add(
-            ThreadMessageMenuAction(
-                label = "Share Messages...",
-                icon = SlockLucideIconName.Share2,
-                group = "copy",
-                onClick = onShareMessages
+        if (showShareMessagesAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Share Messages...",
+                    icon = SlockLucideIconName.Share2,
+                    group = "copy",
+                    onClick = onShareMessages
+                )
             )
-        )
+        }
         if (showReplyAction) {
             add(ThreadMessageMenuAction("Open Thread", SlockLucideIconName.MessageSquare, "message", onClick = onReply))
         }
@@ -10680,6 +10742,16 @@ private fun threadMessageMenuActions(
                 )
             )
         }
+        if (showCancelAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Cancel",
+                    icon = SlockLucideIconName.X,
+                    group = "destructive",
+                    onClick = onCancel
+                )
+            )
+        }
         message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
             val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
             add(
@@ -10713,6 +10785,9 @@ private fun ThreadMessageActionMenu(
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
     showReactionActions: Boolean,
+    showCopyLinkAction: Boolean,
+    showShareMessagesAction: Boolean,
+    showCancelAction: Boolean,
     showDeleteAction: Boolean,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
@@ -10726,6 +10801,7 @@ private fun ThreadMessageActionMenu(
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
+    onCancel: () -> Unit,
     onDelete: () -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
@@ -10737,6 +10813,9 @@ private fun ThreadMessageActionMenu(
             showSaveAction,
             showTaskStatusAction,
             showConvertToTaskAction,
+            showCopyLinkAction,
+            showShareMessagesAction,
+            showCancelAction,
             showDeleteAction,
             onReply,
             onCopyLink,
@@ -10748,6 +10827,7 @@ private fun ThreadMessageActionMenu(
             onUnfollowThread,
             onTaskStatusChange,
             onConvertToTask,
+            onCancel,
             onDelete
         ) {
             threadMessageMenuActions(
@@ -10757,6 +10837,9 @@ private fun ThreadMessageActionMenu(
                 showSaveAction = showSaveAction,
                 showTaskStatusAction = showTaskStatusAction,
                 showConvertToTaskAction = showConvertToTaskAction,
+                showCopyLinkAction = showCopyLinkAction,
+                showShareMessagesAction = showShareMessagesAction,
+                showCancelAction = showCancelAction,
                 showDeleteAction = showDeleteAction,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
@@ -10768,6 +10851,7 @@ private fun ThreadMessageActionMenu(
                 onUnfollowThread = onUnfollowThread,
                 onTaskStatusChange = onTaskStatusChange,
                 onConvertToTask = onConvertToTask,
+                onCancel = onCancel,
                 onDelete = onDelete
             )
         }

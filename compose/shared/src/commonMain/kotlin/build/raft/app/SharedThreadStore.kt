@@ -1872,6 +1872,7 @@ internal sealed interface SharedThreadIntent {
         val errorCode: String? = null,
         val errorMessage: String? = null
     ) : SharedThreadIntent
+    data class CancelLocalSend(val messageId: String) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
     data object PrepareForLocalSend : SharedThreadIntent
@@ -1987,6 +1988,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.AppendSentPage,
             is SharedThreadIntent.ApplyLocalSendStarted,
             is SharedThreadIntent.ApplyLocalSendFailure,
+            is SharedThreadIntent.CancelLocalSend,
             is SharedThreadIntent.DismissLocalFailedSend,
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
             SharedThreadIntent.PrepareForLocalSend,
@@ -2040,6 +2042,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure ->
                 applyLocalSendFailure(intent.messageId, intent.errorCode, intent.errorMessage)
+            is SharedThreadIntent.CancelLocalSend -> cancelLocalSend(intent.messageId)
             is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
             is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
             SharedThreadIntent.PrepareForLocalSend -> prepareForLocalSend()
@@ -2821,6 +2824,12 @@ internal class SharedThreadStore(
     private suspend fun dismissLocalFailedSend(messageId: String) {
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.withoutLocalFailedSendMessage(messageId)
+        }
+    }
+
+    private suspend fun cancelLocalSend(messageId: String) {
+        reducePayloadPatchAndCache(cachePayload = true) { payload ->
+            payload.withoutLocalSendMessage(messageId)
         }
     }
 
