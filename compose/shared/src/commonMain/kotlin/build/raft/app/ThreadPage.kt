@@ -2328,8 +2328,8 @@ internal fun SharedThreadRouteContent(
         }
     }
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection) {
-            headerProjectionInput.displayModel(stableHeaderProjection)
+        remember(headerProjectionInput, stableHeaderProjection, payload) {
+            headerProjectionInput.displayModel(stableHeaderProjection, payload)
         }
     val headerProjectionMapDiagnostics =
         remember(directoryConversationProjections) {

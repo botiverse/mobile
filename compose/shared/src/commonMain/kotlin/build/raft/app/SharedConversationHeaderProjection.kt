@@ -204,7 +204,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
     val header = entry?.takeIf { it.surfaceKind == surfaceKind }
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
-            val titleCandidate = header?.title
+            val titleCandidate = header?.title ?: loadedConversationHeaderTitleOrNull()
             val displayTitle = threadHeaderDisplayTitle(titleCandidate, surfaceKind)
             ThreadHeaderDisplayModel(
                 title = displayTitle,
@@ -220,10 +220,10 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
-            val titleCandidate = header?.title
+            val titleCandidate = header?.title ?: loadedConversationHeaderTitleOrNull()
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
-                subtitle = header?.subtitle,
+                subtitle = header?.subtitle ?: loadedConversationHeaderSubtitleOrNull(),
                 surfaceKind = surfaceKind,
                 channelKind = header?.channelKind ?: channelKind
             )
@@ -235,6 +235,18 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
                 surfaceKind = surfaceKind,
                 channelKind = channelKind
             )
+    }
+}
+
+internal fun ThreadHeaderProjectionInput.displayModel(
+    projection: SharedConversationDirectoryProjection?,
+    contentPayload: KuiklyThreadScreenPayload
+): ThreadHeaderDisplayModel {
+    val accepted = projection?.takeIf(::accepts)
+    return if (accepted != null) {
+        displayModel(accepted)
+    } else {
+        contentPayload.threadHeaderDisplayModel(null)
     }
 }
 
@@ -280,6 +292,20 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
             threadHeaderDisplayModel(fallbackEntry)
     }
 }
+
+private fun KuiklyThreadScreenPayload.loadedConversationHeaderTitleOrNull(): String? {
+    if (!hasLoadedConversationHeaderContent()) return null
+    return threadHeaderSafeTitleOrNull(title, conversationHeaderLookupIds().toSet())
+        ?.takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+}
+
+private fun KuiklyThreadScreenPayload.loadedConversationHeaderSubtitleOrNull(): String? {
+    if (!hasLoadedConversationHeaderContent()) return null
+    return subtitle?.takeIf { it.isNotBlank() }
+}
+
+private fun KuiklyThreadScreenPayload.hasLoadedConversationHeaderContent(): Boolean =
+    status == "content" || status == "empty"
 
 internal fun KuiklyThreadScreenPayload.acceptsThreadHeaderDirectoryProjection(
     projection: SharedConversationDirectoryProjection

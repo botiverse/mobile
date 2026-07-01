@@ -1339,6 +1339,42 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun notificationLaunchHeaderUsesLoadedThreadTitleWithoutRouteDisplayPayload() {
+        val routePayload =
+            WireThreadLaunchPayload(
+                instanceId = "notification-thread-channel-1-msg-42",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                focusedMessageId = "msg-42"
+            ).toInitialPayload("notification-thread-channel-1-msg-42")
+        val input = routePayload.threadHeaderProjectionInput()
+        val loadedPayload =
+            routePayload.copy(
+                title = "对话流专修",
+                subtitle = "Thread fixes",
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-42",
+                            authorId = "user-1",
+                            authorName = "Artin",
+                            body = "body"
+                        )
+                    )
+            )
+
+        val initialHeader = input.displayModel(projection = null, contentPayload = routePayload)
+        val loadedHeader = input.displayModel(projection = null, contentPayload = loadedPayload)
+
+        assertEquals("Channel", initialHeader.title)
+        assertEquals("对话流专修", loadedHeader.title)
+        assertEquals("Thread fixes", loadedHeader.subtitle)
+        assertEquals("", routePayload.title)
+    }
+
+    @Test
     fun contentSliceDoesNotOverwriteHeaderTitleFromNetworkPayload() {
         val payload =
             KuiklyThreadScreenPayload(
