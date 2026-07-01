@@ -7,6 +7,11 @@ internal data class AppShellLazyListPosition(
     val firstVisibleItemScrollOffset: Int = 0
 )
 
+internal data class AppShellServerScopedLazyListPosition(
+    val serverId: String? = null,
+    val listPosition: AppShellLazyListPosition = AppShellLazyListPosition()
+)
+
 internal fun appShellLazyListPosition(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int
@@ -18,6 +23,27 @@ internal fun appShellLazyListPosition(
 
 internal fun LazyListState.toAppShellLazyListPosition(): AppShellLazyListPosition =
     appShellLazyListPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
+
+internal fun appShellServerScopedLazyListPosition(
+    serverId: String?,
+    listPosition: AppShellLazyListPosition
+): AppShellServerScopedLazyListPosition =
+    AppShellServerScopedLazyListPosition(
+        serverId = serverId?.trim()?.takeIf { it.isNotEmpty() },
+        listPosition = listPosition
+    )
+
+internal fun appShellLazyListPositionForServer(
+    currentServerId: String?,
+    savedPosition: AppShellServerScopedLazyListPosition
+): AppShellLazyListPosition {
+    val current = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return AppShellLazyListPosition()
+    return if (savedPosition.serverId == current) {
+        savedPosition.listPosition
+    } else {
+        AppShellLazyListPosition()
+    }
+}
 
 internal data class AppShellMembersListState(
     val listPosition: AppShellLazyListPosition = AppShellLazyListPosition(),

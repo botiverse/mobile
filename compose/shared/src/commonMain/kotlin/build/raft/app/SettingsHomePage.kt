@@ -1464,7 +1464,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var selectedSettingsDestination by remember {
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
-    var homeListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
+    var homeListPosition by remember { mutableStateOf(AppShellServerScopedLazyListPosition()) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
@@ -1908,7 +1908,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
-        homeListPosition = AppShellLazyListPosition()
+        homeListPosition = AppShellServerScopedLazyListPosition()
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
         homeShellStore.reset()
@@ -2710,53 +2710,63 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        val homeListServerId = readyServerId
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
-                        SharedHomeScreen(
-                            bridge = bridge,
-                            state = homeState,
-                            active = active,
-                            sessionReady = readyServerId?.isNotBlank() == true,
-                            draftPersistSlice = composerDraftPersistSlice,
-                            conversationIdentityProvider = sharedStores.conversationIdentityProvider,
-                            activityUnreadCount = homeActivityState.totalUnreadCount,
-                            activityTotalCount = homeActivityState.totalCount,
-                            savedCount = homeSearchSavedState.saved.totalCount,
-                            onIntent = { intent ->
-                                if (intent is SharedHomeIntent.SelectServer) {
-                                    readySession
-                                        ?.withAppShellSelectedServer(intent.serverId)
-                                        ?.let { session ->
-                                            authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
-                                        }
+                        key("home-list-${homeListServerId.orEmpty()}") {
+                            SharedHomeScreen(
+                                bridge = bridge,
+                                state = homeState,
+                                active = active,
+                                sessionReady = readyServerId?.isNotBlank() == true,
+                                draftPersistSlice = composerDraftPersistSlice,
+                                conversationIdentityProvider = sharedStores.conversationIdentityProvider,
+                                activityUnreadCount = homeActivityState.totalUnreadCount,
+                                activityTotalCount = homeActivityState.totalCount,
+                                savedCount = homeSearchSavedState.saved.totalCount,
+                                onIntent = { intent ->
+                                    if (intent is SharedHomeIntent.SelectServer) {
+                                        readySession
+                                            ?.withAppShellSelectedServer(intent.serverId)
+                                            ?.let { session ->
+                                                authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                                            }
+                                    }
+                                    homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
+                                },
+                                onNotificationDismiss = { id ->
+                                    homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
+                                },
+                                selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
+                                onSelectedConversationCleared = {
+                                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                                },
+                                onOpenSearch = {
+                                    openHomeSecondaryDestination(HomeDestinationSearch)
+                                },
+                                onOpenActivity = {
+                                    openHomeSecondaryDestination(HomeDestinationActivity)
+                                },
+                                onOpenSaved = {
+                                    openHomeSecondaryDestination(HomeDestinationSaved)
+                                },
+                                onOpenServerSelection = { pager.openAuthChooseServerPage() },
+                                onCreateChannel = { openCreateChannelDialog() },
+                                onOpenConversation = { conversation ->
+                                    openHomeConversation(conversation, "home")
+                                },
+                                serverMembersStore = sharedStores.serverMembersStore,
+                                bottomContentPadding = appShellBottomContentInset,
+                                initialListPosition =
+                                    appShellLazyListPositionForServer(
+                                        currentServerId = homeListServerId,
+                                        savedPosition = homeListPosition
+                                    ),
+                                onListPositionSnapshot = { position ->
+                                    homeListPosition =
+                                        appShellServerScopedLazyListPosition(homeListServerId, position)
                                 }
-                                homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
-                            },
-                            onNotificationDismiss = { id ->
-                                homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
-                            },
-                            selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
-                            onSelectedConversationCleared = {
-                                homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                            },
-                            onOpenSearch = {
-                                openHomeSecondaryDestination(HomeDestinationSearch)
-                            },
-                            onOpenActivity = {
-                                openHomeSecondaryDestination(HomeDestinationActivity)
-                            },
-                            onOpenSaved = {
-                                openHomeSecondaryDestination(HomeDestinationSaved)
-                            },
-                            onOpenServerSelection = { pager.openAuthChooseServerPage() },
-                            onCreateChannel = { openCreateChannelDialog() },
-                            onOpenConversation = { conversation ->
-                                openHomeConversation(conversation, "home")
-                            },
-                            serverMembersStore = sharedStores.serverMembersStore,
-                            bottomContentPadding = appShellBottomContentInset,
-                            initialListPosition = homeListPosition,
-                            onListPositionSnapshot = { homeListPosition = it }
-                        )
+                            )
+                        }
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(

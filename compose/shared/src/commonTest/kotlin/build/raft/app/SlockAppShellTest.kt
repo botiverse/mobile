@@ -214,6 +214,42 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellLazyListPositionForServerIgnoresOtherServerSnapshot() {
+        val saved =
+            appShellServerScopedLazyListPosition(
+                serverId = "server-a",
+                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)
+            )
+
+        assertEquals(
+            AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24),
+            appShellLazyListPositionForServer(currentServerId = "server-a", savedPosition = saved)
+        )
+        assertEquals(
+            AppShellLazyListPosition(),
+            appShellLazyListPositionForServer(currentServerId = "server-b", savedPosition = saved)
+        )
+        assertEquals(
+            AppShellLazyListPosition(),
+            appShellLazyListPositionForServer(currentServerId = "", savedPosition = saved)
+        )
+    }
+
+    @Test
+    fun appShellServerScopedLazyListPositionNormalizesBlankServerId() {
+        assertEquals(
+            AppShellServerScopedLazyListPosition(
+                serverId = null,
+                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
+            ),
+            appShellServerScopedLazyListPosition(
+                serverId = "  ",
+                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
+            )
+        )
+    }
+
+    @Test
     fun appShellMembersListStateDefaultsToExpandedTop() {
         assertEquals(
             AppShellMembersListState(),
