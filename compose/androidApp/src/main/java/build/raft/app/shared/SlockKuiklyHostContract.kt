@@ -6,6 +6,7 @@ internal object SlockKuiklyPages {
     const val LOGIN = "compose_login"
     const val REGISTER = "compose_register"
     const val FORGOT_PASSWORD = "compose_forgot_password"
+    const val AUTH_LEGAL_ACCEPTANCE = "compose_auth_legal_acceptance"
     const val AUTH_CHOOSE_SERVER = "compose_auth_choose_server"
     const val APP_SHELL = "compose_slock_app_shell"
     const val THREAD = "compose_thread"
@@ -26,6 +27,11 @@ internal object SlockKuiklyPages {
 
 internal object SlockKuiklyRouteKeys {
     const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
+    const val AUTH_LEGAL_PROVIDER = "slockAuthLegalProvider"
+    const val AUTH_LEGAL_PLATFORM = "slockAuthLegalPlatform"
+    const val AUTH_LEGAL_CODE = "slockAuthLegalCode"
+    const val AUTH_LEGAL_CODE_VERIFIER = "slockAuthLegalCodeVerifier"
+    const val AUTH_SOCIAL_PROVIDERS = "slockSocialAuthProviders"
 }
 
 internal data class SlockKuiklyPageSpec(

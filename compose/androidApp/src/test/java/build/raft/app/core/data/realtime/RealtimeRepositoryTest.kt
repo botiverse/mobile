@@ -988,6 +988,7 @@ class RealtimeRepositoryTest {
             code: String,
             codeVerifier: String,
             platform: String,
+            acceptLegalTerms: Boolean,
             authorization: String?
         ): AuthApiResult<AuthLoginResponse> =
             AuthApiResult.Failure(404)

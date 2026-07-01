@@ -208,6 +208,14 @@ internal class SlockSharedStoreProvider private constructor(
                     pager = pager,
                     namespace = SlockLocalPreferenceStore.KuiklyNamespace
                 )
+            val apiEnvironmentStore =
+                SharedApiEnvironmentStore(
+                    KuiklyMMKVKeyValueStore(
+                        pager = pager,
+                        namespace = SharedApiEnvironmentStore.Namespace
+                    )
+                )
+            val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
             val networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
             val nativeNetworkFallback =
                 KuiklySlockNetworkClient(
@@ -218,6 +226,7 @@ internal class SlockSharedStoreProvider private constructor(
             val authDataSource =
                 SharedAuthDataSource(
                     transport = SharedKtorSlockAuthTransport(
+                        baseUrl = apiBaseUrl,
                         warningLogger = { message -> bridge.log("shared_auth_network $message") }
                     ),
                     sessionStore = authStore,
@@ -226,6 +235,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkClient =
                 SharedKtorSlockNetworkClient(
                     sessionStore = authStore,
+                    baseUrl = apiBaseUrl,
                     warningLogger = { message -> bridge.log("shared_network $message") },
                     nativeFileRefFallback = nativeNetworkFallback
                 )
@@ -270,13 +280,7 @@ internal class SlockSharedStoreProvider private constructor(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
                         diagnosticsLogger = { message -> bridge.log("shared_home_persist $message") }
                     ),
-                apiEnvironmentStore =
-                    SharedApiEnvironmentStore(
-                        KuiklyMMKVKeyValueStore(
-                            pager = pager,
-                            namespace = SharedApiEnvironmentStore.Namespace
-                        )
-                    ),
+                apiEnvironmentStore = apiEnvironmentStore,
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
                 threadSendScope = CoroutineScope(SupervisorJob())
             ).also { provider ->

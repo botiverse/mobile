@@ -66,11 +66,16 @@ import com.tencent.kuikly.core.pager.Pager
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
+const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
 const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
 const val AUTH_DEVELOPER_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
+private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
+private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
+private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
+private const val AUTH_LEGAL_CODE_VERIFIER_KEY = "slockAuthLegalCodeVerifier"
 private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
 private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
@@ -114,6 +119,14 @@ internal class ComposeForgotPasswordPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ForgotPasswordScreen() }
+    }
+}
+
+@Page(AUTH_LEGAL_ACCEPTANCE_PAGE, supportInLocal = true)
+internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthLegalAcceptanceScreen() }
     }
 }
 
@@ -281,6 +294,118 @@ private data class PendingForgotPassword(
     val nonce: Int,
     val email: String
 )
+
+private data class PendingMobileOAuthLegalAcceptance(
+    val nonce: Int,
+    val code: String,
+    val codeVerifier: String
+)
+
+@Composable
+private fun AuthLegalAcceptanceScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
+    val paramsSignature = pager.pageData.params.toString()
+    val providerId = remember(paramsSignature) {
+        pager.pageData.params.optString(AUTH_LEGAL_PROVIDER_KEY).ifBlank { AuthProvider.Google.providerId() }
+    }
+    val platform = remember(paramsSignature) {
+        pager.pageData.params.optString(AUTH_LEGAL_PLATFORM_KEY).ifBlank { "android" }
+    }
+    val code = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_KEY) }
+    val codeVerifier = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_VERIFIER_KEY) }
+    var accepted by remember { mutableStateOf(false) }
+    var submitting by remember { mutableStateOf(false) }
+    var errorMessage by remember {
+        mutableStateOf(
+            if (code.isBlank() || codeVerifier.isBlank()) {
+                "Sign-in request expired. Try again."
+            } else {
+                null
+            }
+        )
+    }
+    var pending by remember { mutableStateOf<PendingMobileOAuthLegalAcceptance?>(null) }
+    val providerName = remember(providerId) { providerId.mobileOAuthProviderDisplayName() }
+    val socialProviders = remember(paramsSignature) { pager.pageData.params.authRouteSocialProviders() }
+
+    LaunchedEffect(pending) {
+        val effect = pending ?: return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation {
+                authDataSource.completeMobileOAuthLogin(
+                    code = effect.code,
+                    codeVerifier = effect.codeVerifier,
+                    platform = platform,
+                    acceptLegalTerms = true
+                )
+            }.getOrElse {
+                SharedAuthResult.Failure(
+                    build.raft.app.data.SharedAuthErrorCode.Unknown,
+                    "$providerName sign-in could not finish setup. Try again."
+                )
+            }
+        pending = null
+        when (result) {
+            is SharedAuthResult.Success -> {
+                submitting = false
+                errorMessage = null
+                if (result.data.selectedServerId.isNullOrBlank()) {
+                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+                        AUTH_CHOOSE_SERVER_PAGE,
+                        authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
+                    )
+                } else {
+                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+                        SLOCK_APP_SHELL_PAGE,
+                        appShellPageData(replaceCurrent = true)
+                    )
+                }
+            }
+            is SharedAuthResult.Failure -> {
+                submitting = false
+                errorMessage = result.message
+            }
+            SharedAuthResult.Unauthenticated -> {
+                submitting = false
+                errorMessage = "$providerName sign-in failed. Try again."
+            }
+        }
+    }
+
+    AuthLegalAcceptanceContent(
+        providerName = providerName,
+        accepted = accepted,
+        submitting = submitting,
+        errorMessage = errorMessage,
+        canSubmit = code.isNotBlank() && codeVerifier.isNotBlank(),
+        onAcceptedChange = { accepted = it },
+        onContinue = {
+            if (submitting || !accepted || code.isBlank() || codeVerifier.isBlank()) return@AuthLegalAcceptanceContent
+            submitting = true
+            errorMessage = null
+            pending =
+                PendingMobileOAuthLegalAcceptance(
+                    nonce = (pending?.nonce ?: 0) + 1,
+                    code = code,
+                    codeVerifier = codeVerifier
+                )
+        },
+        onBackToSignIn = {
+            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+                LOGIN_PAGE,
+                loginPageData(
+                    replaceCurrent = true,
+                    message = "$providerName sign-in was cancelled.",
+                    socialProviders = socialProviders
+                )
+            )
+        },
+        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
+        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) }
+    )
+}
 
 @Composable
 private fun RegisterScreen() {
@@ -1079,6 +1204,52 @@ internal fun ForgotPasswordContent(
 }
 
 @Composable
+private fun AuthLegalAcceptanceContent(
+    providerName: String,
+    accepted: Boolean,
+    submitting: Boolean,
+    errorMessage: String?,
+    canSubmit: Boolean,
+    onAcceptedChange: (Boolean) -> Unit,
+    onContinue: () -> Unit,
+    onBackToSignIn: () -> Unit,
+    onOpenTerms: () -> Unit,
+    onOpenPrivacy: () -> Unit
+) {
+    AuthScaffold(contentScrollable = true) {
+        AuthCenterMark()
+        Text(
+            text = "$providerName Sign In",
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authPageStaticTextFocus()
+        )
+        Text(
+            text = "Review and accept Raft's Terms of Service and Privacy Policy to create this account.",
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
+        )
+        AuthFormColumn {
+            AuthTermsAgreement(accepted, onAcceptedChange)
+            AuthLegalNotice(onOpenTerms = onOpenTerms, onOpenPrivacy = onOpenPrivacy)
+            AuthError(errorMessage)
+            AuthActionButton(
+                text = if (submitting) "Continuing…" else "Continue",
+                onClick = onContinue,
+                tone = AuthButtonTone.Pink,
+                enabled = canSubmit && accepted && !submitting,
+                loading = submitting,
+                preserveDisabledVisual = true,
+                variant = AuthActionButtonVariant.Large
+            )
+            AuthTextLink("Back to Sign In") { onBackToSignIn() }
+        }
+    }
+}
+
+@Composable
 private fun AuthLegalNotice(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit
@@ -1350,4 +1521,11 @@ private fun AuthProvider.providerDisplayName(): String =
     when (this) {
         AuthProvider.Google -> "Google"
         AuthProvider.GitHub -> "GitHub"
+    }
+
+private fun String.mobileOAuthProviderDisplayName(): String =
+    when (trim().lowercase()) {
+        AuthProvider.Google.providerId() -> AuthProvider.Google.providerDisplayName()
+        AuthProvider.GitHub.providerId() -> AuthProvider.GitHub.providerDisplayName()
+        else -> "Social"
     }

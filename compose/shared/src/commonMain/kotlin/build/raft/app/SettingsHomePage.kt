@@ -8587,6 +8587,7 @@ private class AuthChooseServerVisualApi(
         code: String,
         codeVerifier: String,
         platform: String,
+        acceptLegalTerms: Boolean,
         authorization: String?
     ): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)

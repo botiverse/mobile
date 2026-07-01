@@ -9,6 +9,7 @@ import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.data.KuiklyMMKVAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import android.content.Intent
@@ -142,16 +143,34 @@ class MainActivity : ComponentActivity() {
                         codeVerifier = pending.codeVerifier
                     )
                 }
-            pendingStore.clear()
             when (result) {
                 is SharedAuthResult.Success -> {
+                    pendingStore.clear()
                     Toast.makeText(this@MainActivity, "Signed in with $providerName", Toast.LENGTH_SHORT).show()
                     openPostLoginDestination(result.data)
                 }
-                is SharedAuthResult.Failure ->
-                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
-                SharedAuthResult.Unauthenticated ->
+                is SharedAuthResult.Failure -> {
+                    if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
+                        pendingStore.clear()
+                        SlockKuiklyActivity.startAuthLegalAcceptance(
+                            this@MainActivity,
+                            pageData = mobileOAuthLegalAcceptancePageData(
+                                provider = pending.provider,
+                                code = handoffCode,
+                                codeVerifier = pending.codeVerifier
+                            ),
+                            clearTask = true
+                        )
+                        finish()
+                    } else {
+                        pendingStore.clear()
+                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    pendingStore.clear()
                     Toast.makeText(this@MainActivity, "$providerName sign-in failed. Try again.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
         return true
@@ -185,6 +204,18 @@ internal fun postLoginDestination(selectedServerId: String?): PostLoginDestinati
 
 internal fun postLoginAuthChooseServerPageData(): JSONObject =
     JSONObject().put(SlockKuiklyRouteKeys.AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, true)
+
+internal fun mobileOAuthLegalAcceptancePageData(
+    provider: String,
+    code: String,
+    codeVerifier: String
+): JSONObject =
+    JSONObject()
+        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_PROVIDER, provider)
+        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_PLATFORM, "android")
+        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_CODE, code)
+        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_CODE_VERIFIER, codeVerifier)
+        .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 private fun logSharedAuthDiagnostics(message: String) {
     SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")

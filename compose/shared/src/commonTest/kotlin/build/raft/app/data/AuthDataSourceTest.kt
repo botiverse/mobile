@@ -397,6 +397,56 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun mobileOAuthCompleteMapsLegalAcceptanceRequired() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        mobileOAuthCompleteResponse =
+                            AuthNetworkResponse(
+                                422,
+                                null,
+                                """{"error":"LEGAL_ACCEPTANCE_REQUIRED","legal":{"termsVersion":"2026-05-12","privacyVersion":"2026-05-12"}}"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result =
+            source.completeMobileOAuthLogin(
+                code = "handoff-1",
+                codeVerifier = "verifier-1"
+            )
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.LegalAcceptanceRequired, result.code)
+        assertEquals(null, store.readSession())
+    }
+
+    @Test
+    fun mobileOAuthCompleteCanRetryWithLegalAcceptance() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.completeMobileOAuthLogin(
+                code = "handoff-1",
+                codeVerifier = "verifier-1",
+                platform = "ios",
+                acceptLegalTerms = true
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(
+            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"ios","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"oauth"}""",
+            api.mobileOAuthCompleteBody
+        )
+        assertEquals("user-1", store.readSession()?.user?.id)
+    }
+
+    @Test
     fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

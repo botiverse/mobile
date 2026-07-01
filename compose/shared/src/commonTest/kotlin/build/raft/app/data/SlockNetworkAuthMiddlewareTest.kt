@@ -153,6 +153,7 @@ class SlockNetworkAuthMiddlewareTest {
             code: String,
             codeVerifier: String,
             platform: String,
+            acceptLegalTerms: Boolean,
             authorization: String?
         ): AuthApiResult<AuthLoginResponse> =
             error("not used")

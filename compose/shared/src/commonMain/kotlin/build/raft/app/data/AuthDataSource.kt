@@ -6,6 +6,8 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private val authJson = Json {
     ignoreUnknownKeys = true
@@ -197,7 +199,9 @@ class SharedAuthDataSource(
 
     suspend fun completeMobileOAuthLogin(
         code: String,
-        codeVerifier: String
+        codeVerifier: String,
+        platform: String = "android",
+        acceptLegalTerms: Boolean = false
     ): SharedAuthResult<StoredAuthSession> {
         if (code.isBlank() || codeVerifier.isBlank()) {
             return SharedAuthResult.Failure(
@@ -212,7 +216,8 @@ class SharedAuthDataSource(
                     api.completeMobileOAuth(
                         code = code.trim(),
                         codeVerifier = codeVerifier.trim(),
-                        platform = "android"
+                        platform = platform.trim().ifBlank { "android" },
+                        acceptLegalTerms = acceptLegalTerms
                     )
             ) {
                 is AuthApiResult.Success -> {
@@ -221,7 +226,11 @@ class SharedAuthDataSource(
                 }
                 is AuthApiResult.Failure -> {
                     val failure = response.toSharedAuthFailure()
-                    diagnosticsLogger("auth_login_result provider=mobile_oauth result=failure code=${failure.code}")
+                    diagnosticsLogger(
+                        "auth_login_result provider=mobile_oauth result=failure code=${failure.code} " +
+                            "http=${response.code} ${response.errorBodyText.authErrorDiagnostics()} " +
+                            "message=${failure.message.authDiagnosticsToken()}"
+                    )
                     return failure
                 }
             }
@@ -740,6 +749,23 @@ private fun Throwable.persistenceDiagnostics(): String =
         "errorType=${diagnostics.errorType} sqliteCategory=${diagnostics.category} sqliteCode=${diagnostics.code ?: "none"}"
     }
 
+private fun String.authDiagnosticsToken(): String =
+    trim()
+        .ifBlank { "empty" }
+        .replace(Regex("""[^A-Za-z0-9_.:-]+"""), "_")
+        .take(96)
+
+private fun String?.authErrorDiagnostics(): String {
+    if (isNullOrBlank()) return "errorKeys=none error=none serverCode=none"
+    val body = this
+    val parsed = runCatching { authJson.decodeFromString(JsonObject.serializer(), body) }.getOrNull()
+        ?: return "errorKeys=unparseable error=unparseable serverCode=unparseable"
+    val keys = parsed.keys.sorted().joinToString("|").ifBlank { "empty" }.authDiagnosticsToken()
+    val error = parsed["error"]?.jsonPrimitive?.content?.authDiagnosticsToken() ?: "none"
+    val code = parsed["code"]?.jsonPrimitive?.content?.authDiagnosticsToken() ?: "none"
+    return "errorKeys=$keys error=$error serverCode=$code"
+}
+
 /**
  * Typed auth/server boundary.
  *
@@ -764,6 +790,7 @@ interface SlockAuthApi {
         code: String,
         codeVerifier: String,
         platform: String,
+        acceptLegalTerms: Boolean = false,
         authorization: String? = null
     ): AuthApiResult<AuthLoginResponse>
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
@@ -821,6 +848,7 @@ class SlockAuthApiClient(
         code: String,
         codeVerifier: String,
         platform: String,
+        acceptLegalTerms: Boolean,
         authorization: String?
     ): AuthApiResult<AuthLoginResponse> =
         transport.completeMobileOAuth(
@@ -828,7 +856,11 @@ class SlockAuthApiClient(
                 AuthMobileOAuthCompleteRequestBody(
                     code = code,
                     codeVerifier = codeVerifier,
-                    platform = platform
+                    platform = platform,
+                    acceptTerms = acceptLegalTerms.takeIf { it },
+                    termsVersion = CURRENT_TERMS_VERSION.takeIf { acceptLegalTerms },
+                    privacyVersion = CURRENT_PRIVACY_VERSION.takeIf { acceptLegalTerms },
+                    legalAcceptanceSource = "oauth".takeIf { acceptLegalTerms }
                 )
             ),
             authorization = authorization
@@ -924,6 +956,7 @@ enum class SharedAuthErrorCode {
     InvalidCredentials,
     Network,
     Server,
+    LegalAcceptanceRequired,
     Unknown
 }
 
@@ -955,7 +988,11 @@ data class AuthMobileOAuthStartRequestBody(
 data class AuthMobileOAuthCompleteRequestBody(
     val code: String,
     val codeVerifier: String,
-    val platform: String
+    val platform: String,
+    val acceptTerms: Boolean? = null,
+    val termsVersion: String? = null,
+    val privacyVersion: String? = null,
+    val legalAcceptanceSource: String? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -1001,6 +1038,11 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
     val message = errorDto?.error?.takeIf { it.isNotBlank() }
         ?: errorDto?.message?.takeIf { it.isNotBlank() }
     return when {
+        code == 422 && errorDto?.error in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED") ->
+            SharedAuthResult.Failure(
+                SharedAuthErrorCode.LegalAcceptanceRequired,
+                "Review and accept Raft's Terms of Service and Privacy Policy to continue."
+            )
         contractCode != null ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Unknown,

@@ -75,6 +75,8 @@ class AuthServerRepository(
                 DataResult.Error(ScreenError(code = "server_create_network", retryable = true))
             SharedAuthErrorCode.Server ->
                 DataResult.Error(ScreenError(code = "server_create_unavailable", retryable = true))
+            SharedAuthErrorCode.LegalAcceptanceRequired ->
+                DataResult.Error(ScreenError(code = "server_legal_acceptance_required", retryable = false))
             SharedAuthErrorCode.Unknown ->
                 DataResult.Error(ScreenError(code = "server_create_failed", retryable = true))
         }
