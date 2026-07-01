@@ -641,9 +641,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         if (!has(KEY_HOST_EXCLUDES_NAVIGATION_BAR) && androidHostExcludesNavigationBar()) {
                             put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, true)
                         }
-                        if (pageName == SlockKuiklyPages.APP_SHELL && !has(KEY_NATIVE_TAB_BAR_RENDERER)) {
-                            put(KEY_NATIVE_TAB_BAR_RENDERER, "androidFloating")
-                        }
                     }
             )
 
