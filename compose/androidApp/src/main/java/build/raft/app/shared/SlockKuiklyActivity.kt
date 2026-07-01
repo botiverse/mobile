@@ -504,7 +504,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
-        val files = uris.mapIndexed { index, uri -> pickedThreadAttachmentRef(uri, index) }
+        val files = uris.map { uri -> pickedThreadAttachmentRef(uri) }
         if (files.isEmpty()) {
             return mapOf(
                     "code" to 400,
@@ -536,41 +536,19 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
     }
 
-    private fun pickedThreadAttachmentRef(uri: Uri, index: Int): PickedThreadAttachment {
+    private fun pickedThreadAttachmentRef(uri: Uri): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val cachedFile = cachePickedThreadAttachment(uri, fileName, index)
-        val copiedBytes = cachedFile.length()
-        if (copiedBytes <= 0L) {
-            throw IllegalStateException("Picked attachment is empty or unreadable")
-        }
-        val sizeBytes = queryPickedFileSize(uri) ?: copiedBytes
+        val fileRef = uri.toString()
+        val sizeBytes = queryPickedFileSize(uri)
         return PickedThreadAttachment(
-                fileRef = Uri.fromFile(cachedFile).toString(),
+                fileRef = fileRef,
                 fileName = fileName,
                 mimeType = mimeType,
-                previewUri = uri.toString(),
+                previewUri = fileRef,
                 sizeBytes = sizeBytes
         )
     }
-
-    private fun cachePickedThreadAttachment(uri: Uri, fileName: String, index: Int): File {
-        val directory = File(cacheDir, "thread-attachment-picks").apply { mkdirs() }
-        val safeName = fileName.toSafeCacheFileName().ifBlank { "attachment-$index" }
-        val target = File(directory, "${System.nanoTime()}-$index-$safeName")
-        contentResolver.openInputStream(uri)?.use { input ->
-            target.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        } ?: throw IllegalStateException("Picked attachment cannot be opened")
-        return target
-    }
-
-    private fun String.toSafeCacheFileName(): String =
-            trim()
-                    .replace(Regex("[^A-Za-z0-9._-]+"), "_")
-                    .trim('_', '.', '-')
-                    .take(96)
 
     private fun queryPickedFileName(uri: Uri): String? =
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
