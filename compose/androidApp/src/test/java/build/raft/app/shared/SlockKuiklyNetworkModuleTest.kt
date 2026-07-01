@@ -5,15 +5,14 @@ import org.junit.Test
 
 class SlockKuiklyNetworkModuleTest {
     @Test
-    fun multipartFileContentDispositionKeepsFormFieldNameForStreamedFiles() {
+    fun multipartFileContentDispositionLetsKtorProvideFormFieldName() {
         val header =
                 slockMultipartFileContentDisposition(
-                        fieldName = "files",
                         fileName = "picked\"photo\r\n.png"
                 )
 
         assertEquals(
-                "form-data; name=\"files\"; filename=\"picked'photo.png\"",
+                "filename=\"picked'photo.png\"",
                 header
         )
     }
