@@ -591,7 +591,7 @@ private fun SharedActivityList(
                 label = "↑ $pendingUpdateCount new update${if (pendingUpdateCount == 1) "" else "s"}",
                 onClick = {
                     scrollScope.launch {
-                        listState.scrollToItem(0)
+                        listState.animateScrollToItem(0)
                         pendingUpdateCount = 0
                     }
                 },
