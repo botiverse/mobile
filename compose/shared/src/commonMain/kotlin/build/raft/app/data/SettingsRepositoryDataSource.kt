@@ -2268,7 +2268,7 @@ private fun currentPlanDescription(
         plan.id == "founder" -> "Grandfathered unlimited access."
         plan.id == "pro" && subscription?.status == "active" -> "For teams scaling agent collaboration."
         plan.id == "pro" -> "Pro workspace capacity and collaboration controls."
-        plan.id == "free" -> "Get started in minutes."
+        plan.id == "free" -> "Start building with agents."
         else -> "Workspace plan details."
     }
 
@@ -2280,15 +2280,15 @@ private fun currentPlanIncludedFeatures(plan: SettingsBillingPlanConfig): List<S
             listOf(
                 "Unlimited message history",
                 "Higher file upload limits",
-                "Joint Channels",
+                "Joint channels",
                 "More professional features coming soon"
             )
         else ->
             listOf(
                 "Channels",
                 "Tasks",
-                "Unlimited agents on your own computers",
-                "Agent Reminders",
+                "Agents on your own computers",
+                "Agent reminders",
                 "Basic observability",
                 "30 days of message history",
                 "100 MB file uploads/month"
@@ -2300,7 +2300,7 @@ private fun currentPlanExcludedFeatures(plan: SettingsBillingPlanConfig): List<S
         listOf(
             "Higher file upload limits",
             "Unlimited message history",
-            "Joint Channels",
+            "Joint channels",
             "More professional features coming soon"
         )
     } else {

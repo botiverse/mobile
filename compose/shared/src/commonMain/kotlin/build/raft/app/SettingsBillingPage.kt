@@ -286,8 +286,9 @@ internal fun SettingsBillingContent(
                 notices.forEach { notice ->
                     item(key = "notice-${notice.key}") { BillingNoticeCard(notice) }
                 }
+                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, payload.labels.currentPlan) }
                 item { CurrentPlanCard(payload, onEvent) }
-                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Plans") }
+                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, payload.planSectionLabel()) }
                 items(payload.plans.size, key = { index -> "plan-$index-${payload.plans[index].id}" }) { index ->
                     val plan = payload.plans[index]
                     PlanCard(
@@ -340,62 +341,101 @@ private fun billingNoticeBackground(tone: String): Color =
         else -> SlockColor.SurfaceCream
     }
 
+private val SettingsBillingSoftDivider = Color(0x1A000000)
+private const val SettingsBillingIncludedIconColor = "#FF15803D"
+private const val SettingsBillingExcludedIconColor = "#FFF97264"
+
+private fun KuiklySettingsBillingPayload.planSectionLabel(): String =
+    if (plans.any { !it.current && it.name.equals("Pro", ignoreCase = true) }) {
+        "UPGRADE TO PRO"
+    } else {
+        "MANAGE PLAN"
+    }
+
 @Composable
 private fun CurrentPlanCard(
     payload: KuiklySettingsBillingPayload,
     onEvent: (String, String?) -> Unit
 ) {
-    HardShadowCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    SlockBrutalCard(
+        shadowOffset = 2.dp,
+        contentPadding = 0.dp,
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceCream)
+                    .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                payload.labels.currentPlan,
-                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                payload.currentPlan.planName,
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                overflow = TextOverflow.Ellipsis
             )
-            SettingsStatusBadge(payload.currentPlan.planName.uppercase(), SlockColor.BrandYellow)
-        }
-        Text(
-            payload.currentPlan.planName,
-            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        payload.currentPlan.description.takeIf { it.isNotBlank() }?.let { description ->
-            Text(description, style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        }
-        BillingFeatureSection("Included", payload.currentPlan.includedFeatures, included = true)
-        if (payload.currentPlan.excludedFeatures.isNotEmpty()) {
-            BillingFeatureSection("Not included", payload.currentPlan.excludedFeatures, included = false)
-        }
-        SettingsBillingSectionHeader(SlockLucideIconName.ChartBar, payload.labels.usage)
-        payload.currentPlan.usageRows.forEach { row ->
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            payload.currentPlan.description.takeIf { it.isNotBlank() }?.let { description ->
                 Text(
-                    row.label,
-                    style = SlockType.Body.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    row.value,
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    description,
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
                 )
             }
         }
-        BillingActions(payload, onEvent)
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            BillingFeatureSection("Included", payload.currentPlan.includedFeatures, included = true)
+            if (payload.currentPlan.excludedFeatures.isNotEmpty()) {
+                BillingFeatureSection("Not included", payload.currentPlan.excludedFeatures, included = false)
+            }
+        }
+
+        if (payload.currentPlan.usageRows.isNotEmpty()) {
+            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SettingsBillingSoftDivider))
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                payload.currentPlan.usageRows.forEach { row ->
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            row.label,
+                            style = SlockType.TabLabel.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            row.value,
+                            style = SlockType.TabLabel.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SettingsBillingSoftDivider))
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.End
+        ) {
+            BillingActions(payload, onEvent)
+        }
     }
 }
 
@@ -406,21 +446,22 @@ private fun BillingFeatureSection(
     included: Boolean
 ) {
     if (features.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             title,
-            style = SlockType.ButtonBold.copy(color = if (included) SlockColor.TextBlack else SlockColor.TextMutedGray),
+            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = if (included) SlockColor.TextBlack else SlockColor.TextMutedGray),
             color = if (included) SlockColor.TextBlack else SlockColor.TextMutedGray
         )
         features.forEach { feature ->
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockLucideIcon(
                     if (included) SlockLucideIconName.Check else SlockLucideIconName.X,
-                    modifier = Modifier.padding(top = 2.dp).size(14.dp)
+                    modifier = Modifier.padding(top = 2.dp).size(14.dp),
+                    color = if (included) SettingsBillingIncludedIconColor else SettingsBillingExcludedIconColor
                 )
                 Text(
                     feature,
-                    style = SlockType.Body.copy(color = SlockColor.TextBlack),
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     modifier = Modifier.weight(1f)
                 )
@@ -442,7 +483,6 @@ private fun BillingActions(
             KuiklySettingsBillingAction(
                 key = "comparePlans",
                 label = "See all features and compare plans",
-                detail = payload.comparePlansUrl,
                 enabled = payload.comparePlansUrl.isNotBlank()
             )
         ) { onEvent("comparePlans", payload.comparePlansUrl.takeIf { it.isNotBlank() }) }
@@ -456,14 +496,11 @@ private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: ()
             label = action.label,
             onClick = onClick,
             enabled = action.enabled,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier,
             minWidth = 0.dp,
-            minHeight = 38.dp,
+            minHeight = 34.dp,
             shadowOffset = 2.dp
         )
-        action.detail.takeIf { it.isNotBlank() }?.let { detail ->
-            Text(detail, style = SlockType.TabLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        }
     }
 }
 
