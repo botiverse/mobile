@@ -1530,6 +1530,10 @@ internal class SlockKuiklyBridgeModule(
                 callback?.invoke(attachmentDownloadControl(params))
                 null
             }
+            "cacheAttachmentImage" -> {
+                cacheAttachmentImage(params, callback)
+                null
+            }
             "closePage" -> {
                 val hostActivity = activity
                 if (hostActivity is SlockKuiklyActivity) {
@@ -2809,6 +2813,60 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun cacheAttachmentImage(params: String?, callback: KuiklyRenderCallback?) {
+        SlockKuiklyThreadAdapter.execute("attachment-image-cache") {
+            val request = JSONObject(params ?: "{}")
+            val startedAt = System.currentTimeMillis()
+            val result =
+                    runCatching { cacheAttachmentImageFile(request, startedAt) }
+                            .getOrElse { throwable ->
+                                SlockDiagnosticsLogger.record(
+                                        "SlockAttachmentImageCache",
+                                        "attachmentId=${request.optString("attachmentId").take(8)} status=failed type=${throwable::class.java.simpleName} durationMs=${System.currentTimeMillis() - startedAt}"
+                                )
+                                mapOf("status" to "failed", "message" to "Unable to cache image")
+                            }
+            callback?.invoke(result)
+        }
+    }
+
+    private fun cacheAttachmentImageFile(request: JSONObject, startedAt: Long): Map<String, Any> {
+        val urlText = request.optString("url").takeIf { it.isNotBlank() }
+                ?: return mapOf("status" to "failed", "message" to "Missing image url")
+        val attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment"
+        val requestedFileName = request.optString("fileName").takeIf { it.isNotBlank() } ?: "image"
+        val requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
+        val cacheDir = imageCacheDir()
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+        }
+        cleanupImageCache(cacheDir)
+        val targetFile = imageCacheFile(attachmentId, requestedFileName, requestedMimeType)
+        val needsDownload = !targetFile.isUsableImageCacheFile()
+        if (needsDownload) {
+            downloadImageToCacheFile(urlText, targetFile)
+        } else {
+            targetFile.setLastModified(System.currentTimeMillis())
+        }
+        SlockDiagnosticsLogger.record(
+                "SlockAttachmentImageCache",
+                "attachmentId=${attachmentId.take(8)} status=ok cached=${!needsDownload} sizeBytes=${targetFile.length()} durationMs=${System.currentTimeMillis() - startedAt}"
+        )
+        val imageUri =
+                runCatching {
+                    FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", targetFile)
+                }.getOrElse {
+                    return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+                }
+        return mapOf(
+                "status" to "ok",
+                "cached" to !needsDownload,
+                "uri" to imageUri.toString(),
+                "path" to targetFile.absolutePath,
+                "sizeBytes" to targetFile.length()
+        )
+    }
+
     private fun downloadAndOpenAttachment(
             request: JSONObject,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
@@ -2925,6 +2983,8 @@ internal class SlockKuiklyBridgeModule(
 
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
 
+    private fun imageCacheDir(): File = File(appContext.cacheDir, IMAGE_CACHE_DIR_NAME)
+
     private fun attachmentCacheFile(request: JSONObject): File =
             attachmentCacheFile(
                     attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment",
@@ -2939,10 +2999,47 @@ internal class SlockKuiklyBridgeModule(
     ): File =
             File(attachmentCacheDir(), safeAttachmentCacheFileName(attachmentId, requestedFileName, requestedMimeType))
 
+    private fun imageCacheFile(
+            attachmentId: String,
+            requestedFileName: String,
+            requestedMimeType: String?
+    ): File =
+            File(imageCacheDir(), safeAttachmentCacheFileName(attachmentId, requestedFileName, requestedMimeType))
+
     private fun File.isUsableAttachmentCacheFile(): Boolean =
             isFile &&
                     length() > 0L &&
                     System.currentTimeMillis() - lastModified() <= ATTACHMENT_CACHE_MAX_AGE_MS
+
+    private fun File.isUsableImageCacheFile(): Boolean =
+            isFile &&
+                    length() > 0L &&
+                    System.currentTimeMillis() - lastModified() <= IMAGE_CACHE_MAX_AGE_MS
+
+    private fun downloadImageToCacheFile(urlText: String, targetFile: File) {
+        val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
+        runCatching { tempFile.delete() }
+        try {
+            runBlocking {
+                tempFile.outputStream().use { output ->
+                    SharedKtorBinaryDownloader.download(
+                            url = urlText,
+                            onStart = {},
+                            onChunk = { bytes, _, _ -> output.write(bytes) }
+                    )
+                }
+            }
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
+        } finally {
+            runCatching { if (tempFile.exists()) tempFile.delete() }
+        }
+    }
 
     private fun downloadAttachmentToFile(
             urlText: String,
@@ -3084,6 +3181,19 @@ internal class SlockKuiklyBridgeModule(
                 ?.filter { it.isFile }
                 ?.sortedByDescending { it.lastModified() }
                 ?.drop(ATTACHMENT_CACHE_MAX_FILES)
+                ?.forEach { runCatching { it.delete() } }
+    }
+
+    private fun cleanupImageCache(cacheDir: File) {
+        val now = System.currentTimeMillis()
+        cacheDir.listFiles()
+                ?.filter { it.isFile }
+                ?.filter { now - it.lastModified() > IMAGE_CACHE_MAX_AGE_MS }
+                ?.forEach { runCatching { it.delete() } }
+        cacheDir.listFiles()
+                ?.filter { it.isFile }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(IMAGE_CACHE_MAX_FILES)
                 ?.forEach { runCatching { it.delete() } }
     }
 
@@ -3262,6 +3372,9 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
+        private const val IMAGE_CACHE_MAX_FILES = 200
+        private const val IMAGE_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
+        private const val IMAGE_CACHE_DIR_NAME = "image_cache"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ThreadShareStitchMinOverlapPx = 32
