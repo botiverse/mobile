@@ -105,6 +105,7 @@ class SlockKuiklyNotificationLaunchTest {
         assertEquals("msg-42", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
         assertEquals("channel_unread", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CATEGORY))
         assertFalse(pageData.has("slockNotificationThreadLaunchPayload"))
+        assertFalse(pageData.has("slockNativeTabBarRenderer"))
     }
 
     @Test

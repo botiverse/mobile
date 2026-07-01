@@ -641,9 +641,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         if (!has(KEY_HOST_EXCLUDES_NAVIGATION_BAR) && androidHostExcludesNavigationBar()) {
                             put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, true)
                         }
-                        if (pageName == SlockKuiklyPages.APP_SHELL && !has(KEY_NATIVE_TAB_BAR_RENDERER)) {
-                            put(KEY_NATIVE_TAB_BAR_RENDERER, "androidFloating")
-                        }
                     }
             )
 
@@ -789,7 +786,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
         private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
-        private const val KEY_NATIVE_TAB_BAR_RENDERER = "slockNativeTabBarRenderer"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2
