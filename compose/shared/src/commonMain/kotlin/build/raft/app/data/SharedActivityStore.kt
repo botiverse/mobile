@@ -32,15 +32,15 @@ import kotlin.time.TimeSource
 private const val SharedActivityPageSize = 30
 
 class SharedActivityStore internal constructor(
-    private val authStore: SlockAuthSessionStore,
-    private val inboxRepository: InboxRepository,
-    private val readReceiptRepository: ReadReceiptRepository,
-    private val conversationRepository: ConversationRepository,
-    private val memberRepository: MemberRepository? = null,
-    private val serverMembersStore: SharedServerMembersStore? = null,
-    private val tasksDataStore: SharedTasksDataStore? = null,
+    private var authStore: SlockAuthSessionStore,
+    private var inboxRepository: InboxRepository,
+    private var readReceiptRepository: ReadReceiptRepository,
+    private var conversationRepository: ConversationRepository,
+    private var memberRepository: MemberRepository? = null,
+    private var serverMembersStore: SharedServerMembersStore? = null,
+    private var tasksDataStore: SharedTasksDataStore? = null,
     localWriteThrough: ComposeLocalWriteThrough? = null,
-    private val persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
+    private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
     scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {}
@@ -55,12 +55,28 @@ class SharedActivityStore internal constructor(
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
 
-    fun updateRuntimeIntegrations(
+    internal fun updateRuntimeIntegrations(
+        authStore: SlockAuthSessionStore = this.authStore,
+        inboxRepository: InboxRepository = this.inboxRepository,
+        readReceiptRepository: ReadReceiptRepository = this.readReceiptRepository,
+        conversationRepository: ConversationRepository = this.conversationRepository,
+        memberRepository: MemberRepository? = this.memberRepository,
+        serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
+        tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
+        persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         scope: CoroutineScope? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ) {
+        this.authStore = authStore
+        this.inboxRepository = inboxRepository
+        this.readReceiptRepository = readReceiptRepository
+        this.conversationRepository = conversationRepository
+        this.memberRepository = memberRepository
+        this.serverMembersStore = serverMembersStore
+        this.tasksDataStore = tasksDataStore
+        this.persistSlices = persistSlices
         if (localWriteThrough != null) {
             this.localWriteThrough = localWriteThrough
         }
@@ -193,9 +209,19 @@ class SharedActivityStore internal constructor(
                     val userId = session.user.id
                     val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         ?: return@launch setLoadError("server_missing", append = !refresh)
+                    val stateBeforeOwner = _state.value
+                    val ownerChanged =
+                        stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
+                            stateBeforeOwner.ownerUserId?.let { it != userId } == true
+                    val stateForOwner =
+                        if (ownerChanged) {
+                            SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
+                        } else {
+                            stateBeforeOwner
+                        }
                     reduceState(
                         intent,
-                        _state.value.copy(
+                        stateForOwner.copy(
                             ownerServerId = serverId.value,
                             ownerUserId = userId
                         )

@@ -686,6 +686,35 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun reusedActivityStoreUpdatesRuntimeRepositoriesAndDropsPreviousServerSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1")))))
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = firstInbox
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
+
+        val secondInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-2")))))
+        store.updateRuntimeIntegrations(
+            authStore = InMemorySlockAuthSessionStore(sampleSession(serverId = "server-2")),
+            inboxRepository = secondInbox,
+            readReceiptRepository = FakeReadReceiptRepository(),
+            conversationRepository = FakeConversationRepository(),
+            scope = scope
+        )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(1, firstInbox.initialLoadCount)
+        assertEquals(1, secondInbox.initialLoadCount)
+        assertEquals("server-2", store.state.value.ownerServerId)
+        assertEquals(listOf("channel:channel-2"), store.state.value.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun doneUsesInboxDoneForChannelsAndThreadDoneForThreads() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -1237,12 +1266,15 @@ class SharedActivityStoreTest {
             unreadTotal = unreadTotal
         )
 
-    private fun sampleSession(userId: String = "user-1"): StoredAuthSession =
+    private fun sampleSession(
+        userId: String = "user-1",
+        serverId: String = "server-1"
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = userId, email = "$userId@slock.local", displayName = "User One"),
             accessToken = "access",
             refreshToken = "refresh",
-            selectedServerId = "server-1",
-            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock"))
+            selectedServerId = serverId,
+            servers = listOf(StoredAuthServer(id = serverId, name = "Slock"))
         )
 }

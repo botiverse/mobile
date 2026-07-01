@@ -109,14 +109,26 @@ internal class SlockSharedStoreProvider private constructor(
         scope: CoroutineScope,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
-        homeActivityStore
+        val existingStore =
+            homeActivityStore
+                ?: SlockSharedStoreRegistry.homeActivityStore
+        existingStore
             ?.also { store ->
                 store.updateRuntimeIntegrations(
+                    authStore = authStore,
+                    inboxRepository = inboxRepository,
+                    readReceiptRepository = readReceiptRepository,
+                    conversationRepository = conversationRepository,
+                    memberRepository = memberRepository,
+                    serverMembersStore = serverMembersStore,
+                    tasksDataStore = tasksDataStore,
+                    persistSlices = listOf(activityPersistSlice),
                     localWriteThrough = localWriteThrough,
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     scope = scope,
                     diagnosticsLogger = diagnosticsLogger
                 )
+                homeActivityStore = store
                 return store
             }
         return SharedActivityStore(
@@ -132,7 +144,10 @@ internal class SlockSharedStoreProvider private constructor(
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
             scope = scope,
             diagnosticsLogger = diagnosticsLogger ?: {}
-        ).also { homeActivityStore = it }
+        ).also {
+            homeActivityStore = it
+            SlockSharedStoreRegistry.homeActivityStore = it
+        }
     }
 
     fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
@@ -414,15 +429,12 @@ private fun TaskSummary.taskDomainKey(): String =
 
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
-    private var providerPagerId: String? = null
+    internal var homeActivityStore: SharedActivityStore? = null
 
     fun get(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
-        provider
-            ?.takeIf { providerPagerId == pager.pagerId }
-            ?.let { return it }
+        provider?.let { return it }
         return SlockSharedStoreProvider.create(pager, bridge).also {
             provider = it
-            providerPagerId = pager.pagerId
         }
     }
 }
