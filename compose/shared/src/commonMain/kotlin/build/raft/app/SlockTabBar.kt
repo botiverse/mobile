@@ -228,7 +228,7 @@ internal fun SlockAppBottomTabBarHost(
             return
         }
         SlockAppTabBarRenderer.AndroidFloating -> {
-            SlockFloatingDockTabBar(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
             return
         }
         SlockAppTabBarRenderer.SharedCompose -> Unit
