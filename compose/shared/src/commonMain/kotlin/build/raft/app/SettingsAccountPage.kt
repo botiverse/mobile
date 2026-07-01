@@ -198,7 +198,7 @@ private fun SettingsAccountScreen() {
             settingsState = settingsState,
             dispatch = settingsViewModel::dispatch,
             fallbackEvent = { fallbackAction, fallbackValue ->
-                bridge.settingsEvent(launchPayload.instanceId, fallbackAction, fallbackValue)
+                bridge.log("settings_account_unsupported_action action=$fallbackAction value=${fallbackValue.orEmpty()}")
             }
         )
     }

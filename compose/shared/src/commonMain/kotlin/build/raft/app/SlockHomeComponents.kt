@@ -4,7 +4,14 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalPanel
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
+import build.raft.app.data.NetworkSlockHomeApi
+import build.raft.app.data.SharedHomeDataSource
+import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.parseSlockHome
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -313,15 +320,36 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     LaunchedEffect(payload.instanceId, payload.channels.size, payload.directMessages.size) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val homeRefreshScope = rememberCoroutineScope()
+    val standaloneHomeStore =
+        remember(sharedStores, homeRefreshScope) {
+            val homeDataSource =
+                SharedHomeDataSource(
+                    sessionStore = sharedStores.authStore,
+                    api = NetworkSlockHomeApi(sharedStores.networkClient),
+                    announcementsApi = NetworkSlockAnnouncementsRemindersApi(sharedStores.networkClient),
+                    computersApi = SlockComputersNetworkApi(sharedStores.networkClient),
+                    serverMembersStore = sharedStores.serverMembersStore,
+                    parseHome = { networkPayload, session ->
+                        parseSlockHome(networkPayload, session) { message -> bridge.log(message) }
+                    },
+                    diagnosticsLogger = { message -> bridge.log("standalone_home $message") }
+                )
+            sharedStores.getOrCreateHomeStore(
+                dataSource = homeDataSource,
+                scope = homeRefreshScope,
+                diagnosticsLogger = { message -> bridge.log("standalone_home $message") }
+            )
+        }
     LaunchedEffect(routeVisibleTick, payload.instanceId) {
         if (
             activityPageDidAppearShouldRefresh(routeVisibleTick) &&
             payload.instanceId.isNotBlank()
         ) {
-            bridge.settingsEvent(payload.instanceId, "refresh", null)
+            standaloneHomeStore.dispatch(SharedHomeIntent.ForegroundRefresh)
         }
     }
-    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val agentStatusResolver =
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
             slockAgentStatusResolver(sharedStores.serverMembersStore, payload.currentServerId)
@@ -333,6 +361,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
+    }
+    fun unsupportedStandaloneHomeAction(action: String, itemId: String? = null) {
+        bridge.log("standalone_home_unsupported_action action=$action itemId=${itemId.orEmpty()}")
     }
     SlockStructuralHomeShell(
         currentServerName = payload.currentServerName,
@@ -362,35 +393,35 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
         labels = payload.labels,
-        onServerBadgeClick = { bridge.settingsEvent(payload.instanceId, "toggleServerSwitcher", null) },
-        onServerSwitcherDismiss = { bridge.settingsEvent(payload.instanceId, "dismissServerSwitcher", null) },
-        onServerSelected = { bridge.settingsEvent(payload.instanceId, "selectServer", it) },
-        onCreateServerClick = { bridge.settingsEvent(payload.instanceId, "createServer", null) },
-        onCreateChannelClick = { bridge.settingsEvent(payload.instanceId, "createChannel", null) },
-        onInboxClick = { bridge.settingsEvent(payload.instanceId, "openInbox", null) },
-        onFollowedThreadsClick = { bridge.settingsEvent(payload.instanceId, "openFollowedThreads", null) },
-        onSavedClick = { bridge.settingsEvent(payload.instanceId, "openSaved", null) },
-        onSearchClick = { bridge.settingsEvent(payload.instanceId, "openSearch", null) },
-        onNotificationView = { bridge.settingsEvent(payload.instanceId, "viewNotification", it.id) },
-        onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
-        onRefresh = { bridge.settingsEvent(payload.instanceId, "refresh", null) },
-        onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
-        onChannelOrderChange = { bridge.settingsEvent(payload.instanceId, "setChannelOrder", it.joinToString(",")) },
-        onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
-        onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
+        onServerBadgeClick = { unsupportedStandaloneHomeAction("toggleServerSwitcher") },
+        onServerSwitcherDismiss = { unsupportedStandaloneHomeAction("dismissServerSwitcher") },
+        onServerSelected = { unsupportedStandaloneHomeAction("selectServer", it) },
+        onCreateServerClick = { unsupportedStandaloneHomeAction("createServer") },
+        onCreateChannelClick = { unsupportedStandaloneHomeAction("createChannel") },
+        onInboxClick = { unsupportedStandaloneHomeAction("openInbox") },
+        onFollowedThreadsClick = { unsupportedStandaloneHomeAction("openFollowedThreads") },
+        onSavedClick = { unsupportedStandaloneHomeAction("openSaved") },
+        onSearchClick = { unsupportedStandaloneHomeAction("openSearch") },
+        onNotificationView = { unsupportedStandaloneHomeAction("viewNotification", it.id) },
+        onNotificationDismiss = { unsupportedStandaloneHomeAction("dismissNotification", it.id) },
+        onRefresh = { standaloneHomeStore.dispatch(SharedHomeIntent.Refresh) },
+        onChannelSortModeChange = { unsupportedStandaloneHomeAction("setChannelSortMode", it.wireValue) },
+        onChannelOrderChange = { unsupportedStandaloneHomeAction("setChannelOrder", it.joinToString(",")) },
+        onDmSortModeChange = { unsupportedStandaloneHomeAction("setDmSortMode", it.wireValue) },
+        onPinnedSortModeChange = { unsupportedStandaloneHomeAction("setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
         onChannelLongPress = { _, _ -> },
         onPinToggle = { conversationId ->
-            bridge.settingsEvent(payload.instanceId, "togglePinned", conversationId)
+            unsupportedStandaloneHomeAction("togglePinned", conversationId)
         },
         onReadToggle = { conversationId, markUnread ->
-            bridge.settingsEvent(payload.instanceId, if (markUnread) "markUnread" else "markRead", conversationId)
+            unsupportedStandaloneHomeAction(if (markUnread) "markUnread" else "markRead", conversationId)
         },
         onCloseDirectMessage = { conversationId ->
-            bridge.settingsEvent(payload.instanceId, "closeDm", conversationId)
+            unsupportedStandaloneHomeAction("closeDm", conversationId)
         },
         onArchiveChannel = { conversationId ->
-            bridge.settingsEvent(payload.instanceId, "archiveChannel", conversationId)
+            unsupportedStandaloneHomeAction("archiveChannel", conversationId)
         },
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
@@ -400,7 +431,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
 
 /**
  * #228: open the thread page for a conversation that the sidebar / pinned list
- * references by id. Replaces the prior `bridge.settingsEvent("openChannel", id)` path
+ * references by id. Replaces the prior host-bridge action path
  * which went through the host bridge and silently failed to preserve surfaceKind.
  * Direct `pager.openPage("compose_thread", payload)` route keeps surfaceKind intact
  * so the thread page's `#226` showMembers/showSettings guards and `#227` header label

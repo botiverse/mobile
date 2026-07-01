@@ -2785,7 +2785,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 compactConsecutiveMessages = it
                             },
                             onSettingsAction = { action, itemId ->
-                                bridge.settingsEvent("shared-shell-settings", action, itemId)
+                                bridge.log("settings_shell_unsupported_action action=$action itemId=${itemId.orEmpty()}")
                             },
                             onDiagnosticsFeedbackPrepared = { draft ->
                                 pendingDiagnosticsFeedbackReturnDestination =
@@ -14661,7 +14661,7 @@ private fun SettingsHomeScreen() {
         bridge.log("settings_home_render instanceId=${payload.instanceId} items=${payload.items.size}")
     }
     SettingsHomeContent(payload) { key ->
-        bridge.settingsEvent(payload.instanceId, "openSettingsDestination", key)
+        bridge.log("settings_home_unsupported_destination key=$key")
     }
 }
 

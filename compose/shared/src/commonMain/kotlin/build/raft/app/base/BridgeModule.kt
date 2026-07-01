@@ -423,14 +423,6 @@ internal class BridgeModule : Module() {
             }
         }
 
-    fun settingsEvent(instanceId: String, action: String, itemId: String? = null) {
-        val methodArgs = JSONObject()
-        methodArgs.put("instanceId", instanceId)
-        methodArgs.put("action", action)
-        itemId?.let { methodArgs.put("itemId", it) }
-        callNativeMethod("settingsEvent", methodArgs, null)
-    }
-
     /**
      * #81: host bridge for the selected-server app badge. Called from
      * [build.raft.app.data.SharedHomeStore] whenever

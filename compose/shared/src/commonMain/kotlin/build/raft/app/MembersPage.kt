@@ -1665,7 +1665,7 @@ private fun MemberDetailPageContent() {
                         provider.copyMemberId(member)
                     },
                     onRemoveMember = {
-                        provider.bridge.settingsEvent(payload.instanceId, "removeMember", member.id.value)
+                        provider.bridge.toast("Remove member is available from Settings administration.")
                     },
                     onOpenUrl = { provider.bridge.openUrl(it) },
                     onOpenReminderMessage = { permalink ->
@@ -1758,7 +1758,7 @@ private fun MemberDetailPageContent() {
                     provider.copyMemberId(current.member)
                 },
                 onRemoveMember = {
-                    provider.bridge.settingsEvent(payload.instanceId, "removeMember", current.member.id.value)
+                    provider.bridge.toast("Remove member is available from Settings administration.")
                 },
                 onOpenUrl = { provider.bridge.openUrl(it) },
                 onOpenReminderMessage = { permalink ->

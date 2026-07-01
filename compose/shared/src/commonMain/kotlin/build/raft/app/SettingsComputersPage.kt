@@ -234,7 +234,7 @@ private fun SettingsComputersScreen() {
             SettingsComputersContent(computersPayload) { action, itemId ->
                 when (action) {
                     "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { pager.openSettingsComputerDetailPage(it, timeContext) }
-                    else -> bridge.settingsEvent(launchPayload.instanceId, action, itemId)
+                    else -> bridge.log("settings_computers_unsupported_action action=$action itemId=${itemId.orEmpty()}")
                 }
             }
         }
@@ -314,7 +314,7 @@ private fun SettingsComputerDetailScreen() {
                 settingsState = settingsState,
                 dispatch = settingsViewModel::dispatch,
                 fallbackEvent = { fallbackAction, fallbackItem ->
-                    bridge.settingsEvent(launchPayload.instanceId, fallbackAction, fallbackItem)
+                    bridge.log("settings_computer_detail_unsupported_action action=$fallbackAction itemId=${fallbackItem.orEmpty()}")
                 }
             )
         }

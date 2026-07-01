@@ -141,7 +141,7 @@ private fun SettingsStorageScreen() {
         when (action) {
             "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
             "clearStorage" -> target?.takeIf { it.isNotBlank() }?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
-            else -> bridge.settingsEvent(launchPayload.instanceId, action, target)
+            else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
         }
     }
 }

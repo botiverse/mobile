@@ -234,7 +234,7 @@ private fun SettingsBillingScreen() {
                 bridge.toast("Billing portal is not yet available on mobile. Opening in browser.")
                 environment.settingsCapabilities.openUrl(sharedSettingsWebUrl(settingsState.developer.configuredWebBaseUrlOrNull(), "settings/billing"))
             }
-            else -> bridge.settingsEvent(launchPayload.instanceId, action, planId)
+            else -> bridge.log("settings_billing_unsupported_action action=$action planId=${planId.orEmpty()}")
         }
     }
 }
