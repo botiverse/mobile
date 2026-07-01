@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.views.PlayState
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
@@ -115,29 +114,6 @@ class SlockFilePreviewDownloadStatusTest {
         val label = slockFilePreviewDownloadStatusLabel(SlockFilePreviewInitialDownloadProgress)
 
         assertEquals("Downloading 0%", label)
-    }
-
-    @Test
-    fun cachedImageUriOnlyAcceptsSuccessfulNativeCacheResult() {
-        val cached =
-            JSONObject().apply {
-                put("status", "ok")
-                put("uri", "file:/cache/image.png")
-            }
-        val failed =
-            JSONObject().apply {
-                put("status", "failed")
-                put("uri", "file:/cache/stale.png")
-            }
-        val missingUri =
-            JSONObject().apply {
-                put("status", "ok")
-            }
-
-        assertEquals("file:/cache/image.png", cached.slockFilePreviewCachedImageUri())
-        assertEquals(null, failed.slockFilePreviewCachedImageUri())
-        assertEquals(null, missingUri.slockFilePreviewCachedImageUri())
-        assertEquals(null, null.slockFilePreviewCachedImageUri())
     }
 
     @Test

@@ -382,34 +382,6 @@ internal class BridgeModule : Module() {
             }
         }
 
-    suspend fun cacheAttachmentImage(
-        url: String,
-        attachmentId: String,
-        fileName: String,
-        mimeType: String? = null
-    ): JSONObject? =
-        suspendCancellableCoroutine { continuation ->
-            val methodArgs = JSONObject()
-            methodArgs.put("url", url)
-            methodArgs.put("attachmentId", attachmentId)
-            methodArgs.put("fileName", fileName)
-            mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
-            val result =
-                toNative(
-                    methodName = CACHE_ATTACHMENT_IMAGE,
-                    param = methodArgs.toString(),
-                    callback = { payload ->
-                        if (continuation.isActive) {
-                            continuation.resume(payload)
-                        }
-                    },
-                    syncCall = false
-                )
-            continuation.invokeOnCancellation {
-                result.callbackRef?.let { removeCallback(it) }
-            }
-        }
-
     suspend fun attachmentCacheStatus(
         attachmentId: String,
         fileName: String,
@@ -849,7 +821,6 @@ internal class BridgeModule : Module() {
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
-        const val CACHE_ATTACHMENT_IMAGE = "cacheAttachmentImage"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"

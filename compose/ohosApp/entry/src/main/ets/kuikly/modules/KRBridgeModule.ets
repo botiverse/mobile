@@ -63,7 +63,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly TOAST = "toast";
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
-  static readonly CACHE_ATTACHMENT_IMAGE = "cacheAttachmentImage";
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PERFORMANCE_SCENE = "performanceScene";
@@ -81,8 +80,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-  static readonly IMAGE_CACHE_MAX_FILES = 200;
-  static readonly IMAGE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
   syncMode(): boolean {
     return false;
@@ -116,10 +113,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.OPEN_ATTACHMENT: {
         this.openAttachment(params, callback);
-        break;
-      }
-      case KRBridgeModule.CACHE_ATTACHMENT_IMAGE: {
-        this.cacheAttachmentImage(params, callback);
         break;
       }
       case KRBridgeModule.LOG: {
@@ -276,46 +269,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
       );
       callback({ "status": "failed", "message": "Unable to download attachment" });
-    }
-  }
-
-  private async cacheAttachmentImage(params: KRAny, callback: KuiklyRenderCallback) {
-    const records = this.parseRecord(params);
-    const url = records["url"] as string | undefined;
-    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
-    const fileName = (records["fileName"] as string | undefined) ?? "image";
-    const mimeType = records["mimeType"] as string | undefined;
-    if (url === undefined || url.length === 0) {
-      callback({ "status": "failed", "message": "Missing image url" });
-      return;
-    }
-    const context = getContext(this) as common.UIAbilityContext;
-    try {
-      const cacheDir = `${context.cacheDir}/image_cache`;
-      fs.mkdirSync(cacheDir, true);
-      this.cleanupImageCache(cacheDir);
-      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
-      const cached = this.isUsableImageCacheFile(path);
-      if (!cached) {
-        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId);
-        if (!downloaded) {
-          callback({ "status": "failed", "message": "Unable to cache image" });
-          return;
-        }
-      }
-      callback({
-        "status": "ok",
-        "cached": cached,
-        "uri": fileUri.getUriFromPath(path),
-        "sizeBytes": fs.statSync(path).size
-      });
-    } catch (error) {
-      const businessError = error as BusinessError;
-      SlockOhosDiagnostics.record(
-        "SlockAttachmentImageCache",
-        `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
-      );
-      callback({ "status": "failed", "message": "Unable to cache image" });
     }
   }
 
@@ -1074,16 +1027,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private isUsableImageCacheFile(path: string): boolean {
-    try {
-      const stat = fs.statSync(path);
-      const ageMs = Date.now() - (stat.mtime * 1000);
-      return stat.isFile() && stat.size > 0 && ageMs >= 0 && ageMs <= KRBridgeModule.IMAGE_CACHE_MAX_AGE_MS;
-    } catch (_) {
-      return false;
-    }
-  }
-
   private cleanupAttachmentCache(cacheDir: string) {
     try {
       const entries: Array<OhosAttachmentCacheEntry> = [];
@@ -1099,33 +1042,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       });
       entries.sort((left: OhosAttachmentCacheEntry, right: OhosAttachmentCacheEntry) => right.mtime - left.mtime);
       entries.slice(KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES).forEach((entry: OhosAttachmentCacheEntry) => {
-        this.safeUnlink(entry.path);
-      });
-    } catch (_) {
-    }
-  }
-
-  private cleanupImageCache(cacheDir: string) {
-    try {
-      const now = Date.now();
-      const entries: Array<OhosAttachmentCacheEntry> = [];
-      fs.listFileSync(cacheDir).forEach((name: string) => {
-        try {
-          const path = `${cacheDir}/${name}`;
-          const stat = fs.statSync(path);
-          if (stat.isFile()) {
-            const ageMs = now - (stat.mtime * 1000);
-            if (ageMs > KRBridgeModule.IMAGE_CACHE_MAX_AGE_MS) {
-              this.safeUnlink(path);
-            } else {
-              entries.push({ path: path, mtime: stat.mtime });
-            }
-          }
-        } catch (_) {
-        }
-      });
-      entries.sort((left: OhosAttachmentCacheEntry, right: OhosAttachmentCacheEntry) => right.mtime - left.mtime);
-      entries.slice(KRBridgeModule.IMAGE_CACHE_MAX_FILES).forEach((entry: OhosAttachmentCacheEntry) => {
         this.safeUnlink(entry.path);
       });
     } catch (_) {

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
-import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.base.toBridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
@@ -82,7 +81,6 @@ import com.tencent.kuikly.core.views.PlayState
 import com.tencent.kuikly.core.views.VideoPlayControl
 import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -100,7 +98,6 @@ private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewLoadingLabel = "Loading..."
 private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
-private const val SlockFilePreviewImageCacheTimeoutMs = 4_000L
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -291,7 +288,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val nextPayload =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
-                    payload.loadThreadAttachmentPreview(threadApi, networkClient, bridge)
+                    payload.loadThreadAttachmentPreview(threadApi, networkClient)
                 SlockFilePreviewSourceAgentWorkspace ->
                     payload.loadAgentWorkspacePreview(memberRepository)
                 else -> null
@@ -1009,8 +1006,7 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Sl
 
 private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkClient: SlockNetworkClient,
-    bridge: BridgeModule
+    networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -1038,7 +1034,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             )
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
-        wantsImage -> loadThreadImageAttachmentPreview(threadApi, bridge)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
@@ -1052,31 +1048,16 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
 }
 
 private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
-    threadApi: SlockThreadApiClient,
-    bridge: BridgeModule
+    threadApi: SlockThreadApiClient
 ): SlockFilePreviewPayload {
     val remoteImageUrl =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
             is ThreadApiResult.Failure -> null
         }
-    val resolvedImageUrl =
-        remoteImageUrl
-            ?.let { remoteUrl ->
-                runCatching {
-                    withTimeoutOrNull(SlockFilePreviewImageCacheTimeoutMs) {
-                        bridge.cacheAttachmentImage(
-                            url = remoteUrl,
-                            attachmentId = attachmentCacheId(),
-                            fileName = attachmentCacheFileName(),
-                            mimeType = externalMimeType
-                        )
-                    }
-                }.getOrNull()
-                    .slockFilePreviewCachedImageUri()
-                    ?: remoteUrl
-            }
-            ?: imageUrl
+    // Kuikly Compose image rendering already caches by source URL through
+    // KuiklyImageCacheManager -> MemoryCacheModule and the native image adapter.
+    val resolvedImageUrl = remoteImageUrl ?: imageUrl
     return copy(
         kind = "image",
         title = "Image preview",
@@ -2267,12 +2248,6 @@ private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
         .ifBlank { name }
         .ifBlank { path }
         .ifBlank { "attachment" }
-
-internal fun JSONObject?.slockFilePreviewCachedImageUri(): String? =
-    this
-        ?.takeIf { it.optString("status") == "ok" }
-        ?.optString("uri")
-        ?.takeIf { it.isNotBlank() }
 
 private fun SlockFilePreviewPayload.filePreviewDownloadId(): String =
     listOf(source, attachmentCacheId(), attachmentCacheFileName())

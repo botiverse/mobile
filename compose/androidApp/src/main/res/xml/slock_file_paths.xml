@@ -7,9 +7,6 @@
         name="slock_attachments"
         path="slock-attachments/" />
     <cache-path
-        name="slock_images"
-        path="image_cache/" />
-    <cache-path
         name="slock_share_images"
         path="slock-share-images/" />
 </paths>
