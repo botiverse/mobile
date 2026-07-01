@@ -3255,7 +3255,18 @@ internal fun SharedThreadRouteContent(
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.previewUri
         )
-        if (threadAttachment.isImageAttachment() && imageAnnotationEnabled()) {
+        val composerImageGroup = currentComposerPayload().pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
+        if (composerImageGroup != null && composerImageGroup.images.size > 1) {
+            pager.openSlockFilePreviewPage(
+                threadAttachment.toThreadAttachmentLazyPreviewPayload(
+                    kind = "image",
+                    imageGallery = composerImageGroup.images,
+                    imageGalleryIndex = composerImageGroup.currentIndex
+                ).copy(
+                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
+                )
+            )
+        } else if (threadAttachment.isImageAttachment() && imageAnnotationEnabled()) {
             composerImageActionCounter += 1
             val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
             pager.openSlockFilePreviewPage(
@@ -5547,6 +5558,36 @@ private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String):
             thumbnailUrl = item.thumbnailUrl
         )
     }
+
+internal fun List<KuiklyPendingAttachmentItem>.composerPendingImageAttachmentGroup(
+    attachmentId: String
+): ThreadImageAttachmentGroup? {
+    val cleanAttachmentId = attachmentId.trim()
+    if (cleanAttachmentId.isBlank()) return null
+    val images =
+        asSequence()
+            .filter { attachment ->
+                attachment.status == "ready" &&
+                    attachment.isComposerImageAttachment() &&
+                    attachment.previewUri?.isNotBlank() == true
+            }
+            .map { attachment ->
+                KuiklyThreadAttachmentItem(
+                    id = attachment.id,
+                    name = attachment.fileName.ifBlank { "Attachment" },
+                    mimeType = attachment.mimeType.orEmpty(),
+                    sizeLabel = attachment.sizeLabel,
+                    thumbnailUrl = attachment.previewUri
+                )
+            }
+            .toList()
+    val currentIndex = images.indexOfFirst { it.id == cleanAttachmentId }
+    return if (currentIndex >= 0) {
+        ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex)
+    } else {
+        null
+    }
+}
 
 @Composable
 private fun ThreadImagePreviewOverlay(

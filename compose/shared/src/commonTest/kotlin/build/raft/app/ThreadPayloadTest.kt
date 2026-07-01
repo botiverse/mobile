@@ -82,6 +82,67 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun composerPendingImageAttachmentGroupIncludesReadyImagesForGallery() {
+        val attachments =
+            listOf(
+                KuiklyPendingAttachmentItem(
+                    id = "image-1",
+                    fileName = "first.png",
+                    mimeType = "image/png",
+                    previewUri = "file://first"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "file-1",
+                    fileName = "notes.txt",
+                    mimeType = "text/plain",
+                    previewUri = "file://notes"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "image-2",
+                    fileName = "second.jpg",
+                    mimeType = "image/jpeg",
+                    previewUri = "file://second"
+                )
+            )
+
+        val group = attachments.composerPendingImageAttachmentGroup("image-2")
+
+        assertEquals(1, group?.currentIndex)
+        assertEquals(listOf("image-1", "image-2"), group?.images?.map { it.id })
+        assertEquals(listOf("file://first", "file://second"), group?.images?.map { it.thumbnailUrl })
+    }
+
+    @Test
+    fun composerPendingImageAttachmentGroupIgnoresUploadingFailedAndMissingPreviewImages() {
+        val attachments =
+            listOf(
+                KuiklyPendingAttachmentItem(
+                    id = "image-uploading",
+                    fileName = "uploading.png",
+                    mimeType = "image/png",
+                    previewUri = "file://uploading",
+                    status = "uploading"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "image-failed",
+                    fileName = "failed.png",
+                    mimeType = "image/png",
+                    previewUri = "file://failed",
+                    status = "failed"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "image-no-preview",
+                    fileName = "no-preview.png",
+                    mimeType = "image/png"
+                )
+            )
+
+        assertEquals(null, attachments.composerPendingImageAttachmentGroup("image-uploading"))
+        assertEquals(null, attachments.composerPendingImageAttachmentGroup("image-failed"))
+        assertEquals(null, attachments.composerPendingImageAttachmentGroup("image-no-preview"))
+    }
+
+    @Test
     fun pickedSingleImageUploadsToComposerWhenAnnotationIsEnabled() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,
