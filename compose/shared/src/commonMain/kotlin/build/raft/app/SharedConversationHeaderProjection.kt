@@ -57,6 +57,24 @@ internal fun KuiklyThreadScreenPayload.threadHeaderProjectionInput(): ThreadHead
             )
     }
 
+internal fun KuiklyThreadScreenPayload.threadHeaderProjectionRoutePayload(): KuiklyThreadScreenPayload =
+    copy(
+        title = "",
+        subtitle = null,
+        status = "loading",
+        messages = emptyList(),
+        originMessage = null,
+        originPreview = null,
+        originStatus = "none",
+        tasks = emptyList(),
+        members = emptyList(),
+        memberCandidates = emptyList(),
+        dmPeerName = null,
+        dmPeerAvatarUrl = null,
+        dmPeerAvatarLabel = null,
+        dmPeerGravatarUrl = null
+    )
+
 internal fun ThreadHeaderProjectionInput.stableProjection(
     current: SharedConversationDirectoryProjection?,
     previous: SharedConversationDirectoryProjection?

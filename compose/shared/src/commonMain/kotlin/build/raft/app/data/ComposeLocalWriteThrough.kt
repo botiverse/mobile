@@ -35,12 +35,6 @@ class ComposeLocalWriteThrough(
     private val store: ComposeLocalDataStore,
     private val logger: (String) -> Unit = {}
 ) {
-    suspend fun readHomeSnapshot(serverId: ServerId): HomeSnapshot? =
-        null
-
-    suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String): Boolean =
-        false
-
     suspend fun readThreadSnapshot(threadId: ThreadId): ThreadSnapshot? {
         val startedAt = TimeSource.Monotonic.markNow()
         return store.readThread(threadId).also { snapshot ->

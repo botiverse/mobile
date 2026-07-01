@@ -2271,9 +2271,23 @@ internal fun SharedThreadRouteContent(
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
+    val headerProjectionRoutePayload =
+        remember(
+            payload.surfaceKind,
+            payload.channelKind,
+            payload.sourceThreadId,
+            payload.streamChannelId,
+            payload.parentChannelId,
+            payload.parentMessageId,
+            payload.parentSurfaceKind,
+            payload.parentChannelKind,
+            payload.dmPeerMemberId
+        ) {
+            payload.threadHeaderProjectionRoutePayload()
+        }
     val headerProjectionInput =
-        remember(initialPayload) {
-            initialPayload.threadHeaderProjectionInput()
+        remember(headerProjectionRoutePayload) {
+            headerProjectionRoutePayload.threadHeaderProjectionInput()
         }
     val conversationDirectoryLookupIds = headerProjectionInput.lookupIds
     val emptyConversationDirectoryProjectionFlow =
@@ -2346,8 +2360,8 @@ internal fun SharedThreadRouteContent(
         }
     }
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload) {
-            headerProjectionInput.displayModel(stableHeaderProjection, payload)
+        remember(headerProjectionInput, stableHeaderProjection) {
+            headerProjectionInput.displayModel(stableHeaderProjection)
         }
     val headerProjectionMapDiagnostics =
         remember(directoryConversationProjections) {

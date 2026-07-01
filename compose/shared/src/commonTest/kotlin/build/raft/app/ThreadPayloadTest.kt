@@ -1399,6 +1399,56 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadHeaderProjectionRoutePayloadUsesResolvedIdentityButNoDisplayContent() {
+        val loadedPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-launch",
+                title = "wrong-network-title",
+                subtitle = "wrong-network-subtitle",
+                status = "content",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-42",
+                            authorId = "user-1",
+                            authorName = "Artin",
+                            body = "body"
+                        )
+                    )
+            )
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                title = "对话流专修",
+                subtitle = "Thread fixes"
+            )
+
+        val routePayload = loadedPayload.threadHeaderProjectionRoutePayload()
+        val input = routePayload.threadHeaderProjectionInput()
+        val displayWithProjection = input.displayModel(projection)
+        val displayWithoutProjection = input.displayModel(null)
+
+        assertEquals(listOf("channel-1", "channel-1"), input.lookupIds)
+        assertEquals("", routePayload.title)
+        assertEquals(null, routePayload.subtitle)
+        assertEquals("loading", routePayload.status)
+        assertEquals(emptyList(), routePayload.messages)
+        assertEquals("对话流专修", displayWithProjection.title)
+        assertEquals("Thread fixes", displayWithProjection.subtitle)
+        assertEquals("joint", displayWithProjection.channelKind)
+        assertEquals("Channel", displayWithoutProjection.title)
+        assertEquals(null, displayWithoutProjection.subtitle)
+    }
+
+    @Test
     fun contentSliceDoesNotOverwriteHeaderTitleFromNetworkPayload() {
         val payload =
             KuiklyThreadScreenPayload(

@@ -31,59 +31,6 @@ import kotlin.test.assertTrue
 
 class ComposeLocalWriteThroughTest {
     @Test
-    fun writeHomeResultPreservesStoredDirectMessageMetadata() = runBlocking {
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store)
-        val dm = ConversationSummary(
-            threadId = ThreadId("dm-1"),
-            channelId = ChannelId("dm-1"),
-            kind = ConversationKind.DirectMessage,
-            name = "Cindy",
-            subtitle = "Onboarding Assistant",
-            presenceMemberId = MemberId("agent-1")
-        )
-        store.writeHome(home(directMessages = listOf(dm)))
-
-        writer.writeHomeResult(
-            DataResult.Content(
-                home(
-                    directMessages =
-                        listOf(
-                            dm.copy(
-                                name = "dm-1",
-                                subtitle = null,
-                                presenceMemberId = null,
-                                lastMessagePreview = "new"
-                            )
-                        )
-                )
-            ),
-            source = "test"
-        )
-
-        val cached = store.readHome(serverId)?.directMessages?.single()
-        assertEquals("Cindy", cached?.name)
-        assertEquals("Onboarding Assistant", cached?.subtitle)
-        assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
-        assertEquals("new", cached?.lastMessagePreview)
-    }
-
-    @Test
-    fun duplicateHomeSnapshotWriteIsSkipped() = runBlocking {
-        val logs = mutableListOf<String>()
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
-        val snapshot = home(channels = listOf(channel(), channel("channel-2")))
-
-        writer.writeHomeResult(DataResult.Content(snapshot), source = "test_home")
-        writer.writeHomeResult(DataResult.Content(snapshot), source = "test_home")
-
-        assertEquals(listOf("channel-1", "channel-2"), store.readHome(serverId)?.channels?.map { it.threadId.value })
-        assertEquals(1, logs.count { it.startsWith("store_merge domain=home source=test_home") })
-        assertEquals(1, logs.count { it.startsWith("store_merge_skip domain=home source=test_home reason=unchanged") })
-    }
-
-    @Test
     fun writeReplyThreadResultRequiresAndStoresParentContext() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
