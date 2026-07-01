@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
@@ -39,7 +40,7 @@ class SharedActivityStore internal constructor(
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val tasksDataStore: SharedTasksDataStore? = null,
     localWriteThrough: ComposeLocalWriteThrough? = null,
-    private val activityStateCache: SharedActivityStateCache? = null,
+    private val persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
     scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {}
@@ -77,10 +78,10 @@ class SharedActivityStore internal constructor(
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {
             SharedActivityIntent.ClearSummary -> clearSummary()
-            SharedActivityIntent.LoadInitial -> load(refresh = true)
-            SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false)
-            SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true)
-            SharedActivityIntent.LoadMore -> load(refresh = false)
+            SharedActivityIntent.LoadInitial -> load(refresh = true, intent = intent)
+            SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
+            SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true, intent = intent)
+            SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
@@ -111,7 +112,7 @@ class SharedActivityStore internal constructor(
                 selectedFilter = filter,
                 loading = true
             )
-        load(refresh = true)
+        load(refresh = true, intent = SharedActivityIntent.SetFilter(filter))
     }
 
     private fun clearSummary() {
@@ -126,7 +127,7 @@ class SharedActivityStore internal constructor(
         val current = _state.value
         if (current.loading || current.refreshing) return
         if (!current.loaded || current.snapshot != null) {
-            load(refresh = true, pullRefresh = false)
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
         }
     }
 
@@ -140,20 +141,23 @@ class SharedActivityStore internal constructor(
             val currentUserId = currentUserId() ?: return@launch
             val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
             if (increment <= 0) return@launch
-            _state.value =
+            reduceState(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
                 current.copy(
                     snapshot =
                         snapshot.copy(
                             totalUnreadCount = snapshot.totalUnreadCount + increment
-                        ),
+                    ),
                     errorCode = null
                 )
+            )
         }
     }
 
     private fun load(
         refresh: Boolean,
-        pullRefresh: Boolean = false
+        pullRefresh: Boolean = false,
+        intent: SharedActivityIntent
     ) {
         val current = _state.value
         if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) return
@@ -163,15 +167,6 @@ class SharedActivityStore internal constructor(
                 val startedAt = TimeSource.Monotonic.markNow()
                 val previous = _state.value
                 val filter = previous.selectedFilter
-                _state.value =
-                    previous.copy(
-                        loading = refresh && previous.snapshot == null,
-                        refreshing = refresh && previous.snapshot != null,
-                        pullRefreshing = refresh && pullRefresh && previous.snapshot != null,
-                        loadingMore = !refresh,
-                        errorCode = null,
-                        loadMoreErrorCode = null
-                    )
                 try {
                     val session = authStore.readSession()
                         ?: return@launch setLoadError("unauthenticated", append = !refresh).also {
@@ -198,21 +193,33 @@ class SharedActivityStore internal constructor(
                     val userId = session.user.id
                     val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         ?: return@launch setLoadError("server_missing", append = !refresh)
-                    if (refresh && previous.snapshot == null) {
-                        activityStateCache?.read(serverId.value, userId, filter)?.let { cached ->
-                            _state.value =
-                                cached.copy(
-                                    senderProfiles =
-                                        cached.senderProfiles + currentSenderProfiles(serverId),
-                                    refreshing = true,
-                                    pullRefreshing = false,
-                                    loading = false,
-                                    loadingMore = false,
-                                    errorCode = null,
-                                    loadMoreErrorCode = null
-                                )
+                    reduceState(
+                        intent,
+                        _state.value.copy(
+                            ownerServerId = serverId.value,
+                            ownerUserId = userId
+                        )
+                    )
+                    val stateBeforeRequest = _state.value
+                    val stateWithLocalProfiles =
+                        if (refresh && stateBeforeRequest.snapshot != null) {
+                            stateBeforeRequest.copy(
+                                senderProfiles = stateBeforeRequest.senderProfiles + currentSenderProfiles(serverId)
+                            )
+                        } else {
+                            stateBeforeRequest
                         }
-                    }
+                    reduceState(
+                        intent,
+                        stateWithLocalProfiles.copy(
+                            loading = refresh && stateWithLocalProfiles.snapshot == null,
+                            refreshing = refresh && stateWithLocalProfiles.snapshot != null,
+                            pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
+                            loadingMore = !refresh,
+                            errorCode = null,
+                            loadMoreErrorCode = null
+                        )
+                    )
                     val result =
                         if (refresh) {
                             inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
@@ -230,7 +237,7 @@ class SharedActivityStore internal constructor(
                         server = server,
                         append = !refresh,
                         senderProfiles = senderProfiles,
-                        userId = userId
+                        intent = intent
                     )
                     logActivityLoad(
                         result = result.activityDiagnosticsResult(),
@@ -275,10 +282,10 @@ class SharedActivityStore internal constructor(
         server: ServerSummary,
         append: Boolean,
         senderProfiles: Map<String, SharedActivitySenderProfile>,
-        userId: String
+        intent: SharedActivityIntent
     ) {
         val current = _state.value
-        _state.value =
+        val nextState =
             when (result) {
                 is DataResult.Content -> {
                     val pageItems =
@@ -322,7 +329,6 @@ class SharedActivityStore internal constructor(
                             errorCode = null,
                             loadMoreErrorCode = null
                         )
-                    activityStateCache?.write(result.data.server.id.value, userId, nextState)
                     nextState
                 }
                 is DataResult.Empty -> {
@@ -345,7 +351,6 @@ class SharedActivityStore internal constructor(
                             errorCode = null,
                             loadMoreErrorCode = null
                         )
-                    activityStateCache?.write(server.id.value, userId, nextState)
                     nextState
                 }
                 is DataResult.Error ->
@@ -365,10 +370,9 @@ class SharedActivityStore internal constructor(
                         loadingMore = false,
                         errorCode = if (append) null else result.blocker.code,
                         loadMoreErrorCode = if (append) result.blocker.code else null
-                    ).also {
-                        activityStateCache?.clear(server.id.value, userId, current.selectedFilter)
-                    }
+                    )
             }
+        reduceState(intent, nextState)
     }
 
     private fun markAllRead() {
@@ -387,7 +391,7 @@ class SharedActivityStore internal constructor(
                 totalUnreadCount = 0
             )
         rememberUnreadCleared(snapshot.items)
-        _state.value = previous.copy(snapshot = updatedSnapshot, errorCode = null)
+        reduceState(SharedActivityIntent.MarkAllRead, previous.copy(snapshot = updatedSnapshot, errorCode = null))
         scope.launch {
             val serverId = currentServerId()
             serverId?.let { localWriteThrough?.clearServerUnread(it, "shared_activity_mark_all_read") }
@@ -395,7 +399,7 @@ class SharedActivityStore internal constructor(
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false)
+                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             } else {
                 forgetUnreadCleared(snapshot.items)
                 onUnreadCountsChanged()
@@ -458,7 +462,8 @@ class SharedActivityStore internal constructor(
             } else {
                 snapshot.items.filterNot { it.key == key }
             }
-        _state.value =
+        reduceState(
+            SharedActivityIntent.MarkRead(item),
             previous.copy(
                 snapshot =
                     snapshot.copy(
@@ -468,6 +473,7 @@ class SharedActivityStore internal constructor(
                     ),
                 errorCode = null
             )
+        )
         scope.launch {
             val serverId = currentServerId()
             localWriteThrough?.clearConversationUnread(targetChannelId, "shared_activity_mark_read", serverId)
@@ -505,7 +511,8 @@ class SharedActivityStore internal constructor(
                     existing
                 }
             }
-        _state.value =
+        reduceState(
+            SharedActivityIntent.MarkUnread(item),
             previous.copy(
                 snapshot =
                     snapshot.copy(
@@ -519,11 +526,12 @@ class SharedActivityStore internal constructor(
                     ),
                 errorCode = null
             )
+        )
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false)
+                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             } else {
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
@@ -534,7 +542,8 @@ class SharedActivityStore internal constructor(
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value
         val snapshot = current.snapshot ?: return
-        _state.value =
+        reduceState(
+            SharedActivityIntent.MarkDone(item),
             current.copy(
                 snapshot =
                     snapshot.copy(
@@ -544,6 +553,7 @@ class SharedActivityStore internal constructor(
                     ),
                 errorCode = null
             )
+        )
     }
 
     private fun refreshAfterFailure(
@@ -551,7 +561,7 @@ class SharedActivityStore internal constructor(
         code: String
     ) {
         _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
-        load(refresh = true, pullRefresh = false)
+        load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
     }
 
     private fun setLoadError(code: String, append: Boolean = false) {
@@ -564,6 +574,20 @@ class SharedActivityStore internal constructor(
                 errorCode = if (append) null else code,
                 loadMoreErrorCode = if (append) code else null
             )
+    }
+
+    private fun reduceState(intent: SharedActivityIntent, nextState: SharedActivityState): Boolean {
+        val previousState = _state.value
+        val finalState =
+            persistSlices.fold(nextState) { state, slice ->
+                slice.reduce(previous = previousState, intent = intent, reduced = state)
+            }
+        if (finalState == previousState) return false
+        _state.value = finalState
+        persistSlices.forEach { slice ->
+            slice.onTransition(previous = previousState, intent = intent, next = finalState)
+        }
+        return true
     }
 
     private suspend fun currentServerId(): ServerId? =
@@ -762,6 +786,8 @@ data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    val ownerServerId: String? = null,
+    val ownerUserId: String? = null,
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
@@ -781,43 +807,6 @@ data class SharedActivityState(
     val nextOffset: Int?
         get() = snapshot?.nextOffset
 }
-
-class SharedActivityStateCache {
-    private var ownerKey: String? = null
-    private var state: SharedActivityState? = null
-
-    fun read(serverId: String, userId: String, filter: InboxFilter): SharedActivityState? =
-        state.takeIf { ownerKey == activityStateCacheKey(serverId, userId, filter) }
-
-    fun write(serverId: String, userId: String?, state: SharedActivityState) {
-        if (!state.loaded || state.snapshot == null) return
-        val resolvedUserId = userId?.takeIf { it.isNotBlank() } ?: return
-        ownerKey = activityStateCacheKey(serverId, resolvedUserId, state.selectedFilter)
-        this.state =
-            state.copy(
-                loading = false,
-                refreshing = false,
-                pullRefreshing = false,
-                loadingMore = false,
-                errorCode = null,
-                loadMoreErrorCode = null
-            )
-    }
-
-    fun clear() {
-        ownerKey = null
-        state = null
-    }
-
-    fun clear(serverId: String, userId: String, filter: InboxFilter) {
-        if (ownerKey == activityStateCacheKey(serverId, userId, filter)) {
-            clear()
-        }
-    }
-}
-
-private fun activityStateCacheKey(serverId: String, userId: String, filter: InboxFilter): String =
-    "${serverId.trim()}:${userId.trim()}:${filter.name}"
 
 private fun InboxFilter.keepsReadActivityRows(): Boolean =
     this == InboxFilter.All
@@ -948,6 +937,7 @@ private fun DataResult<InboxSnapshot>.activityDiagnosticsResult(): String =
         is DataResult.NoPermission -> "no_permission code=${blocker.code}"
     }
 
+@Serializable
 data class SharedActivitySenderProfile(
     val displayName: String
 )

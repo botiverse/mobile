@@ -476,14 +476,15 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun loadInitialSeedsColdStoreFromMatchingActivityStateCache() = runBlocking {
-        val cache = SharedActivityStateCache()
+    fun loadInitialSeedsColdStoreFromMatchingActivityPersistSlice() = runBlocking {
+        val persistStorage = InMemoryPersistStorage()
+        val persistSlice = createSharedActivityPersistSlice(persistStorage)
         val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val preloadStore =
             activityStore(
                 scope = preloadScope,
                 inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))),
-                activityStateCache = cache
+                persistSlices = listOf(persistSlice)
             )
         preloadStore.dispatch(SharedActivityIntent.LoadInitial)
 
@@ -493,7 +494,7 @@ class SharedActivityStoreTest {
             activityStore(
                 scope = standaloneScope,
                 inboxRepository = standaloneInbox,
-                activityStateCache = cache
+                persistSlices = listOf(persistSlice)
             )
 
         standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
@@ -509,14 +510,15 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun loadInitialIgnoresActivityStateCacheForDifferentUser() = runBlocking {
-        val cache = SharedActivityStateCache()
+    fun loadInitialIgnoresActivityPersistSliceForDifferentUser() = runBlocking {
+        val persistStorage = InMemoryPersistStorage()
+        val persistSlice = createSharedActivityPersistSlice(persistStorage)
         val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val preloadStore =
             activityStore(
                 scope = preloadScope,
                 inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))),
-                activityStateCache = cache
+                persistSlices = listOf(persistSlice)
             )
         preloadStore.dispatch(SharedActivityIntent.LoadInitial)
 
@@ -526,7 +528,7 @@ class SharedActivityStoreTest {
                 scope = standaloneScope,
                 authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2")),
                 inboxRepository = DeferredInboxRepository(),
-                activityStateCache = cache
+                persistSlices = listOf(persistSlice)
             )
 
         standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
@@ -628,8 +630,10 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun cachedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun persistedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
+        val persistStorage = InMemoryPersistStorage()
+        val persistSlice = createSharedActivityPersistSlice(persistStorage)
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val row =
             threadItem("thread-channel-1", unreadCount = 1)
                 .copy(
@@ -637,7 +641,15 @@ class SharedActivityStoreTest {
                     latestActivitySenderName = null,
                     latestActivityPreview = "Latest reply"
                 )
-        val cache = SharedActivityStateCache()
+        val preloadStore =
+            activityStore(
+                scope = preloadScope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(row)))),
+                persistSlices = listOf(persistSlice)
+            )
+        preloadStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val agentOne =
             MemberProfile(
                 id = MemberId("agent-1"),
@@ -645,17 +657,6 @@ class SharedActivityStoreTest {
                 handle = "agent-one",
                 kind = MemberKind.Agent
             )
-        cache.write(
-            serverId = "server-1",
-            userId = "user-1",
-            state =
-                SharedActivityState(
-                    selectedFilter = InboxFilter.All,
-                    snapshot = snapshot(listOf(row)),
-                    senderProfiles = emptyMap(),
-                    loaded = true
-                )
-        )
         val membersStore =
             SharedServerMembersStore(
                 FakeMemberRepository(
@@ -672,14 +673,15 @@ class SharedActivityStoreTest {
             activityStore(
                 scope = scope,
                 inboxRepository = inbox,
-                activityStateCache = cache,
-                serverMembersStore = membersStore
+                serverMembersStore = membersStore,
+                persistSlices = listOf(persistSlice)
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
 
         assertEquals(true, store.state.value.refreshing)
         assertEquals("Agent One", store.state.value.senderProfiles.getValue("agent-1").displayName)
+        preloadScope.cancel()
         scope.cancel()
     }
 
@@ -844,7 +846,7 @@ class SharedActivityStoreTest {
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
-        activityStateCache: SharedActivityStateCache? = null,
+        persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
         onUnreadCountsChanged: () -> Unit = {}
@@ -858,10 +860,24 @@ class SharedActivityStoreTest {
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
             localWriteThrough = localWriteThrough,
-            activityStateCache = activityStateCache,
+            persistSlices = persistSlices,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
         )
+
+    private class InMemoryPersistStorage : MviPersistStorage {
+        private val values = mutableMapOf<String, String>()
+
+        override fun read(key: String): String? = values[key]
+
+        override fun write(key: String, value: String) {
+            values[key] = value
+        }
+
+        override fun remove(key: String) {
+            values.remove(key)
+        }
+    }
 
     private class FakeInboxRepository(
         private val initialSnapshots: List<InboxSnapshot>,

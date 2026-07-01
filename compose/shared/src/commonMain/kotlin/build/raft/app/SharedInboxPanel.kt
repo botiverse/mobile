@@ -16,7 +16,6 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityState
-import build.raft.app.data.SharedActivityStateCache
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -93,7 +92,6 @@ private const val ActivityUpdateSignatureWindow = 20
 internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
-    activityStateCache: SharedActivityStateCache? = null,
     routeVisibleTick: Int = 0,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
@@ -151,7 +149,6 @@ internal fun SharedHomeActivityScreen(
             readReceiptRepository,
             conversationRepository,
             memberRepository,
-            activityStateCache,
             scope
         ) {
             sharedStores.getOrCreateHomeActivityStore(
@@ -159,7 +156,6 @@ internal fun SharedHomeActivityScreen(
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                activityStateCache = activityStateCache ?: sharedStores.activityStateCache,
                 scope = scope
             )
         }

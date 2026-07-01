@@ -41,7 +41,7 @@ internal class SlockSharedStoreProvider private constructor(
     val tasksDataStore: SharedTasksDataStore,
     val serverMembersStore: SharedServerMembersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
-    val activityStateCache: SharedActivityStateCache,
+    private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
@@ -105,7 +105,6 @@ internal class SlockSharedStoreProvider private constructor(
         conversationRepository: ConversationRepository,
         memberRepository: MemberRepository? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
-        activityStateCache: SharedActivityStateCache? = this.activityStateCache,
         onUnreadCountsChanged: (() -> Unit)? = null,
         scope: CoroutineScope,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -129,7 +128,7 @@ internal class SlockSharedStoreProvider private constructor(
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
             localWriteThrough = localWriteThrough,
-            activityStateCache = activityStateCache,
+            persistSlices = listOf(activityPersistSlice),
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
             scope = scope,
             diagnosticsLogger = diagnosticsLogger ?: {}
@@ -245,7 +244,11 @@ internal class SlockSharedStoreProvider private constructor(
                         ),
                         diagnosticsLogger = { message -> bridge.log(message) }
                     ),
-                activityStateCache = SharedActivityStateCache(),
+                activityPersistSlice =
+                    createSharedActivityPersistSlice(
+                        storage = SharedPreferencePersistStorage(sharedPreferenceStore),
+                        diagnosticsLogger = { message -> bridge.log("shared_activity_persist $message") }
+                    ),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(

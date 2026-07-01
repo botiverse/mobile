@@ -86,6 +86,9 @@ class InMemoryComposeLocalDataStore : ComposeLocalDataStore {
                     snapshot.copy(
                         unreadCounts = snapshot.unreadCounts - channelId
                     )
+                },
+                homes = homes.mapValues { (_, snapshot) ->
+                    snapshot.clearHomeChannelUnread(channelId)
                 }
             )
         }
@@ -104,6 +107,34 @@ class InMemoryComposeLocalDataStore : ComposeLocalDataStore {
         val unread: Map<ServerId, ChannelUnreadSnapshot> = emptyMap()
     )
 }
+
+private fun HomeSnapshot.clearHomeChannelUnread(channelId: ChannelId): HomeSnapshot {
+    var removedUnread = 0
+    fun HomeChannelRow.clearIfMatched(): HomeChannelRow {
+        if (!matchesLocalHomeChannel(channelId)) return this
+        removedUnread += unreadCount
+        return copy(unreadCount = 0, unreadCountKnown = true, firstUnreadMessageId = null)
+    }
+    fun HomeDirectMessageRow.clearIfMatched(): HomeDirectMessageRow {
+        if (!matchesLocalHomeChannel(channelId)) return this
+        removedUnread += unreadCount
+        return copy(unreadCount = 0, unreadCountKnown = true, firstUnreadMessageId = null)
+    }
+    val nextChannels = channels.map { it.clearIfMatched() }
+    val nextDirectMessages = directMessages.map { it.clearIfMatched() }
+    val nextUnreadTotal = (unreadTotal - removedUnread).coerceAtLeast(0)
+    val nextServerUnreadCount = (server.unreadCount - removedUnread).coerceAtLeast(0)
+    return copy(
+        channels = nextChannels,
+        directMessages = nextDirectMessages,
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        unreadTotal = nextUnreadTotal,
+        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+    )
+}
+
+private fun HomeConversationRow.matchesLocalHomeChannel(channelId: ChannelId): Boolean =
+    this.channelId == channelId || threadId.value == channelId.value
 
 class RelationalComposeLocalDataStore(
     private val store: SlockRelationalStore,

@@ -579,6 +579,7 @@ data class AgentSnapshot(
     val members: List<MemberProfile> = agents.map { it.toMemberProfile() }
 )
 
+@Serializable
 data class InboxSnapshot(
     val server: ServerSummary,
     val items: List<InboxItem>,

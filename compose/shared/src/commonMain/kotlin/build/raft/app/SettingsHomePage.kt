@@ -182,7 +182,6 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedActivityIntent
-import build.raft.app.data.SharedActivityStateCache
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailStore
@@ -646,7 +645,6 @@ private data class HomeSecondaryRouteEnvironment(
     val localWriteThrough: ComposeLocalWriteThrough,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
@@ -695,7 +693,6 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         localWriteThrough,
         settingsCapabilities,
         sharedStores.serverMembersStore,
-        sharedStores.activityStateCache,
         sharedStores.homeSavedStateCache,
         timeContext,
         myMessageAlignment,
@@ -710,7 +707,6 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             localWriteThrough = localWriteThrough,
             serverMembersStore = sharedStores.serverMembersStore,
             settingsCapabilities = settingsCapabilities,
-            activityStateCache = sharedStores.activityStateCache,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
@@ -747,7 +743,6 @@ private fun HomeActivityRouterContent(
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
-        activityStateCache = environment.activityStateCache,
         routeVisibleTick = routeVisibleTick,
         onOpenMessage = { request ->
             environment.pager.openStandaloneHomeMessageRequest(
@@ -1642,7 +1637,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             conversationRepository,
             memberRepository,
             sharedStores.serverMembersStore,
-            sharedStores.activityStateCache,
             homeStore,
             appShellCoroutineScope
         ) {
@@ -1651,7 +1645,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 scope = appShellCoroutineScope,
                 diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
@@ -1911,7 +1904,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
-        sharedStores.activityStateCache.clear()
         sharedStores.homeSavedStateCache.clear()
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
