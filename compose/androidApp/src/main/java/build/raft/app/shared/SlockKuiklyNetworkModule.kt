@@ -211,7 +211,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                         val fieldName = file.optString("name", "files")
                         val fileName = file.optString("fileName", "attachment")
                         val mimeType = file.optString("mimeType", "application/octet-stream")
-                        val partHeaders = multipartFileHeaders(fileName, mimeType)
+                        val partHeaders = multipartFileHeaders(fieldName, fileName, mimeType)
                         if (file.has("bodyBase64")) {
                             val bytes = Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
                             if (bytes.isEmpty()) {
@@ -239,9 +239,9 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         return parts
     }
 
-    private fun multipartFileHeaders(fileName: String, mimeType: String): Headers =
+    private fun multipartFileHeaders(fieldName: String, fileName: String, mimeType: String): Headers =
             Headers.build {
-                append(HttpHeaders.ContentDisposition, "filename=\"${fileName.sanitizeMultipartFileName()}\"")
+                append(HttpHeaders.ContentDisposition, slockMultipartFileContentDisposition(fieldName, fileName))
                 append(HttpHeaders.ContentType, mimeType)
             }
 
@@ -287,9 +287,6 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         }
     }
 
-    private fun String.sanitizeMultipartFileName(): String =
-            replace("\"", "'").replace("\r", "").replace("\n", "")
-
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
@@ -314,3 +311,9 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
 
     private val activeRequests = ConcurrentHashMap<String, ActiveNetworkRequest>()
 }
+
+internal fun slockMultipartFileContentDisposition(fieldName: String, fileName: String): String =
+        "form-data; name=\"${fieldName.sanitizeMultipartToken()}\"; filename=\"${fileName.sanitizeMultipartToken()}\""
+
+internal fun String.sanitizeMultipartToken(): String =
+        replace("\"", "'").replace("\r", "").replace("\n", "")
