@@ -24,7 +24,7 @@ export interface SlockRealtimeRawDecision {
   logMessage: string;
 }
 
-class SlockOhosRealtimeSharedBridge {
+class SlockOhosRealtimeKnoiBridge {
   connectDecision(
     serverId: string,
     accessToken: string,
@@ -99,6 +99,6 @@ class SlockOhosRealtimeSharedBridge {
   }
 }
 
-const slockOhosRealtimeSharedBridge = new SlockOhosRealtimeSharedBridge();
+const slockOhosRealtimeKnoiBridge = new SlockOhosRealtimeKnoiBridge();
 
-export default slockOhosRealtimeSharedBridge;
+export default slockOhosRealtimeKnoiBridge;

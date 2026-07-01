@@ -4,7 +4,7 @@ import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
-import slockOhosRealtimeSharedBridge from './SlockOhosRealtimeSharedBridge';
+import slockOhosRealtimeKnoiBridge from './SlockOhosRealtimeKnoiBridge';
 
 const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
@@ -71,13 +71,13 @@ export class SlockOhosRealtimeHostContext {
   }
 
   onPageShow(): void {
-    slockOhosRealtimeSharedBridge.onAppShown();
+    slockOhosRealtimeKnoiBridge.onAppShown();
     this.socketIo.resume();
     this.sendAppLifecycleEvent('show');
   }
 
   onPageHide(keepAlive: boolean = false): void {
-    slockOhosRealtimeSharedBridge.onAppHidden();
+    slockOhosRealtimeKnoiBridge.onAppHidden();
     if (keepAlive) {
       console.info('[SlockOhosRealtime] page_hide_keep_alive socket_retained');
       this.sendAppLifecycleEvent('hide_keep_alive');
@@ -87,7 +87,7 @@ export class SlockOhosRealtimeHostContext {
   }
 
   disconnectForSessionEnd(reason: string): void {
-    if (!slockOhosRealtimeSharedBridge.disconnectForSessionEnd(reason)) {
+    if (!slockOhosRealtimeKnoiBridge.disconnectForSessionEnd(reason)) {
       console.info(`[SlockOhosRealtime] disconnect_ignored reason=${reason}`);
       return;
     }
@@ -126,7 +126,7 @@ export class SlockOhosRealtimeHostContext {
       console.warn('[SlockOhosRealtime] connect skipped: missing server/token');
       return;
     }
-    const decision = slockOhosRealtimeSharedBridge.connectDecision(
+    const decision = slockOhosRealtimeKnoiBridge.connectDecision(
       params.serverId,
       params.accessToken,
       params.lastSeq,
@@ -166,7 +166,7 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private disconnectForRealtimeCommand(reason: string): void {
-    if (slockOhosRealtimeSharedBridge.disconnectForSessionEnd(reason)) {
+    if (slockOhosRealtimeKnoiBridge.disconnectForSessionEnd(reason)) {
       this.disconnect(reason);
       return;
     }
@@ -198,7 +198,7 @@ export class SlockOhosRealtimeHostContext {
       console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
     }
     const rawPayload = JSON.stringify(payload ?? {});
-    const decision = slockOhosRealtimeSharedBridge.rawDecision(eventName, rawPayload);
+    const decision = slockOhosRealtimeKnoiBridge.rawDecision(eventName, rawPayload);
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
@@ -221,7 +221,7 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private handleRoomCommand(action: string, channelId: string, source: string): void {
-    const decision = slockOhosRealtimeSharedBridge.roomCommandDecision(action, channelId, source);
+    const decision = slockOhosRealtimeKnoiBridge.roomCommandDecision(action, channelId, source);
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
