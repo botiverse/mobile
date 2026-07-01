@@ -61,6 +61,7 @@ class SlockAppShellTest {
     fun androidFloatingBottomTabHostCoversOverlayTouchRegion() {
         assertEquals(92.dp, slockAndroidFloatingBottomTabBarHostHeight(0.dp))
         assertEquals(110.dp, slockAndroidFloatingBottomTabBarHostHeight(18.dp))
+        assertEquals(0.01f, slockAndroidFloatingBottomTabBarTouchGuardAlpha())
     }
 
     @Test

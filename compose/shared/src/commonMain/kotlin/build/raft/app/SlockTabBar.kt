@@ -74,6 +74,11 @@ private enum class SlockAppTabBarRenderer {
 
 private val SlockSharedBottomTabBarHeight = 58.dp
 private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
+private const val SlockAndroidFloatingTabBarTouchGuardAlpha = 0.01f
+private val SlockAndroidFloatingTabBarConsumeOnlyClick: () -> Unit = {}
+
+internal fun slockAndroidFloatingBottomTabBarTouchGuardAlpha(): Float =
+    SlockAndroidFloatingTabBarTouchGuardAlpha
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
@@ -386,7 +391,8 @@ internal fun SlockFloatingDockTabBar(
         modifier = modifier
             .fillMaxWidth()
             .height(slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea))
-            .clickable(onClick = {})
+            .background(SlockColor.TextBlack.copy(alpha = SlockAndroidFloatingTabBarTouchGuardAlpha))
+            .clickable(onClick = SlockAndroidFloatingTabBarConsumeOnlyClick)
     ) {
         Box(
             modifier = Modifier
