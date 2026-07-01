@@ -27,6 +27,31 @@ node scripts/slock-visual-testing.mjs site --baseline react --current android
 node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current android --dry-run
 ```
 
+## GitHub Pages Publish Target
+
+Publish Android/KMP visual reports to the mobile repository Pages branch, not to
+the React/web repository. From the Android repo, always dry-run first and verify
+the target says `origin/gh-pages:visual-testing` with the mobile URL:
+
+```bash
+node scripts/slock-visual-testing.mjs publish-gh-pages \
+  --baseline react \
+  --current android \
+  --repo-dir ~/AndroidStudioProjects/Slock \
+  --dry-run
+```
+
+Expected hosted report:
+
+```text
+https://botiverse.github.io/mobile/visual-testing/
+```
+
+The local Android repo's writable `origin` is `botiverse/mobile`. The older
+`bytemain/slock-android` remote is archived/read-only and must not be used for
+publishing new reports. Do not publish Android/KMP reports to
+`botiverse/slock`, whose Pages URL is for the React/web repo.
+
 The shim imports:
 
 ```text

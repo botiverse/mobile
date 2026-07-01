@@ -3755,7 +3755,7 @@ private fun MembersAgentTabBar(
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
     LaunchedEffect(tabs, selectedTab) {
         if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
-            listState.scrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
+            listState.animateScrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
         }
     }
     Column(
