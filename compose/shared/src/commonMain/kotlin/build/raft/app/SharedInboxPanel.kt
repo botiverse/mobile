@@ -864,7 +864,7 @@ private fun SharedActivityCountPill(
             }
             Text(
                 text = text,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
                 color = textColor,
                 maxLines = if (text.contains('\n')) 4 else 1,
                 overflow = TextOverflow.Ellipsis
