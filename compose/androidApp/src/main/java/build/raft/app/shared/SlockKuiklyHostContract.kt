@@ -6,6 +6,7 @@ internal object SlockKuiklyPages {
     const val LOGIN = "compose_login"
     const val REGISTER = "compose_register"
     const val FORGOT_PASSWORD = "compose_forgot_password"
+    const val AUTH_CHOOSE_SERVER = "compose_auth_choose_server"
     const val APP_SHELL = "compose_slock_app_shell"
     const val THREAD = "compose_thread"
     const val THREAD_COMPOSER_VISUAL = "compose_thread_composer_visual"

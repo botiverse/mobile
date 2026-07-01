@@ -9,6 +9,7 @@ import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.data.KuiklyMMKVAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.StoredAuthSession
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -92,7 +93,7 @@ class MainActivity : ComponentActivity() {
             when (result) {
                 is SharedAuthResult.Success -> {
                     Toast.makeText(this@MainActivity, "Signed in with Google", Toast.LENGTH_SHORT).show()
-                    openSharedShell()
+                    openPostLoginDestination(result.data)
                 }
                 is SharedAuthResult.Failure ->
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
@@ -143,7 +144,7 @@ class MainActivity : ComponentActivity() {
             when (result) {
                 is SharedAuthResult.Success -> {
                     Toast.makeText(this@MainActivity, "Signed in with $providerName", Toast.LENGTH_SHORT).show()
-                    openSharedShell()
+                    openPostLoginDestination(result.data)
                 }
                 is SharedAuthResult.Failure ->
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
@@ -153,7 +154,31 @@ class MainActivity : ComponentActivity() {
         }
         return true
     }
+
+    private fun openPostLoginDestination(session: StoredAuthSession) {
+        if (postLoginDestination(session.selectedServerId) == PostLoginDestination.AuthChooseServer) {
+            SlockKuiklyActivity.startAuthChooseServer(
+                this,
+                clearTask = true
+            )
+            finish()
+        } else {
+            openSharedShell()
+        }
+    }
 }
+
+internal enum class PostLoginDestination {
+    AppShell,
+    AuthChooseServer
+}
+
+internal fun postLoginDestination(selectedServerId: String?): PostLoginDestination =
+    if (selectedServerId.isNullOrBlank()) {
+        PostLoginDestination.AuthChooseServer
+    } else {
+        PostLoginDestination.AppShell
+    }
 
 private fun logSharedAuthDiagnostics(message: String) {
     SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")

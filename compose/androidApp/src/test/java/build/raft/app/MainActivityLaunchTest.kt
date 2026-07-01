@@ -89,4 +89,11 @@ class MainActivityLaunchTest {
             )
         )
     }
+
+    @Test
+    fun postLoginWithoutSelectedServerRoutesToServerCreationFlow() {
+        assertEquals(PostLoginDestination.AuthChooseServer, postLoginDestination(null))
+        assertEquals(PostLoginDestination.AuthChooseServer, postLoginDestination(""))
+        assertEquals(PostLoginDestination.AppShell, postLoginDestination("server-1"))
+    }
 }

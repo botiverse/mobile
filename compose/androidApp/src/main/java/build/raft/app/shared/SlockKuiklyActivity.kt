@@ -759,6 +759,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
         const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
+        const val PAGE_AUTH_CHOOSE_SERVER = SlockKuiklyPages.AUTH_CHOOSE_SERVER
         const val PAGE_APP_SHELL = SlockKuiklyPages.APP_SHELL
         const val PAGE_THREAD = SlockKuiklyPages.THREAD
         const val PAGE_HOME = SlockKuiklyPages.HOME
@@ -825,6 +826,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             clearTask: Boolean = false
         ) {
             start(context, PAGE_APP_SHELL, pageData, clearTask)
+        }
+
+        fun startAuthChooseServer(
+            context: Context,
+            pageData: JSONObject = JSONObject(),
+            clearTask: Boolean = false
+        ) {
+            start(context, PAGE_AUTH_CHOOSE_SERVER, pageData, clearTask)
         }
 
         internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject =
