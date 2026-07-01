@@ -410,9 +410,15 @@ private fun TaskSummary.taskDomainKey(): String =
 
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
+    private var providerPagerId: String? = null
 
     fun get(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
-        provider?.let { return it }
-        return SlockSharedStoreProvider.create(pager, bridge).also { provider = it }
+        provider
+            ?.takeIf { providerPagerId == pager.pagerId }
+            ?.let { return it }
+        return SlockSharedStoreProvider.create(pager, bridge).also {
+            provider = it
+            providerPagerId = pager.pagerId
+        }
     }
 }
