@@ -73,6 +73,7 @@ internal class SharedHomeStore(
      * tests keep compiling.
      */
     private val pinUpdateFailureCallback: (String) -> Unit = {},
+    private val persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList(),
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
      * tests can pin a deterministic clock; production passes a
@@ -99,6 +100,7 @@ internal class SharedHomeStore(
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
     private var stateDiagnosticsReason: String = "unknown"
+    private var stateDiagnosticsIntent: SharedHomeIntent? = null
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -167,7 +169,7 @@ internal class SharedHomeStore(
         conversationIdentityStates.value[serverId.value]?.resolve(id)
 
     suspend fun accept(intent: SharedHomeIntent) {
-        withStateDiagnosticsReason(intent.toSharedHomeIntentDiagnosticsLabel()) {
+        withStateDiagnosticsContext(intent) {
             when (intent) {
             SharedHomeIntent.Start ->
                 load(
@@ -260,13 +262,16 @@ internal class SharedHomeStore(
         }
     }
 
-    private suspend fun withStateDiagnosticsReason(reason: String, block: suspend () -> Unit) {
+    private suspend fun withStateDiagnosticsContext(intent: SharedHomeIntent, block: suspend () -> Unit) {
         val previousReason = stateDiagnosticsReason
-        stateDiagnosticsReason = reason
+        val previousIntent = stateDiagnosticsIntent
+        stateDiagnosticsReason = intent.toSharedHomeIntentDiagnosticsLabel()
+        stateDiagnosticsIntent = intent
         try {
             block()
         } finally {
             stateDiagnosticsReason = previousReason
+            stateDiagnosticsIntent = previousIntent
         }
     }
 
@@ -1143,12 +1148,30 @@ internal class SharedHomeStore(
 
     private fun reduceState(nextState: SharedHomeState): Boolean {
         val previousState = _state.value
-        if (nextState == previousState) return false
-        _state.value = nextState
+        val intent = stateDiagnosticsIntent
+        val finalState =
+            if (intent == null || persistSlices.isEmpty()) {
+                nextState
+            } else {
+                persistSlices.fold(nextState) { state, slice ->
+                    slice.reduce(previous = previousState, intent = intent, reduced = state)
+                }
+            }
+        if (finalState == previousState) return false
+        (finalState.content as? SharedHomeContentState.Content)?.let { content ->
+            updateConversationIdentity(content.baseSnapshot)
+            contentByServer[content.baseSnapshot.server.id] = content
+        }
+        _state.value = finalState
+        if (intent != null) {
+            persistSlices.forEach { slice ->
+                slice.onTransition(previous = previousState, intent = intent, next = finalState)
+            }
+        }
         diagnosticsLogger(
             "shared_home_state_change reason=$stateDiagnosticsReason " +
                 "previous=${previousState.toSharedHomeStateDiagnosticsSummary()} " +
-                "next=${nextState.toSharedHomeStateDiagnosticsSummary()}"
+                "next=${finalState.toSharedHomeStateDiagnosticsSummary()}"
         )
         return true
     }
@@ -1179,7 +1202,8 @@ class SharedHomeViewModel(
     archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
         DataResult.Empty(EmptyReason.NoChannels)
     },
-    pinUpdateFailureCallback: (String) -> Unit = {}
+    pinUpdateFailureCallback: (String) -> Unit = {},
+    persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList()
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
@@ -1193,7 +1217,8 @@ class SharedHomeViewModel(
                 markChannelReadAll = markChannelReadAll,
                 markChannelUnread = markChannelUnread,
                 archiveChannel = archiveChannel,
-                pinUpdateFailureCallback = pinUpdateFailureCallback
+                pinUpdateFailureCallback = pinUpdateFailureCallback,
+                persistSlices = persistSlices
             )
         }
     private val store: SharedHomeStore by storeDelegate

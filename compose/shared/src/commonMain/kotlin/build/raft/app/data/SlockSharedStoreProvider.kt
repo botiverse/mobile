@@ -43,6 +43,7 @@ internal class SlockSharedStoreProvider private constructor(
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
+    private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val filePreviewStore: SlockFilePreviewStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
@@ -93,7 +94,8 @@ internal class SlockSharedStoreProvider private constructor(
             markChannelReadAll = markChannelReadAll,
             markChannelUnread = markChannelUnread,
             archiveChannel = archiveChannel,
-            pinUpdateFailureCallback = pinUpdateFailureCallback
+            pinUpdateFailureCallback = pinUpdateFailureCallback,
+            persistSlices = listOf(homeIdentityPersistSlice)
         ).also { homeStore = it }
     }
 
@@ -244,6 +246,11 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 activityStateCache = SharedActivityStateCache(),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
+                homeIdentityPersistSlice =
+                    createSharedHomeIdentityPersistSlice(
+                        storage = SharedPreferencePersistStorage(sharedPreferenceStore),
+                        diagnosticsLogger = { message -> bridge.log("shared_home_persist $message") }
+                    ),
                 apiEnvironmentStore =
                     SharedApiEnvironmentStore(
                         KuiklyMMKVKeyValueStore(

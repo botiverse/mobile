@@ -208,6 +208,83 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun startHydratesPrunedHomeIdentitySnapshotWhileNetworkLoadIsPending() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val staleSnapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "cached-general").copy(
+                            unreadCount = 9,
+                            unreadCountKnown = true,
+                            mentionCount = 2,
+                            mentionCountKnown = true,
+                            lastMessageId = MessageId("message-1"),
+                            firstUnreadMessageId = MessageId("message-1"),
+                            lastMessagePreview = "cached preview",
+                            lastMessageAt = "2026-07-01T00:00:00Z",
+                            lastMessageSenderName = "Cached",
+                            hasDraft = true,
+                            hasDraftKnown = true
+                        )
+                    ),
+                unreadTotal = 9,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 9)
+            )
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val warmStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(staleSnapshot),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+        warmStore.accept(SharedHomeIntent.Start)
+
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = BlockingHomeApi()
+        val coldStore =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+        val blockedLoad = api.blockNextChannels()
+        val loadJob = launch { coldStore.accept(SharedHomeIntent.Start) }
+        blockedLoad.awaitStarted()
+
+        val hydratedContent = coldStore.state.value.content
+        assertTrue(hydratedContent is SharedHomeContentState.Content)
+        assertEquals("cached-general", hydratedContent.snapshot.channels.single().name)
+        assertEquals(true, hydratedContent.contentRefreshing)
+        assertEquals(0, hydratedContent.snapshot.unreadTotal)
+        assertEquals(0, hydratedContent.snapshot.channels.single().unreadCount)
+        assertEquals(false, hydratedContent.snapshot.channels.single().hasDraft)
+        assertEquals(null, hydratedContent.snapshot.channels.single().lastMessagePreview)
+        assertEquals(emptyMap(), hydratedContent.snapshot.serverUnreadCounts)
+
+        blockedLoad.release()
+        loadJob.join()
+
+        val freshContent = coldStore.state.value.content
+        assertTrue(freshContent is SharedHomeContentState.Content)
+        assertEquals("general", freshContent.snapshot.channels.single().name)
+        assertEquals(false, freshContent.contentRefreshing)
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())

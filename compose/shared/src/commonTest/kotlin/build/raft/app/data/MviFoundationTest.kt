@@ -8,9 +8,11 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -193,6 +195,58 @@ class MviFoundationTest {
         )
     }
 
+    @Test
+    fun persistMiddlewareWritesPartialSnapshotAndHydratesBeforeNetworkState() {
+        val storage = InMemorySlockKeyValueStore()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstRuntime =
+            persistRuntime(
+                scope = scope,
+                storage = storage,
+                initialState = PersistState(value = 0, transientLabel = "initial")
+            )
+
+        firstRuntime.accept(PersistIntent.SetValue(7, "network"))
+
+        val stored = assertNotNull(storage.getString("persist:test"))
+        assertTrue(stored.contains("\"version\":1"))
+        assertTrue(stored.contains("\"value\":7"))
+        assertFalse(stored.contains("network"))
+
+        val secondRuntime =
+            persistRuntime(
+                scope = scope,
+                storage = storage,
+                initialState = PersistState(value = 0, transientLabel = "cold")
+            )
+
+        secondRuntime.accept(PersistIntent.Start)
+
+        assertEquals(PersistState(value = 7, transientLabel = "refreshing"), secondRuntime.state.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun persistMiddlewareDropsUnsupportedVersionWithoutMigration() {
+        val storage =
+            InMemorySlockKeyValueStore(
+                mapOf("persist:test" to """{"version":99,"snapshot":{"value":42}}""")
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val runtime =
+            persistRuntime(
+                scope = scope,
+                storage = storage,
+                initialState = PersistState(value = 0, transientLabel = "cold")
+            )
+
+        runtime.accept(PersistIntent.Start)
+
+        assertEquals(PersistState(value = 0, transientLabel = "refreshing"), runtime.state.value)
+        assertNull(storage.getString("persist:test"))
+        scope.cancel()
+    }
+
     private fun counterRuntime(
         scope: CoroutineScope,
         transitions: MutableList<MviTransition<CounterIntent>>
@@ -217,6 +271,76 @@ class MviFoundationTest {
     }
 
     private data class DemoState(val label: String = "idle")
+
+    private data class PersistState(
+        val value: Int,
+        val transientLabel: String
+    )
+
+    private sealed interface PersistIntent {
+        data object Start : PersistIntent
+        data class SetValue(val value: Int, val label: String) : PersistIntent
+    }
+
+    @Serializable
+    private data class PersistSnapshot(val value: Int)
+
+    private fun persistRuntime(
+        scope: CoroutineScope,
+        storage: SharedPreferenceStore,
+        initialState: PersistState
+    ): MviStoreRuntime<PersistState, PersistIntent> =
+        MviStoreRuntime(
+            initialState = initialState,
+            scope = scope,
+            reduce = { state, intent ->
+                when (intent) {
+                    PersistIntent.Start -> state.copy(transientLabel = "refreshing")
+                    is PersistIntent.SetValue -> PersistState(intent.value, intent.label)
+                }
+            },
+            persistSlices =
+                listOf(
+                    MviPersistMiddleware(
+                        storage = SharedPreferencePersistStorage(storage),
+                        spec =
+                            object : MviPersistSpec<PersistState, PersistIntent, PersistSnapshot> {
+                                override val name: String = "test"
+                                override val version: Int = 1
+                                override val snapshotSerializer = PersistSnapshot.serializer()
+
+                                override fun key(
+                                    previous: PersistState,
+                                    intent: PersistIntent,
+                                    reduced: PersistState
+                                ): String = "persist:test"
+
+                                override fun partialize(state: PersistState): PersistSnapshot =
+                                    PersistSnapshot(state.value)
+
+                                override fun mergeHydrated(
+                                    previous: PersistState,
+                                    intent: PersistIntent,
+                                    reduced: PersistState,
+                                    snapshot: PersistSnapshot,
+                                    metadata: MviPersistMetadata
+                                ): PersistState = reduced.copy(value = snapshot.value)
+
+                                override fun shouldHydrate(
+                                    previous: PersistState,
+                                    intent: PersistIntent,
+                                    reduced: PersistState
+                                ): Boolean = intent is PersistIntent.Start
+
+                                override fun shouldPersist(
+                                    previous: PersistState,
+                                    intent: PersistIntent,
+                                    next: PersistState
+                                ): Boolean = intent is PersistIntent.SetValue
+                            }
+                    )
+                )
+        )
 
     private sealed interface DemoAction {
         data class Load(val id: Int) : DemoAction
