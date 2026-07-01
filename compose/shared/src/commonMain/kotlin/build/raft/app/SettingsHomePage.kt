@@ -363,6 +363,9 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -10436,6 +10439,7 @@ private fun SharedHomeSearchPanel(
                     items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                         SharedHomeSearchEntityRow(
                             result = entityResults[index],
+                            query = state.query,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             onOpen = { onOpenEntity(entityResults[index]) }
@@ -10453,6 +10457,7 @@ private fun SharedHomeSearchPanel(
                             item(key = group.item.key) {
                                 SharedHomeSearchMessageResultRow(
                                     item = group.item,
+                                    query = state.query,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpen = { onOpenItem(group.item) }
@@ -10463,6 +10468,7 @@ private fun SharedHomeSearchPanel(
                             item(key = group.key) {
                                 SharedHomeThreadResultGroup(
                                     group = group,
+                                    query = state.query,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpenItem = onOpenItem
@@ -11653,6 +11659,7 @@ private fun SharedHomeSearchSectionLabel(label: String) {
 @Composable
 private fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
+    query: String,
     agentStatusResolver: SlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onOpen: () -> Unit
@@ -11673,7 +11680,7 @@ private fun SharedHomeSearchEntityRow(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = result.title,
+                    text = remember(result.title, query) { homeSearchHighlightedText(result.title, query) },
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -11683,7 +11690,7 @@ private fun SharedHomeSearchEntityRow(
                 SharedHomeEntityTypeBadge(result.type)
             }
             Text(
-                text = result.subtitle,
+                text = remember(result.subtitle, query) { homeSearchHighlightedText(result.subtitle, query) },
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -11710,6 +11717,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
 @Composable
 private fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
+    query: String,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpenItem: (InboxItem) -> Unit
@@ -11763,7 +11771,7 @@ private fun SharedHomeThreadResultGroup(
                 }
             }
             Text(
-                text = group.title,
+                text = remember(group.title, query) { homeSearchHighlightedText(group.title, query) },
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 2,
@@ -11780,6 +11788,7 @@ private fun SharedHomeThreadResultGroup(
             )
             SharedHomeSearchMessageResultRow(
                 item = item,
+                query = query,
                 nested = true,
                 memberAvatarResolver = memberAvatarResolver,
                 timeContext = timeContext,
@@ -11792,6 +11801,7 @@ private fun SharedHomeThreadResultGroup(
 @Composable
 private fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
+    query: String,
     nested: Boolean = false,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
@@ -11856,7 +11866,7 @@ private fun SharedHomeSearchMessageResultRow(
             )
         }
         Text(
-            text = preview,
+            text = remember(preview, query) { homeSearchHighlightedText(preview, query) },
             style = SlockType.Body.copy(fontSize = if (nested) 12.sp else 14.sp, lineHeight = if (nested) 17.sp else 19.sp, letterSpacing = 0.sp),
             color = SlockColor.TextBlack.copy(alpha = if (nested) 0.7f else 0.74f),
             maxLines = 2,
@@ -11912,6 +11922,62 @@ private fun searchResultSourceLabel(item: InboxItem): String {
         }
     return if (item.kind == InboxItemKind.DirectMessage) "@$name" else "#$name"
 }
+
+internal fun homeSearchHighlightedText(
+    text: String,
+    query: String
+): AnnotatedString {
+    val ranges = homeSearchHighlightRanges(text, query)
+    if (ranges.isEmpty()) return AnnotatedString(text)
+
+    return buildAnnotatedString {
+        append(text)
+        ranges.forEach { range ->
+            addStyle(HomeSearchHighlightSpanStyle, range.first, range.last)
+        }
+    }
+}
+
+internal fun homeSearchHighlightRanges(
+    text: String,
+    query: String
+): List<IntRange> {
+    if (text.isBlank()) return emptyList()
+    val terms =
+        query
+            .trim()
+            .split(Regex("\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sortedByDescending { it.length }
+    if (terms.isEmpty()) return emptyList()
+
+    val lowerText = text.lowercase()
+    val occupied = BooleanArray(text.length)
+    val ranges = mutableListOf<IntRange>()
+    terms.forEach { term ->
+        val lowerTerm = term.lowercase()
+        var start = lowerText.indexOf(lowerTerm)
+        while (start >= 0) {
+            val endExclusive = start + lowerTerm.length
+            if (start < endExclusive && (start until endExclusive).none { occupied[it] }) {
+                ranges += start until endExclusive
+                for (index in start until endExclusive) {
+                    occupied[index] = true
+                }
+            }
+            start = lowerText.indexOf(lowerTerm, startIndex = start + lowerTerm.length)
+        }
+    }
+    return ranges.sortedBy { it.first }
+}
+
+private val HomeSearchHighlightSpanStyle =
+    SpanStyle(
+        color = SlockColor.TextBlack,
+        background = SlockColor.BrandYellow
+    )
 
 @Composable
 private fun SharedHomeLoadMoreRow(
