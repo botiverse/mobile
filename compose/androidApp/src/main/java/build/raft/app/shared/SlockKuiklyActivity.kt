@@ -778,8 +778,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         internal const val KEY_PAGE_DATA = "pageData"
         const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
-        internal const val KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD = "slockNotificationThreadLaunchPayload"
         internal const val KEY_APP_SHELL_NOTIFICATION_SERVER_ID = "slockNotificationServerId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_THREAD_ID = "slockNotificationThreadId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID = "slockNotificationChannelId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID = "slockNotificationMessageId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_PARENT_CHANNEL_ID = "slockNotificationParentChannelId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_PARENT_MESSAGE_ID = "slockNotificationParentMessageId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_CATEGORY = "slockNotificationCategory"
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
@@ -900,15 +905,27 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
 
         internal fun buildUnreadNotificationAppShellPageData(request: JSONObject): JSONObject? {
-            val threadPageData = buildUnreadNotificationThreadPageData(request) ?: return null
-            val threadPayload = threadPageData.optTrimmedString("payload") ?: return null
-            val threadInstanceId = threadPageData.optTrimmedString("instanceId") ?: return null
+            val threadId = request.optTrimmedString("threadId") ?: return null
+            val messageId = request.optTrimmedString("messageId") ?: return null
             val appShellPageData =
                     JSONObject()
-                            .put("instanceId", "notification-app-shell-$threadInstanceId")
-                            .put(KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD, threadPayload)
+                            .put("instanceId", "notification-app-shell-$threadId-$messageId")
+                            .put(KEY_APP_SHELL_NOTIFICATION_THREAD_ID, threadId)
+                            .put(KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, messageId)
             request.optTrimmedString("serverId")?.let { serverId ->
                 appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+            }
+            request.optTrimmedString("channelId")?.let { channelId ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID, channelId)
+            }
+            request.optTrimmedString("parentChannelId")?.let { parentChannelId ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_PARENT_CHANNEL_ID, parentChannelId)
+            }
+            request.optTrimmedString("parentMessageId")?.let { parentMessageId ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_PARENT_MESSAGE_ID, parentMessageId)
+            }
+            request.optTrimmedString("category")?.let { category ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_CATEGORY, category)
             }
             return appShellPageData.withAndroidHostPageData(PAGE_APP_SHELL)
         }

@@ -445,6 +445,12 @@ private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
 private const val AppShellNotificationServerIdKey = "slockNotificationServerId"
+private const val AppShellNotificationThreadIdKey = "slockNotificationThreadId"
+private const val AppShellNotificationChannelIdKey = "slockNotificationChannelId"
+private const val AppShellNotificationMessageIdKey = "slockNotificationMessageId"
+private const val AppShellNotificationParentChannelIdKey = "slockNotificationParentChannelId"
+private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
+private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
 private const val AppShellChildPageGlassStyleLiquid = "liquid"
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
@@ -1721,9 +1727,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
-    val notificationThreadLaunchPayload =
+    val notificationThreadLaunchRequest =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.appShellNotificationThreadLaunchPayload()
+            pager.pageData.params.appShellNotificationThreadLaunchRequest()
         }
     val notificationLaunchServerId =
         remember(pager.pageData.params.toString()) {
@@ -2024,20 +2030,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     LaunchedEffect(
         readySession?.currentServerId,
         notificationLaunchServerId,
-        notificationThreadLaunchPayload?.instanceId,
-        notificationThreadLaunchPayload?.sourceThreadId,
-        notificationThreadLaunchPayload?.focusedMessageId,
+        notificationThreadLaunchRequest?.threadId,
+        notificationThreadLaunchRequest?.messageId,
+        notificationThreadLaunchRequest?.parentChannelId,
+        homeState.content,
         threadTimeContext,
         myMessageAlignment
     ) {
-        val launchPayload = notificationThreadLaunchPayload ?: return@LaunchedEffect
-        val launchIdentity =
-            launchPayload.instanceId.takeIf { it.isNotBlank() }
-                ?: launchPayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: launchPayload.streamChannelId?.takeIf { it.isNotBlank() }
-                ?: launchPayload.threadId?.takeIf { it.isNotBlank() }
-                ?: return@LaunchedEffect
-        val launchKey = "${notificationLaunchServerId.orEmpty()}|$launchIdentity|${launchPayload.focusedMessageId.orEmpty()}"
+        val launchRequest = notificationThreadLaunchRequest ?: return@LaunchedEffect
+        val launchKey = "${notificationLaunchServerId.orEmpty()}|${launchRequest.threadId}|${launchRequest.messageId}"
         if (consumedNotificationLaunchKey == launchKey) {
             return@LaunchedEffect
         }
@@ -2081,29 +2082,43 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             switchingNotificationLaunchKey = null
             return@LaunchedEffect
         }
+        val content = homeState.content as? SharedHomeContentState.Content
+        if (content == null) {
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
+            bridge.log(
+                "app_shell_notification_thread_defer reason=home_not_loaded " +
+                    "threadId=${launchRequest.threadId} messageId=${launchRequest.messageId}"
+            )
+            return@LaunchedEffect
+        }
+        val conversation = homeState.notificationThreadConversation(launchRequest)
+        if (conversation == null) {
+            consumedNotificationLaunchKey = launchKey
+            bridge.logWarn(
+                "app_shell_notification_launch_drop reason=conversation_not_found " +
+                    "threadId=${launchRequest.threadId} channelId=${launchRequest.channelId.orEmpty()} " +
+                    "parentChannelId=${launchRequest.parentChannelId.orEmpty()} messageId=${launchRequest.messageId}"
+            )
+            bridge.toast("Notification conversation unavailable")
+            return@LaunchedEffect
+        }
         consumedNotificationLaunchKey = launchKey
+        val anchorMessageId = conversation.notificationAnchorMessageId(launchRequest)
         val runtimeLaunchPayload =
-            launchPayload.copy(
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = conversation,
+                timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: launchPayload.localOffsetMinutes,
-                todayEpochDay = threadTimeContext?.todayEpochDay ?: launchPayload.todayEpochDay,
-                nowEpochMillis = threadTimeContext?.nowEpochMillis ?: launchPayload.nowEpochMillis,
-                timeFormat = threadTimeContext?.timeFormat ?: launchPayload.timeFormat
+                anchorMessageId = anchorMessageId
             )
         selectedTab = "home"
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-        homeShellStore.dispatch(
-            SharedHomeShellIntent.SetSelectedConversation(
-                runtimeLaunchPayload.sourceThreadId
-                    ?: runtimeLaunchPayload.streamChannelId
-                    ?: runtimeLaunchPayload.threadId
-            )
-        )
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
         bridge.log(
             "app_shell_notification_thread_open " +
-                "threadId=${runtimeLaunchPayload.sourceThreadId.orEmpty()} " +
+                "threadId=${conversation.threadId.value} sourceThreadId=${runtimeLaunchPayload.sourceThreadId.orEmpty()} " +
                 "surface=${runtimeLaunchPayload.surfaceKind} focusedMessageId=${runtimeLaunchPayload.focusedMessageId.orEmpty()}"
         )
         pager.openStandaloneThreadLaunchPayload(runtimeLaunchPayload)
@@ -12487,15 +12502,98 @@ private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTime
     return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
 }
 
-private fun JSONObject.appShellNotificationThreadLaunchPayload(): WireThreadLaunchPayload? {
+private data class AppShellNotificationThreadLaunchRequest(
+    val threadId: String,
+    val messageId: String,
+    val channelId: String? = null,
+    val parentChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val category: String? = null
+)
+
+private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotificationThreadLaunchRequest? {
+    val threadId = optString(AppShellNotificationThreadIdKey).trim().takeIf { it.isNotBlank() }
+    val messageId = optString(AppShellNotificationMessageIdKey).trim().takeIf { it.isNotBlank() }
+    if (threadId != null && messageId != null) {
+        return AppShellNotificationThreadLaunchRequest(
+            threadId = threadId,
+            messageId = messageId,
+            channelId = optString(AppShellNotificationChannelIdKey).trim().takeIf { it.isNotBlank() },
+            parentChannelId = optString(AppShellNotificationParentChannelIdKey).trim().takeIf { it.isNotBlank() },
+            parentMessageId = optString(AppShellNotificationParentMessageIdKey).trim().takeIf { it.isNotBlank() },
+            category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() }
+        )
+    }
+    return legacyAppShellNotificationThreadLaunchRequest()
+}
+
+private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShellNotificationThreadLaunchRequest? {
     val source = optString(AppShellNotificationThreadPayloadKey).takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
+    val payload = runCatching {
         AppShellNotificationLaunchJson.decodeFromString(WireThreadLaunchPayload.serializer(), source)
-    }.getOrNull()?.takeIf { it.hasRouteIdentity() }
+    }.getOrNull()?.takeIf { it.hasRouteIdentity() } ?: return null
+    val threadId =
+        payload.sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: payload.streamChannelId?.takeIf { it.isNotBlank() }
+            ?: payload.threadId?.takeIf { it.isNotBlank() }
+            ?: payload.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return null
+    val messageId =
+        payload.focusedMessageId?.takeIf { it.isNotBlank() }
+            ?: payload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: return null
+    return AppShellNotificationThreadLaunchRequest(
+        threadId = threadId,
+        messageId = messageId,
+        channelId = payload.threadId?.takeIf { it.isNotBlank() },
+        parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = payload.parentMessageId?.takeIf { it.isNotBlank() }
+    )
 }
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
+
+private fun SharedHomeState.notificationThreadConversation(
+    request: AppShellNotificationThreadLaunchRequest
+): ConversationSummary? {
+    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
+    return (snapshot.channels + snapshot.directMessages)
+        .map { it.toConversationSummary() }
+        .firstOrNull { conversation -> conversation.matchesNotificationThreadLaunchRequest(request) }
+}
+
+private fun ConversationSummary.matchesNotificationThreadLaunchRequest(
+    request: AppShellNotificationThreadLaunchRequest
+): Boolean {
+    val ids =
+        setOfNotNull(
+            request.threadId,
+            request.channelId,
+            request.parentChannelId
+        ).filter { it.isNotBlank() }.toSet()
+    if (ids.isEmpty()) return false
+    return threadId.value in ids ||
+        channelId?.value in ids ||
+        thread?.streamChannelId?.value in ids ||
+        thread?.parentChannelId?.value in ids ||
+        request.parentMessageId?.takeIf { it.isNotBlank() }?.let { parentMessageId ->
+            thread?.parentMessageId?.value == parentMessageId
+        } == true
+}
+
+private fun ConversationSummary.notificationAnchorMessageId(
+    request: AppShellNotificationThreadLaunchRequest
+): String =
+    if (
+        kind != ConversationKind.Thread &&
+        request.parentChannelId?.isNotBlank() == true &&
+        request.parentMessageId?.isNotBlank() == true
+    ) {
+        request.parentMessageId
+    } else {
+        request.messageId
+    }
 
 private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange): SearchIsoBounds {
     val context = this ?: return SearchIsoBounds()

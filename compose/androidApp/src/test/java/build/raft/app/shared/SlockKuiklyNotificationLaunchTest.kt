@@ -97,15 +97,14 @@ class SlockKuiklyNotificationLaunchTest {
 
         assertNotNull(pageData)
         assertEquals(SlockKuiklyActivity.PAGE_APP_SHELL, pageData!!.getString(SlockKuiklyActivity.KEY_PAGE_NAME))
-        assertEquals("notification-app-shell-notification-thread-channel-1-msg-42", pageData.getString("instanceId"))
+        assertEquals("notification-app-shell-channel-1-msg-42", pageData.getString("instanceId"))
         assertEquals("server-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
         assertEquals("google", pageData.getString("slockSocialAuthProviders"))
-        val payload =
-            JSONObject(pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_PAYLOAD))
-        assertEquals("notification-thread-channel-1-msg-42", payload.getString("instanceId"))
-        assertEquals("channel", payload.getString("surfaceKind"))
-        assertEquals("channel-1", payload.getString("sourceThreadId"))
-        assertEquals("msg-42", payload.getString("focusedMessageId"))
+        assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID))
+        assertEquals("msg-42", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
+        assertEquals("channel_unread", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CATEGORY))
+        assertFalse(pageData.has("slockNotificationThreadLaunchPayload"))
     }
 
     @Test
