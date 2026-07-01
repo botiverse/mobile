@@ -4,20 +4,32 @@ import { webview } from '@kit.ArkWeb';
 
 const kSrc = 'src';
 const kAllowScripts = 'allowScripts';
+const kAllowNavigation = 'allowNavigation';
+const kDomStorageEnabled = 'domStorageEnabled';
+const kCacheEnabled = 'cacheEnabled';
+const kEphemeral = 'ephemeral';
+const kInjectedJavaScript = 'injectedJavaScript';
 const kLoadSuccess = 'loadSuccess';
 const kLoadFailure = 'loadFailure';
 const kNavigationBlocked = 'navigationBlocked';
+const kUrlChange = 'urlChange';
 
 @Observed
 export class SlockSandboxWebView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockSandboxWebView';
   src: string = '';
   allowScripts: boolean = true;
+  allowNavigation: boolean = false;
+  domStorageEnabled: boolean = false;
+  cacheEnabled: boolean = false;
+  ephemeral: boolean = true;
+  injectedJavaScript: string = '';
   renderRevision: number = 0;
   readonly controller: webview.WebviewController = new webview.WebviewController();
   private loadSuccessCallback: KuiklyRenderCallback | null = null;
   private loadFailureCallback: KuiklyRenderCallback | null = null;
   private navigationBlockedCallback: KuiklyRenderCallback | null = null;
+  private urlChangeCallback: KuiklyRenderCallback | null = null;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -36,6 +48,21 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
       case kAllowScripts:
         this.updateAllowScripts(normalizeBoolean(propValue, true));
         return true;
+      case kAllowNavigation:
+        this.updateAllowNavigation(normalizeBoolean(propValue, false));
+        return true;
+      case kDomStorageEnabled:
+        this.updateDomStorageEnabled(normalizeBoolean(propValue, false));
+        return true;
+      case kCacheEnabled:
+        this.updateCacheEnabled(normalizeBoolean(propValue, false));
+        return true;
+      case kEphemeral:
+        this.updateEphemeral(normalizeBoolean(propValue, true));
+        return true;
+      case kInjectedJavaScript:
+        this.updateInjectedJavaScript(normalizeText(propValue));
+        return true;
       case kLoadSuccess:
         this.loadSuccessCallback = propValue as KuiklyRenderCallback;
         return true;
@@ -44,6 +71,9 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
         return true;
       case kNavigationBlocked:
         this.navigationBlockedCallback = propValue as KuiklyRenderCallback;
+        return true;
+      case kUrlChange:
+        this.urlChangeCallback = propValue as KuiklyRenderCallback;
         return true;
       default:
         return super.setProp(propKey, propValue);
@@ -65,6 +95,10 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     return sameDocumentUrl(this.src, target);
   }
 
+  shouldAllowNavigation(url: string | null | undefined): boolean {
+    return this.allowNavigation || this.isAllowedMainDocumentUrl(url);
+  }
+
   notifyLoadSuccess(): void {
     this.loadSuccessCallback?.({});
   }
@@ -75,6 +109,10 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
 
   notifyNavigationBlocked(url: string): void {
     this.navigationBlockedCallback?.({ url });
+  }
+
+  notifyUrlChange(url: string): void {
+    this.urlChangeCallback?.({ url });
   }
 
   private updateSrc(nextSrc: string): void {
@@ -94,6 +132,42 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.bumpRenderRevision();
   }
 
+  private updateAllowNavigation(nextAllowNavigation: boolean): void {
+    if (this.allowNavigation === nextAllowNavigation) {
+      return;
+    }
+    this.allowNavigation = nextAllowNavigation;
+    this.bumpRenderRevision();
+  }
+
+  private updateDomStorageEnabled(nextDomStorageEnabled: boolean): void {
+    if (this.domStorageEnabled === nextDomStorageEnabled) {
+      return;
+    }
+    this.domStorageEnabled = nextDomStorageEnabled;
+    this.bumpRenderRevision();
+  }
+
+  private updateCacheEnabled(nextCacheEnabled: boolean): void {
+    if (this.cacheEnabled === nextCacheEnabled) {
+      return;
+    }
+    this.cacheEnabled = nextCacheEnabled;
+    this.bumpRenderRevision();
+  }
+
+  private updateEphemeral(nextEphemeral: boolean): void {
+    if (this.ephemeral === nextEphemeral) {
+      return;
+    }
+    this.ephemeral = nextEphemeral;
+    this.bumpRenderRevision();
+  }
+
+  private updateInjectedJavaScript(nextInjectedJavaScript: string): void {
+    this.injectedJavaScript = nextInjectedJavaScript;
+  }
+
   private bumpRenderRevision(): void {
     this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
     this.updateArkUI();
@@ -110,19 +184,27 @@ export struct SlockSandboxWebViewComponent {
         Web({
           src: this.renderView.src,
           controller: this.renderView.controller,
-          incognitoMode: true,
+          incognitoMode: this.renderView.ephemeral,
         })
           .width('100%')
           .height('100%')
           .javaScriptAccess(this.renderView.allowScripts)
-          .domStorageAccess(false)
+          .domStorageAccess(this.renderView.domStorageEnabled)
+          .cacheMode(this.renderView.cacheEnabled ? CacheMode.Default : CacheMode.Online)
           .databaseAccess(false)
           .fileAccess(false)
           .geolocationAccess(false)
           .onlineImageAccess(true)
           .multiWindowAccess(false)
-          .onPageEnd(() => {
+          .runJavaScriptOnDocumentStart(this.renderView.allowScripts && this.renderView.injectedJavaScript.length > 0
+            ? [{ script: this.renderView.injectedJavaScript, scriptRules: ['*'] }]
+            : [])
+          .onPageEnd((event) => {
+            this.renderView.notifyUrlChange(event.url);
             this.renderView.notifyLoadSuccess();
+          })
+          .onPageBegin((event) => {
+            this.renderView.notifyUrlChange(event.url);
           })
           .onErrorReceive((event) => {
             this.renderView.notifyLoadFailure(JSON.stringify(event));
@@ -135,7 +217,8 @@ export struct SlockSandboxWebViewComponent {
           })
           .onOverrideUrlLoading((request) => {
             const url = request.getRequestUrl();
-            if (this.renderView.isAllowedMainDocumentUrl(url)) {
+            if (this.renderView.shouldAllowNavigation(url)) {
+              this.renderView.notifyUrlChange(url);
               return false;
             }
             this.renderView.notifyNavigationBlocked(url);

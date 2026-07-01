@@ -5,9 +5,15 @@
 
 static NSString *const SlockSandboxWebViewSrcProp = @"src";
 static NSString *const SlockSandboxWebViewAllowScriptsProp = @"allowScripts";
+static NSString *const SlockSandboxWebViewAllowNavigationProp = @"allowNavigation";
+static NSString *const SlockSandboxWebViewDomStorageEnabledProp = @"domStorageEnabled";
+static NSString *const SlockSandboxWebViewCacheEnabledProp = @"cacheEnabled";
+static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
+static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
 static NSString *const SlockSandboxWebViewLoadSuccessProp = @"loadSuccess";
 static NSString *const SlockSandboxWebViewLoadFailureProp = @"loadFailure";
 static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBlocked";
+static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
 
 @interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate>
 
@@ -15,9 +21,15 @@ static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBl
 @property (nonatomic, copy) NSString *src;
 @property (nonatomic, strong) NSURL *allowedURL;
 @property (nonatomic, assign) BOOL allowScripts;
+@property (nonatomic, assign) BOOL allowNavigation;
+@property (nonatomic, assign) BOOL domStorageEnabled;
+@property (nonatomic, assign) BOOL cacheEnabled;
+@property (nonatomic, assign) BOOL ephemeral;
+@property (nonatomic, copy) NSString *injectedJavaScript;
 @property (nonatomic, copy) KuiklyRenderCallback loadSuccessCallback;
 @property (nonatomic, copy) KuiklyRenderCallback loadFailureCallback;
 @property (nonatomic, copy) KuiklyRenderCallback navigationBlockedCallback;
+@property (nonatomic, copy) KuiklyRenderCallback urlChangeCallback;
 
 @end
 
@@ -29,6 +41,11 @@ static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBl
     if (self = [super init]) {
         _src = @"";
         _allowScripts = YES;
+        _allowNavigation = NO;
+        _domStorageEnabled = NO;
+        _cacheEnabled = NO;
+        _ephemeral = YES;
+        _injectedJavaScript = @"";
         self.backgroundColor = UIColor.whiteColor;
         [self rebuildWebView];
     }
@@ -41,12 +58,24 @@ static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBl
         [self updateSrc:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewAllowScriptsProp]) {
         [self updateAllowScripts:[self boolFromValue:propValue defaultValue:YES]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewAllowNavigationProp]) {
+        [self updateAllowNavigation:[self boolFromValue:propValue defaultValue:NO]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewDomStorageEnabledProp]) {
+        [self updateDomStorageEnabled:[self boolFromValue:propValue defaultValue:NO]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewCacheEnabledProp]) {
+        [self updateCacheEnabled:[self boolFromValue:propValue defaultValue:NO]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewEphemeralProp]) {
+        [self updateEphemeral:[self boolFromValue:propValue defaultValue:YES]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewInjectedJavaScriptProp]) {
+        [self updateInjectedJavaScript:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadSuccessProp]) {
         self.loadSuccessCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadFailureProp]) {
         self.loadFailureCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewNavigationBlockedProp]) {
         self.navigationBlockedCallback = propValue;
+    } else if ([propKey isEqualToString:SlockSandboxWebViewUrlChangeProp]) {
+        self.urlChangeCallback = propValue;
     }
 }
 
@@ -68,7 +97,10 @@ decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
 decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *targetURL = navigationAction.request.URL;
     BOOL isMainFrame = navigationAction.targetFrame == nil || navigationAction.targetFrame.isMainFrame;
-    if (isMainFrame && ![self isAllowedMainDocumentURL:targetURL]) {
+    if (isMainFrame && self.urlChangeCallback) {
+        self.urlChangeCallback(@{ @"url" : targetURL.absoluteString ?: @"" });
+    }
+    if (isMainFrame && !self.allowNavigation && ![self isAllowedMainDocumentURL:targetURL]) {
         [self notifyNavigationBlocked:targetURL.absoluteString ?: @""];
         decisionHandler(WKNavigationActionPolicyCancel);
         return;
@@ -107,9 +139,22 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     [self.webView removeFromSuperview];
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    configuration.websiteDataStore =
+        self.ephemeral ? [WKWebsiteDataStore nonPersistentDataStore] : [WKWebsiteDataStore defaultDataStore];
+    WKUserContentController *userContentController = [[WKUserContentController alloc] init];
+    if (self.allowScripts && self.injectedJavaScript.length > 0) {
+        WKUserScript *script =
+            [[WKUserScript alloc] initWithSource:self.injectedJavaScript
+                                   injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                forMainFrameOnly:NO];
+        [userContentController addUserScript:script];
+    }
+    configuration.userContentController = userContentController;
     configuration.allowsInlineMediaPlayback = YES;
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+    if (@available(iOS 10.0, *)) {
+        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll;
+    }
     if (@available(iOS 14.0, *)) {
         WKWebpagePreferences *pagePreferences = [[WKWebpagePreferences alloc] init];
         pagePreferences.allowsContentJavaScript = self.allowScripts;
@@ -143,6 +188,39 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     [self rebuildWebView];
 }
 
+- (void)updateAllowNavigation:(BOOL)allowNavigation {
+    self.allowNavigation = allowNavigation;
+}
+
+- (void)updateDomStorageEnabled:(BOOL)domStorageEnabled {
+    if (self.domStorageEnabled == domStorageEnabled) {
+        return;
+    }
+    self.domStorageEnabled = domStorageEnabled;
+    [self rebuildWebView];
+}
+
+- (void)updateCacheEnabled:(BOOL)cacheEnabled {
+    self.cacheEnabled = cacheEnabled;
+}
+
+- (void)updateEphemeral:(BOOL)ephemeral {
+    if (self.ephemeral == ephemeral) {
+        return;
+    }
+    self.ephemeral = ephemeral;
+    [self rebuildWebView];
+}
+
+- (void)updateInjectedJavaScript:(NSString *)injectedJavaScript {
+    NSString *nextInjectedJavaScript = injectedJavaScript ?: @"";
+    if ([self.injectedJavaScript isEqualToString:nextInjectedJavaScript]) {
+        return;
+    }
+    self.injectedJavaScript = nextInjectedJavaScript;
+    [self rebuildWebView];
+}
+
 - (void)updateSrc:(NSString *)src {
     NSString *nextSrc = src.length > 0 ? src : @"";
     if ([self.src isEqualToString:nextSrc]) {
@@ -166,7 +244,9 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
         [self notifyLoadFailure:@"invalid_preview_url"];
         return;
     }
-    [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+    NSURLRequestCachePolicy cachePolicy =
+        self.cacheEnabled ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData;
+    [self.webView loadRequest:[NSURLRequest requestWithURL:url cachePolicy:cachePolicy timeoutInterval:60.0]];
 }
 
 - (BOOL)isAllowedMainDocumentURL:(NSURL *)targetURL {

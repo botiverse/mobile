@@ -23,9 +23,15 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var loadedSrc: String = ""
     private var allowedUri: Uri? = null
     private var allowScripts: Boolean = true
+    private var allowNavigation: Boolean = false
+    private var domStorageEnabled: Boolean = false
+    private var cacheEnabled: Boolean = false
+    private var ephemeral: Boolean = true
+    private var injectedJavaScript: String = ""
     private var loadSuccessCallback: KuiklyRenderCallback? = null
     private var loadFailureCallback: KuiklyRenderCallback? = null
     private var navigationBlockedCallback: KuiklyRenderCallback? = null
+    private var urlChangeCallback: KuiklyRenderCallback? = null
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -42,6 +48,26 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateAllowScripts(propValue.toBooleanValue(default = true))
                 true
             }
+            PROP_ALLOW_NAVIGATION -> {
+                updateAllowNavigation(propValue.toBooleanValue(default = false))
+                true
+            }
+            PROP_DOM_STORAGE_ENABLED -> {
+                updateDomStorageEnabled(propValue.toBooleanValue(default = false))
+                true
+            }
+            PROP_CACHE_ENABLED -> {
+                updateCacheEnabled(propValue.toBooleanValue(default = false))
+                true
+            }
+            PROP_EPHEMERAL -> {
+                updateEphemeral(propValue.toBooleanValue(default = true))
+                true
+            }
+            PROP_INJECTED_JAVASCRIPT -> {
+                updateInjectedJavaScript(propValue.toString())
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -52,6 +78,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             EVENT_NAVIGATION_BLOCKED -> {
                 navigationBlockedCallback = propValue as? KuiklyRenderCallback
+                true
+            }
+            EVENT_URL_CHANGE -> {
+                urlChangeCallback = propValue as? KuiklyRenderCallback
                 true
             }
             else -> super.setProp(propKey, propValue)
@@ -67,6 +97,26 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateAllowScripts(true)
                 true
             }
+            PROP_ALLOW_NAVIGATION -> {
+                updateAllowNavigation(false)
+                true
+            }
+            PROP_DOM_STORAGE_ENABLED -> {
+                updateDomStorageEnabled(false)
+                true
+            }
+            PROP_CACHE_ENABLED -> {
+                updateCacheEnabled(false)
+                true
+            }
+            PROP_EPHEMERAL -> {
+                updateEphemeral(true)
+                true
+            }
+            PROP_INJECTED_JAVASCRIPT -> {
+                updateInjectedJavaScript("")
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -77,6 +127,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             EVENT_NAVIGATION_BLOCKED -> {
                 navigationBlockedCallback = null
+                true
+            }
+            EVENT_URL_CHANGE -> {
+                urlChangeCallback = null
                 true
             }
             else -> super.resetProp(propKey)
@@ -100,7 +154,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private fun configureWebView() {
         webView.settings.apply {
             javaScriptEnabled = allowScripts
-            domStorageEnabled = false
+            domStorageEnabled = this@SlockSandboxWebViewRenderView.domStorageEnabled
             databaseEnabled = false
             allowFileAccess = false
             allowContentAccess = false
@@ -108,7 +162,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             mediaPlaybackRequiresUserGesture = true
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
-            cacheMode = WebSettings.LOAD_NO_CACHE
+            cacheMode = if (cacheEnabled) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
                 allowFileAccessFromFileURLs = false
                 allowUniversalAccessFromFileURLs = false
@@ -133,7 +187,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
-                    if (url != null && !isAllowedMainDocumentUrl(url)) {
+                    url?.let { notifyUrlChange(it) }
+                    if (url != null && !allowNavigation && !isAllowedMainDocumentUrl(url)) {
                         view?.stopLoading()
                         notifyNavigationBlocked(url)
                     }
@@ -141,7 +196,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    if (url != null && isAllowedMainDocumentUrl(url)) {
+                    url?.let { notifyUrlChange(it) }
+                    if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
+                        evaluateInjectedJavaScript()
                         loadSuccessCallback?.invoke(emptyMap<String, Any>())
                     }
                 }
@@ -155,7 +212,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val url = request?.url?.toString()
-                    if (request?.isForMainFrame == true && shouldBlockNavigation(url)) {
+                    if (request?.isForMainFrame == true && !allowNavigation && shouldBlockNavigation(url)) {
                         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                     }
                     return super.shouldInterceptRequest(view, request)
@@ -196,6 +253,30 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         webView.settings.javaScriptEnabled = next
     }
 
+    private fun updateAllowNavigation(next: Boolean) {
+        allowNavigation = next
+    }
+
+    private fun updateDomStorageEnabled(next: Boolean) {
+        if (domStorageEnabled == next) return
+        domStorageEnabled = next
+        webView.settings.domStorageEnabled = next
+    }
+
+    private fun updateCacheEnabled(next: Boolean) {
+        if (cacheEnabled == next) return
+        cacheEnabled = next
+        webView.settings.cacheMode = if (next) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
+    }
+
+    private fun updateEphemeral(next: Boolean) {
+        ephemeral = next
+    }
+
+    private fun updateInjectedJavaScript(next: String) {
+        injectedJavaScript = next
+    }
+
     private fun updateSrc(next: String) {
         val normalized = next.trim()
         if (src == normalized) return
@@ -211,6 +292,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     private fun shouldBlockNavigation(url: String?): Boolean {
+        if (allowNavigation) return false
         val target = url ?: return true
         if (isAllowedMainDocumentUrl(target)) return false
         notifyNavigationBlocked(target)
@@ -236,6 +318,20 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         navigationBlockedCallback?.invoke(mapOf("url" to url))
     }
 
+    private fun notifyUrlChange(url: String) {
+        urlChangeCallback?.invoke(mapOf("url" to url))
+    }
+
+    private fun evaluateInjectedJavaScript() {
+        val script = injectedJavaScript.takeIf { allowScripts && it.isNotBlank() } ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            webView.evaluateJavascript(script, null)
+        } else {
+            @Suppress("DEPRECATION")
+            webView.loadUrl("javascript:$script")
+        }
+    }
+
     private fun Any.toBooleanValue(default: Boolean): Boolean =
         when (this) {
             is Boolean -> this
@@ -248,8 +344,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         const val VIEW_NAME = "SlockSandboxWebView"
         private const val PROP_SRC = "src"
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
+        private const val PROP_ALLOW_NAVIGATION = "allowNavigation"
+        private const val PROP_DOM_STORAGE_ENABLED = "domStorageEnabled"
+        private const val PROP_CACHE_ENABLED = "cacheEnabled"
+        private const val PROP_EPHEMERAL = "ephemeral"
+        private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"
         private const val EVENT_LOAD_SUCCESS = "loadSuccess"
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
+        private const val EVENT_URL_CHANGE = "urlChange"
     }
 }
