@@ -201,49 +201,22 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun compactInlineCodeUsesPlaceholderChipWhileLongCodeStaysText() {
+    fun inlineCodeStaysInMarkdownRendererInsteadOfSlockPlaceholders() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
         val body = "short `$shortCode` long `$longCode`"
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body)
         val annotator = slockMarkdownAnnotator(body)
 
-        assertTrue(shortCode.shouldRenderThreadInlineCodeAsChip())
-        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
-
-        val inlineContent = annotator.inlineContent?.invoke().orEmpty()
-        assertEquals(setOf("slock-code:6"), inlineContent.keys)
+        assertEquals(2, plan.inlineCodeMatchCount())
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
-        val inlineCodeAnnotations =
-            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
-        val inlineCodeText = inlineCodeAnnotations.map { annotated.text.substring(it.start, it.end) }
 
-        assertEquals(
-            "short inline-code long very-long-inline-code-value-that-should-wrap-normally",
-            annotated.text.withoutSlockMarkdownInlineCodeBreakOpportunities()
-        )
-        assertEquals(listOf(shortCode, longCode), inlineCodeText.map { it.withoutSlockMarkdownInlineCodeBreakOpportunities() })
-        assertTrue(inlineCodeText.last().contains(SlockMarkdownInlineCodeBreakOpportunity))
-        assertEquals(setOf("slock-code:6"), annotated.slockMarkdownInlineContentIds())
-        assertEquals("short ".length, inlineCodeAnnotations.first().start)
-        assertEquals("short inline-code long ".length, inlineCodeAnnotations.last().start)
-    }
-
-    @Test
-    fun longInlineCodeAddsInvisibleBreakOpportunitiesWithoutChangingVisibleText() {
-        val longCode = "reply/channel-markdown/msg-inline-visual/owner-key-consumes-thread-route-identity-only"
-        val body = "Long `$longCode` continues"
-        val annotated = buildSlockMarkdownParagraphAnnotatedString(body)
-        val codeAnnotation =
-            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length).single()
-        val renderedCode = annotated.text.substring(codeAnnotation.start, codeAnnotation.end)
-
-        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
-        assertEquals(longCode, renderedCode.withoutSlockMarkdownInlineCodeBreakOpportunities())
-        assertTrue(renderedCode.contains(SlockMarkdownInlineCodeBreakOpportunity))
-        assertTrue(renderedCode.contains("/${SlockMarkdownInlineCodeBreakOpportunity}"))
-        assertTrue(renderedCode.contains("-${SlockMarkdownInlineCodeBreakOpportunity}"))
-        assertFalse("short-code".withSlockMarkdownInlineCodeBreakOpportunities().contains(SlockMarkdownInlineCodeBreakOpportunity))
+        assertTrue(annotated.text.contains(shortCode))
+        assertTrue(annotated.text.contains(longCode))
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.getStringAnnotations(start = 0, end = annotated.length).isEmpty())
     }
 
     @Test
@@ -506,19 +479,14 @@ class SlockMarkdownTest {
             .withSlockMarkdownSpanFonts(SlockType.Body)
         val expectedInlineIds = tokenPlan.tokens.mapTo(mutableSetOf()) { it.id }
 
-        assertEquals("Ping @artin with mimo and bold in #markdown专修", annotated.text)
+        assertEquals("Ping @artin with  mimo  and bold in #markdown专修", annotated.text)
         assertEquals(
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.slockMarkdownClickableTags()
         )
         assertEquals(expectedInlineIds, annotated.slockMarkdownInlineContentIds())
         assertEquals(expectedInlineIds, annotator.inlineContent?.invoke().orEmpty().keys)
-        assertEquals(
-            listOf("mimo"),
-            annotated
-                .getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
-                .map { annotated.text.substring(it.start, it.end) }
-        )
+        assertEquals(expectedInlineIds, annotator.inlineContent?.invoke().orEmpty().keys)
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
@@ -585,48 +553,32 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeWidthsStayCompactAroundShortTokens() {
-        val shortTokenWidth = slockMarkdownInlineCodeWidthSp("mimo").value
-        val envVarWidth = slockMarkdownInlineCodeWidthSp("MIMO_API_KEY").value
-        val pathWidth = slockMarkdownInlineCodeWidthSp("~/.pi/agent/auth.json").value
-
-        assertTrue(shortTokenWidth in 54f..58f)
-        assertTrue(envVarWidth in 112f..120f)
-        assertTrue(pathWidth < 155f)
-    }
-
-    @Test
-    fun fullRendererTagLinksRemainAndCompactCodeUsesInlineContent() {
+    fun fullRendererTagLinksRemainAndCompactCodeUsesMarkdownCodeSpan() {
         val body = "Ping @artin for #405 and `mimo`"
         val annotator =
             slockMarkdownAnnotator(
                 content = body,
                 highlightedMentions = setOf("artin"),
-                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin")),
-                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
+                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
             )
 
         assertEquals(
-            setOf("slock:5", "slock:16", "slock-code:25"),
+            setOf("slock:5", "slock:16"),
             annotator.inlineContent?.invoke().orEmpty().keys
         )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
+        assertEquals("Ping @artin for #405 and  mimo ", annotated.text)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:5", "slock:16", "slock-code:25"), annotated.slockMarkdownInlineContentIds())
-        val inlineCodeText =
-            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
-                .map { annotated.text.substring(it.start, it.end) }
-        assertEquals(listOf("mimo"), inlineCodeText)
+        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownInlineContentIds())
     }
 
     @Test
-    fun richMarkdownFullRendererKeepsTagsWithOnlyCodeInlineContentPlaceholders() {
+    fun richMarkdownFullRendererKeepsTagsWhileCodeUsesMarkdownCodeSpan() {
         val body = "**Bold** text for @artin in #markdown专修 with `code`"
         val annotator =
             slockMarkdownAnnotator(
                 content = body,
-                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
                 isTagValid =
                     validThreadMarkdownTags(
                         knownChannels = setOf("markdown专修"),
@@ -635,20 +587,15 @@ class SlockMarkdownTest {
             )
 
         assertEquals(
-            setOf("slock:18", "slock:28", "slock-code:45"),
+            setOf("slock:18", "slock:28"),
             annotator.inlineContent?.invoke().orEmpty().keys
         )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
-        assertEquals("Bold text for @artin in #markdown专修 with code", annotated.text)
+        assertEquals("Bold text for @artin in #markdown专修 with  code ", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:18", "slock:28", "slock-code:45"), annotated.slockMarkdownInlineContentIds())
-        assertEquals(
-            listOf("code"),
-            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
-                .map { annotated.text.substring(it.start, it.end) }
-        )
+        assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownInlineContentIds())
     }
 
     @Test
@@ -671,43 +618,16 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeWidthHelpersStillMatchOldChromeConstants() {
-        val fallbackWidth = slockMarkdownInlineCodeWidthSp("mimo")
-        val inlineContent =
-            slockMarkdownAnnotator(
-                content = "Use `mimo`",
-                inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
-            ).inlineContent?.invoke().orEmpty()
-
-        assertTrue(fallbackWidth.value in 52f..56f)
-        assertTrue(inlineContent.containsKey("slock-code:4"))
-    }
-
-    @Test
-    fun compactInlineCodePlaceholderKeepsTextSafetySpace() {
-        val nearLimitCode = "MIMO_API_KEY"
-        val fallbackWidth = slockMarkdownInlineCodeWidthSp(nearLimitCode)
-        val narrowMeasuredWidth = (fallbackWidth.value - 6f).sp
-        val wideMeasuredWidth = (fallbackWidth.value + 4f).sp
-
-        assertTrue(nearLimitCode.shouldRenderThreadInlineCodeAsChip())
-        assertEquals(fallbackWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode))
-        assertEquals(fallbackWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode, narrowMeasuredWidth))
-        assertEquals(wideMeasuredWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode, wideMeasuredWidth))
-    }
-
-    @Test
-    fun onlyCompactInlineCodeTokensAreRegisteredAsInlineContent() {
+    fun inlineCodeTokensAreNotRegisteredAsSlockInlineContent() {
         val body = "`mimo` `very-long-inline-code-value-that-should-wrap-normally`"
         val plan = SlockMarkdownInlineTokenRegistry.plan(body)
         val inlineContent =
             slockMarkdownAnnotator(
-                content = body,
-                inlineCodeTextStyle = SlockType.Body
+                content = body
             ).inlineContent?.invoke().orEmpty()
 
-        assertEquals(listOf("mimo"), plan.inlineCodeTokens().map { it.code })
-        assertEquals(setOf("slock-code:0"), inlineContent.keys)
+        assertEquals(2, plan.inlineCodeMatchCount())
+        assertTrue(inlineContent.isEmpty())
     }
 
     @Test
