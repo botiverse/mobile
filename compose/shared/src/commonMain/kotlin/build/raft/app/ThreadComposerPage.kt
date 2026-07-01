@@ -1641,12 +1641,27 @@ private fun PendingMentionActionRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (canInvite) {
-                ComposerTextChip(if (executing) "Adding" else "Add", enabled = !executing, onClick = onInvite)
+                ComposerTextChip(
+                    if (executing) "Adding" else "Add",
+                    variant = ComposerTextChipVariant.Pink,
+                    enabled = !executing,
+                    onClick = onInvite
+                )
             }
             if (canNotify) {
-                ComposerTextChip(if (executing) "Notifying" else "Notify", enabled = !executing, onClick = onNotify)
+                ComposerTextChip(
+                    if (executing) "Notifying" else "Notify",
+                    variant = ComposerTextChipVariant.White,
+                    enabled = !executing,
+                    onClick = onNotify
+                )
             }
-            ComposerTextChip("Dismiss", enabled = !executing, onClick = onDismiss)
+            ComposerTextChip(
+                "Dismiss",
+                variant = ComposerTextChipVariant.MutedText,
+                enabled = !executing,
+                onClick = onDismiss
+            )
         }
     }
 }
@@ -2156,12 +2171,40 @@ private fun ComposerSendButton(
     )
 }
 
+private enum class ComposerTextChipVariant {
+    Pink,
+    White,
+    MutedText
+}
+
 @Composable
-private fun ComposerTextChip(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun ComposerTextChip(
+    text: String,
+    variant: ComposerTextChipVariant,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    if (variant == ComposerTextChipVariant.MutedText) {
+        val mutedColor = SlockColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
+        Text(
+            text = text,
+            modifier =
+                Modifier
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            style = SlockType.Caption.copy(color = mutedColor),
+            color = mutedColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
+
     SlockBrutalActionButton(
         label = text,
-        onClick = { if (enabled) onClick() },
-        backgroundColor = SlockColor.SurfaceWhite,
+        onClick = onClick,
+        enabled = enabled,
+        backgroundColor = if (variant == ComposerTextChipVariant.Pink) SlockColor.AccentPink else SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,
         shadowOffset = 2.dp,
