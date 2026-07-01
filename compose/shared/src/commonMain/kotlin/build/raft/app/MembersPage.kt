@@ -12,6 +12,7 @@ import build.raft.app.PixelAvatarDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
@@ -4522,10 +4523,10 @@ private fun MembersAgentProfileHeader(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 MembersDetailSectionDivider()
-                Text(
-                    text = "CHOOSE AVATAR",
-                    style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
+                SlockSectionEyebrow(
+                    label = "CHOOSE AVATAR",
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
                 )
                 MembersAgentAvatarChoiceGrid(
                     member = member,
@@ -7325,15 +7326,7 @@ private fun MembersDetailSectionTitle(
     title: String,
     modifier: Modifier = Modifier
 ) {
-    Text(
-        text = title.uppercase(),
-        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp)
-            .withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextMutedGray,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier
-    )
+    SlockSectionEyebrow(label = title, modifier = modifier)
 }
 
 @Composable
