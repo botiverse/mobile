@@ -22,6 +22,7 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -156,7 +157,7 @@ private fun LoginScreen() {
         when (result) {
             is SharedAuthResult.Success -> {
                 state = state.copy(submitting = false, errorMessage = null)
-                pager.openAuthPage(SLOCK_APP_SHELL_PAGE)
+                pager.openPostAuthRoute(result.data)
             }
             is SharedAuthResult.Failure ->
                 state = state.copy(submitting = false, errorMessage = result.message)
@@ -300,7 +301,7 @@ private fun RegisterScreen() {
         when (result) {
             is SharedAuthResult.Success -> {
                 state = state.copy(submitting = false, errorMessage = null)
-                pager.openAuthPage(SLOCK_APP_SHELL_PAGE)
+                pager.openPostAuthRoute(result.data)
             }
             is SharedAuthResult.Failure ->
                 state = state.copy(submitting = false, errorMessage = result.message)
@@ -1214,6 +1215,22 @@ private fun Pager.openAuthPage(pageName: String) {
             socialProviders = this.pageData.params.authRouteSocialProviders()
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
+}
+
+private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
+    if (session.selectedServerId.isNullOrBlank()) {
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+            .openPage(
+                AUTH_CHOOSE_SERVER_PAGE,
+                authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
+            )
+        return
+    }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(
+            SLOCK_APP_SHELL_PAGE,
+            appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
+        )
 }
 
 internal fun loginPageData(

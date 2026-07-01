@@ -432,6 +432,16 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellRouteCanSuppressPostAuthRestoreLanding() {
+        assertEquals(false, appShellPageData().optBoolean("slockSuppressRestoreLanding", false))
+        assertEquals(
+            true,
+            appShellPageData(suppressRestoreLanding = true)
+                .optBoolean("slockSuppressRestoreLanding", false)
+        )
+    }
+
+    @Test
     fun loginRouteCarriesOnlyAuthIntent() {
         val pageData =
             loginPageData(

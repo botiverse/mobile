@@ -405,6 +405,7 @@ private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
+private const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
@@ -1457,6 +1458,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val diagnosticsDeepLinkRequest = remember(pager.pageData.params.toString()) {
         pager.pageData.params.diagnosticsDeepLinkRequest()
     }
+    val suppressRestoreLanding = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(APP_SHELL_SUPPRESS_RESTORE_LANDING, false)
+    }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
@@ -1984,7 +1988,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
 
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
-            AppShellRestoreSplashContent()
+            if (suppressRestoreLanding) {
+                AppShellSilentRestoreContent()
+            } else {
+                AppShellRestoreSplashContent()
+            }
             return
         }
         SharedAuthGateState.AuthRequired -> {
@@ -8428,7 +8436,7 @@ private fun AuthChooseServerPageContent() {
                 skipInitialLoad = skipInitialLoad,
                 onReady = {
                     bridge.realtimeDisconnect("server_changed")
-                    pager.openAppShellReplacingCurrentPage()
+                    pager.openAppShellReplacingCurrentPage(suppressRestoreLanding = true)
                 },
                 onSignOut = {
                     bridge.realtimeDisconnect("logout")
@@ -8556,9 +8564,15 @@ private fun Pager.openAuthChooseServerPage() {
         .openPage(AUTH_CHOOSE_SERVER_PAGE, authChooseServerPageData(replaceCurrent = false, fromShell = true))
 }
 
-private fun Pager.openAppShellReplacingCurrentPage() {
+private fun Pager.openAppShellReplacingCurrentPage(suppressRestoreLanding: Boolean = false) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(SLOCK_APP_SHELL_PAGE, appShellPageData(replaceCurrent = true))
+        .openPage(
+            SLOCK_APP_SHELL_PAGE,
+            appShellPageData(
+                replaceCurrent = true,
+                suppressRestoreLanding = suppressRestoreLanding
+            )
+        )
 }
 
 private fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
@@ -8588,8 +8602,16 @@ internal fun authChooseServerPageData(
             }
         }
 
-internal fun appShellPageData(replaceCurrent: Boolean = false): JSONObject =
+internal fun appShellPageData(
+    replaceCurrent: Boolean = false,
+    suppressRestoreLanding: Boolean = false
+): JSONObject =
     slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
+        .apply {
+            if (suppressRestoreLanding) {
+                put(APP_SHELL_SUPPRESS_RESTORE_LANDING, true)
+            }
+        }
 
 private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): JSONObject =
     JSONObject().apply {
@@ -13222,6 +13244,16 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
     RealtimeCursorPolicy.updateAppliedSeq(this, event)
+
+@Composable
+private fun AppShellSilentRestoreContent() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+    )
+}
 
 @Composable
 private fun AppShellRestoreSplashContent() {
