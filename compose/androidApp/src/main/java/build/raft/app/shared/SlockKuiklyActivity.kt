@@ -49,6 +49,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.core.app.NotificationCompat
@@ -135,13 +136,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     handleKuiklySystemBack()
                 }
             }
-    private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
-            registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+    private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<PickVisualMediaRequest> =
+            registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
                 handleThreadAttachmentPickerResult(uris)
             }
-    private val threadFileAttachmentPickerLauncher: ActivityResultLauncher<String> =
-            registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-                handleThreadAttachmentPickerResult(uris)
+    private val threadFileAttachmentPickerLauncher: ActivityResultLauncher<Array<String>> =
+            registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                handleThreadAttachmentPickerResult(uris, persistable = true)
             }
 
     private val pageName: String
@@ -376,9 +377,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
         runCatching {
                     if (imageOnly) {
-                        threadImageAttachmentPickerLauncher.launch("image/*")
+                        threadImageAttachmentPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     } else {
-                        threadFileAttachmentPickerLauncher.launch("*/*")
+                        threadFileAttachmentPickerLauncher.launch(arrayOf("*/*"))
                     }
                 }
                 .onFailure { throwable ->
@@ -469,7 +472,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         return true
     }
 
-    private fun handleThreadAttachmentPickerResult(uris: List<Uri>) {
+    private fun handleThreadAttachmentPickerResult(uris: List<Uri>, persistable: Boolean = false) {
         val pending = pendingThreadAttachmentUpload ?: return
         pendingThreadAttachmentUpload = null
         SlockDiagnosticsLogger.record(
@@ -479,6 +482,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         if (uris.isEmpty()) {
             pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
+        }
+        if (persistable) {
+            persistThreadAttachmentUriPermissions(uris)
         }
         SlockKuiklyThreadAdapter.execute("thread-attachment-upload") {
                     val result =
@@ -501,6 +507,23 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         pending.callback?.invoke(result)
                     }
                 }
+    }
+
+    private fun persistThreadAttachmentUriPermissions(uris: List<Uri>) {
+        uris.forEach { uri ->
+            runCatching {
+                        contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                    .onFailure { throwable ->
+                        SlockDiagnosticsLogger.record(
+                                "SlockKuiklyAttachment",
+                                "picker_persist_permission_failed uriScheme=${uri.scheme.orEmpty()} error=${throwable.javaClass.simpleName}"
+                        )
+                    }
+        }
     }
 
     private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
