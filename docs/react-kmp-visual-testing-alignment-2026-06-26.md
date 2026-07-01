@@ -24,7 +24,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 - `compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt` (connected capture methods via `am instrument`)
 - `compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixturePages.kt` (KMP visual `@Page` registrations, compiled only with `-PslockVisualFixtures=true` / `SLOCK_VISUAL_FIXTURES=true`)
 - `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt` (Diagnostics 部分)
-- `tools/visual-testing/shared/sharedCases.json` (71 cases)
+- `third_party/slock-source/packages/visual-testing/shared/sharedCases.json` (canonical case manifest)
 - 06-24 publish run `2057eb39-20260624065206`: 52 / 50 different / 2 basic-pass
 
 ## Feature points inventory (06-23 → 06-26)
