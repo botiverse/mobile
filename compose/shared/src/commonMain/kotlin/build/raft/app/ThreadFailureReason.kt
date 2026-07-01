@@ -65,6 +65,16 @@ internal fun threadSendExceptionErrorCode(throwable: Throwable): String {
 internal fun threadSendExceptionErrorMessage(throwable: Throwable): String? =
     throwable.message?.takeIf { it.isNotBlank() }
 
+internal fun threadSendShouldSilentlyRetry(errorCode: String?, httpCode: Int? = null): Boolean {
+    if (httpCode == 408 || httpCode == 429 || httpCode in 500..599) return true
+    return when (errorCode?.trim()) {
+        "thread_send_timeout",
+        "thread_send_network",
+        "thread_send_exception" -> true
+        else -> false
+    }
+}
+
 internal fun threadFailureReasonMessage(errorBodyText: String?): String? {
     val cleanBody = errorBodyText?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val bodyObject = cleanBody.threadFailureJsonObjectOrNull()

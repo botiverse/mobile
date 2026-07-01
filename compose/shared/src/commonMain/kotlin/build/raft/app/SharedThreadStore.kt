@@ -248,6 +248,41 @@ internal class SharedThreadDataSource(
         return payload
     }
 
+    suspend fun cacheLocalSendFailure(
+        basePayload: KuiklyThreadScreenPayload,
+        localMessage: KuiklyThreadMessageItem,
+        errorCode: String?,
+        errorMessage: String?
+    ): KuiklyThreadScreenPayload {
+        val failedPayload =
+            basePayload
+                .withLocalSendStarted(localMessage)
+                .withLocalSendFailure(localMessage.id, errorCode, errorMessage)
+        cachePayload(failedPayload)
+        return failedPayload
+    }
+
+    suspend fun cacheLocalSendSuccess(
+        basePayload: KuiklyThreadScreenPayload,
+        localMessage: KuiklyThreadMessageItem,
+        sentPage: ThreadMessagesPage
+    ): KuiklyThreadScreenPayload {
+        if (sentPage.messages.isEmpty()) return basePayload
+        val pendingPayload = basePayload.withLocalSendStarted(localMessage)
+        val appended =
+            appendSharedThreadSentMessageFromPage(
+                basePayload = pendingPayload,
+                page = sentPage,
+                session = readSession(),
+                trustedReplyThreadChannelId = localMessage.pendingSendContext?.streamChannelId
+            )
+        val replaced =
+            appended
+                .withoutLocalSendMessage(localMessage.id)
+                .preserveStableTimelineFrom(pendingPayload)
+        return cacheCanonicalPayload(replaced)
+    }
+
     suspend fun commitAgentCreateActionCard(
         messageId: String,
         card: ThreadActionCard

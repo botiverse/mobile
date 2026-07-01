@@ -198,6 +198,7 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -224,6 +225,7 @@ private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
+private const val ThreadSendSilentRetryDelayMs = 900L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 private val ThreadMessageBodyTextStyle =
@@ -803,11 +805,6 @@ private fun buildThreadPendingSendMessage(
 private data class ThreadDeferredAttachmentSend(
     val localMessageId: String,
     val context: KuiklyThreadPendingSendContext
-)
-
-private data class ThreadLocalSendJob(
-    val job: Job,
-    val startedFromComposer: Boolean
 )
 
 @Serializable
@@ -1618,6 +1615,7 @@ private fun ThreadPageScreen() {
         initialPayload = payload,
         bridge = bridge,
         dataSource = dataSource,
+        threadSendScope = sharedStores.threadSendScope,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
         tasksDataStore = sharedStores.tasksDataStore,
@@ -2199,6 +2197,7 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
+    threadSendScope: CoroutineScope,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore? = null,
@@ -2419,9 +2418,6 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadJobs by remember(threadInstanceKey) {
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
-    var localSendJobs by remember(threadInstanceKey) {
-        mutableStateOf<Map<String, ThreadLocalSendJob>>(emptyMap())
-    }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentUploadFile>>(emptyMap())
     }
@@ -2446,12 +2442,10 @@ internal fun SharedThreadRouteContent(
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
-    val currentLocalSendJobs by rememberUpdatedState(localSendJobs)
 
     DisposableEffect(threadInstanceKey) {
         onDispose {
             currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
-            currentLocalSendJobs.values.forEach { sendJob -> sendJob.job.cancel() }
         }
     }
 
@@ -3283,6 +3277,14 @@ internal fun SharedThreadRouteContent(
         context: KuiklyThreadPendingSendContext,
         startedFromComposer: Boolean
     ) {
+        val sendBasePayload = threadViewModel.state.value.payload
+        val localMessage =
+            sendBasePayload.messages.firstOrNull { it.id == localMessageId }
+                ?: buildThreadPendingSendMessage(
+                    localMessageId = localMessageId,
+                    context = context,
+                    session = currentSession
+                )
         val sendStartedAt = TimeSource.Monotonic.markNow()
         bridge.performanceMarker(
             phase = "composer_send",
@@ -3301,23 +3303,29 @@ internal fun SharedThreadRouteContent(
                     "mentionChannelId" to context.mentionChannelId.orEmpty()
                 )
         )
-        localSendJobs[localMessageId]?.job?.cancel()
-        val sendJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
-            try {
-                fun markFailed(errorCode: String?, errorMessage: String? = null) {
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyLocalSendFailure(
-                            messageId = localMessageId,
-                            errorCode = errorCode,
-                            errorMessage = errorMessage
-                        )
+        threadSendScope.launch {
+            suspend fun markFailed(errorCode: String?, errorMessage: String? = null) {
+                dataSource.cacheLocalSendFailure(
+                    basePayload = sendBasePayload,
+                    localMessage = localMessage,
+                    errorCode = errorCode,
+                    errorMessage = errorMessage
+                )
+                threadViewModel.dispatch(
+                    SharedThreadIntent.ApplyLocalSendFailure(
+                        messageId = localMessageId,
+                        errorCode = errorCode,
+                        errorMessage = errorMessage
                     )
-                    if (startedFromComposer) {
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
-                    }
+                )
+                if (startedFromComposer) {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
+            }
 
-                val sendResponse =
+            var attempt = 1
+            while (true) {
+                val sendResult =
                     runCatchingPreservingCancellation {
                         dataSource.sendMessage(
                             channelId = context.channelId,
@@ -3325,32 +3333,45 @@ internal fun SharedThreadRouteContent(
                             asTask = context.asTask,
                             attachmentIds = context.attachmentIds
                         )
-                    }.getOrElse {
-                        val errorCode = threadSendExceptionErrorCode(it)
-                        val errorType = it::class.simpleName.orEmpty().ifBlank { "Throwable" }
-                        val durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds
-                        bridge.log(
-                            "thread_send_exception localMessageId=$localMessageId " +
-                                "channelId=${context.channelId} errorType=$errorType " +
-                                "mapped=$errorCode durationMs=$durationMs"
-                        )
-                        bridge.performanceMarker(
-                            phase = "composer_send",
-                            routeName = "kuikly_thread",
-                            event = "end",
-                            threadId = context.channelId,
-                            durationMs = durationMs,
-                            metadata =
-                                mapOf(
-                                    "result" to "exception",
-                                    "code" to errorCode,
-                                    "errorType" to errorType,
-                                    "localMessageId" to localMessageId
-                                )
-                        )
-                        markFailed(errorCode, threadSendExceptionErrorMessage(it))
-                        return@launch
                     }
+                val sendException = sendResult.exceptionOrNull()
+                if (sendException != null) {
+                    val errorCode = threadSendExceptionErrorCode(sendException)
+                    val errorType = sendException::class.simpleName.orEmpty().ifBlank { "Throwable" }
+                    val durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds
+                    bridge.log(
+                        "thread_send_exception localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} errorType=$errorType " +
+                            "mapped=$errorCode attempt=$attempt durationMs=$durationMs"
+                    )
+                    if (attempt == 1 && threadSendShouldSilentlyRetry(errorCode)) {
+                        bridge.log(
+                            "thread_send_silent_retry localMessageId=$localMessageId " +
+                                "channelId=${context.channelId} reason=$errorCode attempt=$attempt"
+                        )
+                        attempt += 1
+                        delay(ThreadSendSilentRetryDelayMs)
+                        continue
+                    }
+                    bridge.performanceMarker(
+                        phase = "composer_send",
+                        routeName = "kuikly_thread",
+                        event = "end",
+                        threadId = context.channelId,
+                        durationMs = durationMs,
+                        metadata =
+                            mapOf(
+                                "result" to "exception",
+                                "code" to errorCode,
+                                "errorType" to errorType,
+                                "attempt" to attempt.toString(),
+                                "localMessageId" to localMessageId
+                            )
+                    )
+                    markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
+                    return@launch
+                }
+                val sendResponse = sendResult.getOrThrow()
                 val sentPage =
                     when (sendResponse) {
                         is ThreadApiResult.Success -> sendResponse.data
@@ -3360,6 +3381,15 @@ internal fun SharedThreadRouteContent(
                                     ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
                                     ?: "http_${sendResponse.code}"
                             val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
+                            if (attempt == 1 && threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
+                                bridge.log(
+                                    "thread_send_silent_retry localMessageId=$localMessageId " +
+                                        "channelId=${context.channelId} reason=$errorCode httpCode=${sendResponse.code} attempt=$attempt"
+                                )
+                                attempt += 1
+                                delay(ThreadSendSilentRetryDelayMs)
+                                continue
+                            }
                             bridge.performanceMarker(
                                 phase = "composer_send",
                                 routeName = "kuikly_thread",
@@ -3373,6 +3403,7 @@ internal fun SharedThreadRouteContent(
                                         "httpCode" to sendResponse.code.toString(),
                                         "contractCode" to sendResponse.contractCode.orEmpty(),
                                         "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
+                                        "attempt" to attempt.toString(),
                                         "localMessageId" to localMessageId
                                     )
                             )
@@ -3381,17 +3412,31 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 if (sentPage.messages.isEmpty()) {
+                    if (attempt == 1) {
+                        bridge.log(
+                            "thread_send_silent_retry localMessageId=$localMessageId " +
+                                "channelId=${context.channelId} reason=empty_response attempt=$attempt"
+                        )
+                        attempt += 1
+                        delay(ThreadSendSilentRetryDelayMs)
+                        continue
+                    }
                     bridge.performanceMarker(
                         phase = "composer_send",
                         routeName = "kuikly_thread",
                         event = "end",
                         threadId = context.channelId,
                         durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                        metadata = mapOf("result" to "empty", "localMessageId" to localMessageId)
+                        metadata = mapOf("result" to "empty", "attempt" to attempt.toString(), "localMessageId" to localMessageId)
                     )
                     markFailed("empty_response")
                     return@launch
                 }
+                dataSource.cacheLocalSendSuccess(
+                    basePayload = sendBasePayload,
+                    localMessage = localMessage,
+                    sentPage = sentPage
+                )
                 threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
                 bridge.performanceMarker(
                     phase = "composer_send",
@@ -3403,6 +3448,7 @@ internal fun SharedThreadRouteContent(
                         mapOf(
                             "result" to "success",
                             "messages" to sentPage.messages.size.toString(),
+                            "attempt" to attempt.toString(),
                             "localMessageId" to localMessageId
                         )
                 )
@@ -3416,14 +3462,9 @@ internal fun SharedThreadRouteContent(
                         SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
                     )
                 }
-            } finally {
-                localSendJobs = localSendJobs - localMessageId
+                return@launch
             }
         }
-        localSendJobs =
-            localSendJobs +
-                (localMessageId to ThreadLocalSendJob(sendJob, startedFromComposer))
-        sendJob.start()
     }
     fun markDeferredAttachmentSendFailed(errorCode: String?, errorMessage: String? = null) {
         val pending = deferredAttachmentSend ?: return
@@ -4541,13 +4582,6 @@ internal fun SharedThreadRouteContent(
                 action == "cancelLocalSend" && !itemId.isNullOrBlank() -> {
                     val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
                     if (message.isSendingLocalSend()) {
-                        localSendJobs[itemId]?.let { sendJob ->
-                            sendJob.job.cancel()
-                            localSendJobs = localSendJobs - itemId
-                            if (sendJob.startedFromComposer) {
-                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
-                            }
-                        }
                         deferredAttachmentSend
                             ?.takeIf { pending -> pending.localMessageId == itemId }
                             ?.let { pending ->

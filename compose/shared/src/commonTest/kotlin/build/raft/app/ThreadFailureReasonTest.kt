@@ -71,4 +71,15 @@ class ThreadFailureReasonTest {
             threadSendExceptionErrorCode(IllegalArgumentException("unexpected"))
         )
     }
+
+    @Test
+    fun silentRetryOnlyTargetsTransientSendFailures() {
+        assertEquals(true, threadSendShouldSilentlyRetry("thread_send_timeout"))
+        assertEquals(true, threadSendShouldSilentlyRetry("thread_send_network"))
+        assertEquals(true, threadSendShouldSilentlyRetry(null, httpCode = 500))
+        assertEquals(true, threadSendShouldSilentlyRetry(null, httpCode = 429))
+        assertEquals(false, threadSendShouldSilentlyRetry("thread_send_cancelled"))
+        assertEquals(false, threadSendShouldSilentlyRetry("body_too_large"))
+        assertEquals(false, threadSendShouldSilentlyRetry(null, httpCode = 400))
+    }
 }

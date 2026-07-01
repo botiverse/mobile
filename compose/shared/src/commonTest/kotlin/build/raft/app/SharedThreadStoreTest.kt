@@ -1573,6 +1573,63 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun dataSourceCachesLocalSendFailureAfterPageScopeEnds() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val basePayload =
+            basePayload().copy(
+                status = "content",
+                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
+            )
+        val localMessage = localPendingMessage("local-send-channel-1-1", "retry body")
+
+        dataSource.cacheLocalSendFailure(
+            basePayload = basePayload,
+            localMessage = localMessage,
+            errorCode = "thread_send_network",
+            errorMessage = "offline"
+        )
+
+        val cached = dataSource.cachedPayload("channel-1")
+        assertNotNull(cached)
+        val failed = cached.messages.first { it.id == localMessage.id }
+        assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
+        assertEquals("thread_send_network", failed.pendingSendErrorCode)
+        assertEquals("offline", failed.pendingSendErrorMessage)
+    }
+
+    @Test
+    fun dataSourceCachesLocalSendSuccessAfterPageScopeEnds() = runBlocking {
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val basePayload =
+            basePayload().copy(
+                status = "content",
+                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
+            )
+        val localMessage = localPendingMessage("local-send-channel-1-1", "sent body")
+
+        dataSource.cacheLocalSendSuccess(
+            basePayload = basePayload,
+            localMessage = localMessage,
+            sentPage = sentPage("server-1", "sent body")
+        )
+
+        val cached = dataSource.cachedPayload("channel-1")
+        assertNotNull(cached)
+        assertFalse(cached.messages.any { it.id == localMessage.id })
+        assertEquals(1, cached.messages.count { it.id == "server-1" })
+    }
+
+    @Test
     fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

@@ -26,6 +26,7 @@ import build.raft.app.network.SlockNetworkModule
 import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -46,7 +47,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val filePreviewStore: SlockFilePreviewStore,
-    val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
+    val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
+    val threadSendScope: CoroutineScope
 ) {
     private var homeStore: SharedHomeStore? = null
     private var homeActivityStore: SharedActivityStore? = null
@@ -260,7 +262,8 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     ),
                 filePreviewStore = SlockFilePreviewStore(),
-                realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
+                realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
+                threadSendScope = CoroutineScope(SupervisorJob())
             ).also { provider ->
                 provider.installAuthSessionClearNotifyBridge { message ->
                     bridge.log("shared_auth_session $message")
