@@ -287,7 +287,7 @@ private fun ThreadFileRow(
 @Composable
 private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
     val thumbnailUrl = item.thumbnailUrl?.takeIf { it.isNotBlank() }
-    val isImage = item.mimeType.startsWith("image/")
+    val isImage = slockFilePreviewIsImageAttachment(fileName = item.name, mimeType = item.mimeType)
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -383,7 +383,7 @@ private fun KuiklyThreadFileItem.threadFileTypeIconName(): SlockLucideIconName {
     val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
     val lowerName = name.lowercase()
     return when {
-        normalizedMime.startsWith("image/") -> SlockLucideIconName.Image
+        slockFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType) -> SlockLucideIconName.Image
         normalizedMime.startsWith("video/") -> SlockLucideIconName.FileVideoCamera
         normalizedMime == "application/pdf" || lowerName.endsWith(".pdf") -> SlockLucideIconName.FileText
         normalizedMime.contains("zip") ||

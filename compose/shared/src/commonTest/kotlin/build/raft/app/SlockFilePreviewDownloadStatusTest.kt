@@ -338,6 +338,39 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun imageAttachmentDetectionFallsBackToFileExtension() {
+        assertTrue(
+            slockFilePreviewIsImageAttachment(
+                fileName = "picked-photo.PNG?download=1",
+                mimeType = "application/octet-stream"
+            )
+        )
+        assertTrue(
+            KuiklyThreadAttachmentItem(
+                id = "att-1",
+                name = "screen.webp",
+                mimeType = ""
+            ).isImageAttachment()
+        )
+    }
+
+    @Test
+    fun threadImageLazyPreviewKeepsThumbnailAsInitialImageUrl() {
+        val payload =
+            KuiklyThreadAttachmentItem(
+                id = "att-1",
+                name = "photo.jpg",
+                mimeType = "",
+                thumbnailUrl = "https://cdn.slock.test/thumb.jpg"
+            ).toThreadAttachmentLazyPreviewPayload(kind = "image")
+
+        assertEquals("loading", payload.kind)
+        assertEquals("Image preview", payload.title)
+        assertEquals("https://cdn.slock.test/thumb.jpg", payload.imageUrl)
+        assertEquals("att-1", payload.attachmentId)
+    }
+
+    @Test
     fun imageGalleryProgressLabelUsesOneBasedCurrentIndex() {
         val payload =
             SlockFilePreviewPayload(

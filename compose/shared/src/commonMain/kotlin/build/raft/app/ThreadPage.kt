@@ -5496,7 +5496,7 @@ private fun KuiklyThreadScreenPayload.findThreadAttachment(attachmentId: String)
 private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val images =
         items
-            .filter { it.mimeType.startsWith("image/", ignoreCase = true) }
+            .filter { slockFilePreviewIsImageAttachment(fileName = it.name, mimeType = it.mimeType) }
             .map { item ->
                 KuiklyThreadAttachmentItem(
                     id = item.attachmentId,
@@ -11969,7 +11969,7 @@ private fun ThreadMessageCommentRefChip(
 private val SharedThreadAttachmentImageSize = 92.dp
 
 internal fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
-    mimeType.startsWith("image/", ignoreCase = true)
+    slockFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
 
 private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
     mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)

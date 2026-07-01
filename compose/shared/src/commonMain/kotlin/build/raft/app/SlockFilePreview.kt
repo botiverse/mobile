@@ -983,6 +983,12 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
         name = name.ifBlank { "Attachment" },
         path = name,
         meta = genericAttachmentMetaLine(),
+        imageUrl =
+            if (kind == "image") {
+                thumbnailUrl?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            },
         message = SlockFilePreviewLoadingLabel,
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
@@ -1014,15 +1020,18 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             fileName = name.ifBlank { path.ifBlank { externalFileName } },
             mimeType = externalMimeType
         )
-    val wantsImage = externalMimeType.substringBefore(';').trim().startsWith("image/", ignoreCase = true)
+    val previewFileName = name.ifBlank { path.ifBlank { externalFileName } }
+    val wantsImage =
+        title.equals("Image preview", ignoreCase = true) ||
+            slockFilePreviewIsImageAttachment(fileName = previewFileName, mimeType = externalMimeType)
     val wantsMp4Video =
         slockFilePreviewIsMp4VideoAttachment(
-            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            fileName = previewFileName,
             mimeType = externalMimeType
         )
     val wantsHtml =
         slockFilePreviewIsHtmlAttachment(
-            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            fileName = previewFileName,
             mimeType = externalMimeType
         )
     val wantsText =
@@ -2118,7 +2127,7 @@ internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): Slo
     val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
     return when {
         payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
-        mime.startsWith("image/") || extension in SlockFilePreviewImageExtensions ->
+        slockFilePreviewIsImageAttachment(fileName = fileName, mimeType = mime) ->
             SlockLucideIconName.FileImage
         mime.startsWith("video/") || extension in SlockFilePreviewVideoExtensions ->
             SlockLucideIconName.FileVideoCamera
@@ -2143,6 +2152,12 @@ internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): Slo
             SlockLucideIconName.FileText
         else -> SlockLucideIconName.File
     }
+}
+
+internal fun slockFilePreviewIsImageAttachment(fileName: String, mimeType: String): Boolean {
+    val mime = mimeType.substringBefore(';').trim().lowercase()
+    val extension = fileName.substringBefore('?').substringBefore('#').substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return mime.startsWith("image/") || extension in SlockFilePreviewImageExtensions
 }
 
 private val SlockFilePreviewImageExtensions =
