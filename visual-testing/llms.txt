@@ -1,8 +1,8 @@
 # Slock Visual Testing
 
-Generated: 2026-07-01 17:37:32 UTC
-Latest run: 1c6dce5ad-20260701173710
-Latest commit: 1c6dce5ad-20260701173710
+Generated: 2026-07-01 18:13:59 UTC
+Latest run: 1c6dce5ad-20260701181253
+Latest commit: 1c6dce5ad-20260701181253
 Commit subject: Remove CLI agent API compatibility rewrite (#3582)
 Providers: react vs android
 Summary: total 62, same 0, pass 0, basic-pass 3, different 58, missing 1
@@ -104,7 +104,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
-- 1c6dce5ad-20260701173710: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173710/component-matrix.json, report runs/1c6dce5ad-20260701173710/report.html
+- 1c6dce5ad-20260701181253: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181253/component-matrix.json, report runs/1c6dce5ad-20260701181253/report.html
 
 ## Baseline Gate
 
