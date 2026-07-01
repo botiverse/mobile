@@ -47,6 +47,44 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun filePreviewLaunchPayloadResolvesFromProcessHandoffStore() {
+        val previewId =
+            SlockFilePreviewLaunchPayloadStore.put(
+                SlockFilePreviewPayload(
+                    kind = "image",
+                    title = "Picked image",
+                    imageUrl = "file:///tmp/picked.png"
+                )
+            )
+        val pageData = slockFilePreviewLaunchPageData(previewId)
+
+        val trace =
+            slockFilePreviewResolveLaunchPayload(
+                source = pageData.optString("payload"),
+                loadPreviewPayload = SlockFilePreviewLaunchPayloadStore::get
+            )
+
+        assertEquals("success", trace.result)
+        assertEquals("Picked image", trace.payload.title)
+        assertEquals("file:///tmp/picked.png", trace.payload.imageUrl)
+    }
+
+    @Test
+    fun filePreviewLaunchPayloadReportsMissingPreviewWhenStoreMisses() {
+        val pageData = slockFilePreviewLaunchPageData("missing-preview")
+
+        val trace =
+            slockFilePreviewResolveLaunchPayload(
+                source = pageData.optString("payload"),
+                loadPreviewPayload = { null }
+            )
+
+        assertEquals("missing_preview", trace.result)
+        assertEquals("Preview unavailable", trace.payload.title)
+        assertEquals("preview_not_found", trace.payload.error)
+    }
+
+    @Test
     fun composerImageEraseRemovesFinalMatchingStroke() {
         val remaining =
             slockComposerImageEraseStrokes(

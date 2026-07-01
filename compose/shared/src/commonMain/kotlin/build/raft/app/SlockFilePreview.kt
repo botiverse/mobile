@@ -127,6 +127,16 @@ internal class SlockFilePreviewStore(
         entries[id]
 }
 
+internal object SlockFilePreviewLaunchPayloadStore {
+    private val store = SlockFilePreviewStore()
+
+    fun put(payload: SlockFilePreviewPayload): String =
+        store.put(payload)
+
+    fun get(id: String): SlockFilePreviewPayload? =
+        store.get(id)
+}
+
 @Serializable
 internal data class SlockFilePreviewPayload(
     val kind: String = "unsupported",
@@ -205,32 +215,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     val launchPayloadTrace =
         remember(pager.pageData.params.toString()) {
             val source = pager.pageData.params.optString("payload")
-            val startedAt = TimeSource.Monotonic.markNow()
-            val parsedLaunch =
-                source
-                    .takeIf { it.isNotBlank() }
-                    ?.let {
-                        runCatching { SlockFilePreviewJson.decodeFromString(WireSlockFilePreviewLaunchPayload.serializer(), it) }
-                    }
-            val previewId = parsedLaunch?.getOrNull()?.previewId.orEmpty()
-            val resolvedPayload = previewId.takeIf { it.isNotBlank() }?.let(sharedStores.filePreviewStore::get)
-            FilePreviewLaunchPayloadTrace(
-                payload =
-                    resolvedPayload ?: SlockFilePreviewPayload(
-                        title = "Preview unavailable",
-                        subtitle = "File preview",
-                        message = "Preview payload could not be loaded.",
-                        error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
-                    ),
-                responseBytes = source.encodeToByteArray().size,
-                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
-                result =
-                    when {
-                        resolvedPayload != null -> "success"
-                        parsedLaunch?.isSuccess == true -> "missing_preview"
-                        else -> "failure"
-                    }
-            )
+            slockFilePreviewResolveLaunchPayload(source, SlockFilePreviewLaunchPayloadStore::get)
         }
     LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
         bridge.log(
@@ -938,17 +923,47 @@ private fun slockDistanceToSegmentSquared(point: Offset, start: Offset, end: Off
     return point.slockDistanceSquaredTo(projection)
 }
 
-private data class FilePreviewLaunchPayloadTrace(
+internal data class FilePreviewLaunchPayloadTrace(
     val payload: SlockFilePreviewPayload,
     val responseBytes: Int,
     val durationMs: Long,
     val result: String
 )
 
+internal fun slockFilePreviewResolveLaunchPayload(
+    source: String,
+    loadPreviewPayload: (String) -> SlockFilePreviewPayload?
+): FilePreviewLaunchPayloadTrace {
+    val startedAt = TimeSource.Monotonic.markNow()
+    val parsedLaunch =
+        source
+            .takeIf { it.isNotBlank() }
+            ?.let {
+                runCatching { SlockFilePreviewJson.decodeFromString(WireSlockFilePreviewLaunchPayload.serializer(), it) }
+            }
+    val previewId = parsedLaunch?.getOrNull()?.previewId.orEmpty()
+    val resolvedPayload = previewId.takeIf { it.isNotBlank() }?.let(loadPreviewPayload)
+    return FilePreviewLaunchPayloadTrace(
+        payload =
+            resolvedPayload ?: SlockFilePreviewPayload(
+                title = "Preview unavailable",
+                subtitle = "File preview",
+                message = "Preview payload could not be loaded.",
+                error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
+            ),
+        responseBytes = source.encodeToByteArray().size,
+        durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+        result =
+            when {
+                resolvedPayload != null -> "success"
+                parsedLaunch?.isSuccess == true -> "missing_preview"
+                else -> "failure"
+            }
+    )
+}
+
 internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
-    val bridge = Utils.bridgeModule(pagerId)
-    val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
-    val previewId = sharedStores.filePreviewStore.put(payload)
+    val previewId = SlockFilePreviewLaunchPayloadStore.put(payload)
     val pageData = slockFilePreviewLaunchPageData(previewId)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
 }

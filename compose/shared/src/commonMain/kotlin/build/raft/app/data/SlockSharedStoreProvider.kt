@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
-import build.raft.app.SlockFilePreviewStore
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.model.AgentCreated
@@ -46,7 +45,6 @@ internal class SlockSharedStoreProvider private constructor(
     val homeSavedStateCache: SharedHomeSavedStateCache,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
-    val filePreviewStore: SlockFilePreviewStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val threadSendScope: CoroutineScope
 ) {
@@ -261,7 +259,6 @@ internal class SlockSharedStoreProvider private constructor(
                             namespace = SharedApiEnvironmentStore.Namespace
                         )
                     ),
-                filePreviewStore = SlockFilePreviewStore(),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
                 threadSendScope = CoroutineScope(SupervisorJob())
             ).also { provider ->
