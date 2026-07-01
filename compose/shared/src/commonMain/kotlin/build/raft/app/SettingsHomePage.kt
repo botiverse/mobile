@@ -10841,19 +10841,17 @@ private fun SharedHomeSavedPanel(
                         .background(SlockColor.SurfaceWhite),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                    pullToRefreshItem(
-                        state = pullToRefreshState,
-                        scrollState = listState,
-                        onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
-                        content = { pullProgress, isRefreshing, _ ->
-                            SlockRaftPullRefreshIndicator(
-                                pullProgress = pullProgress,
-                                isRefreshing = isRefreshing
-                            )
-                        }
-                    )
-                }
+                pullToRefreshItem(
+                    state = pullToRefreshState,
+                    scrollState = listState,
+                    onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
+                    content = { pullProgress, isRefreshing, _ ->
+                        SlockRaftPullRefreshIndicator(
+                            pullProgress = pullProgress,
+                            isRefreshing = isRefreshing
+                        )
+                    }
+                )
                 val hasSavedRows = state.items.isNotEmpty()
                 if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
                     item {

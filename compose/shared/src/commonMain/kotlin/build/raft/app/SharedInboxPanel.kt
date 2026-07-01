@@ -537,19 +537,17 @@ private fun SharedActivityList(
             modifier = Modifier.fillMaxSize().padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                pullToRefreshItem(
-                    state = pullToRefreshState,
-                    scrollState = listState,
-                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
-                    content = { pullProgress, isRefreshing, _ ->
-                        SlockRaftPullRefreshIndicator(
-                            pullProgress = pullProgress,
-                            isRefreshing = isRefreshing
-                        )
-                    }
-                )
-            }
+            pullToRefreshItem(
+                state = pullToRefreshState,
+                scrollState = listState,
+                onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+                content = { pullProgress, isRefreshing, _ ->
+                    SlockRaftPullRefreshIndicator(
+                        pullProgress = pullProgress,
+                        isRefreshing = isRefreshing
+                    )
+                }
+            )
             items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
                 val item = snapshot.items[index]
                 SharedActivityRow(
@@ -954,19 +952,17 @@ private fun SharedActivityRefreshableStateBody(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-            pullToRefreshItem(
-                state = pullToRefreshState,
-                scrollState = listState,
-                onRefresh = onRefresh,
-                content = { pullProgress, isRefreshing, _ ->
-                    SlockRaftPullRefreshIndicator(
-                        pullProgress = pullProgress,
-                        isRefreshing = isRefreshing
-                    )
-                }
-            )
-        }
+        pullToRefreshItem(
+            state = pullToRefreshState,
+            scrollState = listState,
+            onRefresh = onRefresh,
+            content = { pullProgress, isRefreshing, _ ->
+                SlockRaftPullRefreshIndicator(
+                    pullProgress = pullProgress,
+                    isRefreshing = isRefreshing
+                )
+            }
+        )
         item(key = "activity_state") {
             SharedActivityStateBody(
                 title = title,

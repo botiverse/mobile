@@ -444,9 +444,8 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homePullToRefreshFollowsPayloadRefreshCapability() {
-        assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true, platformSupportsPullToRefresh = true))
-        assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = false, platformSupportsPullToRefresh = true))
-        assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = true, platformSupportsPullToRefresh = false))
+        assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true))
+        assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = false))
     }
 
     @Test

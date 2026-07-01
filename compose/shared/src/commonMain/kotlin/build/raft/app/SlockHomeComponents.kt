@@ -270,10 +270,9 @@ private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
 private const val HomePullToRefreshEnabled = true
 
 internal fun homePullToRefreshEnabled(
-    contentRefreshEnabled: Boolean,
-    platformSupportsPullToRefresh: Boolean = slockPlatformSupportsKuiklyPullToRefreshItem()
+    contentRefreshEnabled: Boolean
 ): Boolean =
-    contentRefreshEnabled && HomePullToRefreshEnabled && platformSupportsPullToRefresh
+    contentRefreshEnabled && HomePullToRefreshEnabled
 
 internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
     contentRefreshing && !pullRefreshing

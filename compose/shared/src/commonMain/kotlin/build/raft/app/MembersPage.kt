@@ -2350,22 +2350,20 @@ internal fun MembersListContent(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
-            if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                pullToRefreshItem(
-                    state = pullToRefreshState,
-                    scrollState = listState,
-                    onRefresh = {
-                        pullRefreshActive = true
-                        onRefresh()
-                    },
-                    content = { pullProgress, isRefreshing, _ ->
-                        SlockRaftPullRefreshIndicator(
-                            pullProgress = pullProgress,
-                            isRefreshing = isRefreshing
-                        )
-                    }
-                )
-            }
+            pullToRefreshItem(
+                state = pullToRefreshState,
+                scrollState = listState,
+                onRefresh = {
+                    pullRefreshActive = true
+                    onRefresh()
+                },
+                content = { pullProgress, isRefreshing, _ ->
+                    SlockRaftPullRefreshIndicator(
+                        pullProgress = pullProgress,
+                        isRefreshing = isRefreshing
+                    )
+                }
+            )
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 SlockCollapsibleSectionHeader(
