@@ -284,6 +284,11 @@ internal fun homePullToRefreshEnabled(contentRefreshEnabled: Boolean): Boolean =
 internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
     contentRefreshing && !pullRefreshing
 
+internal fun homeShouldResetListPositionForServerSwitch(previousServerId: String?, currentServerId: String): Boolean =
+    !previousServerId.isNullOrBlank() &&
+        currentServerId.isNotBlank() &&
+        previousServerId != currentServerId
+
 @Composable
 private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -797,6 +802,15 @@ internal fun SlockStructuralHomeShell(
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listState) {
         onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
+    }
+    var listPositionServerId by remember { mutableStateOf(currentServerId) }
+    LaunchedEffect(currentServerId, listState) {
+        val previousServerId = listPositionServerId
+        listPositionServerId = currentServerId
+        if (homeShouldResetListPositionForServerSwitch(previousServerId, currentServerId)) {
+            listState.scrollToItem(0)
+            latestOnListPositionSnapshot(AppShellLazyListPosition())
+        }
     }
     val listScope = rememberCoroutineScope()
     var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }

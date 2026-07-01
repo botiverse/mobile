@@ -456,6 +456,15 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeListPositionResetsOnlyWhenSelectedServerChanges() {
+        assertFalse(homeShouldResetListPositionForServerSwitch(previousServerId = null, currentServerId = "server-1"))
+        assertFalse(homeShouldResetListPositionForServerSwitch(previousServerId = "", currentServerId = "server-1"))
+        assertFalse(homeShouldResetListPositionForServerSwitch(previousServerId = "server-1", currentServerId = "server-1"))
+        assertFalse(homeShouldResetListPositionForServerSwitch(previousServerId = "server-1", currentServerId = ""))
+        assertTrue(homeShouldResetListPositionForServerSwitch(previousServerId = "server-1", currentServerId = "server-2"))
+    }
+
+    @Test
     fun pullRefreshIndicatorShowsDragProgressBeforeRefreshing() {
         assertFalse(slockPullRefreshIndicatorVisible(pullProgress = 0f, isRefreshing = false))
         assertTrue(slockPullRefreshIndicatorVisible(pullProgress = 0.1f, isRefreshing = false))
