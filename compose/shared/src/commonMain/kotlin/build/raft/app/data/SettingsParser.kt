@@ -394,7 +394,10 @@ private data class WireSettingsAgent(
     val id: String,
     val name: String,
     val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val description: String? = null,
     val status: String = "inactive",
+    val runtime: String? = null,
     val machineId: String? = null,
     val creatorType: String? = null,
     val creatorId: String? = null,
@@ -416,6 +419,9 @@ private fun WireSettingsAgent.toSettingsComputerAgentSnapshot(): SettingsCompute
         name = label,
         statusLabel = status,
         ownerLabel = creatorId,
+        runtime = runtime,
+        avatarUrl = avatarUrl,
+        description = description,
     )
 }
 

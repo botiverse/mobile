@@ -910,6 +910,9 @@ data class SettingsComputerAgentSnapshot(
     val name: String,
     val statusLabel: String? = null,
     val ownerLabel: String? = null,
+    val runtime: String? = null,
+    val avatarUrl: String? = null,
+    val description: String? = null,
     val memberProfile: MemberProfile? = null
 )
 

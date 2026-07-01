@@ -27,6 +27,7 @@ import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.Presence
 import build.raft.app.model.RUNTIMES
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -148,11 +149,14 @@ internal data class KuiklySettingsAgentItem(
     val name: String = "",
     val statusLabel: String? = null,
     val ownerLabel: String? = null,
+    val runtimeLabel: String? = null,
+    val avatarWireValue: String? = null,
     val displayName: String? = null,
     val handle: String? = null,
     val description: String? = null,
     val presenceLabel: String? = null,
-    val roleLabel: String? = null
+    val roleLabel: String? = null,
+    val activityLabel: String? = null
 )
 
 @Composable
@@ -981,6 +985,9 @@ private fun VisualAgentRow(
     status: SlockAgentStatusIndicatorState?,
     onClick: (() -> Unit)?
 ) {
+    val displayName = item.displayLabel()
+    val subtitle = item.subtitleLabel()
+    val activityLabel = item.activityDisplayLabel(status)
     Row(
         modifier = Modifier
             .padding(horizontal = 20.dp)
@@ -990,20 +997,26 @@ private fun VisualAgentRow(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier = Modifier.size(28.dp).background(SlockColor.AccentCyan).border(1.dp, SlockColor.BorderBlack)
+        SlockAvatar(
+            avatarWireValue = item.avatarWireValue,
+            label = displayName,
+            avatarSize = 34.dp,
+            borderWidth = SlockStroke.Default
         )
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
-                item.displayName?.takeIf { it.isNotBlank() } ?: item.name,
+                displayName,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            item.ownerLabel?.takeIf { it.isNotBlank() }?.let {
+            subtitle?.let {
                 Text(
                     it,
                     style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
@@ -1013,7 +1026,25 @@ private fun VisualAgentRow(
                 )
             }
         }
-        SlockStatusIndicator(color = status?.color ?: SlockColor.BrandYellow, size = 10.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            SlockStatusIndicator(
+                color = status?.color ?: SlockColor.BrandYellow,
+                size = 10.dp,
+                pulsing = status?.pulsing == true
+            )
+            activityLabel?.let {
+                Text(
+                    it,
+                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
@@ -1201,8 +1232,10 @@ private fun visualSettingsComputerDetailPayload(
                 SettingsComputerAgentSnapshot(
                     id = "agent-product-ux",
                     name = "Product UX Designer",
-                    statusLabel = null,
-                    ownerLabel = "Codex CLI"
+                    statusLabel = "online",
+                    runtime = "codex",
+                    avatarUrl = "pixel:paint",
+                    description = "Reviews visual parity across surfaces."
                 )
             ),
         sections = emptyList(),
@@ -1212,7 +1245,7 @@ private fun visualSettingsComputerDetailPayload(
             agents =
                 payload.agents.map { agent ->
                     if (agent.id == "agent-product-ux") {
-                        agent.copy(presenceLabel = "online")
+                        agent.copy(presenceLabel = "online", activityLabel = "Online")
                     } else {
                         agent
                     }
@@ -1369,16 +1402,23 @@ private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
 
 private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
     val profile = memberProfile
+    val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
+    val runtimeLabel =
+        settingsComputerRuntimeDisplayName(runtime)
+            ?: profile?.roleDescription?.takeIf { it.isNotBlank() }
     return KuiklySettingsAgentItem(
         id = id,
         name = name,
         statusLabel = statusLabel,
         ownerLabel = ownerLabel,
-        displayName = profile?.displayName,
+        runtimeLabel = runtimeLabel,
+        avatarWireValue = profile?.avatarWireValueForAvatarSlot() ?: avatarUrl?.takeIf { it.isNotBlank() },
+        displayName = displayName,
         handle = profile?.handle,
-        description = profile?.description,
+        description = profile?.description ?: description,
         presenceLabel = profile?.presence?.name,
-        roleLabel = profile?.roleDescription
+        roleLabel = profile?.roleDescription,
+        activityLabel = statusLabel?.toSettingsAgentStatusLabel() ?: profile?.agentStatus?.label
     )
 }
 
@@ -1639,6 +1679,42 @@ internal fun KuiklySettingsAgentItem.settingsAgentFallbackStatusState(): SlockAg
         statusValue = statusLabel,
         fallbackPresence = presenceLabel.toSettingsAgentPresenceFallback()
     )
+
+private fun KuiklySettingsAgentItem.displayLabel(): String =
+    displayName?.takeIf { it.isNotBlank() }
+        ?: name.takeIf { it.isNotBlank() }
+        ?: handle?.takeIf { it.isNotBlank() }
+        ?: "Agent"
+
+private fun KuiklySettingsAgentItem.subtitleLabel(): String? =
+    runtimeLabel?.takeIf { it.isNotBlank() }
+        ?: roleLabel?.takeIf { it.isNotBlank() }
+        ?: handle?.takeIf { it.isNotBlank() }?.let { "@$it" }
+
+private fun KuiklySettingsAgentItem.activityDisplayLabel(status: SlockAgentStatusIndicatorState?): String? =
+    status?.status?.label
+        ?: activityLabel?.toSettingsAgentStatusLabel()
+        ?: statusLabel?.toSettingsAgentStatusLabel()
+
+private fun settingsComputerRuntimeDisplayName(runtime: String?): String? {
+    val normalized = runtime?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return RUNTIMES.firstOrNull { info ->
+        info.id.equals(normalized, ignoreCase = true) ||
+            info.displayName.equals(normalized, ignoreCase = true) ||
+            info.binary.equals(normalized, ignoreCase = true)
+    }?.displayName ?: normalized
+}
+
+private fun String.toSettingsAgentStatusLabel(): String =
+    trim()
+        .replace('-', ' ')
+        .replace('_', ' ')
+        .split(' ')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { part ->
+            part.replaceFirstChar { char -> char.uppercase() }
+        }
+        .ifBlank { this }
 
 private fun String?.toSettingsAgentPresenceFallback(): Presence =
     when (this?.trim()?.lowercase()) {

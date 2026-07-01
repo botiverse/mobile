@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import kotlinx.serialization.encodeToString
@@ -35,7 +36,16 @@ class SettingsComputersPayloadTest {
         val payload =
             KuiklySettingsComputerDetailPayload(
                 instanceId = "computer-detail",
-                agents = listOf(KuiklySettingsAgentItem(id = "agent-1", name = "Settings Agent")),
+                agents =
+                    listOf(
+                        KuiklySettingsAgentItem(
+                            id = "agent-1",
+                            name = "Settings Agent",
+                            runtimeLabel = "Codex CLI",
+                            avatarWireValue = "pixel:paint",
+                            activityLabel = "Working"
+                        )
+                    ),
                 canOpenAgents = true
             )
 
@@ -46,6 +56,42 @@ class SettingsComputersPayloadTest {
             )
 
         assertEquals(true, decoded.canOpenAgents)
+        assertEquals("Codex CLI", decoded.agents.single().runtimeLabel)
+        assertEquals("pixel:paint", decoded.agents.single().avatarWireValue)
+        assertEquals("Working", decoded.agents.single().activityLabel)
+    }
+
+    @Test
+    fun computerDetailPayloadMapperSurfacesAgentAvatarRuntimeAndActivity() {
+        val snapshot =
+            SettingsComputerDetailSnapshot(
+                computer =
+                    SettingsComputerSnapshot(
+                        id = "machine-1",
+                        name = "Builder Mac",
+                        daemonVersion = "0.53.0",
+                        online = true
+                    ),
+                workspaces = emptyList(),
+                agents =
+                    listOf(
+                        SettingsComputerAgentSnapshot(
+                            id = "agent-1",
+                            name = "Settings Agent",
+                            statusLabel = "working",
+                            runtime = "codex",
+                            avatarUrl = "pixel:robot"
+                        )
+                    ),
+                sections = emptyList()
+            )
+
+        val payload = ScreenLoadState.Content(snapshot).toComputerDetailPayload("machine-1", null)
+        val agent = payload.agents.single()
+
+        assertEquals("Codex CLI", agent.runtimeLabel)
+        assertEquals("pixel:robot", agent.avatarWireValue)
+        assertEquals("Working", agent.activityLabel)
     }
 
     @Test
