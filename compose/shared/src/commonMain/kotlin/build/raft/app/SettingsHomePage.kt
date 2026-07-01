@@ -8915,6 +8915,8 @@ private fun AppShellServerGateContent(
     AuthScaffold(
         contentTopPadding = 72.dp,
         contentScrollable = true,
+        topBarHorizontalPadding = 8.dp,
+        topBarBrandImagePadding = 0.dp,
         topLeadingContent = onBack?.let { back ->
             {
                 SlockBrutalIconButton(
@@ -9090,7 +9092,6 @@ private fun AppShellServerEmptyState(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AuthCenterMark()
         Text(
             text = "You don't have a server yet. Create one to unlock channels, agents, and activity in the app.",
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),

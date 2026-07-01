@@ -85,6 +85,8 @@ internal fun AuthScaffold(
     onDiagnosticsShortcut: (() -> Unit)? = null,
     contentTopPadding: Dp = 136.dp,
     contentScrollable: Boolean = false,
+    topBarHorizontalPadding: Dp = 16.dp,
+    topBarBrandImagePadding: Dp = 8.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -105,7 +107,7 @@ internal fun AuthScaffold(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        AuthTopBar(statusBarHeight, onBrandClick, topLeadingContent)
+        AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
         Box(
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
             contentAlignment = Alignment.TopCenter
@@ -147,6 +149,8 @@ internal fun AuthScaffold(
 private fun AuthTopBar(
     statusBarHeight: Float,
     onBrandClick: (() -> Unit)?,
+    horizontalPadding: Dp,
+    brandImagePadding: Dp,
     leadingContent: (@Composable () -> Unit)?
 ) {
     Box(
@@ -161,7 +165,7 @@ private fun AuthTopBar(
                 .padding(top = statusBarHeight.dp)
                 .fillMaxWidth()
                 .height(52.dp)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (leadingContent != null) {
@@ -173,7 +177,8 @@ private fun AuthTopBar(
                             Modifier.clickable { onBrandClick() }
                         } else {
                             Modifier
-                        }
+                        },
+                    imagePadding = brandImagePadding
                 )
             }
         }
@@ -181,7 +186,7 @@ private fun AuthTopBar(
 }
 
 @Composable
-private fun AuthSmallBrand(modifier: Modifier = Modifier) {
+private fun AuthSmallBrand(modifier: Modifier = Modifier, imagePadding: Dp = 8.dp) {
     Box(
         modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight),
         contentAlignment = Alignment.Center
@@ -189,7 +194,7 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier) {
         SlockCachedImage(
             source = RaftLogoAssetSource,
             contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding, vertical = 4.dp),
             contentScale = ContentScale.Fit
         )
     }
