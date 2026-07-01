@@ -151,18 +151,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   private setupKnoi(): void {
-    try {
-      setup('libshared.so', BuildProfile.DEBUG);
-      init();
-      hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
-    } catch (err) {
-      hilog.warn(
-        0x0000,
-        SLOCK_KNOI_LOG_TAG,
-        'KNOI setup failed; realtime will fall back to NAPI. Cause: %{public}s',
-        this.safeErrorMessage(err)
-      );
-    }
+    setup('libshared.so', BuildProfile.DEBUG);
+    init();
+    hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {

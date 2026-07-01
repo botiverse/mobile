@@ -1,5 +1,4 @@
 import { invoke } from '@kuiklybase/knoi';
-import Napi from 'libentry.so';
 
 export interface SlockRealtimeConnectDecision {
   shouldConnect: boolean;
@@ -26,8 +25,6 @@ export interface SlockRealtimeRawDecision {
 }
 
 class SlockOhosRealtimeSharedBridge {
-  private knoiDisabled: boolean = false;
-
   connectDecision(
     serverId: string,
     accessToken: string,
@@ -37,13 +34,6 @@ class SlockOhosRealtimeSharedBridge {
   ): SlockRealtimeConnectDecision {
     return this.invokeJson<SlockRealtimeConnectDecision>(
       'slockRealtimeKnoiConnectDecision',
-      () => Napi.slockRealtimeConnectDecision(
-        serverId,
-        accessToken,
-        requestedLastSeq,
-        forceReconnect,
-        connectionStateName
-      ),
       serverId,
       accessToken,
       requestedLastSeq,
@@ -55,7 +45,6 @@ class SlockOhosRealtimeSharedBridge {
   disconnectForSessionEnd(reason: string): boolean {
     return this.invokeValue<boolean>(
       'slockRealtimeKnoiDisconnectForSessionEnd',
-      () => Napi.slockRealtimeDisconnectForSessionEnd(reason),
       reason
     );
   }
@@ -63,7 +52,6 @@ class SlockOhosRealtimeSharedBridge {
   joinChannelDecision(channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
     return this.invokeJson<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiJoinChannelDecision',
-      () => Napi.slockRealtimeJoinChannelDecision(channelId, reason),
       channelId,
       reason
     );
@@ -72,7 +60,6 @@ class SlockOhosRealtimeSharedBridge {
   roomCommandDecision(action: string, channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
     return this.invokeJson<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiRoomCommandDecision',
-      () => Napi.slockRealtimeRoomCommandDecision(action, channelId, reason),
       action,
       channelId,
       reason
@@ -82,51 +69,33 @@ class SlockOhosRealtimeSharedBridge {
   rawDecision(eventName: string, rawPayload: string): SlockRealtimeRawDecision {
     return this.invokeJson<SlockRealtimeRawDecision>(
       'slockRealtimeKnoiRawDecision',
-      () => Napi.slockRealtimeRawDecision(eventName, rawPayload),
       eventName,
       rawPayload
     );
   }
 
   onAppShown(): void {
-    this.invokeVoid('slockRealtimeKnoiOnAppShown', () => Napi.slockRealtimeOnAppShown());
+    this.invokeVoid('slockRealtimeKnoiOnAppShown');
   }
 
   onAppHidden(): void {
-    this.invokeVoid('slockRealtimeKnoiOnAppHidden', () => Napi.slockRealtimeOnAppHidden());
+    this.invokeVoid('slockRealtimeKnoiOnAppHidden');
   }
 
-  private invokeJson<T>(name: string, fallback: () => T, ...args: Object[]): T {
-    return this.invokeValue<T>(name, fallback, ...args);
+  private invokeJson<T>(name: string, ...args: Object[]): T {
+    return this.invokeValue<T>(name, ...args);
   }
 
-  private invokeValue<T>(name: string, fallback: () => T, ...args: Object[]): T {
-    if (!this.knoiDisabled) {
-      try {
-        const result = invoke<T>(name, ...args);
-        if (typeof result === 'string') {
-          return JSON.parse(result) as T;
-        }
-        return result;
-      } catch (error) {
-        this.knoiDisabled = true;
-        console.warn(`[SlockOhosRealtime] knoi_call_failed name=${name} error=${JSON.stringify(error)}`);
-      }
+  private invokeValue<T>(name: string, ...args: Object[]): T {
+    const result = invoke<T>(name, ...args);
+    if (typeof result === 'string') {
+      return JSON.parse(result) as T;
     }
-    return fallback();
+    return result;
   }
 
-  private invokeVoid(name: string, fallback: () => void): void {
-    if (!this.knoiDisabled) {
-      try {
-        invoke<void>(name);
-        return;
-      } catch (error) {
-        this.knoiDisabled = true;
-        console.warn(`[SlockOhosRealtime] knoi_call_failed name=${name} error=${JSON.stringify(error)}`);
-      }
-    }
-    fallback();
+  private invokeVoid(name: string): void {
+    invoke<void>(name);
   }
 }
 
