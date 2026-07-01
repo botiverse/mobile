@@ -623,10 +623,10 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             id = "activity-agent-detail-command",
             type = "tool_start",
             title = "Running command",
-            body = "node tools/visual-testing/src/cli.mjs diff --case screens.members.agent-detail.activity",
+            body = "node scripts/slock-visual-testing.mjs diff --case screens.members.agent-detail.activity",
             timestamp = "2026-06-19T12:30:00Z",
             toolName = "shell",
-            toolInput = "node tools/visual-testing/src/cli.mjs diff --case screens.members.agent-detail.activity"
+            toolInput = "node scripts/slock-visual-testing.mjs diff --case screens.members.agent-detail.activity"
         ),
         AgentActivityEntry(
             id = "activity-agent-detail-report",

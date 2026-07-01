@@ -9,7 +9,7 @@ Implemented in `ad3/task258-visual-gating`.
 - Product `commonMain` keeps reusable visual fixture composables only where they wrap real product components; production builds no longer register the `compose_*_visual` pages.
 - `RouterPage` no longer links visual-only fixture routes from the production developer router.
 - `:shared:verifyNoProductionVisualPages` scans production source sets and is wired into `check`.
-- `tools/visual-testing/README.md` documents that Android connected captures must pass `-PslockVisualFixtures=true`.
+- `docs/visual-testing-android-provider.md` documents that Android connected captures must pass `-PslockVisualFixtures=true`; the CLI/manifest now live in `third_party/slock-source/packages/visual-testing`.
 
 ## Problem
 
