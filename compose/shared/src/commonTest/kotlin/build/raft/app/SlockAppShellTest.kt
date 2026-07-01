@@ -442,6 +442,17 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun postAuthRouteReturnsToAppShellForSessionRestore() {
+        val destination = postAuthRouteDestination()
+
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageName)
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageData.optString("pageName"))
+        assertEquals(true, destination.pageData.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals(true, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+        assertEquals(false, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
+    }
+
+    @Test
     fun loginRouteCarriesOnlyAuthIntent() {
         val pageData =
             loginPageData(
