@@ -1986,15 +1986,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return
         }
         SharedAuthGateState.AuthRequired -> {
-            AppShellAuthGateContent(
-                authDataSource = authDataSource,
-                message = authGateMessage,
-                onSignedIn = { session ->
-                    authGateMessage = null
-                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedIn(session))
-                },
-                onOpenDiagnostics = { pager.openAppShellDeveloper() }
-            )
+            LaunchedEffect(authGateMessage) {
+                pager.openLoginReplacingCurrentPage(authGateMessage)
+            }
+            AppShellRestoreSplashContent()
             return
         }
         is SharedAuthGateState.ServerRequired -> {
@@ -8353,267 +8348,6 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
     }
 
 @Composable
-private fun AppShellAuthGateContent(
-    authDataSource: SharedAuthDataSource,
-    message: String? = null,
-    onSignedIn: (StoredAuthSession) -> Unit,
-    onOpenDiagnostics: () -> Unit
-) {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    var mode by remember { mutableStateOf("login") }
-    val reducer = remember { LoginFormReducer() }
-    var state by remember { mutableStateOf(LoginFormState()) }
-    val registerReducer = remember { CreateAccountFormReducer() }
-    var registerState by remember { mutableStateOf(CreateAccountFormState()) }
-    val forgotPasswordReducer = remember { ForgotPasswordFormReducer() }
-    var forgotPasswordState by remember { mutableStateOf(ForgotPasswordFormState()) }
-    var pendingLogin by remember { mutableStateOf<PendingAppShellLogin?>(null) }
-    var pendingRegister by remember { mutableStateOf<PendingAppShellRegister?>(null) }
-    var pendingForgotPassword by remember { mutableStateOf<PendingAppShellForgotPassword?>(null) }
-    var pendingSocialAuth by remember { mutableStateOf<PendingAppShellSocialAuth?>(null) }
-    var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
-    val socialProviders = remember(pager.pageData.params.toString()) { pager.appShellSocialAuthProviders() }
-
-    LaunchedEffect(pendingLogin) {
-        val effect = pendingLogin ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
-        pendingLogin = null
-        when (result) {
-            is SharedAuthResult.Success -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                onSignedIn(result.data)
-            }
-            is SharedAuthResult.Failure ->
-                state = state.copy(submitting = false, errorMessage = result.message)
-            SharedAuthResult.Unauthenticated ->
-                state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
-        }
-    }
-
-    LaunchedEffect(pendingRegister) {
-        val effect = pendingRegister ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation {
-                authDataSource.register(
-                    name = effect.name,
-                    email = effect.email,
-                    password = effect.password
-                )
-            }.getOrElse {
-                SharedAuthResult.Failure(
-                    SharedAuthErrorCode.Unknown,
-                    "Create account could not finish setup. Try again."
-                )
-            }
-        pendingRegister = null
-        when (result) {
-            is SharedAuthResult.Success -> {
-                registerState = registerState.copy(submitting = false, errorMessage = null)
-                onSignedIn(result.data)
-            }
-            is SharedAuthResult.Failure ->
-                registerState = registerState.copy(submitting = false, errorMessage = result.message)
-            SharedAuthResult.Unauthenticated ->
-                registerState = registerState.copy(submitting = false, errorMessage = "Create account failed. Try again.")
-        }
-    }
-
-    LaunchedEffect(pendingForgotPassword) {
-        val effect = pendingForgotPassword ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
-                .getOrElse {
-                    SharedAuthResult.Failure(
-                        SharedAuthErrorCode.Unknown,
-                        "Reset password could not finish setup. Try again."
-                    )
-                }
-        pendingForgotPassword = null
-        forgotPasswordState =
-            when (result) {
-                is SharedAuthResult.Success ->
-                    forgotPasswordState.copy(submitting = false, sent = true, errorMessage = null)
-                is SharedAuthResult.Failure ->
-                    forgotPasswordState.copy(submitting = false, sent = false, errorMessage = result.message)
-                SharedAuthResult.Unauthenticated ->
-                    forgotPasswordState.copy(submitting = false, sent = false, errorMessage = "Reset password failed. Try again.")
-            }
-    }
-
-    LaunchedEffect(pendingSocialAuth) {
-        val effect = pendingSocialAuth ?: return@LaunchedEffect
-        val response = runCatching { bridge.socialAuth(effect.provider.appShellProviderId()) }.getOrNull()
-        pendingSocialAuth = null
-        socialSubmittingProvider = null
-        val code = response?.optString("code").orEmpty().toIntOrNull()
-        if (code == 0 || response?.optString("status") == "error") {
-            state = state.copy(
-                submitting = false,
-                errorMessage =
-                    response?.optString("message").takeUnless { it.isNullOrBlank() }
-                        ?: "Google sign-in is unavailable. Try email sign-in."
-            )
-        } else {
-            state = state.copy(submitting = false, errorMessage = null)
-        }
-    }
-
-    fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
-        slockLogDebug(
-            "SlockAuth",
-            "login_submit_entry surface=app_shell emailLength=${emailValue.length} passwordPresent=${passwordValue.isNotBlank()}"
-        )
-        if (
-            isLoginSubmitInFlight(
-                submitting = state.submitting,
-                pendingLogin = pendingLogin != null,
-                socialSubmitting = socialSubmittingProvider != null
-            )
-        ) {
-            slockLogDebug("SlockAuth", "login_submit_skip surface=app_shell reason=in_flight")
-            return
-        }
-        val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
-        slockLogDebug(
-            "SlockAuth",
-            "login_submit_reduce surface=app_shell emailError=${update.state.emailFormatError != null} passwordError=${update.state.passwordError != null} effect=${update.effect.loginEffectName()}"
-        )
-        state = update.state
-        when (val effect = update.effect) {
-            is LoginFormEffect.SubmitLogin ->
-                pendingLogin =
-                    PendingAppShellLogin(
-                        nonce = (pendingLogin?.nonce ?: 0) + 1,
-                        email = effect.email,
-                        password = effect.password
-                    )
-            LoginFormEffect.FocusEmail -> Unit
-            LoginFormEffect.FocusPassword -> Unit
-            null -> Unit
-        }
-    }
-
-    when (mode) {
-        "register" ->
-            RegisterContent(
-                name = registerState.name,
-                email = registerState.email,
-                password = registerState.password,
-                submitting = registerState.submitting,
-                errorMessage = registerState.errorMessage,
-                nameError = registerState.nameError,
-                emailError = registerState.emailFormatError,
-                passwordError = registerState.passwordError,
-                onNameChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.NameChanged(it)).state },
-                onEmailChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.EmailChanged(it)).state },
-                onPasswordChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.PasswordChanged(it)).state },
-                onSubmit = {
-                    if (pendingRegister == null) {
-                        val update = registerReducer.reduce(registerState, CreateAccountFormEvent.Submit)
-                        registerState = update.state
-                        when (val effect = update.effect) {
-                            is CreateAccountFormEffect.SubmitCreateAccount ->
-                                pendingRegister =
-                                    PendingAppShellRegister(
-                                        nonce = (pendingRegister?.nonce ?: 0) + 1,
-                                        name = effect.name,
-                                        email = effect.email,
-                                        password = effect.password
-                                    )
-                            CreateAccountFormEffect.FocusName -> Unit
-                            CreateAccountFormEffect.FocusEmail -> Unit
-                            CreateAccountFormEffect.FocusPassword -> Unit
-                            null -> Unit
-                        }
-                    }
-                },
-                onBackToSignIn = { mode = "login" },
-                onOpenDiagnostics = onOpenDiagnostics
-            )
-        "forgot" ->
-            ForgotPasswordContent(
-                email = forgotPasswordState.email,
-                sending = forgotPasswordState.submitting,
-                sent = forgotPasswordState.sent,
-                errorMessage = forgotPasswordState.errorMessage,
-                emailError = forgotPasswordState.emailFormatError,
-                onEmailChange = { forgotPasswordState = forgotPasswordReducer.reduce(forgotPasswordState, ForgotPasswordFormEvent.EmailChanged(it)).state },
-                onSubmit = {
-                    if (pendingForgotPassword == null) {
-                        val update = forgotPasswordReducer.reduce(forgotPasswordState, ForgotPasswordFormEvent.Submit)
-                        forgotPasswordState = update.state
-                        when (val effect = update.effect) {
-                            is ForgotPasswordFormEffect.SubmitForgotPassword ->
-                                pendingForgotPassword =
-                                    PendingAppShellForgotPassword(
-                                        nonce = (pendingForgotPassword?.nonce ?: 0) + 1,
-                                        email = effect.email
-                                    )
-                            ForgotPasswordFormEffect.FocusEmail -> Unit
-                            null -> Unit
-                        }
-                    }
-                },
-                onBackToSignIn = { mode = "login" },
-                onOpenDiagnostics = onOpenDiagnostics
-            )
-        else ->
-            LoginContent(
-                email = state.email,
-                password = state.password,
-                submitting = state.submitting,
-                errorMessage = state.errorMessage ?: message,
-                emailError = state.emailFormatError,
-                passwordError = state.passwordError,
-                socialProviders = socialProviders,
-                socialSubmittingProvider = socialSubmittingProvider,
-                onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
-                onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
-                onSubmit = { submitLogin() },
-                onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
-                onSocialSignIn = { provider ->
-                    state = state.copy(submitting = false, errorMessage = null)
-                    socialSubmittingProvider = provider
-                    pendingSocialAuth =
-                        PendingAppShellSocialAuth(
-                            nonce = (pendingSocialAuth?.nonce ?: 0) + 1,
-                            provider = provider
-                        )
-                },
-                onForgotPassword = { mode = "forgot" },
-                onCreateAccount = { mode = "register" },
-                onOpenDiagnostics = onOpenDiagnostics
-            )
-    }
-}
-
-private data class PendingAppShellLogin(
-    val nonce: Int,
-    val email: String,
-    val password: String
-)
-
-private data class PendingAppShellRegister(
-    val nonce: Int,
-    val name: String,
-    val email: String,
-    val password: String
-)
-
-private data class PendingAppShellForgotPassword(
-    val nonce: Int,
-    val email: String
-)
-
-private data class PendingAppShellSocialAuth(
-    val nonce: Int,
-    val provider: AuthProvider
-)
-
-@Composable
 private fun AuthChooseServerPageContent() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
@@ -8790,24 +8524,6 @@ private class AuthChooseServerVisualApi(
         AuthApiResult.Failure(code = 400)
 }
 
-private fun Pager.appShellSocialAuthProviders(): Set<AuthProvider> =
-    pageData.params.optString("slockSocialAuthProviders")
-        .split(',')
-        .mapNotNull { raw ->
-            when (raw.trim().lowercase()) {
-                "google" -> AuthProvider.Google
-                "github" -> AuthProvider.GitHub
-                else -> null
-            }
-        }
-        .toSet()
-
-private fun AuthProvider.appShellProviderId(): String =
-    when (this) {
-        AuthProvider.Google -> "google"
-        AuthProvider.GitHub -> "github"
-    }
-
 private fun Pager.openAppShellDeveloper() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -8826,9 +8542,16 @@ private fun Pager.openAppShellReplacingCurrentPage() {
         .openPage(SLOCK_APP_SHELL_PAGE, appShellPageData(replaceCurrent = true))
 }
 
-private fun Pager.openLoginReplacingCurrentPage() {
+private fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
+        .openPage(
+            LOGIN_PAGE,
+            loginPageData(
+                replaceCurrent = true,
+                message = message,
+                socialProviders = pageData.params.authRouteSocialProviders()
+            )
+        )
 }
 
 internal fun authChooseServerPageData(
@@ -8848,9 +8571,6 @@ internal fun authChooseServerPageData(
 
 internal fun appShellPageData(replaceCurrent: Boolean = false): JSONObject =
     slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
-
-internal fun loginPageData(replaceCurrent: Boolean = false): JSONObject =
-    slockAuthRoutePageData(LOGIN_PAGE, replaceCurrent)
 
 private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): JSONObject =
     JSONObject().apply {

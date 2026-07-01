@@ -390,6 +390,21 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun loginRouteCarriesOnlyAuthIntent() {
+        val pageData =
+            loginPageData(
+                replaceCurrent = true,
+                message = "Sign in to continue.",
+                socialProviders = "google,github"
+            )
+
+        assertEquals(LOGIN_PAGE, pageData.optString("pageName"))
+        assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals("Sign in to continue.", pageData.authRouteMessage())
+        assertEquals("google,github", pageData.authRouteSocialProviders())
+    }
+
+    @Test
     fun serverGatePinsSignOutForSessionRefreshRecovery() {
         assertEquals(
             true,

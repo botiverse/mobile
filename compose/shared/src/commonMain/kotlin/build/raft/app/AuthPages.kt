@@ -69,6 +69,7 @@ const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
 const val AUTH_DEVELOPER_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
+private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
 private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
@@ -142,6 +143,9 @@ private fun LoginScreen() {
     var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
     val socialProviders = remember(pager.pageData.params.toString()) { pager.socialAuthProviders() }
+    val routeMessage = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
+    }
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
@@ -219,7 +223,7 @@ private fun LoginScreen() {
         email = state.email,
         password = state.password,
         submitting = state.submitting,
-        errorMessage = state.errorMessage,
+        errorMessage = state.errorMessage ?: routeMessage,
         emailError = state.emailFormatError,
         passwordError = state.passwordError,
         socialProviders = socialProviders,
@@ -1204,17 +1208,50 @@ private fun ForgotPasswordSuccessPreview() {
 
 private fun Pager.openAuthPage(pageName: String) {
     val pageData =
-        JSONObject().apply {
-            put("pageName", pageName)
-            this@openAuthPage.pageData.params.optString(AUTH_SOCIAL_PROVIDERS_KEY)
-                .takeIf { it.isNotBlank() }
-                ?.let { put(AUTH_SOCIAL_PROVIDERS_KEY, it) }
-            if (pageName == SLOCK_APP_SHELL_PAGE) {
-                put(AUTH_REPLACE_CURRENT_PAGE, true)
-            }
-        }
+        authPageData(
+            pageName = pageName,
+            replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE,
+            socialProviders = this.pageData.params.authRouteSocialProviders()
+        )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
+
+internal fun loginPageData(
+    replaceCurrent: Boolean = false,
+    message: String? = null,
+    socialProviders: String? = null
+): JSONObject =
+    authPageData(
+        pageName = LOGIN_PAGE,
+        replaceCurrent = replaceCurrent,
+        message = message,
+        socialProviders = socialProviders
+    )
+
+internal fun authPageData(
+    pageName: String,
+    replaceCurrent: Boolean = false,
+    message: String? = null,
+    socialProviders: String? = null
+): JSONObject =
+    JSONObject().apply {
+        put("pageName", pageName)
+        socialProviders
+            ?.takeIf { it.isNotBlank() }
+            ?.let { put(AUTH_SOCIAL_PROVIDERS_KEY, it) }
+        message
+            ?.takeIf { it.isNotBlank() }
+            ?.let { put(AUTH_MESSAGE_KEY, it) }
+        if (replaceCurrent) {
+            put(AUTH_REPLACE_CURRENT_PAGE, true)
+        }
+    }
+
+internal fun JSONObject.authRouteMessage(): String? =
+    optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
+
+internal fun JSONObject.authRouteSocialProviders(): String? =
+    optString(AUTH_SOCIAL_PROVIDERS_KEY).takeIf { it.isNotBlank() }
 
 private fun Pager.closeAuthSubPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
