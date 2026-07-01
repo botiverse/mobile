@@ -54,21 +54,16 @@ check_commit_range() {
     exit 0
   fi
 
-  local bodies signoff_lines author_emails signoff_emails
-  bodies="$(git log "$range" --format='%B')"
-  signoff_lines="$(printf '%s\n' "$bodies" | grep -iE '^[[:space:]]*Signed-off-by:' || true)"
+  local commit body subject
+  while IFS= read -r commit; do
+    body="$(git log -1 --format='%B' "$commit")"
+    subject="$(git log -1 --format='%s' "$commit")"
+    if ! printf '%s\n' "$body" | grep -qiE "$SIGNOFF_RE"; then
+      fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
+    fi
+  done < <(git rev-list --reverse "$range")
 
-  if [ -z "$signoff_lines" ]; then
-    fail "commit sign-off check failed — range ${range} has no Signed-off-by trailer."
-  fi
-
-  author_emails="$(git log "$range" --format='%ae')"
-  signoff_emails="$(printf '%s\n' "$signoff_lines" | grep -oiE "$MAIL_BUILD_EMAIL_RE" || true)"
-  if ! printf '%s\n%s\n' "$author_emails" "$signoff_emails" | grep -qiE '@mail\.build'; then
-    fail "commit sign-off check failed — range ${range} has no @mail.build author or Signed-off-by identity."
-  fi
-
-  echo "commit sign-off: OK — sign-off present and @mail.build attribution present in ${range}."
+  echo "commit sign-off: OK — every commit in ${range} has Signed-off-by with @mail.build."
 }
 
 case "${1:-}" in
