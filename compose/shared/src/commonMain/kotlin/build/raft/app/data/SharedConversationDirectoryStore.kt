@@ -77,6 +77,24 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
         logger = logger
     )
 
+internal fun HomeSnapshot.resolveHomeConversationSummary(
+    ids: Collection<String>,
+    logger: (String) -> Unit = {}
+): ConversationSummary? {
+    val lookupIds = ids.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    if (lookupIds.isEmpty()) return null
+    val projection =
+        toSharedConversationDirectoryState(logger)
+            .let { directory -> lookupIds.firstNotNullOfOrNull(directory::resolve) }
+            ?: return null
+    return (channels + directMessages)
+        .asSequence()
+        .map { it.toConversationSummary() }
+        .firstOrNull { conversation ->
+            conversation.directoryCanonicalChannelId().value == projection.canonicalChannelId
+        }
+}
+
 private fun sharedConversationDirectoryState(
     serverId: ServerId,
     conversations: List<HomeConversationRow>,

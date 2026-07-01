@@ -189,6 +189,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.resolveHomeConversationSummary
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSavedStateCache
 import build.raft.app.data.SharedHomeSearchPanelState
@@ -2030,6 +2031,42 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
         is SharedAuthGateState.Ready -> Unit
     }
+
+    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
+        bridge.log(
+            "home_open_conversation threadId=${conversation.threadId.value} " +
+                "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
+        )
+        bridge.performanceMarker(
+            phase = "home_open",
+            routeName = "kuikly_home",
+            event = "instant",
+            threadId = conversation.threadId.value,
+            metadata =
+                mapOf(
+                    "kind" to conversation.kind.name,
+                    "source" to source,
+                    "anchor" to (anchorMessageId != null).toString()
+                )
+        )
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
+        val launchPayload =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = conversation,
+                timeContext = threadTimeContext,
+                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                anchorMessageId = anchorMessageId
+            )
+        bridge.log(
+            "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
+                "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
+                "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
+                "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
+        )
+        pager.openStandaloneThreadLaunchPayload(launchPayload)
+    }
+
     LaunchedEffect(
         readySession?.currentServerId,
         notificationLaunchServerId,
@@ -2107,24 +2144,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
         consumedNotificationLaunchKey = launchKey
         val anchorMessageId = conversation.notificationAnchorMessageId(launchRequest)
-        val runtimeLaunchPayload =
-            buildStandaloneConversationThreadLaunchPayload(
-                conversation = conversation,
-                timeContext = threadTimeContext,
-                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                compactConsecutiveMessages = compactConsecutiveMessages,
-                anchorMessageId = anchorMessageId
-            )
         selectedTab = "home"
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
         bridge.log(
             "app_shell_notification_thread_open " +
-                "threadId=${conversation.threadId.value} sourceThreadId=${runtimeLaunchPayload.sourceThreadId.orEmpty()} " +
-                "surface=${runtimeLaunchPayload.surfaceKind} focusedMessageId=${runtimeLaunchPayload.focusedMessageId.orEmpty()}"
+                "threadId=${conversation.threadId.value} focusedMessageId=$anchorMessageId"
         )
-        pager.openStandaloneThreadLaunchPayload(runtimeLaunchPayload)
+        openHomeConversation(
+            conversation = conversation,
+            source = "notification",
+            anchorMessageId = anchorMessageId
+        )
     }
     LaunchedEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -2238,41 +2269,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 }
             }
         }
-    }
-
-    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
-        bridge.log(
-            "home_open_conversation threadId=${conversation.threadId.value} " +
-                "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
-        )
-        bridge.performanceMarker(
-            phase = "home_open",
-            routeName = "kuikly_home",
-            event = "instant",
-            threadId = conversation.threadId.value,
-            metadata =
-                mapOf(
-                    "kind" to conversation.kind.name,
-                    "source" to source,
-                    "anchor" to (anchorMessageId != null).toString()
-                )
-        )
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
-        val launchPayload =
-            buildStandaloneConversationThreadLaunchPayload(
-                conversation = conversation,
-                timeContext = threadTimeContext,
-                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                compactConsecutiveMessages = compactConsecutiveMessages,
-                anchorMessageId = anchorMessageId
-            )
-        bridge.log(
-            "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
-                "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
-                "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
-                "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
-        )
-        pager.openStandaloneThreadLaunchPayload(launchPayload)
     }
 
     fun popMainRoute(): Boolean {
@@ -12214,18 +12210,13 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
 
 private fun SharedHomeState.systemNotificationConversation(message: Message): ConversationSummary? {
     val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
-    val ids =
-        setOfNotNull(
+    return snapshot.resolveHomeConversationSummary(
+        listOfNotNull(
             message.threadId.value,
             message.channelId?.value,
             message.threadChannelId?.value
         )
-    return (snapshot.channels + snapshot.directMessages).map { it.toConversationSummary() }.firstOrNull { conversation ->
-        conversation.threadId.value in ids ||
-            conversation.channelId?.value in ids ||
-            conversation.thread?.streamChannelId?.value in ids ||
-            conversation.thread?.parentChannelId?.value in ids
-    }
+    )
 }
 
 private enum class SearchEntityType {
@@ -12624,28 +12615,14 @@ private fun SharedHomeState.notificationThreadConversation(
     request: AppShellNotificationThreadLaunchRequest
 ): ConversationSummary? {
     val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
-    return (snapshot.channels + snapshot.directMessages)
-        .map { it.toConversationSummary() }
-        .firstOrNull { conversation -> conversation.matchesNotificationThreadLaunchRequest(request) }
-}
-
-private fun ConversationSummary.matchesNotificationThreadLaunchRequest(
-    request: AppShellNotificationThreadLaunchRequest
-): Boolean {
-    val ids =
-        setOfNotNull(
+    return snapshot.resolveHomeConversationSummary(
+        listOfNotNull(
             request.threadId,
             request.channelId,
+            request.parentMessageId,
             request.parentChannelId
-        ).filter { it.isNotBlank() }.toSet()
-    if (ids.isEmpty()) return false
-    return threadId.value in ids ||
-        channelId?.value in ids ||
-        thread?.streamChannelId?.value in ids ||
-        thread?.parentChannelId?.value in ids ||
-        request.parentMessageId?.takeIf { it.isNotBlank() }?.let { parentMessageId ->
-            thread?.parentMessageId?.value == parentMessageId
-        } == true
+        )
+    )
 }
 
 private fun ConversationSummary.notificationAnchorMessageId(
