@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Slock Visual Testing Runs</title>
+  <style>
+    body { margin: 24px; color: #141111; background: #fffaf0; font-family: system-ui, sans-serif; }
+    main { max-width: 1080px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 32px; }
+    a { color: #141111; font-weight: 700; }
+    .hero { border: 2px solid #141111; background: #fff; padding: 18px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
+    .hero h2 { margin: 0 0 8px; font-size: 22px; }
+    .hero p { margin: 0 0 14px; color: #514946; }
+    .primary { display: inline-block; border: 2px solid #141111; background: #FFD440; color: #141111; padding: 10px 14px; box-shadow: 3px 3px 0 #141111; text-decoration: none; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+    .runMeta { color: #514946; margin: 0 0 14px; }
+    .downloads { border: 2px solid #141111; background: #fff; padding: 12px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
+    .downloads h2 { margin: 0 0 8px; font-size: 18px; }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+    .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; }
+    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 4px 4px 0 #141111; }
+    th, td { border: 2px solid #141111; padding: 10px; text-align: left; vertical-align: top; }
+    th { background: #FFD440; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Slock Visual Testing</h1>
+    <section class="hero">
+      <h2>最新视觉对比</h2>
+      <p><code>1c6dce5ad-20260701173710</code> · react vs android</p>
+      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-01T17:37:32.552Z" data-timestamp="2026-07-01T17:37:32.552Z" title="2026-07-01T17:37:32.552Z">2026-07-01 17:37:32 UTC</time></p>
+      <a class="primary" href="runs/1c6dce5ad-20260701173710/">查看详情</a>
+      <div class="meta">
+        <span class="pill">Total 62</span>
+        <span class="pill">Pass 0</span>
+        <span class="pill">Basic pass 3</span>
+        <span class="pill">Different 58</span>
+        <span class="pill">Missing 1</span>
+        <span class="pill">AI 0/62 ready</span>
+        <span class="pill">Components Parity 52/55 active</span><span class="pill">Screens Parity 11/26 active</span>
+      </div>
+    </section>
+    <section class="downloads">
+      <h2>下载 / 机器数据</h2>
+      <p>给自动化、LLM 摘要和调试使用；普通查看只需要点上面的“查看详情”。</p>
+      <div class="links">
+        <a class="pill" href="index.json">index.json</a>
+        <a class="pill" href="llms.txt">llms.txt</a>
+        <a class="pill" href="latest/component-matrix.json">coverage matrix JSON</a>
+        <a class="pill" href="latest/metadata.json">latest metadata</a>
+      </div>
+    </section>
+    <h2>历史记录</h2>
+    <table>
+      <thead><tr><th>Commit</th><th>Generated</th><th>Providers</th><th>Diff Summary</th><th>Action</th></tr></thead>
+      <tbody><tr>
+    <td><code>1c6dce5ad-20260701173710</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
+    <td><time class="localizedTime" datetime="2026-07-01T17:37:32.552Z" data-timestamp="2026-07-01T17:37:32.552Z" title="2026-07-01T17:37:32.552Z">2026-07-01 17:37:32 UTC</time></td>
+    <td>react vs android</td>
+    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
+    <td><a href="runs/1c6dce5ad-20260701173710/">查看详情</a></td>
+  </tr></tbody>
+    </table>
+  </main>
+  <script>
+    (() => {
+      const formatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      });
+      for (const node of document.querySelectorAll("time.localizedTime[data-timestamp]")) {
+        const date = new Date(node.dataset.timestamp);
+        if (!Number.isNaN(date.getTime())) node.textContent = formatter.format(date);
+      }
+    })();
+  </script>
+</body>
+</html>

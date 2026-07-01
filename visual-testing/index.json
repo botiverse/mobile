@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "name": "Slock Visual Testing",
+  "generatedAt": "2026-07-01T17:37:32.552Z",
+  "latestRunId": "1c6dce5ad-20260701173710",
+  "latest": {
+    "runId": "1c6dce5ad-20260701173710",
+    "commit": "1c6dce5ad-20260701173710",
+    "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+    "generatedAt": "2026-07-01T17:37:32.552Z",
+    "baseline": "react",
+    "current": "android",
+    "summary": {
+      "total": 62,
+      "same": 0,
+      "pass": 0,
+      "basic-pass": 3,
+      "different": 58,
+      "missing": 1
+    },
+    "analysisSummary": {
+      "total": 62,
+      "ready": 0,
+      "pending": 62
+    },
+    "componentMatrixSummary": {
+      "total": 81,
+      "active": 63,
+      "pending": 16,
+      "skipped": 2,
+      "captureTypes": {
+        "component-fixture": {
+          "total": 55,
+          "active": 52,
+          "pending": 2,
+          "skipped": 1
+        },
+        "real-screen": {
+          "total": 26,
+          "active": 11,
+          "pending": 14,
+          "skipped": 1
+        }
+      },
+      "providers": {
+        "react": {
+          "active": 64,
+          "pending": 13,
+          "unsupported": 0,
+          "total": 77
+        },
+        "android": {
+          "active": 62,
+          "pending": 15,
+          "unsupported": 0,
+          "total": 77
+        },
+        "harmony": {
+          "active": 0,
+          "pending": 77,
+          "unsupported": 0,
+          "total": 77
+        }
+      }
+    },
+    "href": "runs/1c6dce5ad-20260701173710/",
+    "report": "runs/1c6dce5ad-20260701173710/report.html",
+    "componentMatrix": "runs/1c6dce5ad-20260701173710/component-matrix.json",
+    "llms": "runs/1c6dce5ad-20260701173710/metadata.json"
+  },
+  "componentMatrixSummary": {
+    "total": 81,
+    "active": 63,
+    "pending": 16,
+    "skipped": 2,
+    "captureTypes": {
+      "component-fixture": {
+        "total": 55,
+        "active": 52,
+        "pending": 2,
+        "skipped": 1
+      },
+      "real-screen": {
+        "total": 26,
+        "active": 11,
+        "pending": 14,
+        "skipped": 1
+      }
+    },
+    "providers": {
+      "react": {
+        "active": 64,
+        "pending": 13,
+        "unsupported": 0,
+        "total": 77
+      },
+      "android": {
+        "active": 62,
+        "pending": 15,
+        "unsupported": 0,
+        "total": 77
+      },
+      "harmony": {
+        "active": 0,
+        "pending": 77,
+        "unsupported": 0,
+        "total": 77
+      }
+    }
+  },
+  "runs": [
+    {
+      "runId": "1c6dce5ad-20260701173710",
+      "commit": "1c6dce5ad-20260701173710",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:37:32.552Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "href": "runs/1c6dce5ad-20260701173710/",
+      "report": "runs/1c6dce5ad-20260701173710/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701173710/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701173710/metadata.json"
+    }
+  ]
+}
