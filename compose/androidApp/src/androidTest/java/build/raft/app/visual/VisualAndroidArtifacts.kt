@@ -6,18 +6,16 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
 
 internal object VisualAndroidArtifacts {
-    private const val PublicOutputPath = "/sdcard/Download/slock-visual-testing/android"
-
     fun resetPublicOutput() {
-        runShell("rm -rf $PublicOutputPath && mkdir -p $PublicOutputPath")
+        publicOutputDir().deleteRecursively()
+        publicOutputDir().mkdirs()
     }
 
     fun ensurePublicOutput() {
-        runShell("mkdir -p $PublicOutputPath")
+        publicOutputDir().mkdirs()
     }
 
     fun publicOutputDir(): File =
@@ -27,9 +25,7 @@ internal object VisualAndroidArtifacts {
         )
 
     fun mirrorFile(file: File) {
-        runShell("mkdir -p $PublicOutputPath && rm -f $PublicOutputPath/${file.name}")
         if (mirrorWithMediaStore(file)) {
-            normalizePublicOutputFile(file.name)
             return
         }
         val outputDir = publicOutputDir()
@@ -46,11 +42,10 @@ internal object VisualAndroidArtifacts {
             // test package. The authoritative artifact remains in app-internal
             // storage and can be pulled with run-as; mirroring is best-effort.
         }
-        normalizePublicOutputFile(file.name)
     }
 
     fun deleteCaseArtifacts(caseId: String) {
-        runShell("rm -f $PublicOutputPath/${caseId}*")
+        deleteExistingMediaStoreDownloadsForCase(caseId)
         publicOutputDir()
             .listFiles()
             ?.filter { file -> file.name.startsWith(caseId) }
@@ -124,37 +119,4 @@ internal object VisualAndroidArtifacts {
             }
         }
     }
-
-    private fun normalizePublicOutputFile(fileName: String) {
-        val (stem, extension) =
-            when {
-                fileName.endsWith(".metadata.json") -> fileName.removeSuffix(".json") to ".json"
-                fileName.endsWith(".png") -> fileName.removeSuffix(".png") to ".png"
-                else -> return
-            }
-        runShell(
-            """
-            dir=${PublicOutputPath.shellSingleQuoted()}
-            stem=${stem.shellSingleQuoted()}
-            extension=${extension.shellSingleQuoted()}
-            base=${fileName.shellSingleQuoted()}
-            latest=$(ls -t "${'$'}dir"/"${'$'}stem"*${'$'}extension 2>/dev/null | head -n 1)
-            if [ -n "${'$'}latest" ]; then
-              cp "${'$'}latest" "${'$'}dir/${'$'}base"
-              find "${'$'}dir" -maxdepth 1 -name "${'$'}stem*${'$'}extension" ! -name "${'$'}base" -delete
-            fi
-            """.trimIndent()
-        )
-    }
-
-    private fun runShell(command: String): String {
-        val descriptor =
-            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
-        return descriptor.use {
-            FileInputStream(it.fileDescriptor).bufferedReader().use { reader -> reader.readText() }
-        }
-    }
-
-    private fun String.shellSingleQuoted(): String =
-        "'" + replace("'", "'\"'\"'") + "'"
 }
