@@ -862,7 +862,8 @@ internal fun LoginContent(
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
+                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() }),
+                password = true
             )
             AuthError(errorMessage)
             AuthActionButton(
@@ -978,7 +979,8 @@ internal fun RegisterContent(
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() })
+                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+                password = true
             )
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)

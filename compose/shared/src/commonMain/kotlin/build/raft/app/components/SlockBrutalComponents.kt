@@ -415,7 +415,8 @@ internal fun SlockBrutalInputField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
-    onClear: (() -> Unit)? = null
+    onClear: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
     val isMultiline = maxLines > 1
@@ -483,6 +484,7 @@ internal fun SlockBrutalInputField(
                         shadowOffset = 2.dp
                     )
                 }
+                trailingContent?.invoke()
             }
         }
     }

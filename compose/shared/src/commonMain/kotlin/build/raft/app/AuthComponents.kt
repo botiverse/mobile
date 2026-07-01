@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.SlockLinkButton
+import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,6 +41,8 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -281,8 +284,10 @@ internal fun AuthTextField(
     forceFocused: Boolean = false,
     focusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    password: Boolean = false
 ) {
+    var passwordVisible by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -305,9 +310,25 @@ internal fun AuthTextField(
             enabledBackgroundColor = SlockColor.SurfaceWhite,
             disabledBackgroundColor = SlockColor.EmptyStateGray,
             placeholderColor = AuthInputPlaceholderColor,
+            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
-            focusRequester = focusRequester ?: remember { FocusRequester() }
+            focusRequester = focusRequester ?: remember { FocusRequester() },
+            trailingContent =
+                if (password) {
+                    {
+                        SlockBrutalIconButton(
+                            iconName = if (passwordVisible) SlockLucideIconName.EyeOff else SlockLucideIconName.Eye,
+                            onClick = { passwordVisible = !passwordVisible },
+                            enabled = enabled,
+                            size = 28.dp,
+                            shadowOffset = 0.dp,
+                            iconSize = 15.dp
+                        )
+                    }
+                } else {
+                    null
+                }
         )
         if (isError && !errorText.isNullOrBlank()) {
             Text(
