@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.InboxFilter
@@ -26,6 +27,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
@@ -801,20 +803,13 @@ private fun SharedActivityFooter(item: InboxItem) {
 
 @Composable
 private fun SharedActivityTaskBadge(item: InboxItem) {
-    val background =
-        when (item.taskStatus) {
-            build.raft.app.model.TaskStatus.Todo -> SlockColor.AccentOrange
-            build.raft.app.model.TaskStatus.InProgress -> SlockColor.AccentCyan
-            build.raft.app.model.TaskStatus.InReview -> SlockColor.AccentLavender
-            build.raft.app.model.TaskStatus.Done -> SlockColor.AccentLime
-            build.raft.app.model.TaskStatus.Closed -> SlockColor.AccentRed
-            null -> SlockColor.SurfaceWhite
-        }
-    SharedActivityCountPill(
-        text = item.activityTaskBadgeText(),
-        iconName = item.taskStatus?.activityTaskIconName(),
-        backgroundColor = background,
-        textColor = SlockColor.TextBlack
+    val status = item.taskStatus ?: return
+    SlockAnchoredMetaChip(
+        label = item.activityTaskBadgeText(),
+        iconName = status.activityTaskIconName(),
+        color = status.activityTaskChipColor(),
+        modifier = Modifier.widthIn(max = 260.dp),
+        onClick = null
     )
 }
 
@@ -1144,13 +1139,22 @@ internal fun InboxItem.activityFooterSlots(): List<SharedActivityFooterSlot> {
     return slots
 }
 
-private fun build.raft.app.model.TaskStatus.activityTaskIconName(): SlockLucideIconName =
+private fun TaskStatus.activityTaskIconName(): SlockLucideIconName =
     when (this) {
-        build.raft.app.model.TaskStatus.Todo -> SlockLucideIconName.Circle
-        build.raft.app.model.TaskStatus.InProgress -> SlockLucideIconName.Play
-        build.raft.app.model.TaskStatus.InReview -> SlockLucideIconName.Eye
-        build.raft.app.model.TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
-        build.raft.app.model.TaskStatus.Closed -> SlockLucideIconName.Ban
+        TaskStatus.Todo -> SlockLucideIconName.Circle
+        TaskStatus.InProgress -> SlockLucideIconName.Play
+        TaskStatus.InReview -> SlockLucideIconName.Eye
+        TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
+        TaskStatus.Closed -> SlockLucideIconName.Ban
+    }
+
+private fun TaskStatus.activityTaskChipColor(): com.tencent.kuikly.compose.ui.graphics.Color =
+    when (this) {
+        TaskStatus.Todo -> SlockColor.AccentOrange
+        TaskStatus.InProgress -> SlockColor.AccentCyan
+        TaskStatus.InReview -> SlockColor.AccentLavender
+        TaskStatus.Done -> SlockColor.AccentLime
+        TaskStatus.Closed -> SlockColor.AccentStone
     }
 
 private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int): Boolean {
