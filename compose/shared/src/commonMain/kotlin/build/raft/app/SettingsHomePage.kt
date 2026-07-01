@@ -329,8 +329,6 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
@@ -365,7 +363,10 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -11950,7 +11951,6 @@ private fun searchResultSourceLabel(item: InboxItem): String {
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 private fun HomeSearchHighlightedText(
     text: String,
     query: String,
@@ -11960,71 +11960,38 @@ private fun HomeSearchHighlightedText(
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip
 ) {
-    val segments = remember(text, query) { homeSearchHighlightSegments(text, query) }
-    if (segments.none { it.highlighted }) {
-        Text(
-            text = text,
-            style = style,
-            color = color,
-            maxLines = maxLines,
-            overflow = overflow,
-            modifier = modifier
-        )
-        return
-    }
-
-    FlowRow(
+    val highlightedText = remember(text, query) { homeSearchHighlightedAnnotatedString(text, query) }
+    Text(
+        text = highlightedText,
+        style = style,
+        color = color,
+        maxLines = maxLines,
+        overflow = overflow,
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        segments.forEach { segment ->
-            Text(
-                text = segment.text,
-                style = style,
-                color = if (segment.highlighted) SlockColor.TextBlack else color,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier =
-                    if (segment.highlighted) {
-                        Modifier
-                            .background(SlockColor.BrandYellow)
-                            .padding(horizontal = 1.dp)
-                    } else {
-                        Modifier
-                    }
+    )
+}
+
+internal fun homeSearchHighlightedAnnotatedString(
+    text: String,
+    query: String
+): AnnotatedString {
+    val ranges = homeSearchHighlightRanges(text, query)
+    if (ranges.isEmpty()) return AnnotatedString(text)
+    return buildAnnotatedString {
+        append(text)
+        val highlightStyle =
+            SpanStyle(
+                background = SlockColor.BrandYellow,
+                color = SlockColor.TextBlack
+            )
+        ranges.forEach { range ->
+            addStyle(
+                highlightStyle,
+                start = range.first,
+                end = range.last + 1
             )
         }
     }
-}
-
-internal data class HomeSearchHighlightSegment(
-    val text: String,
-    val highlighted: Boolean
-)
-
-internal fun homeSearchHighlightSegments(
-    text: String,
-    query: String
-): List<HomeSearchHighlightSegment> {
-    val ranges = homeSearchHighlightRanges(text, query)
-    if (ranges.isEmpty()) {
-        return if (text.isEmpty()) emptyList() else listOf(HomeSearchHighlightSegment(text, highlighted = false))
-    }
-    val segments = mutableListOf<HomeSearchHighlightSegment>()
-    var cursor = 0
-    ranges.forEach { range ->
-        if (cursor < range.first) {
-            segments += HomeSearchHighlightSegment(text.substring(cursor, range.first), highlighted = false)
-        }
-        val endExclusive = range.last + 1
-        segments += HomeSearchHighlightSegment(text.substring(range.first, endExclusive), highlighted = true)
-        cursor = endExclusive
-    }
-    if (cursor < text.length) {
-        segments += HomeSearchHighlightSegment(text.substring(cursor), highlighted = false)
-    }
-    return segments
 }
 
 internal fun homeSearchHighlightRanges(

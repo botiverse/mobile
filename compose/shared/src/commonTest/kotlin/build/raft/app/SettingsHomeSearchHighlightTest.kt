@@ -25,19 +25,20 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
-    fun highlightSegmentsKeepMatchedTextSeparateForVisibleBackground() {
-        val segments = homeSearchHighlightSegments(
+    fun highlightedAnnotatedStringKeepsOneTextNodeWithBackgroundRanges() {
+        val annotated = homeSearchHighlightedAnnotatedString(
             text = "Find keyword here",
             query = "keyword"
         )
 
+        assertEquals("Find keyword here", annotated.text)
         assertEquals(
             listOf(
-                HomeSearchHighlightSegment("Find ", highlighted = false),
-                HomeSearchHighlightSegment("keyword", highlighted = true),
-                HomeSearchHighlightSegment(" here", highlighted = false)
+                5 until 12
             ),
-            segments
+            annotated.spanStyles.map { it.start until it.end }
         )
+        assertEquals(SlockColor.BrandYellow, annotated.spanStyles.single().item.background)
+        assertEquals(SlockColor.TextBlack, annotated.spanStyles.single().item.color)
     }
 }
