@@ -7,6 +7,7 @@ import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.KuiklyMMKVAuthSessionStore
@@ -14,6 +15,7 @@ import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
+import build.raft.app.data.toConversationSummary
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberProfile
@@ -324,13 +326,13 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             (channels + directMessages)
                 .filter { it.unreadCount > 0 || it.mentionCount > 0 }
                 .sortedWith(
-                    compareByDescending<ConversationSummary> { it.mentionCount }
+                    compareByDescending<HomeConversationRow> { it.mentionCount }
                         .thenByDescending { it.unreadCount }
                         .thenBy { it.name.lowercase() }
                 )
                 .take(MAX_HOME_ROWS)
                 .map { conversation ->
-                    conversation.toWidgetRow(
+                    conversation.toConversationSummary().toWidgetRow(
                         context = context,
                         member = conversation.presenceMemberId?.value?.let(membersById::get)
                     )
