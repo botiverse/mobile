@@ -27,7 +27,6 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
@@ -803,11 +802,12 @@ private fun SharedActivityFooter(item: InboxItem) {
 
 @Composable
 private fun SharedActivityTaskBadge(item: InboxItem) {
-    val status = item.taskStatus ?: return
+    val statusMeta = item.taskStatus?.sharedTaskStatusChipMeta() ?: return
     SlockAnchoredMetaChip(
         label = item.activityTaskBadgeText(),
-        iconName = status.activityTaskIconName(),
-        color = status.activityTaskChipColor(),
+        iconName = statusMeta.icon,
+        iconSize = statusMeta.iconSize,
+        color = statusMeta.color,
         modifier = Modifier.widthIn(max = 260.dp),
         onClick = null
     )
@@ -1138,24 +1138,6 @@ internal fun InboxItem.activityFooterSlots(): List<SharedActivityFooterSlot> {
     }
     return slots
 }
-
-private fun TaskStatus.activityTaskIconName(): SlockLucideIconName =
-    when (this) {
-        TaskStatus.Todo -> SlockLucideIconName.Circle
-        TaskStatus.InProgress -> SlockLucideIconName.Play
-        TaskStatus.InReview -> SlockLucideIconName.Eye
-        TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
-        TaskStatus.Closed -> SlockLucideIconName.Ban
-    }
-
-private fun TaskStatus.activityTaskChipColor(): com.tencent.kuikly.compose.ui.graphics.Color =
-    when (this) {
-        TaskStatus.Todo -> SlockColor.AccentOrange
-        TaskStatus.InProgress -> SlockColor.AccentCyan
-        TaskStatus.InReview -> SlockColor.AccentLavender
-        TaskStatus.Done -> SlockColor.AccentLime
-        TaskStatus.Closed -> SlockColor.AccentStone
-    }
 
 private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int): Boolean {
     if (lastActivityRowIndex < 1) return false

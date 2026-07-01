@@ -10640,36 +10640,13 @@ internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String?
     }
 }
 
-private data class ThreadTaskStatusOption(
-    val key: String,
-    val label: String,
-    val icon: SlockLucideIconName,
-    val color: Color,
-    val iconSize: Dp = 10.dp
-)
-
-private val threadTaskStatusOptions =
-    listOf(
-        ThreadTaskStatusOption("Todo", "Todo", SlockLucideIconName.Circle, SlockColor.AccentOrange),
-        ThreadTaskStatusOption("InProgress", "In progress", SlockLucideIconName.Play, SlockColor.AccentCyan),
-        ThreadTaskStatusOption("InReview", "In review", SlockLucideIconName.Eye, SlockColor.AccentLavender),
-        ThreadTaskStatusOption("Done", "Done", SlockLucideIconName.CircleCheckBig, SlockColor.AccentLime),
-        ThreadTaskStatusOption("Closed", "Closed", SlockLucideIconName.Ban, SlockColor.AccentStone)
-    )
-
 private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
-    threadTaskStatusOptions.map { option ->
+    SharedTaskStatusChipMetas.map { option ->
         SlockBaseMenuItem(id = option.key, label = option.label)
     }
 
-private fun String?.threadTaskStatusOption(): ThreadTaskStatusOption {
-    val normalized =
-        this?.trim()?.lowercase().orEmpty().replace("-", "").replace("_", "").replace(" ", "")
-    return threadTaskStatusOptions.firstOrNull { option ->
-        option.key.lowercase() == normalized ||
-            option.label.lowercase().replace(" ", "") == normalized
-    } ?: threadTaskStatusOptions.first()
-}
+private fun String?.threadTaskStatusOption(): SharedTaskStatusChipMeta =
+    sharedTaskStatusChipMetaOrDefault()
 
 internal fun KuiklyThreadMessageItem.isSystemMessage(): Boolean =
     messageType.equals("System", ignoreCase = true) || messageType.equals("system", ignoreCase = true)
