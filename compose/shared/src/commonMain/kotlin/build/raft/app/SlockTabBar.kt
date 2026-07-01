@@ -14,7 +14,6 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -22,7 +21,6 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -75,9 +73,7 @@ private enum class SlockAppTabBarRenderer {
 }
 
 private val SlockSharedBottomTabBarHeight = 58.dp
-private val SlockOhosHdsBottomTabBarDockHeight = 56.dp
 private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
-private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
@@ -107,6 +103,9 @@ internal fun slockSharedBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
 
 internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
     slockSharedBottomTabBarHostHeight(bottomSafeArea) + SlockSpacing.Lg
+
+internal fun slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
+    SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
 
 @Composable
 internal fun SlockVerticalTabBar(
@@ -383,18 +382,17 @@ internal fun SlockFloatingDockTabBar(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = SlockSpacing.Lg)
-            .padding(bottom = SlockSpacing.Md),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .height(slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea))
+            .clickable(onClick = {})
     ) {
         Box(
             modifier = Modifier
-                .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .padding(end = SlockStroke.Default, bottom = SlockStroke.Default)
+                .align(Alignment.BottomCenter)
+                .padding(end = SlockStroke.Default, bottom = bottomSafeArea + SlockSpacing.Md + SlockStroke.Default)
         ) {
             Box(Modifier.matchParentSize().offset(x = SlockStroke.Default, y = SlockStroke.Default).background(SlockColor.BorderBlack))
             SlockBottomTabBar(
@@ -403,7 +401,6 @@ internal fun SlockFloatingDockTabBar(
                 modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
             )
         }
-        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
     }
 }
 

@@ -58,6 +58,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun androidFloatingBottomTabHostCoversOverlayTouchRegion() {
+        assertEquals(92.dp, slockAndroidFloatingBottomTabBarHostHeight(0.dp))
+        assertEquals(110.dp, slockAndroidFloatingBottomTabBarHostHeight(18.dp))
+    }
+
+    @Test
     fun retainedAppShellTabOrderKeepsActiveTabOnTop() {
         assertEquals(listOf("tasks", "members", "settings", "home"), retainedAppShellTabOrder("home"))
         assertEquals(listOf("home", "members", "settings", "tasks"), retainedAppShellTabOrder("tasks"))
