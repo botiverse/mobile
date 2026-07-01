@@ -57,25 +57,25 @@ internal fun SlockTopPageHeader(
     backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
-    topSafeAreaHeightCap: Dp? = null,
+    headerHeight: Dp = SlockSize.PageHeaderHeight,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
-    val topSafeAreaHeight = topSafeAreaHeightCap?.let { topSafeArea.min(it) } ?: topSafeArea
+    val contentHeight = if (headerHeight >= SlockStroke.Default) headerHeight - SlockStroke.Default else 0.dp
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(topSafeAreaHeight + SlockSize.PageHeaderHeight)
+                .height(topSafeArea + headerHeight)
                 .background(backgroundColor)
     ) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(topSafeAreaHeight + SlockSize.PageHeaderContentHeight)
+                    .height(topSafeArea + contentHeight)
                     .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -138,9 +138,6 @@ internal fun SlockTopPageHeader(
         )
     }
 }
-
-private fun Dp.min(other: Dp): Dp =
-    if (this <= other) this else other
 
 @Composable
 internal fun SlockHeaderRefreshIndicator(

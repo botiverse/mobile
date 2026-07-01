@@ -3178,7 +3178,7 @@ private fun SettingsAppShellContent(
         SettingsHomeContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
             bottomContentPadding = bottomContentPadding,
-            topSafeAreaHeightCap = SlockSpacing.Md,
+            headerHeight = SlockSize.PageHeaderCompactHeight,
             onSelect = { key ->
                 if (key == SettingsDestinationRouter) {
                     onOpenRouter()
@@ -3194,7 +3194,7 @@ private fun SettingsAppShellContent(
         title = settingsDestinationTitle(selectedDestination),
         subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
-        topSafeAreaHeightCap = SlockSpacing.Md,
+        headerHeight = SlockSize.PageHeaderCompactHeight,
         onBack = {
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
@@ -6800,7 +6800,7 @@ private fun SettingsDetailShell(
     subtitle: String,
     iconName: SlockLucideIconName,
     applyTopSafeArea: Boolean = true,
-    topSafeAreaHeightCap: Dp? = null,
+    headerHeight: Dp = SlockSize.PageHeaderHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
@@ -6812,7 +6812,7 @@ private fun SettingsDetailShell(
             iconName = iconName,
             backgroundColor = SlockColor.SurfaceWhite,
             applyTopSafeArea = applyTopSafeArea,
-            topSafeAreaHeightCap = topSafeAreaHeightCap,
+            headerHeight = headerHeight,
             leadingContent = {
                 SettingsDetailBackButton(onBack)
             },
@@ -14650,7 +14650,7 @@ internal fun SettingsHomeContent(
     payload: KuiklySettingsHomePayload,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     applyTopSafeArea: Boolean = true,
-    topSafeAreaHeightCap: Dp? = null,
+    headerHeight: Dp = SlockSize.PageHeaderHeight,
     onSelect: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -14659,7 +14659,7 @@ internal fun SettingsHomeContent(
             subtitle = null,
             iconName = SlockLucideIconName.Settings,
             applyTopSafeArea = applyTopSafeArea,
-            topSafeAreaHeightCap = topSafeAreaHeightCap
+            headerHeight = headerHeight
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
