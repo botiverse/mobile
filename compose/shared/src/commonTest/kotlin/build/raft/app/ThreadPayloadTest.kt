@@ -5070,6 +5070,58 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadChannelSearchPageDataCarriesChannelFilterIdentityOnly() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                sourceThreadId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                localOffsetMinutes = 480,
+                todayEpochDay = 20623,
+                nowEpochMillis = 1782200000000,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        val pageData = payload.toThreadChannelSearchPageData()!!
+
+        assertEquals(HOME_SEARCH_PAGE, pageData.optString("pageName"))
+        assertEquals("search", pageData.optString("destination"))
+        assertEquals("channel-1", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
+        assertEquals("channel", pageData.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID))
+        assertEquals("", pageData.optString("title"))
+        assertEquals("", pageData.optString("messages"))
+        assertEquals("480", pageData.optString("localOffsetMinutes"))
+        assertEquals("20623", pageData.optString("todayEpochDay"))
+        assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
+        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+    }
+
+    @Test
+    fun threadChannelSearchPageDataRejectsNonChannelSurfaces() {
+        assertEquals(
+            null,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+            ).toThreadChannelSearchPageData()
+        )
+        assertEquals(
+            null,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "thread-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+            ).toThreadChannelSearchPageData()
+        )
+        assertEquals(
+            null,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "   ",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            ).toThreadChannelSearchPageData()
+        )
+    }
+
+    @Test
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
