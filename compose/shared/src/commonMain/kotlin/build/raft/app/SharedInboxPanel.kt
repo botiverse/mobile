@@ -778,7 +778,7 @@ private fun Modifier.activityRowGestures(
 private fun SharedActivityFooter(item: InboxItem) {
     FlowRow(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item.activityFooterSlots().forEach { slot ->
