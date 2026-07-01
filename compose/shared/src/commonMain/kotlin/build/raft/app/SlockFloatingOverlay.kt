@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -16,6 +17,8 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.unit.IntOffset
@@ -122,20 +125,18 @@ internal fun SlockFloatingOverlayHost(
         modifier = modifier
             .zIndex(SlockFloatingOverlayHostZIndex)
             .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
             .onGloballyPositioned { coordinates ->
                 overlayLayout = SlockFloatingOverlayLayout(
                     origin = coordinates.positionInRoot(),
                     size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                 )
-            }
-            .then(
-                Modifier.clickable(
-                    onClick = if (dismissClickableActive) onDismiss else SlockFloatingOverlayConsumeOnlyClick
-                )
-            ),
+            },
         contentAlignment = Alignment.TopStart
     ) {
+        SlockFloatingOverlayDismissBarrier(
+            dismissClickableActive = dismissClickableActive,
+            onDismiss = onDismiss
+        )
         content(overlayLayout)
     }
 }
@@ -143,8 +144,35 @@ internal fun SlockFloatingOverlayHost(
 internal fun Modifier.slockFloatingContentClickTarget(): Modifier =
     clickable(onClick = {})
 
+@Composable
+private fun SlockFloatingOverlayDismissBarrier(
+    dismissClickableActive: Boolean,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
+            .pointerInput(dismissClickableActive, onDismiss) {
+                awaitEachGesture {
+                    var moved = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        event.changes.forEach { change ->
+                            moved = moved || change.positionChanged()
+                            change.consume()
+                        }
+                        if (event.changes.all { !it.pressed }) break
+                    }
+                    if (dismissClickableActive && !moved) {
+                        onDismiss()
+                    }
+                }
+            }
+    )
+}
+
 private const val SlockFloatingOverlayTouchGuardAlpha = 0.01f
-private val SlockFloatingOverlayConsumeOnlyClick: () -> Unit = {}
 
 internal fun SlockFloatingOverlayLayout.positionContent(
     anchor: Offset,
