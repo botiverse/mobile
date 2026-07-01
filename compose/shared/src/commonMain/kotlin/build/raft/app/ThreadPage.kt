@@ -52,7 +52,7 @@ import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersIntent
-import build.raft.app.data.SharedMembersChannelSuggestion
+import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
@@ -222,6 +222,7 @@ private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
+private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
@@ -2665,15 +2666,32 @@ internal fun SharedThreadRouteContent(
                 emptyMemberSuggestionSliceFlow
             }
         }
-    val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
+    val emptyChannelSuggestionsFlow = remember { MutableStateFlow(SharedMembersChannelSuggestionSlice()) }
     val channelSuggestionsFlow = remember(membersStore) {
         membersStore?.channelSuggestionSliceFlow()
             ?.onStart {
                 membersStore.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
             }
-            ?.map { slice -> slice.suggestions }
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
+    }
+    LaunchedEffect(
+        serverMembersStore,
+        membersStore,
+        currentServerId,
+        memberSuggestionScopeChannelId,
+        memberSuggestionScopedMentions
+    ) {
+        delay(ThreadMentionSuggestionPrewarmDelayMs)
+        val serverId = currentServerId?.let(::ServerId)
+        if (serverMembersStore != null && serverId != null) {
+            serverMembersStore.ensureMemberSuggestionsForServer(
+                serverId = serverId,
+                mentionChannelId = memberSuggestionScopeChannelId,
+                memberScopedMentions = memberSuggestionScopedMentions
+            )
+        }
+        membersStore?.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
     }
     val filesViewModel: SharedThreadFilesViewModel =
         viewModel(key = "shared-thread-files-$threadInstanceKey") {
@@ -6444,7 +6462,7 @@ private fun ThreadPageContent(
     linkedTasksProjection: ThreadLinkedTasksProjection,
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
-    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     onFilesAuthRequired: (String?) -> Unit,
@@ -7126,7 +7144,7 @@ private fun ThreadComposerRoute(
     resolvedAuxiliaryThreadId: String?,
     surface: ThreadComposerSurface,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
-    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit
@@ -7162,7 +7180,7 @@ private fun ThreadComposerContentWithSuggestions(
     threadMessages: List<KuiklyThreadMessageItem>,
     prioritizeThreadParticipants: Boolean,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
-    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit,
@@ -7170,7 +7188,7 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingBottom: Dp
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
-    val channelSuggestions by channelSuggestionsFlow.collectAsState(emptyList())
+    val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
     val loadedMemberSuggestions =
         remember(memberSuggestionSlice.suggestions, threadMessages, prioritizeThreadParticipants) {
             memberSuggestionSlice.suggestions
@@ -7194,8 +7212,8 @@ private fun ThreadComposerContentWithSuggestions(
                 }
         }
     val loadedChannelSuggestions =
-        remember(channelSuggestions) {
-            channelSuggestions.map { suggestion ->
+        remember(channelSuggestionSlice.suggestions) {
+            channelSuggestionSlice.suggestions.map { suggestion ->
                 KuiklyComposerChannelItem(
                     name = suggestion.name,
                     subtitle = suggestion.subtitle
@@ -7209,8 +7227,8 @@ private fun ThreadComposerContentWithSuggestions(
             retainedMemberSuggestions = loadedMemberSuggestions
         }
     }
-    LaunchedEffect(loadedChannelSuggestions) {
-        if (loadedChannelSuggestions.isNotEmpty()) {
+    LaunchedEffect(loadedChannelSuggestions, channelSuggestionSlice.status) {
+        if (loadedChannelSuggestions.isNotEmpty() || channelSuggestionSlice.status == SharedMembersLoadStatus.Loaded) {
             retainedChannelSuggestions = loadedChannelSuggestions
         }
     }
@@ -7219,14 +7237,18 @@ private fun ThreadComposerContentWithSuggestions(
             ?: retainedMemberSuggestions.takeIf { it.isNotEmpty() }
             ?: state.memberSuggestions
     val renderedChannelSuggestions =
-        loadedChannelSuggestions.takeIf { it.isNotEmpty() }
+        loadedChannelSuggestions.takeIf { it.isNotEmpty() || channelSuggestionSlice.status == SharedMembersLoadStatus.Loaded }
             ?: retainedChannelSuggestions.takeIf { it.isNotEmpty() }
             ?: state.channelSuggestions
     val renderedState =
-        remember(state, renderedMemberSuggestions, renderedChannelSuggestions) {
+        remember(state, memberSuggestionSlice, renderedMemberSuggestions, channelSuggestionSlice, renderedChannelSuggestions) {
             state.copy(
                 memberSuggestions = renderedMemberSuggestions,
-                channelSuggestions = renderedChannelSuggestions
+                memberSuggestionsStatus = memberSuggestionSlice.status,
+                memberSuggestionsErrorCode = memberSuggestionSlice.errorCode,
+                channelSuggestions = renderedChannelSuggestions,
+                channelSuggestionsStatus = channelSuggestionSlice.status,
+                channelSuggestionsErrorCode = channelSuggestionSlice.errorCode
             )
         }
     ThreadComposerContent(

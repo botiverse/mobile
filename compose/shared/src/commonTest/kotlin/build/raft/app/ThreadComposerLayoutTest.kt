@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
+import build.raft.app.data.SharedMembersLoadStatus
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,6 +46,51 @@ class ThreadComposerLayoutTest {
         )
 
         assertEquals(KuiklyComposerSuggestionEdit(text = "ping @artin world", cursor = 12), edit)
+    }
+
+    @Test
+    fun memberSuggestionTriggerShowsLoadingPanelBeforeItemsArrive() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.MemberLoading,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                memberCount = 0,
+                memberStatus = SharedMembersLoadStatus.InFlight,
+                channelCount = 0,
+                channelStatus = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
+    fun memberSuggestionTriggerShowsEmptyPanelAfterLoadedEmptyResult() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.MemberEmpty,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "missing", triggerStart = 0),
+                memberCount = 0,
+                memberStatus = SharedMembersLoadStatus.Loaded,
+                channelCount = 0,
+                channelStatus = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
+    fun channelSuggestionTriggerShowsItemsWhenFilteredChannelsExist() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.ChannelItems,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "home", triggerStart = 0),
+                memberCount = 0,
+                memberStatus = SharedMembersLoadStatus.Loaded,
+                channelCount = 1,
+                channelStatus = SharedMembersLoadStatus.InFlight
+            )
+        )
     }
 
     @Test
