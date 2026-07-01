@@ -58,6 +58,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -174,20 +175,7 @@ private fun SettingsComputersScreen() {
     }
     if (visualFixture == "computers") {
         Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            SlockTopPageHeader(
-                title = "Computers",
-                subtitle = "Connected machines",
-                iconName = SlockLucideIconName.Monitor,
-                backgroundColor = SlockColor.SurfaceWhite,
-                trailingContent = {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Plus,
-                        onClick = {},
-                        size = 36.dp,
-                        shadowOffset = 3.dp
-                    )
-                }
-            )
+            SettingsComputersListHeader(onBack = {}, onAddComputer = {})
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 SettingsComputersContent(visualSettingsComputersPayload()) { _, _ -> }
             }
@@ -211,21 +199,11 @@ private fun SettingsComputersScreen() {
             timeContext = timeContext
         )
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = "Computers",
-            subtitle = "Connected machines",
-            iconName = SlockLucideIconName.Monitor,
-            backgroundColor = SlockColor.SurfaceWhite,
-            trailingContent =
+        SettingsComputersListHeader(
+            onBack = { pager.closeSettingsComputersPage() },
+            onAddComputer =
                 if (computersPayload.canAddComputer) {
-                    {
-                        SlockBrutalIconButton(
-                            iconName = SlockLucideIconName.Plus,
-                            onClick = { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) },
-                            size = 36.dp,
-                            shadowOffset = 3.dp
-                        )
-                    }
+                    { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) }
                 } else {
                     null
                 }
@@ -319,6 +297,47 @@ private fun SettingsComputerDetailScreen() {
             )
         }
     }
+}
+
+@Composable
+private fun SettingsComputersListHeader(
+    onBack: () -> Unit,
+    onAddComputer: (() -> Unit)?
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(SlockSize.PageHeaderHeight)
+                .background(SlockColor.SurfaceWhite)
+                .padding(start = 20.dp, end = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockBrutalIconButton(
+            iconName = SlockLucideIconName.ArrowLeft,
+            onClick = onBack,
+            size = 30.dp,
+            shadowOffset = 2.dp
+        )
+        Text(
+            "Computers",
+            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        onAddComputer?.let { onClick ->
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.Plus,
+                onClick = onClick,
+                size = 30.dp,
+                shadowOffset = 2.dp
+            )
+        }
+    }
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable
@@ -468,7 +487,7 @@ internal fun SettingsComputersContent(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (payload.computers.isEmpty()) {
             item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
@@ -1188,21 +1207,37 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
                 KuiklySettingsComputerItem(
                     id = "computer-studio",
                     name = "Studio Test Rig",
-                    daemonVersion = "0.62.0",
+                    daemonVersion = "0.61.1",
+                    computerVersion = "0.0.50",
+                    isComputer = true,
                     online = false,
-                    hostname = "studio-test-rig.local",
+                    hostname = null,
                     platform = "linux",
                     lastSeenLabel = "Jun 26, 2026, 4:10 PM",
                     runtimes = listOf("codex"),
                     createdAt = "Jun 19, 2026",
                     apiKeyPrefix = "slock_lab",
                     statusVersion = 3
+                ),
+                KuiklySettingsComputerItem(
+                    id = "machine-legacy",
+                    name = "Legacy daemon",
+                    daemonVersion = "0.65.0",
+                    isComputer = false,
+                    online = true,
+                    hostname = null,
+                    platform = "linux",
+                    lastSeenLabel = "Active now",
+                    runtimes = listOf("claude"),
+                    createdAt = "Jun 17, 2026",
+                    apiKeyPrefix = "slock_legacy",
+                    statusVersion = 4
                 )
             ),
         canAddComputer = true,
         addComputerUnavailableReason = null,
         latestDaemonVersion = "0.63.7",
-        latestComputerVersion = "0.0.62"
+        latestComputerVersion = "0.0.50"
     )
 
 private fun visualSettingsComputerDetailPayload(
@@ -1256,12 +1291,12 @@ private fun visualSettingsComputerDetailPayload(
 private fun visualPrimaryComputer(): KuiklySettingsComputerItem =
     KuiklySettingsComputerItem(
         id = "computer-mbp",
-        name = "Jiachengs-MacBook-Pro.local",
+        name = "Jiachengs-MacBook-Pro",
         daemonVersion = "0.63.7",
         computerVersion = "0.0.50",
         isComputer = true,
         online = true,
-        hostname = "Jiachengs-MacBook-Pro.local",
+        hostname = null,
         platform = "darwin",
         lastSeenLabel = "Active now",
         runtimes = listOf("codex", "claude"),
@@ -1461,6 +1496,10 @@ private fun Pager.closeSettingsComputerDetailPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
+private fun Pager.closeSettingsComputersPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+}
+
 private fun settingsComputerErrorTitle(code: String): String = when (code) {
     "computer_has_agents" -> "Cannot delete computer"
     "computer_bad_request" -> "Computer request rejected"
@@ -1491,51 +1530,67 @@ private fun SettingsComputerCard(
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shadowOffset = 4.dp,
-        contentPadding = 14.dp,
+        contentPadding = 12.dp,
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            IconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
+            Box {
+                IconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
+                if (item.shouldShowComputerAttentionDot(latestComputerVersion)) {
+                    SlockStatusIndicator(
+                        color = SlockColor.AccentPink,
+                        size = 9.dp,
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp)
+                    )
+                }
+            }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        item.name,
+                        style = SlockType.Body
+                            .copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                     OnlineDot(item.online)
                 }
                 val runLabel = settingsComputerRunLabel(item)
-                val versionWarning =
-                    settingsComputerVersionWarning(
-                        currentVersion = item.computerVersion,
-                        latestVersion = latestComputerVersion,
-                        isComputer = item.isComputer
-                    )
-                Text(
-                    text = runLabel.text,
-                    style = SlockType.Input.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
-                        fontStyle = if (runLabel.isOffline) FontStyle.Italic else null
-                    ),
-                    color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                versionWarning?.let { warning ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = warning,
+                        text = runLabel.text,
                         style = SlockType.Input.copy(
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            color = SlockColor.AccentOrange,
-                            fontWeight = FontWeight.Bold
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
+                            fontStyle = if (runLabel.isOffline) FontStyle.Italic else null
                         ),
-                        color = SlockColor.AccentOrange,
+                        color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    runLabel.upgradeText?.let { upgrade ->
+                        Text(
+                            text = upgrade,
+                            style = SlockType.Input.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                                color = SlockColor.AccentOrange,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = SlockColor.AccentOrange,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -1544,15 +1599,19 @@ private fun SettingsComputerCard(
 
 private data class SettingsComputerRunLabel(
     val text: String,
-    val isOffline: Boolean
+    val isOffline: Boolean,
+    val upgradeText: String? = null
 )
 
 private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): SettingsComputerRunLabel {
     val kind = if (item.isComputer) "computer" else "daemon"
-    if (!item.online) return SettingsComputerRunLabel("$kind offline", isOffline = true)
     val version =
         if (item.isComputer) item.computerVersion?.takeIf { it.isNotBlank() }
         else item.daemonVersion.takeIf { it.isNotBlank() }
+    if (!item.online) {
+        val upgradeText = version?.let { "-> v$it" }
+        return SettingsComputerRunLabel("$kind offline", isOffline = true, upgradeText = upgradeText)
+    }
     return if (version != null) {
         SettingsComputerRunLabel("$kind v$version", isOffline = false)
     } else {
@@ -1560,31 +1619,8 @@ private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): Settings
     }
 }
 
-private fun settingsComputerVersionWarning(
-    currentVersion: String?,
-    latestVersion: String?,
-    isComputer: Boolean
-): String? {
-    if (!isComputer || !isSettingsComputerOutdated(currentVersion, latestVersion)) return null
-    return "v${currentVersion?.trim()} -> v${latestVersion?.trim()}"
-}
-
-private val SettingsComputerSemverTriple = Regex("""^\d+\.\d+\.\d+$""")
-
-private fun isSettingsComputerOutdated(currentVersion: String?, latestVersion: String?): Boolean {
-    val current = currentVersion.settingsComputerVersionTripleOrNull() ?: return false
-    val latest = latestVersion.settingsComputerVersionTripleOrNull() ?: return false
-    for (index in current.indices) {
-        if (current[index] < latest[index]) return true
-        if (current[index] > latest[index]) return false
-    }
-    return false
-}
-
-private fun String?.settingsComputerVersionTripleOrNull(): List<Int>? {
-    val value = this?.trim()?.removePrefix("v")?.takeIf { SettingsComputerSemverTriple.matches(it) } ?: return null
-    return value.split('.').map { it.toInt() }
-}
+private fun KuiklySettingsComputerItem.shouldShowComputerAttentionDot(latestComputerVersion: String?): Boolean =
+    isComputer && !online && latestComputerVersion?.isNotBlank() == true
 
 @Composable
 private fun SettingsInlineError(title: String, errorCode: String, retryable: Boolean, onRetry: () -> Unit) {
@@ -1652,10 +1688,10 @@ private fun SettingsPrimaryButton(text: String, onClick: () -> Unit) {
 @Composable
 private fun IconBox(iconName: SlockLucideIconName, color: Color) {
     Box(
-        modifier = Modifier.size(42.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
+        modifier = Modifier.size(40.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(name = iconName, modifier = Modifier.size(22.dp))
+        SlockLucideIcon(name = iconName, modifier = Modifier.size(20.dp))
     }
 }
 

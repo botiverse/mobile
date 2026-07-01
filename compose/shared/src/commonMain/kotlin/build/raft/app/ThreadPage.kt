@@ -57,6 +57,7 @@ import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
+import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
@@ -229,6 +230,7 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
+private const val ThreadSearchChannelFilterId = "channel"
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -631,6 +633,31 @@ internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
         nowEpochMillis?.let { put("nowEpochMillis", it) }
         put("timeFormat", timeFormat)
     }
+}
+
+internal fun KuiklyThreadScreenPayload.threadChannelSearchChannelId(): String? =
+    sourceThreadId
+        ?.trim()
+        ?.takeIf { it.isNotBlank() && surfaceKind == KuiklyThreadSurfaceKind.Channel }
+
+internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
+    val channelId = threadChannelSearchChannelId() ?: return null
+    return JSONObject().apply {
+        put("pageName", HOME_SEARCH_PAGE)
+        put("destination", SharedHomeShellDestinationSearch)
+        put(HOME_SEARCH_SELECTED_CHANNEL_ID, channelId)
+        put(HOME_SEARCH_INITIAL_OPEN_FILTER_ID, ThreadSearchChannelFilterId)
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
+}
+
+private fun Pager.openThreadChannelSearch(payload: KuiklyThreadScreenPayload): Boolean {
+    val pageData = payload.toThreadChannelSearchPageData() ?: return false
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(HOME_SEARCH_PAGE, pageData)
+    return true
 }
 
 private fun MemberKind.toThreadMemberDetailKindWireValue(): String =
@@ -1896,6 +1923,7 @@ internal fun ThreadHeaderVisualScreen() {
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = { _, _, _ -> },
+            onOpenSearch = {},
             onShowMembers = {},
             onShowSettings = {}
         )
@@ -4004,6 +4032,11 @@ internal fun SharedThreadRouteContent(
                                 "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                         )
                         onOpenThreadPayload(loadingPayload)
+                    }
+                }
+                action == "openChannelSearch" -> {
+                    if (!pager.openThreadChannelSearch(renderedThread)) {
+                        bridge.toast("Search is unavailable for this thread")
                     }
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
@@ -6880,6 +6913,9 @@ private fun ThreadPageContent(
                     onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                 },
                 onOpenMemberProfile = onOpenMemberProfile,
+                onOpenSearch = {
+                    onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
+                },
                 onShowMembers = {
                     activeModal = "members"
                     onThreadEvent("loadMembers", null, null, null)
@@ -7112,6 +7148,7 @@ private fun ThreadPageHeader(
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
+    onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
@@ -7172,6 +7209,9 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            if (payload.threadChannelSearchChannelId() != null) {
+                ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
             }
             if (payload.showSettingsAction) {
                 ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)

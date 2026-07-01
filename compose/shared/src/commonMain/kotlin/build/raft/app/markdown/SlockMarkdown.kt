@@ -867,7 +867,7 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 }
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
-internal const val SlockMarkdownTagAnnotationTag = "ai.slock.markdown.tag"
+internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this

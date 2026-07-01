@@ -397,9 +397,11 @@ import kotlinx.serialization.json.contentOrNull
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
-private const val HOME_SEARCH_PAGE = "compose_home_search"
+const val HOME_SEARCH_PAGE = "compose_home_search"
 private const val HOME_SAVED_PAGE = "compose_home_saved"
 private const val HOME_ACTIVITY_PAGE = "compose_home_activity"
+const val HOME_SEARCH_SELECTED_CHANNEL_ID = "selectedChannelId"
+const val HOME_SEARCH_INITIAL_OPEN_FILTER_ID = "initialOpenFilterId"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
@@ -619,7 +621,14 @@ internal class ComposeBottomTabBarSmokePage : build.raft.app.base.BasePager() {
 internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationSearch, slockPageVisibleResumeTick) }
+        setContent {
+            HomeSecondaryRouterContent(
+                HomeDestinationSearch,
+                slockPageVisibleResumeTick,
+                initialSearchChannelId = pageData.params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).trim().takeIf { it.isNotBlank() },
+                initialSearchOpenFilterId = pageData.params.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID).trim().takeIf { it.isNotBlank() }
+            )
+        }
     }
 }
 
@@ -719,7 +728,12 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
 }
 
 @Composable
-private fun HomeSecondaryRouterContent(destination: String, routeVisibleTick: Int = 0) {
+private fun HomeSecondaryRouterContent(
+    destination: String,
+    routeVisibleTick: Int = 0,
+    initialSearchChannelId: String? = null,
+    initialSearchOpenFilterId: String? = null
+) {
     val environment = rememberHomeSecondaryRouteEnvironment()
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
@@ -729,7 +743,13 @@ private fun HomeSecondaryRouterContent(destination: String, routeVisibleTick: In
     )
     when (retainedDestination) {
         HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
-        HomeDestinationSearch -> HomeSearchRouterContent(environment, routeVisibleTick)
+        HomeDestinationSearch ->
+            HomeSearchRouterContent(
+                environment,
+                routeVisibleTick,
+                initialChannelId = initialSearchChannelId,
+                initialOpenFilterId = initialSearchOpenFilterId
+            )
         HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
         else -> SlockCenteredLoading(message = "Opening...")
     }
@@ -768,7 +788,9 @@ private fun HomeActivityRouterContent(
 @Composable
 private fun HomeSearchRouterContent(
     environment: HomeSecondaryRouteEnvironment,
-    routeVisibleTick: Int = 0
+    routeVisibleTick: Int = 0,
+    initialChannelId: String? = null,
+    initialOpenFilterId: String? = null
 ) {
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
@@ -797,6 +819,10 @@ private fun HomeSearchRouterContent(
     }
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
+    LaunchedEffect(initialChannelId) {
+        val channelId = initialChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel(channelId))
+    }
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
             searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
@@ -848,6 +874,7 @@ private fun HomeSearchRouterContent(
                 compactConsecutiveMessages = environment.compactConsecutiveMessages
             )
         },
+        initialOpenFilterId = initialOpenFilterId,
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
