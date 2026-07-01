@@ -778,7 +778,7 @@ private fun Modifier.activityRowGestures(
 private fun SharedActivityFooter(item: InboxItem) {
     FlowRow(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item.activityFooterSlots().forEach { slot ->
@@ -788,27 +788,45 @@ private fun SharedActivityFooter(item: InboxItem) {
                         text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.42f),
-                        maxLines = 1
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.CenterVertically)
                     )
-                SharedActivityFooterSlot.Task -> SharedActivityTaskBadge(item)
+                SharedActivityFooterSlot.Task -> SharedActivityTaskBadge(
+                    item,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
                 SharedActivityFooterSlot.Mention ->
-                    SharedActivityCountPill("you", iconName = SlockLucideIconName.AtSign, backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+                    SharedActivityCountPill(
+                        "you",
+                        iconName = SlockLucideIconName.AtSign,
+                        backgroundColor = SlockColor.BrandYellow,
+                        textColor = SlockColor.TextBlack,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
                 SharedActivityFooterSlot.New ->
-                    SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
+                    SharedActivityCountPill(
+                        "${item.unreadCount} new",
+                        backgroundColor = SlockColor.AccentPink,
+                        textColor = SlockColor.SurfaceWhite,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
             }
         }
     }
 }
 
 @Composable
-private fun SharedActivityTaskBadge(item: InboxItem) {
+private fun SharedActivityTaskBadge(
+    item: InboxItem,
+    modifier: Modifier = Modifier
+) {
     val statusMeta = item.taskStatus?.sharedTaskStatusChipMeta() ?: return
     SlockAnchoredMetaChip(
         label = item.activityTaskBadgeText(),
         iconName = statusMeta.icon,
         iconSize = statusMeta.iconSize,
         color = statusMeta.color,
-        modifier = Modifier.widthIn(max = 260.dp),
+        modifier = modifier.widthIn(max = 260.dp),
         onClick = null
     )
 }
