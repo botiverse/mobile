@@ -378,9 +378,7 @@ internal fun StoredAuthSession.authSessionClearFingerprint(): String =
         user.id,
         user.email,
         accessToken,
-        refreshToken,
-        selectedServerId.orEmpty(),
-        selectedServerSlug.orEmpty()
+        refreshToken
     ).joinToString("|").stableAuthSessionFingerprint()
 
 private fun String.stableAuthSessionFingerprint(): String {

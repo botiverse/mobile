@@ -80,13 +80,24 @@ class AuthSessionStoreTest {
         store.saveSession(sampleSession())
         assertNull(duplicateChange.await())
 
-        val selectedServerChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
+        val selectedServerChange = async(start = CoroutineStart.UNDISPATCHED) { withTimeoutOrNull(50) { store.sessionChanges.first() } }
         store.updateSelectedServer("server-2", "work")
+        assertNull(selectedServerChange.await())
+
+        val tokenChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
+        store.updateTokens("token-b", "token-b-r")
+        assertEquals(store.readSession()?.authSessionClearFingerprint(), tokenChange.await())
+    }
+
+    @Test
+    fun authSessionFingerprintIgnoresSelectedServer() {
+        val session = sampleSession()
+
         assertEquals(
-            sampleSession()
+            session.authSessionClearFingerprint(),
+            session
                 .copy(selectedServerId = "server-2", selectedServerSlug = "work")
-                .authSessionClearFingerprint(),
-            selectedServerChange.await()
+                .authSessionClearFingerprint()
         )
     }
 
