@@ -156,6 +156,51 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun homeServerChangeDefersHomeBadgeSummaryRefreshUntilHomeSettles() {
+        val fixture = fixture(homeState = homeStateForServer("server-1"))
+
+        fixture.homeState.value = loadingHomeStateForServer("server-2")
+
+        assertEquals(
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            fixture.activityIntents
+        )
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.ClearSavedSummary),
+            fixture.searchSavedIntents
+        )
+
+        fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = true)
+
+        assertEquals(
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            fixture.activityIntents
+        )
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.ClearSavedSummary),
+            fixture.searchSavedIntents
+        )
+
+        fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = false)
+
+        assertEquals(
+            listOf(
+                SharedActivityIntent.ClearSummary,
+                SharedActivityIntent.Refresh
+            ),
+            fixture.activityIntents
+        )
+        assertEquals(
+            listOf(
+                SharedHomeSearchSavedIntent.ClearSavedSummary,
+                SharedHomeSearchSavedIntent.RefreshSaved
+            ),
+            fixture.searchSavedIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun homeFirstServerLoadRefreshesHomeBadgeSummariesWithoutClearing() {
         val fixture = fixture()
 
@@ -284,7 +329,15 @@ class SharedHomeShellStoreTest {
         return ShellFixture(store, scope, homeFlow, homeIntents, activityIntents, searchSavedIntents)
     }
 
-    private fun homeStateForServer(serverId: String): SharedHomeState {
+    private fun loadingHomeStateForServer(serverId: String): SharedHomeState =
+        SharedHomeState(
+            content = SharedHomeContentState.Loading(sessionForServer(serverId))
+        )
+
+    private fun homeStateForServer(
+        serverId: String,
+        contentRefreshing: Boolean = false
+    ): SharedHomeState {
         val server = ServerSummary(ServerId(serverId), "$serverId server")
         val member =
             MemberProfile(
@@ -293,14 +346,7 @@ class SharedHomeShellStoreTest {
                 handle = "artin",
                 kind = MemberKind.Human
             )
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "user-1", email = "artin@raft.build"),
-                accessToken = "token",
-                refreshToken = "refresh",
-                selectedServerId = serverId,
-                servers = listOf(StoredAuthServer(id = serverId, name = server.name))
-            )
+        val session = sessionForServer(serverId, server.name)
         return SharedHomeState(
             content =
                 SharedHomeContentState.Content(
@@ -312,10 +358,23 @@ class SharedHomeShellStoreTest {
                             directMessages = emptyList(),
                             unreadTotal = 0
                         ),
-                    session = session
+                    session = session,
+                    contentRefreshing = contentRefreshing
                 )
         )
     }
+
+    private fun sessionForServer(
+        serverId: String,
+        serverName: String = "$serverId server"
+    ): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "artin@raft.build"),
+            accessToken = "token",
+            refreshToken = "refresh",
+            selectedServerId = serverId,
+            servers = listOf(StoredAuthServer(id = serverId, name = serverName))
+        )
 
     private data class ShellFixture(
         val store: SharedHomeShellStore,

@@ -52,6 +52,7 @@ class SharedHomeShellStore(
     private val scope: CoroutineScope
 ) {
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
+    private var pendingBadgeSummaryRefreshServerId: String? = null
 
     private val _state =
         MutableStateFlow(
@@ -69,10 +70,26 @@ class SharedHomeShellStore(
                 homeState.collect { home ->
                     val previousServerId = observedHomeServerId
                     val nextServerId = home.activeHomeServerId()
+                    val summariesCanRefresh = home.canRefreshHomeBadgeSummaries()
                     observedHomeServerId = nextServerId ?: previousServerId
                     _state.value = _state.value.copy(home = home)
                     if (nextServerId != null && previousServerId != nextServerId) {
-                        refreshBadgeSummaries(clearBeforeRefresh = previousServerId != null)
+                        if (previousServerId != null) {
+                            clearBadgeSummaries()
+                        }
+                        if (summariesCanRefresh) {
+                            pendingBadgeSummaryRefreshServerId = null
+                            refreshBadgeSummaries()
+                        } else {
+                            pendingBadgeSummaryRefreshServerId = nextServerId
+                        }
+                    } else if (
+                        nextServerId != null &&
+                            pendingBadgeSummaryRefreshServerId == nextServerId &&
+                            summariesCanRefresh
+                    ) {
+                        pendingBadgeSummaryRefreshServerId = null
+                        refreshBadgeSummaries()
                     }
                 }
             },
@@ -170,11 +187,12 @@ class SharedHomeShellStore(
         }
     }
 
-    private fun refreshBadgeSummaries(clearBeforeRefresh: Boolean = false) {
-        if (clearBeforeRefresh) {
-            dispatchActivity(SharedActivityIntent.ClearSummary)
-            dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
-        }
+    private fun clearBadgeSummaries() {
+        dispatchActivity(SharedActivityIntent.ClearSummary)
+        dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
+    }
+
+    private fun refreshBadgeSummaries() {
         dispatchActivity(SharedActivityIntent.Refresh)
         dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
     }
@@ -193,4 +211,12 @@ private fun SharedHomeState.activeHomeServerId(): String? =
         is SharedHomeContentState.Loading -> current.session?.currentServerId
         is SharedHomeContentState.Empty -> current.session.currentServerId
         is SharedHomeContentState.Error -> null
+    }
+
+private fun SharedHomeState.canRefreshHomeBadgeSummaries(): Boolean =
+    when (val current = content) {
+        is SharedHomeContentState.Content -> !current.contentRefreshing
+        is SharedHomeContentState.Empty -> true
+        is SharedHomeContentState.Loading,
+        is SharedHomeContentState.Error -> false
     }
