@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.base.Attr
 import com.tencent.kuikly.core.base.DeclarativeBaseView
 import com.tencent.kuikly.core.base.event.Event
@@ -74,6 +75,7 @@ private enum class SlockAppTabBarRenderer {
 
 private val SlockSharedBottomTabBarHeight = 58.dp
 private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
+internal const val SlockAppBottomTabBarHostZIndex = 1000f
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
@@ -221,20 +223,21 @@ internal fun SlockAppBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
+    val hostModifier = modifier.zIndex(SlockAppBottomTabBarHostZIndex)
     when (slockAppTabBarRenderer()) {
         SlockAppTabBarRenderer.OhosHdsImmersive,
         SlockAppTabBarRenderer.IosLiquidGlass -> {
-            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = hostModifier, bottomSafeArea = bottomSafeArea)
             return
         }
         SlockAppTabBarRenderer.AndroidFloating -> {
-            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = hostModifier, bottomSafeArea = bottomSafeArea)
             return
         }
         SlockAppTabBarRenderer.SharedCompose -> Unit
     }
     Box(
-        modifier = modifier
+        modifier = hostModifier
             .fillMaxWidth()
             .height(slockSharedBottomTabBarHostHeight(bottomSafeArea))
             .background(SlockColor.SurfaceWhite)
