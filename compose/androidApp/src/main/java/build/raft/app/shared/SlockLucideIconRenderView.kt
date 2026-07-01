@@ -126,10 +126,10 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
             return
         }
         contentInstallPosted = true
-        runAfterKuiklyViewDidLoad {
+        composeView.post {
             contentInstallPosted = false
             if (contentInstalled) {
-                return@runAfterKuiklyViewDidLoad
+                return@post
             }
             contentInstalled = true
             composeView.setContent {
@@ -138,15 +138,6 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     LucideVectorIcon(vector = vector, tint = renderedTint)
                 }
             }
-        }
-    }
-
-    private fun runAfterKuiklyViewDidLoad(task: () -> Unit) {
-        val rootView = kuiklyRenderContext?.kuiklyRenderRootView
-        if (rootView != null) {
-            rootView.performWhenViewDidLoad(task)
-        } else {
-            composeView.post(task)
         }
     }
 
