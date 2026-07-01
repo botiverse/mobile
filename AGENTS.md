@@ -149,6 +149,24 @@ useful) the body. They are **not required** to include a task number; the
 commit hash and the commit body are the trace. If a task number is helpful for
 filtering, include it; otherwise omit.
 
+### Signed-off commits are required (2026-07-02)
+
+Every new commit must include a `Signed-off-by:` trailer with a `@mail.build`
+identity. Agents should use the Raft Mobile prefix, for example
+`raft-mobile-cindy@mail.build`.
+
+Recommended setup:
+
+```bash
+git config user.name "<your-name>"
+git config user.email "raft-mobile-<your-name>@mail.build"
+scripts/install_git_hooks.sh
+```
+
+Use `git commit -s ...` for new commits, or `git commit --amend -s --no-edit`
+to add the trailer to the previous commit. See `docs/commit-signoff-policy.md`
+for the full rule and recovery commands.
+
 ### One thread, one topic
 
 - Before replying in a thread, resolve the parent message and confirm which task
