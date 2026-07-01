@@ -55,11 +55,12 @@ internal fun SlockTopPageHeader(
     iconBackground: Color = SlockColor.BrandYellow,
     backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
+    applyTopSafeArea: Boolean = true,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Box(
         modifier =
             modifier
