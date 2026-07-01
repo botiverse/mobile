@@ -994,6 +994,7 @@ internal fun ThreadComposerContent(
             if (state.pendingMentionActions.isNotEmpty()) {
                 PendingMentionActionBanner(
                     actions = state.pendingMentionActions,
+                    memberSuggestions = state.memberSuggestions,
                     channelLabel = surface.mentionScopeChannelLabel(),
                     executingIds = state.executingMentionActionIds.toSet(),
                     onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
@@ -1269,6 +1270,24 @@ internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
 private fun KuiklyPendingMentionActionItem.targetInitial(): String =
     targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
 
+internal fun KuiklyPendingMentionActionItem.matchingTargetSuggestion(
+    suggestions: List<KuiklyComposerMemberItem>
+): KuiklyComposerMemberItem? {
+    val target = targetHandle.normalizedPendingMentionTargetHandle() ?: return null
+    return suggestions.firstOrNull { suggestion ->
+        suggestion.handle.normalizedPendingMentionTargetHandle() == target
+    } ?: suggestions.firstOrNull { suggestion ->
+        suggestion.displayName.normalizedPendingMentionTargetHandle() == target
+    }
+}
+
+private fun String?.normalizedPendingMentionTargetHandle(): String? =
+    this
+        ?.trim()
+        ?.removePrefix("@")
+        ?.takeIf { it.isNotBlank() }
+        ?.lowercase()
+
 internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(channelLabel: String): String {
     val target = targetLabel()
     val actionHint =
@@ -1529,6 +1548,7 @@ private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
 @Composable
 private fun PendingMentionActionBanner(
     actions: List<KuiklyPendingMentionActionItem>,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
     channelLabel: String,
     executingIds: Set<String>,
     onInvite: (String) -> Unit,
@@ -1550,6 +1570,7 @@ private fun PendingMentionActionBanner(
             actions.forEach { action ->
                 PendingMentionActionRow(
                     action = action,
+                    targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
                     channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
                     executing = action.resolutionId in executingIds,
                     onInvite = { onInvite(action.resolutionId) },
@@ -1564,6 +1585,7 @@ private fun PendingMentionActionBanner(
 @Composable
 private fun PendingMentionActionRow(
     action: KuiklyPendingMentionActionItem,
+    targetSuggestion: KuiklyComposerMemberItem?,
     channelLabel: String,
     executing: Boolean,
     onInvite: () -> Unit,
@@ -1571,6 +1593,12 @@ private fun PendingMentionActionRow(
     onDismiss: () -> Unit
 ) {
     val targetLabel = action.targetLabel()
+    val targetAvatarLabel =
+        targetSuggestion?.avatarLabel
+            ?.takeIf { it.isNotBlank() }
+            ?: targetSuggestion?.displayName
+                ?.takeIf { it.isNotBlank() }
+            ?: action.targetInitial()
     val canInvite = action.supportsMentionAction("invite")
     val canNotify = action.supportsMentionAction("notify")
     Column(
@@ -1584,10 +1612,11 @@ private fun PendingMentionActionRow(
         ) {
             SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
             SlockAvatar(
-                avatarWireValue = null,
-                label = action.targetInitial(),
+                avatarWireValue = targetSuggestion?.avatarWireValue,
+                label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                borderWidth = SlockStroke.Default
+                borderWidth = SlockStroke.Default,
+                gravatarUrl = targetSuggestion?.gravatarHash?.toGravatarAvatarUrl()
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

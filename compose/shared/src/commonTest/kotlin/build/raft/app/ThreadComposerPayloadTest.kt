@@ -416,6 +416,29 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun pendingMentionActionMatchesCachedMemberSuggestionForAvatar() {
+        val action =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "@outside"
+            )
+        val suggestion =
+            KuiklyComposerMemberItem(
+                displayName = "Outside Agent",
+                handle = "outside",
+                avatarWireValue = "pixel:outside",
+                avatarLabel = "OA",
+                memberId = "agent-1"
+            )
+
+        assertEquals(
+            suggestion,
+            action.matchingTargetSuggestion(listOf(suggestion))
+        )
+    }
+
+    @Test
     fun mentionScopeChannelLabelUsesDisplayNameInsteadOfRawIdentity() {
         assertEquals(
             "#对话流专修",
