@@ -3167,6 +3167,7 @@ private fun SettingsAppShellContent(
         SettingsHomeContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
             bottomContentPadding = bottomContentPadding,
+            applyTopSafeArea = false,
             onSelect = { key ->
                 if (key == SettingsDestinationRouter) {
                     onOpenRouter()
@@ -3182,6 +3183,7 @@ private fun SettingsAppShellContent(
         title = settingsDestinationTitle(selectedDestination),
         subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
+        applyTopSafeArea = false,
         onBack = {
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
@@ -6786,6 +6788,7 @@ private fun SettingsDetailShell(
     title: String,
     subtitle: String,
     iconName: SlockLucideIconName,
+    applyTopSafeArea: Boolean = true,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
@@ -6796,6 +6799,7 @@ private fun SettingsDetailShell(
             subtitle = subtitle,
             iconName = iconName,
             backgroundColor = SlockColor.SurfaceWhite,
+            applyTopSafeArea = applyTopSafeArea,
             leadingContent = {
                 SettingsDetailBackButton(onBack)
             },
@@ -14703,13 +14707,15 @@ private fun rememberSettingsHomePayload(
 internal fun SettingsHomeContent(
     payload: KuiklySettingsHomePayload,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    applyTopSafeArea: Boolean = true,
     onSelect: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = payload.title,
             subtitle = null,
-            iconName = SlockLucideIconName.Settings
+            iconName = SlockLucideIconName.Settings,
+            applyTopSafeArea = applyTopSafeArea
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
