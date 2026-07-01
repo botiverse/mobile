@@ -25,16 +25,19 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
-    fun highlightedTextAddsYellowBackgroundSpans() {
-        val highlighted = homeSearchHighlightedText(
+    fun highlightSegmentsKeepMatchedTextSeparateForVisibleBackground() {
+        val segments = homeSearchHighlightSegments(
             text = "Find keyword here",
             query = "keyword"
         )
 
-        assertEquals("Find keyword here", highlighted.text)
-        assertEquals(1, highlighted.spanStyles.size)
-        assertEquals(5, highlighted.spanStyles.single().start)
-        assertEquals(12, highlighted.spanStyles.single().end)
-        assertEquals(SlockColor.BrandYellow, highlighted.spanStyles.single().item.background)
+        assertEquals(
+            listOf(
+                HomeSearchHighlightSegment("Find ", highlighted = false),
+                HomeSearchHighlightSegment("keyword", highlighted = true),
+                HomeSearchHighlightSegment(" here", highlighted = false)
+            ),
+            segments
+        )
     }
 }
