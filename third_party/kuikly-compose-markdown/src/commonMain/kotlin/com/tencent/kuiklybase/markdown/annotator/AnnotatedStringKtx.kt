@@ -32,6 +32,8 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
+private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "ai.slock.markdown.inlineCode"
+
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
  * This function will parse the Markdown content and apply the given styles to the text.
@@ -306,11 +308,18 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     }
 
                     MarkdownElementTypes.CODE_SPAN -> {
+                        val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
                         append(' ')
                         buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
                         append(' ')
                         pop()
+                        addStringAnnotation(
+                            tag = SLOCK_INLINE_CODE_ANNOTATION_TAG,
+                            annotation = "true",
+                            start = codeStart,
+                            end = length
+                        )
                     }
 
                     MarkdownElementTypes.AUTOLINK -> appendAutoLink(content, child, annotatorSettings)

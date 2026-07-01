@@ -37,6 +37,7 @@ import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
+    private val slockInlineCodeAnnotationTag = "ai.slock.markdown.inlineCode"
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
@@ -216,7 +217,10 @@ class SlockMarkdownTest {
         assertTrue(annotated.text.contains(shortCode))
         assertTrue(annotated.text.contains(longCode))
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
-        assertTrue(annotated.getStringAnnotations(start = 0, end = annotated.length).isEmpty())
+        assertEquals(
+            listOf(" $shortCode ", " $longCode "),
+            annotated.slockInlineCodeMarkerTextSegments()
+        )
     }
 
     @Test
@@ -571,6 +575,7 @@ class SlockMarkdownTest {
         assertEquals("Ping @artin for #405 and  mimo ", annotated.text)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownInlineContentIds())
+        assertEquals(listOf(" mimo "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -596,6 +601,7 @@ class SlockMarkdownTest {
         assertEquals("Bold text for @artin in #markdown专修 with  code ", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownInlineContentIds())
+        assertEquals(listOf(" code "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -956,4 +962,9 @@ class SlockMarkdownTest {
             buildMarkdownAnnotatedString(parserContent, paragraph, settings)
         }
     }
+
+    private fun AnnotatedString.slockInlineCodeMarkerTextSegments(): List<String> =
+        getStringAnnotations(slockInlineCodeAnnotationTag, start = 0, end = length).map { range ->
+            text.substring(range.start, range.end)
+        }
 }
