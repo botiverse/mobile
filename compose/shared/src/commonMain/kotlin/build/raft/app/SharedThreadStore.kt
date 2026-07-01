@@ -1967,6 +1967,7 @@ internal sealed interface SharedThreadIntent {
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
+    data object RefreshLatestAfterVisibleMaxSeq : SharedThreadIntent
     data class RecoverRealtimeGap(val serverSeq: Long) : SharedThreadIntent
 }
 
@@ -2063,6 +2064,9 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadNewer -> {
                 scope.launch { loadNewer() }
             }
+            SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> {
+                scope.launch { refreshLatestAfterVisibleMaxSeq() }
+            }
             is SharedThreadIntent.RecoverRealtimeGap -> {
                 scope.launch { recoverRealtimeGap(intent.serverSeq) }
             }
@@ -2112,6 +2116,7 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
+            SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> refreshLatestAfterVisibleMaxSeq()
             is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.serverSeq)
         }
     }
@@ -2757,6 +2762,29 @@ internal class SharedThreadStore(
                     channelId = streamChannelId,
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
+            )
+        )
+    }
+
+    private suspend fun refreshLatestAfterVisibleMaxSeq() {
+        val initial = _state.value.payload
+        val streamChannelId =
+            initial.sourceThreadId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ChannelId)
+                ?: initial.streamChannelId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::ChannelId)
+                ?: return
+        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
+        if (initial.newerMessagesStatus == "loading") return
+        recoverRealtimeGap(
+            initial = initial,
+            initialRequest =
+                RealtimeVisibleStreamGapRequest(
+                    channelId = streamChannelId,
+                    sinceSeq = sinceSeq,
+                    serverSeq = sinceSeq + 1L
                 )
         )
     }

@@ -741,7 +741,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun sendAppShellLifecycleEvent(event: String) {
-        if (pageSpec?.pageName != PAGE_APP_SHELL) return
+        val pageName = pageSpec?.pageName ?: return
+        if (pageName != PAGE_APP_SHELL && pageName != PAGE_THREAD) return
         AndroidAppScopeRealtimeOwner.publishCurrentNetworkStatus(
                 applicationContext,
                 source = "app_shell_lifecycle_$event"
@@ -751,7 +752,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 JSONObject()
                         .put("action", "appLifecycle")
                         .put("event", event)
-                        .put("pageName", PAGE_APP_SHELL)
+                        .put("pageName", pageName)
         )
     }
 

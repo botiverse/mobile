@@ -218,6 +218,9 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
+private const val ThreadLifecycleAction = "appLifecycle"
+private const val ThreadLifecycleResume = "resume"
+private const val ThreadLifecycleShow = "show"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -2381,6 +2384,7 @@ internal fun SharedThreadRouteContent(
         payloadRouteIdentity.timelineChannelId
             ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
+    var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
     DisposableEffect(
         realtimeEvents,
         payload.sourceThreadId,
@@ -2768,9 +2772,21 @@ internal fun SharedThreadRouteContent(
             }
         }
     )
-    DisposableEffect(realtimeEvents, realtimeEventMapper, authStore, coroutineScope, bridge) {
+    DisposableEffect(realtimeEvents, realtimeEventMapper, authStore, coroutineScope, bridge, active) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
+                if (eventData.optString("action") == ThreadLifecycleAction) {
+                    val event = eventData.optString("event")
+                    val pageName = eventData.optString("pageName")
+                    if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
+                        if (threadLifecycleSeen && active) {
+                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                        } else {
+                            threadLifecycleSeen = true
+                        }
+                    }
+                    return@addListener
+                }
                 coroutineScope.launch {
                     val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
                     val session = authStore.readSession()

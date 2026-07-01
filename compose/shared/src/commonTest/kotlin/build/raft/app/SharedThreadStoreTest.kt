@@ -5953,6 +5953,33 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun refreshLatestAfterVisibleMaxSeqSyncsFromVisiblePayloadSeq() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("resumed body", id = "m11", seq = 11)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "resumed body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(emptyList(), api.afterSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun channelRealtimeMessageNewGapSyncsFromVisibleTailWhenPagingGateIsClosed() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =

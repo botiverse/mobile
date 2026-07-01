@@ -2592,6 +2592,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 if (eventData.optString("action") == AppShellLifecycleAction) {
                     val event = eventData.optString("event")
                     if (
+                        eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
                         (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
                         latestReadySession != null
                     ) {
