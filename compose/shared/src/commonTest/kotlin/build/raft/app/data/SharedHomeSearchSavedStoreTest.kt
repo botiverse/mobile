@@ -317,6 +317,27 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun preselectSearchChannelDoesNotStartSearch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-preselect")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.PreselectSearchChannel("channel-1"))
+
+        assertEquals("channel-1", store.state.value.search.selectedChannelId)
+        assertEquals(emptyList(), search.calls)
+        assertEquals(false, store.state.value.search.searched)
+        scope.cancel()
+    }
+
+    @Test
     fun searchRefreshShowsRefreshingAffordanceDuringLoadedRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = QueuedSearchRepository()

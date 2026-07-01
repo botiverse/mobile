@@ -5070,7 +5070,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadChannelSearchPageDataCarriesChannelFilterIdentityOnly() {
+    fun threadChannelSearchPageDataCarriesPreselectedChannelIdentityOnly() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-1",
@@ -5087,7 +5087,7 @@ class ThreadPayloadTest {
         assertEquals(HOME_SEARCH_PAGE, pageData.optString("pageName"))
         assertEquals("search", pageData.optString("destination"))
         assertEquals("channel-1", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
-        assertEquals("channel", pageData.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID))
+        assertEquals("", pageData.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID))
         assertEquals("", pageData.optString("title"))
         assertEquals("", pageData.optString("messages"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))

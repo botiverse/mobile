@@ -819,13 +819,27 @@ private fun HomeSearchRouterContent(
     }
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
-    LaunchedEffect(initialChannelId) {
-        val channelId = initialChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel(channelId))
+    val normalizedInitialChannelId =
+        remember(initialChannelId) { initialChannelId?.trim()?.takeIf { it.isNotBlank() } }
+    var skipInitialChannelRefresh by remember(normalizedInitialChannelId) {
+        mutableStateOf(normalizedInitialChannelId != null)
     }
-    LaunchedEffect(routeVisibleTick) {
+    LaunchedEffect(initialChannelId) {
+        val channelId = normalizedInitialChannelId ?: return@LaunchedEffect
+        searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.PreselectSearchChannel(channelId))
+    }
+    LaunchedEffect(routeVisibleTick, normalizedInitialChannelId) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
-            searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
+            if (
+                skipInitialChannelRefresh &&
+                !searchSavedState.search.searched &&
+                searchSavedState.search.query.isBlank()
+            ) {
+                skipInitialChannelRefresh = false
+            } else {
+                skipInitialChannelRefresh = false
+                searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
+            }
         }
     }
     val searchServerId =

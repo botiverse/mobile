@@ -76,6 +76,10 @@ class SharedHomeSearchSavedStore(
             SharedHomeSearchSavedIntent.SubmitSearch -> runSearch(refresh = true)
             SharedHomeSearchSavedIntent.RefreshSearch -> runSearch(refresh = true)
             SharedHomeSearchSavedIntent.LoadMoreSearch -> runSearch(refresh = false)
+            is SharedHomeSearchSavedIntent.PreselectSearchChannel -> {
+                _state.value =
+                    _state.value.copy(search = _state.value.search.copy(selectedChannelId = intent.channelId))
+            }
             is SharedHomeSearchSavedIntent.SetSearchChannel -> {
                 _state.value =
                     _state.value.copy(search = _state.value.search.copy(selectedChannelId = intent.channelId))
@@ -842,6 +846,7 @@ sealed interface SharedHomeSearchSavedIntent {
     data object SubmitSearch : SharedHomeSearchSavedIntent
     data object RefreshSearch : SharedHomeSearchSavedIntent
     data object LoadMoreSearch : SharedHomeSearchSavedIntent
+    data class PreselectSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
     data class ToggleSearchSender(val senderId: String) : SharedHomeSearchSavedIntent
     data object ClearSearchSenders : SharedHomeSearchSavedIntent
     data class SetSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent

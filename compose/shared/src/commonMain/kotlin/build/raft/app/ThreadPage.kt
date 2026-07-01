@@ -230,7 +230,6 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
-private const val ThreadSearchChannelFilterId = "channel"
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -646,7 +645,6 @@ internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObje
         put("pageName", HOME_SEARCH_PAGE)
         put("destination", SharedHomeShellDestinationSearch)
         put(HOME_SEARCH_SELECTED_CHANNEL_ID, channelId)
-        put(HOME_SEARCH_INITIAL_OPEN_FILTER_ID, ThreadSearchChannelFilterId)
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
