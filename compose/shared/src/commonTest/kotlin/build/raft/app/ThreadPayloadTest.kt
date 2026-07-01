@@ -82,6 +82,30 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun pickedSingleImageUploadsToComposerWhenAnnotationIsEnabled() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.UploadToComposer,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 1,
+                imageAnnotationEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun pickedAttachmentComposerActionIgnoresEmptyPickerResult() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.None,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 0,
+                imageAnnotationEnabled = true
+            )
+        )
+    }
+
+    @Test
     fun threadMentionSuggestionsRankRecentParticipantsWithinChannelGroups() {
         val suggestions =
             listOf(

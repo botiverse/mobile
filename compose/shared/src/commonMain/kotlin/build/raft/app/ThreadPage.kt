@@ -231,6 +231,24 @@ private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
+
+internal enum class ThreadPickedAttachmentComposerAction {
+    None,
+    UploadToComposer
+}
+
+@Suppress("UNUSED_PARAMETER")
+internal fun resolveThreadPickedAttachmentComposerAction(
+    action: String,
+    fileCount: Int,
+    imageAnnotationEnabled: Boolean
+): ThreadPickedAttachmentComposerAction {
+    return if (fileCount <= 0) {
+        ThreadPickedAttachmentComposerAction.None
+    } else {
+        ThreadPickedAttachmentComposerAction.UploadToComposer
+    }
+}
 private val ThreadMessageBodyTextStyle =
     SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
 
@@ -3597,37 +3615,6 @@ internal fun SharedThreadRouteContent(
             uploadJob.start()
         }
     }
-    fun nextComposerImageActionId(seed: String): String {
-        composerImageActionCounter += 1
-        return "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${seed.take(12)}"
-    }
-    fun openComposerImageTransfer(file: AttachmentUploadFile) {
-        val actionId = nextComposerImageActionId(file.id)
-        val previewUri = file.composerLocalPreviewUri().orEmpty()
-        pager.openSlockFilePreviewPage(
-            SlockFilePreviewPayload(
-                kind = "image",
-                title = "Image preview",
-                subtitle = file.fileName,
-                name = file.fileName,
-                path = file.fileName,
-                meta = listOf(file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(), file.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
-                imageUrl = previewUri.takeIf { it.isNotBlank() },
-                message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
-                externalFileName = file.fileName,
-                externalMimeType = file.mimeType.orEmpty(),
-                composerImageThreadKey = threadInstanceKey,
-                composerImageActionId = actionId,
-                composerImageFileRef = file.fileRef.orEmpty(),
-                composerImageFileName = file.fileName,
-                composerImageMimeType = file.mimeType.orEmpty(),
-                composerImageSizeBytes = file.sizeBytes,
-                composerImagePreviewUri = previewUri,
-                composerImageCanComplete = true,
-                composerImageCanEdit = true
-            )
-        )
-    }
     DisposableEffect(notifyModule, threadInstanceKey) {
         val callbackRef =
             notifyModule.addNotify(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
@@ -4823,6 +4810,11 @@ internal fun SharedThreadRouteContent(
                                 imageOnly = action == "attachImage"
                             )
                         val files = parseSharedThreadPickedAttachmentFiles(response)
+                        bridge.log(
+                            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
+                                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
+                                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
+                        )
                         if (files.isEmpty()) {
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
@@ -4833,10 +4825,15 @@ internal fun SharedThreadRouteContent(
                             }
                             return@launch
                         }
-                        if (action == "attachImage" && files.size == 1 && imageAnnotationEnabled()) {
-                            openComposerImageTransfer(files.first())
-                        } else {
-                            uploadComposerAttachmentFiles(files)
+                        when (
+                            resolveThreadPickedAttachmentComposerAction(
+                                action = action,
+                                fileCount = files.size,
+                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled()
+                            )
+                        ) {
+                            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
+                            ThreadPickedAttachmentComposerAction.None -> Unit
                         }
                     }
                 }
