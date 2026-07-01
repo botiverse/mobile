@@ -11921,22 +11921,15 @@ private fun SharedHomeSearchEntityRow(
 
 @Composable
 private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
-    Text(
-        text =
+    SharedHomeOutlinedMetaBadge(
+        label =
             when (type) {
                 SearchEntityType.Channel -> "Channel"
                 SearchEntityType.DirectMessage -> "DM"
                 SearchEntityType.Human -> "DM"
                 SearchEntityType.Agent -> "DM"
             },
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.sp),
-        color = SlockColor.TextMutedGray,
-        maxLines = 1,
-        modifier =
-            Modifier
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
-                .padding(horizontal = 5.dp, vertical = 2.dp)
+        compact = true
     )
 }
 
@@ -12104,16 +12097,28 @@ private fun SharedHomeMiniMetaBadge(
     iconName: SlockLucideIconName,
     compact: Boolean = false
 ) {
+    SharedHomeOutlinedMetaBadge(label = label, iconName = iconName, compact = compact)
+}
+
+@Composable
+private fun SharedHomeOutlinedMetaBadge(
+    label: String,
+    iconName: SlockLucideIconName? = null,
+    compact: Boolean = false
+) {
     Row(
         modifier =
             Modifier
+                .height(if (compact) 16.dp else 18.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
-                .padding(horizontal = if (compact) 4.dp else 5.dp, vertical = if (compact) 1.dp else 2.dp),
+                .padding(horizontal = if (compact) 4.dp else 5.dp),
         horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(iconName, color = "#99000000", modifier = Modifier.size(if (compact) 9.dp else 10.dp))
+        if (iconName != null) {
+            SlockLucideIcon(iconName, color = "#99000000", modifier = Modifier.size(if (compact) 9.dp else 10.dp))
+        }
         Text(
             text = label,
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = if (compact) 9.sp else 10.sp, lineHeight = if (compact) 11.sp else 12.sp, letterSpacing = 0.sp),
