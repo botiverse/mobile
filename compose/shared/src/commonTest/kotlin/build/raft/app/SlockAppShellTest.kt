@@ -56,6 +56,7 @@ class SlockAppShellTest {
             slockSharedBottomTabBarContentInset(18.dp)
         )
         assertEquals(1000f, SlockAppBottomTabBarHostZIndex)
+        assertEquals(SlockFloatingOverlayHostZIndex, SlockAppBottomTabBarHostZIndex)
     }
 
     @Test

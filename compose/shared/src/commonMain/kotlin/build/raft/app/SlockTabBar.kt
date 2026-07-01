@@ -75,7 +75,7 @@ private enum class SlockAppTabBarRenderer {
 
 private val SlockSharedBottomTabBarHeight = 58.dp
 private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
-internal const val SlockAppBottomTabBarHostZIndex = 1000f
+internal const val SlockAppBottomTabBarHostZIndex = SlockFloatingOverlayHostZIndex
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {

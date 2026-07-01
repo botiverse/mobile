@@ -19,6 +19,9 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.zIndex
+
+internal const val SlockFloatingOverlayHostZIndex = 1000f
 
 internal data class SlockFloatingOverlayLayout(
     val origin: Offset = Offset.Zero,
@@ -117,6 +120,7 @@ internal fun SlockFloatingOverlayHost(
     }
     Box(
         modifier = modifier
+            .zIndex(SlockFloatingOverlayHostZIndex)
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
             .onGloballyPositioned { coordinates ->
