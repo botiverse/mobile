@@ -218,11 +218,32 @@ class SlockMarkdownTest {
             annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length)
         val inlineCodeText = inlineCodeAnnotations.map { annotated.text.substring(it.start, it.end) }
 
-        assertEquals("short inline-code long very-long-inline-code-value-that-should-wrap-normally", annotated.text)
-        assertEquals(listOf(shortCode, longCode), inlineCodeText)
+        assertEquals(
+            "short inline-code long very-long-inline-code-value-that-should-wrap-normally",
+            annotated.text.withoutSlockMarkdownInlineCodeBreakOpportunities()
+        )
+        assertEquals(listOf(shortCode, longCode), inlineCodeText.map { it.withoutSlockMarkdownInlineCodeBreakOpportunities() })
+        assertTrue(inlineCodeText.last().contains(SlockMarkdownInlineCodeBreakOpportunity))
         assertEquals(setOf("slock-code:6"), annotated.slockMarkdownInlineContentIds())
         assertEquals("short ".length, inlineCodeAnnotations.first().start)
         assertEquals("short inline-code long ".length, inlineCodeAnnotations.last().start)
+    }
+
+    @Test
+    fun longInlineCodeAddsInvisibleBreakOpportunitiesWithoutChangingVisibleText() {
+        val longCode = "reply/channel-markdown/msg-inline-visual/owner-key-consumes-thread-route-identity-only"
+        val body = "Long `$longCode` continues"
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body)
+        val codeAnnotation =
+            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length).single()
+        val renderedCode = annotated.text.substring(codeAnnotation.start, codeAnnotation.end)
+
+        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
+        assertEquals(longCode, renderedCode.withoutSlockMarkdownInlineCodeBreakOpportunities())
+        assertTrue(renderedCode.contains(SlockMarkdownInlineCodeBreakOpportunity))
+        assertTrue(renderedCode.contains("/${SlockMarkdownInlineCodeBreakOpportunity}"))
+        assertTrue(renderedCode.contains("-${SlockMarkdownInlineCodeBreakOpportunity}"))
+        assertFalse("short-code".withSlockMarkdownInlineCodeBreakOpportunities().contains(SlockMarkdownInlineCodeBreakOpportunity))
     }
 
     @Test

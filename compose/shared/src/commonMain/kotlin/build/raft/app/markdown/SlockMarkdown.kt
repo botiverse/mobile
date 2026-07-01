@@ -671,12 +671,13 @@ internal fun slockMarkdownAnnotator(
                     pop()
                     return@markdownAnnotator true
                 }
+                val displayCode = code.withSlockMarkdownInlineCodeBreakOpportunities()
                 pushStyle(inlineCodeTextStyle.toSpanStyle())
                 pushStringAnnotation(
                     tag = SlockMarkdownInlineCodeAnnotationTag,
                     annotation = SlockMarkdownInlineCodeAnnotationValue
                 )
-                append(code)
+                append(displayCode)
                 pop()
                 pop()
                 return@markdownAnnotator true
@@ -1506,9 +1507,33 @@ internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
 
+internal fun String.withSlockMarkdownInlineCodeBreakOpportunities(): String {
+    if (shouldRenderThreadInlineCodeAsChip() || length <= SlockMarkdownInlineCodeChipMaxWidthUnits) return this
+    return buildString(length + 8) {
+        this@withSlockMarkdownInlineCodeBreakOpportunities.forEachIndexed { index, char ->
+            append(char)
+            if (char.canBreakLongInlineCodeAfter(index, this@withSlockMarkdownInlineCodeBreakOpportunities)) {
+                append(SlockMarkdownInlineCodeBreakOpportunity)
+            }
+        }
+    }
+}
+
+internal fun String.withoutSlockMarkdownInlineCodeBreakOpportunities(): String =
+    replace(SlockMarkdownInlineCodeBreakOpportunity.toString(), "")
+
 private fun String.markdownInlineCodeText(): String =
     threadInlineCodeMatches().firstOrNull()?.code
         ?: removeSurroundingMarkdownBackticks().normalizeMarkdownInlineCodeText()
+
+private fun Char.canBreakLongInlineCodeAfter(index: Int, text: String): Boolean {
+    if (index >= text.lastIndex) return false
+    if (text[index + 1] == SlockMarkdownInlineCodeBreakOpportunity) return false
+    return when (this) {
+        '/', '-', '_', '.', ':', '=', '&', '?' -> true
+        else -> false
+    }
+}
 
 private fun String.removeSurroundingMarkdownBackticks(): String {
     if (isEmpty() || first() != '`' || last() != '`') return this
@@ -1521,6 +1546,7 @@ private fun String.removeSurroundingMarkdownBackticks(): String {
 }
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
+internal const val SlockMarkdownInlineCodeBreakOpportunity = '\u200B'
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
 private const val SlockMarkdownInlineCodeHorizontalChromeSp = 14f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
