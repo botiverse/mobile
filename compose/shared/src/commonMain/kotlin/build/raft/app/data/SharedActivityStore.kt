@@ -16,6 +16,7 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlinx.coroutines.CancellationException
@@ -29,13 +30,14 @@ import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
 
-class SharedActivityStore(
+class SharedActivityStore internal constructor(
     private val authStore: SlockAuthSessionStore,
     private val inboxRepository: InboxRepository,
     private val readReceiptRepository: ReadReceiptRepository,
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
+    private val tasksDataStore: SharedTasksDataStore? = null,
     localWriteThrough: ComposeLocalWriteThrough? = null,
     private val activityStateCache: SharedActivityStateCache? = null,
     onUnreadCountsChanged: () -> Unit = {},
@@ -281,6 +283,7 @@ class SharedActivityStore(
                 is DataResult.Content -> {
                     val pageItems =
                         result.data.items
+                            .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                             .reconcileLocallyDoneItems()
                     val items =
@@ -856,6 +859,38 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
                 scope == RealtimeRefreshScope.Settings
         else -> false
     }
+
+private fun List<InboxItem>.withActivityThreadTaskProjection(
+    serverId: String,
+    tasksDataStore: SharedTasksDataStore?
+): List<InboxItem> {
+    tasksDataStore ?: return this
+    val projection = tasksDataStore.projection(serverId, SharedTasksScope.Server)
+    if (projection.status != SharedTasksDataStoreStatus.Loaded || projection.tasks.isEmpty()) return this
+    val tasksByMessageId =
+        projection.tasks
+            .flatMap { task ->
+                listOfNotNull(task.messageId, task.parentMessageId)
+                    .mapNotNull { messageId -> messageId.value.trim().takeIf { it.isNotBlank() } }
+                    .distinct()
+                    .map { messageId -> messageId to task }
+            }
+            .toMap()
+    if (tasksByMessageId.isEmpty()) return this
+    return map { item -> item.withActivityThreadTaskProjection(tasksByMessageId) }
+}
+
+private fun InboxItem.withActivityThreadTaskProjection(tasksByMessageId: Map<String, TaskSummary>): InboxItem {
+    if (kind != InboxItemKind.Thread) return this
+    if (taskNumber != null && taskStatus != null) return this
+    val parentMessageKey = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return this
+    val task = tasksByMessageId[parentMessageKey] ?: return this
+    return copy(
+        taskNumber = taskNumber ?: task.taskNumber,
+        taskStatus = taskStatus ?: task.status,
+        taskClaimedByName = taskClaimedByName ?: task.assignee?.displayName?.takeIf { it.isNotBlank() }
+    )
+}
 
 private fun RealtimeEvent.activitySummaryUnreadIncrement(
     snapshot: InboxSnapshot,

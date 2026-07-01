@@ -127,6 +127,7 @@ internal class SlockSharedStoreProvider private constructor(
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
+            tasksDataStore = tasksDataStore,
             localWriteThrough = localWriteThrough,
             activityStateCache = activityStateCache,
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},

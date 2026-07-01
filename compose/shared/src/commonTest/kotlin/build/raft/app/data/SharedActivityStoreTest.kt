@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.SharedActivityFooterSlot
+import build.raft.app.activityFooterSlots
+import build.raft.app.activityTaskBadgeText
 import build.raft.app.toConversationSummary
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -17,6 +20,9 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -569,6 +575,59 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityThreadRowsMergeTaskProjectionWhenInboxProjectionIsMissingTaskFields() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tasksDataStore = SharedTasksDataStore()
+        tasksDataStore.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-177"),
+                                title = "Thread task",
+                                status = TaskStatus.InReview,
+                                taskNumber = 177,
+                                messageId = MessageId("parent-message"),
+                                channelId = ChannelId("parent-channel"),
+                                assignee =
+                                    MemberProfile(
+                                        id = MemberId("agent-1"),
+                                        displayName = "Claude Assistant",
+                                        handle = "claude",
+                                        kind = MemberKind.Agent
+                                    ),
+                                updatedAtLabel = "now"
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(threadItem("thread-channel-1")))))
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                tasksDataStore = tasksDataStore
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        val item = store.state.value.items.single()
+        assertEquals(177, item.taskNumber)
+        assertEquals(TaskStatus.InReview, item.taskStatus)
+        assertEquals("Claude Assistant", item.taskClaimedByName)
+        assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
+        assertEquals(
+            listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Task),
+            item.activityFooterSlots()
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun cachedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val row =
@@ -786,6 +845,7 @@ class SharedActivityStoreTest {
         serverMembersStore: SharedServerMembersStore? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         activityStateCache: SharedActivityStateCache? = null,
+        tasksDataStore: SharedTasksDataStore? = null,
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
         onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
@@ -796,6 +856,7 @@ class SharedActivityStoreTest {
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
+            tasksDataStore = tasksDataStore,
             localWriteThrough = localWriteThrough,
             activityStateCache = activityStateCache,
             onUnreadCountsChanged = onUnreadCountsChanged,

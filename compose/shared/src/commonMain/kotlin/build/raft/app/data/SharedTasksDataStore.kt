@@ -148,6 +148,20 @@ internal class SharedTasksDataStore {
                 )
         }
 
+    fun projection(
+        serverId: String?,
+        scope: SharedTasksScope
+    ): SharedTasksProjectionSlice =
+        when (scope) {
+            SharedTasksScope.Server -> state.value.selectServerProjection(serverId)
+            is SharedTasksScope.Channel ->
+                state.value.selectChannelProjection(
+                    serverId = serverId,
+                    channelId = scope.channelId.value,
+                    channelName = null
+                )
+        }
+
     private fun SharedTasksDataStoreState.selectServerProjection(serverId: String?): SharedTasksProjectionSlice {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedTasksProjectionSlice()
         val snapshot = serverSnapshots[normalizedServerId] ?: return SharedTasksProjectionSlice()
