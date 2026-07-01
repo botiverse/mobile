@@ -13450,17 +13450,19 @@ internal fun SettingsPageVisualContent() {
         return
     }
     val spec = settingsVisualSpec(variant)
+    val alignBillingRouteToReact = spec.variant == "billing"
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(top = 48.dp)
+                .padding(top = if (alignBillingRouteToReact) 0.dp else 48.dp)
     ) {
         SettingsDetailShell(
             title = spec.title,
             subtitle = spec.subtitle,
             iconName = spec.iconName,
+            applyTopSafeArea = !alignBillingRouteToReact,
             onBack = {}
         ) {
             SettingsVisualPageBody(spec)
@@ -13486,7 +13488,7 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
         "administration" ->
             SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
         "billing" ->
-            SettingsVisualSpec(variant, "Plan & Billing", "Plan and workspace usage", SlockLucideIconName.CreditCard)
+            SettingsVisualSpec(variant, "Plan & Billing", "", SlockLucideIconName.CreditCard)
         "language-region" ->
             SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
         "appearance" ->
@@ -13938,47 +13940,47 @@ private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot {
     return SettingsBillingSnapshot(
         currentPlan =
             SettingsBillingCurrentPlanSnapshot(
-                planName = "Pro x 2",
+                planName = "Free",
                 usageRows =
                     listOf(
-                        SettingsPlanUsageSnapshot("Human Seat", "8 / 10"),
-                        SettingsPlanUsageSnapshot("Agent Seat", "18 / 20"),
-                        SettingsPlanUsageSnapshot("Universal seats", "26 / 30"),
-                        SettingsPlanUsageSnapshot("Message History", "Unlimited")
+                        SettingsPlanUsageSnapshot("Message History", "30 days"),
+                        SettingsPlanUsageSnapshot("File uploads", "128 MB / 1024 MB this month")
                     ),
                 trialActive = false,
-                description = "2 Pro Seat Packs purchased.",
+                description = "Start building with agents.",
                 includedFeatures =
                     listOf(
-                        "Unlimited message history",
-                        "Higher file upload limits",
-                        "Joint Channels",
-                        "More professional features coming soon"
+                        "Channels",
+                        "Tasks",
+                        "Agents on your own computers",
+                        "Agent reminders",
+                        "Basic observability",
+                        "30 days of message history",
+                        "100 MB file uploads/month"
                     ),
-                excludedFeatures = emptyList()
+                excludedFeatures =
+                    listOf(
+                        "Higher file upload limits",
+                        "Unlimited message history",
+                        "Joint channels",
+                        "More professional features coming soon"
+                    )
             ),
         notices = emptyList(),
-        actions =
-            listOf(
-                SettingsBillingActionSnapshot(
-                    key = "portal",
-                    label = "Billing portal",
-                    detail = "Open Stripe billing portal.",
-                    enabled = true
-                ),
-                SettingsBillingActionSnapshot(
-                    key = "cancel",
-                    label = "Cancel subscription",
-                    detail = "Cancel the whole Pro subscription at period end.",
-                    enabled = true,
-                    style = "danger"
-                )
-            ),
+        actions = emptyList(),
         plans =
             listOf(
-                SettingsBillingPlanSnapshot("Hobby", "$0 /mo", listOf("2 computers", "5 agents", "5 channels", "30 days history")),
-                SettingsBillingPlanSnapshot("Team", "$20 /mo", listOf("8 computers", "40 agents", "20 channels", "Unlimited history"), current = true, badgeLabel = "Current"),
-                SettingsBillingPlanSnapshot("Business", "$200 /mo", listOf("40 computers", "200 agents", "Unlimited channels"), comingSoon = true, badgeLabel = "Coming soon")
+                SettingsBillingPlanSnapshot(
+                    name = "Pro",
+                    price = "$20 / seat / month",
+                    features =
+                        listOf(
+                            "Everything in Free",
+                            "Unlimited message history",
+                            "Higher file upload limits",
+                            "Joint channels"
+                        )
+                )
             )
     )
 }
