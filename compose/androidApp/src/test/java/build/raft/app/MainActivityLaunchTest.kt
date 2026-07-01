@@ -96,4 +96,12 @@ class MainActivityLaunchTest {
         assertEquals(PostLoginDestination.AuthChooseServer, postLoginDestination(""))
         assertEquals(PostLoginDestination.AppShell, postLoginDestination("server-1"))
     }
+
+    @Test
+    fun postLoginAuthChooseServerPageDataSkipsInitialServerReload() {
+        assertTrue(
+            postLoginAuthChooseServerPageData()
+                .optBoolean("slockAuthChooseServerSkipInitialLoad", false)
+        )
+    }
 }

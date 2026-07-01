@@ -23,6 +23,10 @@ internal object SlockKuiklyPages {
     const val ROUTER = "router"
 }
 
+internal object SlockKuiklyRouteKeys {
+    const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
+}
+
 internal data class SlockKuiklyPageSpec(
         val pageName: String,
         val pageData: SlockKuiklyPageData = SlockKuiklyPageData.empty()

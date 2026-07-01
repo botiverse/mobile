@@ -401,6 +401,7 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
+private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
@@ -8620,6 +8621,9 @@ private fun AuthChooseServerPageContent() {
     val fromShell = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false)
     }
+    val skipInitialLoad = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, false)
+    }
     val closeChooser = remember(pager) {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
@@ -8668,6 +8672,7 @@ private fun AuthChooseServerPageContent() {
             AppShellServerGateContent(
                 session = restoredSession.copy(selectedServerId = null, selectedServerSlug = null),
                 authDataSource = authDataSource,
+                skipInitialLoad = skipInitialLoad,
                 onReady = {
                     bridge.realtimeDisconnect("server_changed")
                     pager.openAppShellReplacingCurrentPage()
@@ -8828,12 +8833,16 @@ private fun Pager.openLoginReplacingCurrentPage() {
 
 internal fun authChooseServerPageData(
     replaceCurrent: Boolean = false,
-    fromShell: Boolean = false
+    fromShell: Boolean = false,
+    skipInitialLoad: Boolean = false
 ): JSONObject =
     slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
         .apply {
             if (fromShell) {
                 put(AUTH_CHOOSE_SERVER_FROM_SHELL, true)
+            }
+            if (skipInitialLoad) {
+                put(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, true)
             }
         }
 
@@ -8855,6 +8864,7 @@ private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): J
 private fun AppShellServerGateContent(
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
+    skipInitialLoad: Boolean = false,
     onReady: (StoredAuthSession) -> Unit,
     onSignOut: () -> Unit,
     onBack: (() -> Unit)? = null
@@ -8869,6 +8879,12 @@ private fun AppShellServerGateContent(
     val showPinnedSignOut = serverGateShouldPinSignOut(errorMessage)
 
     LaunchedEffect(Unit) {
+        if (skipInitialLoad) {
+            authDataSource.logDiagnostics(
+                "auth_choose_server_load_result result=skipped reason=fresh_no_server_session cachedServers=${latestSession.servers.size}"
+            )
+            return@LaunchedEffect
+        }
         when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
             is SharedAuthResult.Success -> {
                 authDataSource.logDiagnostics(

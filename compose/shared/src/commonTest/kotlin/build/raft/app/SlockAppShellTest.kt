@@ -380,6 +380,16 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun authChooseServerRouteCanSkipInitialServerReloadForFreshNoServerSession() {
+        assertEquals(false, authChooseServerPageData().optBoolean("slockAuthChooseServerSkipInitialLoad", false))
+        assertEquals(
+            true,
+            authChooseServerPageData(skipInitialLoad = true)
+                .optBoolean("slockAuthChooseServerSkipInitialLoad", false)
+        )
+    }
+
+    @Test
     fun serverGatePinsSignOutForSessionRefreshRecovery() {
         assertEquals(
             true,

@@ -6,6 +6,7 @@ import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.data.KuiklyMMKVAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
@@ -21,6 +22,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -159,6 +161,7 @@ class MainActivity : ComponentActivity() {
         if (postLoginDestination(session.selectedServerId) == PostLoginDestination.AuthChooseServer) {
             SlockKuiklyActivity.startAuthChooseServer(
                 this,
+                pageData = postLoginAuthChooseServerPageData(),
                 clearTask = true
             )
             finish()
@@ -179,6 +182,9 @@ internal fun postLoginDestination(selectedServerId: String?): PostLoginDestinati
     } else {
         PostLoginDestination.AppShell
     }
+
+internal fun postLoginAuthChooseServerPageData(): JSONObject =
+    JSONObject().put(SlockKuiklyRouteKeys.AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, true)
 
 private fun logSharedAuthDiagnostics(message: String) {
     SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")
