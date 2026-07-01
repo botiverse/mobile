@@ -1,3 +1,4 @@
+import 'libentry.so';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { bundleManager } from '@kit.AbilityKit';
 import deviceInfo from '@ohos.deviceInfo';
