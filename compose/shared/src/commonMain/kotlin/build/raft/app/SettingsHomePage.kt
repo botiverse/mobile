@@ -11828,35 +11828,43 @@ private fun SharedHomeSearchMessageResultRow(
             horizontalArrangement = Arrangement.spacedBy(if (nested) 6.dp else 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (!nested) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(if (nested) 6.dp else 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!nested) {
+                    Text(
+                        text = searchResultSourceLabel(item),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
+                if (item.kind == InboxItemKind.Thread && !nested) {
+                    SharedHomeMiniMetaBadge("thread", SlockLucideIconName.MessageSquare)
+                }
+                if (!sender.isNullOrBlank()) {
+                    SharedHomeSearchSenderMeta(
+                        sender = sender,
+                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
+                        modifier = Modifier.weight(1f, fill = false),
+                        compact = compactMeta
+                    )
+                } else if (nested) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+            if (!time.isNullOrBlank()) {
                 Text(
-                    text = searchResultSourceLabel(item),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+                    text = time.formatSavedTimestamp(timeContext),
+                    style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    maxLines = 1
                 )
             }
-            if (item.kind == InboxItemKind.Thread && !nested) {
-                SharedHomeMiniMetaBadge("thread", SlockLucideIconName.MessageSquare)
-            }
-            if (!sender.isNullOrBlank()) {
-                SharedHomeSearchSenderMeta(
-                    sender = sender,
-                    avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                    modifier = Modifier.weight(1f),
-                    compact = compactMeta
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
-            Text(
-                text = time?.formatSavedTimestamp(timeContext).orEmpty(),
-                style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp, letterSpacing = 0.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1
-            )
         }
         HomeSearchHighlightedText(
             text = preview,
