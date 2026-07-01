@@ -455,6 +455,21 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun postAuthSessionReadbackRequiresSameUserAndTokens() {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "artin@raft.build"),
+                accessToken = "access-1",
+                refreshToken = "refresh-1"
+            )
+
+        assertEquals(true, session.isSamePostAuthSession(session.copy(servers = listOf(StoredAuthServer(id = "s1", name = "S1")))))
+        assertEquals(false, session.copy(user = session.user.copy(id = "user-2")).isSamePostAuthSession(session))
+        assertEquals(false, session.copy(accessToken = "access-2").isSamePostAuthSession(session))
+        assertEquals(false, session.copy(refreshToken = "refresh-2").isSamePostAuthSession(session))
+    }
+
+    @Test
     fun loginRouteCarriesOnlyAuthIntent() {
         val pageData =
             loginPageData(

@@ -22,6 +22,7 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -155,8 +156,17 @@ private fun LoginScreen() {
         pendingLogin = null
         when (result) {
             is SharedAuthResult.Success -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                pager.openPostAuthRoute()
+                when (authDataSource.postAuthSessionReadback(result.data)) {
+                    PostAuthSessionReadback.Ready -> {
+                        state = state.copy(submitting = false, errorMessage = null)
+                        pager.openPostAuthRoute()
+                    }
+                    PostAuthSessionReadback.Missing ->
+                        state = state.copy(
+                            submitting = false,
+                            errorMessage = "Could not finish sign-in setup locally. Try again."
+                        )
+                }
             }
             is SharedAuthResult.Failure ->
                 state = state.copy(submitting = false, errorMessage = result.message)
@@ -299,8 +309,17 @@ private fun RegisterScreen() {
         pendingRegister = null
         when (result) {
             is SharedAuthResult.Success -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                pager.openPostAuthRoute()
+                when (authDataSource.postAuthSessionReadback(result.data)) {
+                    PostAuthSessionReadback.Ready -> {
+                        state = state.copy(submitting = false, errorMessage = null)
+                        pager.openPostAuthRoute()
+                    }
+                    PostAuthSessionReadback.Missing ->
+                        state = state.copy(
+                            submitting = false,
+                            errorMessage = "Could not finish sign-in setup locally. Try again."
+                        )
+                }
             }
             is SharedAuthResult.Failure ->
                 state = state.copy(submitting = false, errorMessage = result.message)
@@ -1235,6 +1254,37 @@ internal data class AuthRouteDestination(
     val pageName: String,
     val pageData: JSONObject
 )
+
+private suspend fun SharedAuthDataSource.postAuthSessionReadback(
+    expected: StoredAuthSession
+): PostAuthSessionReadback {
+    val readback =
+        runCatchingPreservingCancellation { currentSession() }
+            .getOrElse {
+                logDiagnostics("auth_post_success_readback_result result=failure stage=session_readback")
+                return PostAuthSessionReadback.Missing
+            }
+    val ready =
+        readback is SharedAuthResult.Success &&
+            readback.data.isSamePostAuthSession(expected)
+    logDiagnostics(
+        "auth_post_success_readback_result result=${if (ready) "success" else "missing"} " +
+            "hasSession=${readback is SharedAuthResult.Success}"
+    )
+    return if (ready) PostAuthSessionReadback.Ready else PostAuthSessionReadback.Missing
+}
+
+internal fun StoredAuthSession.isSamePostAuthSession(
+    expected: StoredAuthSession
+): Boolean =
+    user.id == expected.user.id &&
+        accessToken == expected.accessToken &&
+        refreshToken == expected.refreshToken
+
+private enum class PostAuthSessionReadback {
+    Ready,
+    Missing
+}
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
