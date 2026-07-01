@@ -37,7 +37,7 @@ import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
-    private val slockInlineCodeAnnotationTag = "ai.slock.markdown.inlineCode"
+    private val slockInlineCodeAnnotationTag = "raft.build.markdown.inlineCode"
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {

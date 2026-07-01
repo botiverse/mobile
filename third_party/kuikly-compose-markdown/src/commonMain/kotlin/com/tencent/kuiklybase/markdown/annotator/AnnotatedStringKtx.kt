@@ -32,7 +32,7 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
-private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "ai.slock.markdown.inlineCode"
+private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
 
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
