@@ -82,11 +82,12 @@ private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
     return when (slockAppTabBarRenderer()) {
-        // Native floating docks are overlays. Content should keep filling the screen behind them,
-        // with only the normal gesture-safe breathing room instead of a reserved tabbar band.
+        // Native floating docks are overlays. Content should keep filling the screen behind them.
         SlockAppTabBarRenderer.OhosHdsImmersive,
-        SlockAppTabBarRenderer.IosLiquidGlass,
-        SlockAppTabBarRenderer.AndroidFloating -> bottomSafeArea + SlockSpacing.Lg
+        SlockAppTabBarRenderer.IosLiquidGlass -> bottomSafeArea + SlockSpacing.Lg
+        // Android keeps the Slock visual in a floating dock; scroll containers need enough trailing
+        // inset for their last rows to clear the overlay.
+        SlockAppTabBarRenderer.AndroidFloating -> SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
         SlockAppTabBarRenderer.SharedCompose -> slockSharedBottomTabBarContentInset(bottomSafeArea)
     }
 }
@@ -221,15 +222,17 @@ internal fun SlockAppBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
-    if (slockAppTabBarRenderer() == SlockAppTabBarRenderer.OhosHdsImmersive) {
-        SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
-        return
-    }
-    if (slockAppTabBarRenderer() == SlockAppTabBarRenderer.IosLiquidGlass ||
-        slockAppTabBarRenderer() == SlockAppTabBarRenderer.AndroidFloating
-    ) {
-        SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
-        return
+    when (slockAppTabBarRenderer()) {
+        SlockAppTabBarRenderer.OhosHdsImmersive,
+        SlockAppTabBarRenderer.IosLiquidGlass -> {
+            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+            return
+        }
+        SlockAppTabBarRenderer.AndroidFloating -> {
+            SlockFloatingDockTabBar(items = items, onSelect = onSelect, modifier = modifier, bottomSafeArea = bottomSafeArea)
+            return
+        }
+        SlockAppTabBarRenderer.SharedCompose -> Unit
     }
     Box(
         modifier = modifier
