@@ -29,18 +29,15 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     private var renderedVectorKey: IconVectorKey? = null
     private var renderedVector: ImageVector? by mutableStateOf<ImageVector?>(null)
     private var renderedTint: Color by mutableStateOf(Color.Black)
+    private var contentInstalled = false
+    private var contentInstallPosted = false
 
     init {
         addView(
                 composeView,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
-        composeView.setContent {
-            val vector = renderedVector
-            if (vector != null) {
-                LucideVectorIcon(vector = vector, tint = renderedTint)
-            }
-        }
+        scheduleContentInstall()
         renderIcon()
     }
 
@@ -121,6 +118,26 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         val nextTint = resolvedFillTint ?: tint
         if (renderedTint != nextTint) {
             renderedTint = nextTint
+        }
+    }
+
+    private fun scheduleContentInstall() {
+        if (contentInstalled || contentInstallPosted) {
+            return
+        }
+        contentInstallPosted = true
+        composeView.post {
+            contentInstallPosted = false
+            if (contentInstalled) {
+                return@post
+            }
+            contentInstalled = true
+            composeView.setContent {
+                val vector = renderedVector
+                if (vector != null) {
+                    LucideVectorIcon(vector = vector, tint = renderedTint)
+                }
+            }
         }
     }
 
