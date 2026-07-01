@@ -2793,7 +2793,7 @@ fun buildSharedAccountProviderLinkStartBody(request: AccountProviderLinkStartReq
         )
     )
 
-private fun AttachmentUploadFile.toAccountAvatarMultipartFile(): MultipartFile =
+private fun PlatformFile.toAccountAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
         fileName = fileName,
@@ -2803,7 +2803,7 @@ private fun AttachmentUploadFile.toAccountAvatarMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
-private fun AttachmentUploadFile.toConnectedAppLogoMultipartFile(): MultipartFile =
+private fun PlatformFile.toConnectedAppLogoMultipartFile(): MultipartFile =
     MultipartFile(
         name = "logo",
         fileName = fileName,

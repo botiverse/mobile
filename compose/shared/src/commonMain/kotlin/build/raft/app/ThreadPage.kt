@@ -10,9 +10,9 @@ import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.bridgeModule
-import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
-import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
@@ -2455,7 +2455,7 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
-        mutableStateOf<Map<String, AttachmentUploadFile>>(emptyMap())
+        mutableStateOf<Map<String, PlatformFile>>(emptyMap())
     }
     val attachmentUploadSemaphore = remember(threadInstanceKey) {
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
@@ -3541,7 +3541,7 @@ internal fun SharedThreadRouteContent(
             bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
         }
     }
-    fun uploadComposerAttachmentFiles(files: List<AttachmentUploadFile>, replaceAttachmentId: String? = null) {
+    fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
             bridge.toast("Attachment picker unavailable")
@@ -3637,7 +3637,7 @@ internal fun SharedThreadRouteContent(
                 val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@addNotify
                 val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
                 val file =
-                    AttachmentUploadFile(
+                    PlatformFile(
                         id = "edited-$actionId",
                         fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
                         mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
@@ -4823,7 +4823,7 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action == "attachImage"
                             )
-                        val files = parseSharedThreadPickedAttachmentFiles(response)
+                        val files = parseSharedThreadPickedPlatformFiles(response)
                         bridge.log(
                             "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
                                 "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
@@ -12083,7 +12083,7 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
         externalMimeType = mimeType
     )
 
-private fun AttachmentUploadFile.composerLocalPreviewUri(): String? =
+private fun PlatformFile.composerLocalPreviewUri(): String? =
     fileRef?.takeIf { it.isNotBlank() }
         ?: previewUri?.takeIf { it.isNotBlank() }
 

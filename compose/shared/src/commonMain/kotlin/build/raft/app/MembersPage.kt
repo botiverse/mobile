@@ -13,7 +13,7 @@ import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
-import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentAppLoginItem
 import build.raft.app.data.AgentAppLoginLoadState
@@ -52,7 +52,7 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.ScreenError
@@ -1348,14 +1348,14 @@ private class MemberDetailRouteProvider(
 
     suspend fun uploadAgentAvatar(
         agentId: MemberId,
-        file: AttachmentUploadFile
+        file: PlatformFile
     ): DataResult<MemberProfile> =
         memberRepository.uploadAgentAvatar(
             priority = DataRequestPriority.Foreground,
             request = AgentAvatarUploadRequest(agentId = agentId, file = file)
         )
 
-    suspend fun pickAgentAvatarFile(): DataResult<AttachmentUploadFile> {
+    suspend fun pickAgentAvatarFile(): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
         return if (code == 204) {
@@ -1364,7 +1364,7 @@ private class MemberDetailRouteProvider(
             val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "agent_avatar_picker_failed" }
             DataResult.Error(ScreenError(code = errorCode, retryable = true))
         } else {
-            val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+            val file = parseSharedThreadPickedPlatformFiles(response).firstOrNull()
             if (file != null) {
                 DataResult.Content(file)
             } else {
@@ -2575,8 +2575,8 @@ private fun MembersDetailContent(
     onOpenReminderMessage: (String) -> Unit = {},
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
-    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
+    onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
+    onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,

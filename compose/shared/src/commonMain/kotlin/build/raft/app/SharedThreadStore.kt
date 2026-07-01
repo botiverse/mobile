@@ -5,7 +5,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.toConversationSummary
 import build.raft.app.data.ThreadActionResult
-import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.CreateAgentBody
@@ -1010,7 +1010,7 @@ internal class SharedThreadDataSource(
 
     suspend fun uploadAttachments(
         channelId: String,
-        files: List<AttachmentUploadFile>
+        files: List<PlatformFile>
     ): DataResult<AttachmentUploadResult> {
         val repository =
             conversationRepository

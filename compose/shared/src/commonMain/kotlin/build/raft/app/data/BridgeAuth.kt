@@ -26,7 +26,7 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
-    override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
+    override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -34,12 +34,12 @@ internal class BridgeSettingsPlatformCapabilities(
             val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "settings_account_avatar_picker_failed" }
             return DataResult.Error(ScreenError(errorCode, retryable = true))
         }
-        val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+        val file = parseSharedThreadPickedPlatformFiles(response).firstOrNull()
             ?: return DataResult.Error(ScreenError("settings_account_avatar_picker_empty", retryable = true))
         return DataResult.Content(file)
     }
 
-    override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<AttachmentUploadFile> {
+    override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "settings-connected-app-logo-$clientRecordId", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -47,7 +47,7 @@ internal class BridgeSettingsPlatformCapabilities(
             val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "settings_connected_app_logo_picker_failed" }
             return DataResult.Error(ScreenError(errorCode, retryable = true))
         }
-        val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+        val file = parseSharedThreadPickedPlatformFiles(response).firstOrNull()
             ?: return DataResult.Error(ScreenError("settings_connected_app_logo_picker_empty", retryable = true))
         return DataResult.Content(file)
     }

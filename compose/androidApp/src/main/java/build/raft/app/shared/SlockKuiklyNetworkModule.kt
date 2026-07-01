@@ -20,13 +20,8 @@ import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
-import io.ktor.client.request.forms.ChannelProvider
-import io.ktor.client.request.forms.MultiPartFormDataContent
-import io.ktor.client.request.forms.formData
-import io.ktor.utils.io.jvm.javaio.toByteReadChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +37,10 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         return when (method) {
             METHOD_REQUEST -> {
                 request(params, callback)
+                null
+            }
+            METHOD_READ_PLATFORM_FILE -> {
+                readPlatformFile(params, callback)
                 null
             }
             METHOD_CANCEL -> {
@@ -112,6 +111,48 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         }
     }
 
+    private fun readPlatformFile(params: String?, callback: KuiklyRenderCallback?) {
+        val command = JSONObject(params ?: "{}")
+        val requestId = command.optString("requestId").takeIf { it.isNotBlank() }
+                ?: "android-file-${System.nanoTime()}"
+        val active = ActiveNetworkRequest()
+        activeRequests[requestId] = active
+        val job =
+                networkScope.launch {
+                    val result =
+                            runCatching {
+                                        val bytes =
+                                                openFileRefStream(activity, command.optString("fileRef"), active)
+                                                        .use { it.readBytes() }
+                                        mapOf(
+                                                "code" to 200,
+                                                "bodyBase64" to Base64.encodeToString(bytes, Base64.NO_WRAP),
+                                                "sizeBytes" to bytes.size
+                                        )
+                                    }
+                                    .getOrElse { throwable ->
+                                        mapOf(
+                                                "code" to 400,
+                                                "bodyBase64" to "",
+                                                "sizeBytes" to 0,
+                                                "errorCode" to "attachment_read_failed",
+                                                "message" to (throwable.message ?: "Unable to read file")
+                                        )
+                                    }
+                    try {
+                        if (!active.cancelled.get()) {
+                            callback?.invoke(result)
+                        }
+                    } finally {
+                        activeRequests.remove(requestId, active)
+                    }
+                }
+        active.job = job
+        if (active.cancelled.get()) {
+            job.cancel()
+        }
+    }
+
     private suspend fun executeRequest(command: JSONObject, active: ActiveNetworkRequest): Map<String, Any> {
         val headers = command.optJSONObject("headers") ?: JSONObject()
         val method = command.optString("method", "GET").uppercase()
@@ -121,7 +162,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         val response =
                 CLIENT.request(rewriteEnvironmentUrl(command.optString("url"))) {
                     this.method = HttpMethod(method)
-                    applyHeaders(headers, skipContentType = command.has("multipartFiles"))
+                    applyHeaders(headers)
                     applyBody(command, method, activity, active)
                 }
         val body = response.bodyAsText()
@@ -148,14 +189,11 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         )
     }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.applyHeaders(headers: JSONObject, skipContentType: Boolean) {
+    private fun io.ktor.client.request.HttpRequestBuilder.applyHeaders(headers: JSONObject) {
         val keys = headers.keys()
         while (keys.hasNext()) {
             val key = keys.next()
             val value = headers.optString(key)
-            if (skipContentType && key.equals("Content-Type", ignoreCase = true)) {
-                continue
-            }
             if (key.isNotBlank() && value.isNotBlank()) {
                 header(key, value)
             }
@@ -168,10 +206,6 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             activity: android.app.Activity?,
             active: ActiveNetworkRequest
     ) {
-        if (command.has("multipartFiles")) {
-            setBody(MultiPartFormDataContent(command.multipartFormData(activity, active)))
-            return
-        }
         if (command.has("bodyBase64")) {
             setBody(Base64.decode(command.optString("bodyBase64"), Base64.DEFAULT))
             return
@@ -190,60 +224,6 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             setBody(ByteArray(0))
         }
     }
-
-    private fun JSONObject.multipartFormData(
-            activity: android.app.Activity?,
-            active: ActiveNetworkRequest
-    ): List<io.ktor.http.content.PartData> {
-        val files = optJSONArray("multipartFiles") ?: org.json.JSONArray()
-        val fields = optJSONObject("multipartFields")
-        var addedFiles = 0
-        val parts =
-                formData {
-                    fields?.keys()?.let { keys ->
-                        while (keys.hasNext()) {
-                            val key = keys.next()
-                            append(key, fields.optString(key))
-                        }
-                    }
-                    for (index in 0 until files.length()) {
-                        val file = files.optJSONObject(index) ?: continue
-                        val fieldName = file.optString("name", "files")
-                        val fileName = file.optString("fileName", "attachment")
-                        val mimeType = file.optString("mimeType", "application/octet-stream")
-                        val partHeaders = multipartFileHeaders(fileName, mimeType)
-                        if (file.has("bodyBase64")) {
-                            val bytes = Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
-                            if (bytes.isEmpty()) {
-                                continue
-                            }
-                            append(fieldName, bytes, partHeaders)
-                        } else if (file.has("fileRef")) {
-                            val sizeBytes = file.optLong("sizeBytes", -1L).takeIf { it > 0L }
-                            append(
-                                    fieldName,
-                                    ChannelProvider(sizeBytes) {
-                                        openFileRefStream(activity, file.optString("fileRef"), active).toByteReadChannel()
-                                    },
-                                    partHeaders
-                            )
-                        } else {
-                            continue
-                        }
-                        addedFiles += 1
-                    }
-                }
-        if (files.length() > 0 && addedFiles == 0) {
-            throw IOException("No readable multipart files")
-        }
-        return parts
-    }
-
-    private fun multipartFileHeaders(fileName: String, mimeType: String): Headers =
-            Headers.build {
-                append(HttpHeaders.ContentDisposition, slockMultipartFileContentDisposition(fileName))
-                append(HttpHeaders.ContentType, mimeType)
-            }
 
     private fun openFileRefStream(
             activity: android.app.Activity?,
@@ -290,6 +270,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
+        private const val METHOD_READ_PLATFORM_FILE = "readPlatformFile"
         private const val METHOD_CANCEL = "cancel"
         private val METHODS_REQUIRING_BODY = setOf("POST", "PUT", "PATCH")
         private val CLIENT: HttpClient =
@@ -311,9 +292,3 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
 
     private val activeRequests = ConcurrentHashMap<String, ActiveNetworkRequest>()
 }
-
-internal fun slockMultipartFileContentDisposition(fileName: String): String =
-        "filename=\"${fileName.sanitizeMultipartToken()}\""
-
-internal fun String.sanitizeMultipartToken(): String =
-        replace("\"", "'").replace("\r", "").replace("\n", "")

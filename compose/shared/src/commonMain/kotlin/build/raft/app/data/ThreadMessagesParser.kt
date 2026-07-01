@@ -163,9 +163,9 @@ internal fun parseSharedThreadUploadedAttachments(
 }
 
 @OptIn(ExperimentalEncodingApi::class)
-internal fun parseSharedThreadPickedAttachmentFiles(
+internal fun parseSharedThreadPickedPlatformFiles(
     response: JSONObject?
-): List<AttachmentUploadFile> {
+): List<PlatformFile> {
     val filesJson = response?.optJSONArray("files")
         ?: response?.optString("bodyText").orEmpty()
             .takeIf { it.isNotBlank() }
@@ -181,7 +181,7 @@ internal fun parseSharedThreadPickedAttachmentFiles(
             val bytes = encoded?.let { runCatching { Base64.decode(it) }.getOrNull() }
             if (fileRef == null && bytes == null) continue
             add(
-                AttachmentUploadFile(
+                PlatformFile(
                     id = fileJson.optString("id").takeIf { it.isNotBlank() }
                         ?: "picked-${index + 1}",
                     fileName = fileName,
@@ -189,7 +189,8 @@ internal fun parseSharedThreadPickedAttachmentFiles(
                     sizeBytes = fileJson.optLong("sizeBytes", bytes?.size?.toLong() ?: 0L).takeIf { it > 0L },
                     previewUri = fileJson.optString("previewUri").takeIf { it.isNotBlank() },
                     bytes = bytes ?: ByteArray(0),
-                    fileRef = fileRef
+                    fileRef = fileRef,
+                    source = fileJson.optString("source").takeIf { it.isNotBlank() } ?: "platform_picker"
                 )
             )
         }

@@ -9,7 +9,6 @@ import build.raft.app.network.SlockNetworkModule
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.TimeSource
@@ -119,15 +118,9 @@ class KuiklySlockNetworkClient(
                             auth = auth,
                             contentType = "multipart/form-data; boundary=$boundary"
                         )
-                    if (files.any { it.fileRef != null && it.bytes.isEmpty() }) {
-                        return@request networkModule.requestMultipartRaw(
-                            url = absoluteUrl("attachments/upload"),
-                            method = "POST",
-                            headers = headers,
-                            fields = mapOf("channelId" to channelId.value),
-                            files = files
-                        )
-                    }
+                    val uploadFiles =
+                        networkModule.resolvePlatformFileRefs(files)
+                            .getOrElse { return@request it }
                     networkModule.requestRaw(
                         url = absoluteUrl("attachments/upload"),
                         method = "POST",
@@ -136,7 +129,7 @@ class KuiklySlockNetworkClient(
                             buildMultipartBody(
                                 boundary = boundary,
                                 fields = mapOf("channelId" to channelId.value),
-                                files = files
+                                files = uploadFiles
                         ),
                         bodyText = null
                     )
@@ -170,15 +163,9 @@ class KuiklySlockNetworkClient(
                             auth = auth,
                             contentType = "multipart/form-data; boundary=$boundary"
                         )
-                    if (file.fileRef != null && file.bytes.isEmpty()) {
-                        return@request networkModule.requestMultipartRaw(
-                            url = absoluteUrl("auth/me/avatar"),
-                            method = "POST",
-                            headers = headers,
-                            fields = emptyMap(),
-                            files = listOf(file)
-                        )
-                    }
+                    val uploadFiles =
+                        networkModule.resolvePlatformFileRefs(listOf(file))
+                            .getOrElse { return@request it }
                     networkModule.requestRaw(
                         url = absoluteUrl("auth/me/avatar"),
                         method = "POST",
@@ -187,7 +174,7 @@ class KuiklySlockNetworkClient(
                             buildMultipartBody(
                                 boundary = boundary,
                                 fields = emptyMap(),
-                                files = listOf(file)
+                                files = uploadFiles
                             ),
                         bodyText = null
                     )
@@ -222,15 +209,9 @@ class KuiklySlockNetworkClient(
                             auth = auth,
                             contentType = "multipart/form-data; boundary=$boundary"
                         )
-                    if (file.fileRef != null && file.bytes.isEmpty()) {
-                        return@request networkModule.requestMultipartRaw(
-                            url = absoluteUrl("agents/${agentId.value}/avatar"),
-                            method = "POST",
-                            headers = headers,
-                            fields = emptyMap(),
-                            files = listOf(file)
-                        )
-                    }
+                    val uploadFiles =
+                        networkModule.resolvePlatformFileRefs(listOf(file))
+                            .getOrElse { return@request it }
                     networkModule.requestRaw(
                         url = absoluteUrl("agents/${agentId.value}/avatar"),
                         method = "POST",
@@ -239,7 +220,7 @@ class KuiklySlockNetworkClient(
                             buildMultipartBody(
                                 boundary = boundary,
                                 fields = emptyMap(),
-                                files = listOf(file)
+                                files = uploadFiles
                             ),
                         bodyText = null
                     )
@@ -274,15 +255,9 @@ class KuiklySlockNetworkClient(
                             auth = auth,
                             contentType = "multipart/form-data; boundary=$boundary"
                         )
-                    if (file.fileRef != null && file.bytes.isEmpty()) {
-                        return@request networkModule.requestMultipartRaw(
-                            url = absoluteUrl("integrations/clients/$clientRecordId/logo"),
-                            method = "POST",
-                            headers = headers,
-                            fields = emptyMap(),
-                            files = listOf(file)
-                        )
-                    }
+                    val uploadFiles =
+                        networkModule.resolvePlatformFileRefs(listOf(file))
+                            .getOrElse { return@request it }
                     networkModule.requestRaw(
                         url = absoluteUrl("integrations/clients/$clientRecordId/logo"),
                         method = "POST",
@@ -291,7 +266,7 @@ class KuiklySlockNetworkClient(
                             buildMultipartBody(
                                 boundary = boundary,
                                 fields = emptyMap(),
-                                files = listOf(file)
+                                files = uploadFiles
                             ),
                         bodyText = null
                     )
@@ -363,52 +338,53 @@ class KuiklySlockNetworkClient(
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private suspend fun SlockNetworkModule.requestMultipartRaw(
-        url: String,
-        method: String,
-        headers: JSONObject,
-        fields: Map<String, String>,
-        files: List<MultipartFile>
-    ): HomeNetworkResponse {
-        val response =
-            request(
-                JSONObject().apply {
-                    put("url", url)
-                    put("method", method)
-                    put("headers", headers)
-                    put("multipartFields", JSONObject().apply {
-                        fields.forEach { (key, value) -> put(key, value) }
-                    })
-                    put("multipartFiles", JSONArray().apply {
-                        files.forEach { file ->
-                            put(JSONObject().apply {
-                                put("name", file.name)
-                                put("fileName", file.fileName)
-                                put("mimeType", file.mimeType)
-                                file.fileRef?.let { put("fileRef", it) }
-                                file.sizeBytes?.let { put("sizeBytes", it) }
-                                if (file.bytes.isNotEmpty()) {
-                                    put("bodyBase64", Base64.Default.encode(file.bytes))
-                                }
-                            })
-                        }
-                    })
-                    put("timeoutMillis", 30_000)
-                }
-            )
-        val body = response.bodyText
-        val code = response.code
-        return if (code in 200..299) {
-            HomeNetworkResponse(code = code, bodyText = body, errorBodyText = null)
-        } else {
-            HomeNetworkResponse(
-                code = code,
-                bodyText = null,
-                errorBodyText = response.errorBodyText.ifBlank { response.message }
-            )
+    private suspend fun SlockNetworkModule.resolvePlatformFileRefs(files: List<MultipartFile>): ResolvedPlatformFiles {
+        val resolved = mutableListOf<MultipartFile>()
+        files.forEach { file ->
+            if (file.fileRef == null || file.bytes.isNotEmpty()) {
+                resolved += file
+                return@forEach
+            }
+            val response = readPlatformFile(file.fileRef)
+            if (response.code !in 200..299 || response.bodyBase64.isBlank()) {
+                return ResolvedPlatformFiles.Error(
+                    HomeNetworkResponse(
+                        code = 400,
+                        bodyText = null,
+                        errorBodyText =
+                            platformFileReadErrorBody(
+                                errorCode = response.errorCode,
+                                message = response.message
+                            )
+                    )
+                )
+            }
+            val bytes =
+                runCatching { Base64.Default.decode(response.bodyBase64) }
+                    .getOrNull()
+                    ?: return ResolvedPlatformFiles.Error(
+                        HomeNetworkResponse(
+                            code = 400,
+                            bodyText = null,
+                            errorBodyText = """{"error":"attachment_read_failed","message":"invalid file bytes"}"""
+                        )
+                    )
+            resolved +=
+                file.copy(
+                    bytes = bytes,
+                    fileRef = null,
+                    sizeBytes = file.sizeBytes ?: response.sizeBytes ?: bytes.size.toLong()
+                )
         }
+        return ResolvedPlatformFiles.Content(resolved)
     }
 }
+
+private fun platformFileReadErrorBody(errorCode: String, message: String): String =
+    JSONObject().apply {
+        put("error", errorCode.ifBlank { "attachment_read_failed" })
+        put("message", message)
+    }.toString()
 
 internal class KuiklySlockAuthTransport(
     private val networkModule: SlockNetworkModule,
@@ -475,7 +451,18 @@ internal class KuiklySlockAuthTransport(
     }
 }
 
-private fun buildMultipartBody(
+private sealed class ResolvedPlatformFiles {
+    data class Content(val files: List<MultipartFile>) : ResolvedPlatformFiles()
+    data class Error(val response: HomeNetworkResponse) : ResolvedPlatformFiles()
+}
+
+private inline fun ResolvedPlatformFiles.getOrElse(onError: (HomeNetworkResponse) -> List<MultipartFile>): List<MultipartFile> =
+    when (this) {
+        is ResolvedPlatformFiles.Content -> files
+        is ResolvedPlatformFiles.Error -> onError(response)
+    }
+
+internal fun buildMultipartBody(
     boundary: String,
     fields: Map<String, String>,
     files: List<MultipartFile>

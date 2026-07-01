@@ -207,10 +207,10 @@ import build.raft.app.data.AgentMachineAssignmentRequest
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.AgentResetMode
 import build.raft.app.data.AgentResetRequest
-import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
-import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.data.InboxItem
@@ -2214,7 +2214,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 conversationRepository.uploadAttachments(
                     AttachmentUploadRequest(
                         channelId = ChannelId(channelId),
-                        files = listOf(draft.toDiagnosticsAttachmentUploadFile())
+                        files = listOf(draft.toDiagnosticsPlatformFile())
                     )
                 )
             diagnosticsFeedbackUploadChannelId = null
@@ -9931,8 +9931,8 @@ private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
         .ifBlank { "Channel" }
 }
 
-private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsAttachmentUploadFile(): AttachmentUploadFile =
-    AttachmentUploadFile(
+private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): PlatformFile =
+    PlatformFile(
         id = "diagnostics-feedback-${fileName.hashCode().toString().replace("-", "n")}-${sizeBytes}",
         fileName = fileName.ifBlank { "slock-feedback.txt" },
         mimeType = mimeType.ifBlank { "text/plain" },

@@ -310,17 +310,25 @@ data class ThreadListSnapshot(
 
 data class AttachmentUploadRequest(
     val channelId: ChannelId,
-    val files: List<AttachmentUploadFile>
+    val files: List<PlatformFile>
 )
 
-data class AttachmentUploadFile(
+/**
+ * Platform-owned local file handle selected by a picker or produced by a native editor.
+ *
+ * Product/upload code may carry this model through shared state, but only platform
+ * file-reader capabilities may dereference [fileRef]. Multipart field names, auth,
+ * endpoints, and HTTP headers belong to shared upload/network code, not this model.
+ */
+data class PlatformFile(
     val id: String,
     val fileName: String,
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
     val previewUri: String? = null,
     val bytes: ByteArray = ByteArray(0),
-    val fileRef: String? = null
+    val fileRef: String? = null,
+    val source: String = ""
 )
 
 data class AttachmentUploadResult(

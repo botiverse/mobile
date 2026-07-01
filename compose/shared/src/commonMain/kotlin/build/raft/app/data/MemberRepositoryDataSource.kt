@@ -27,7 +27,7 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private fun AttachmentUploadFile.toAgentAvatarMultipartFile(): MultipartFile =
+private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
         fileName = fileName,

@@ -48,7 +48,7 @@ import build.raft.app.data.WireThreadSummary
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
-import build.raft.app.data.parseSharedThreadPickedAttachmentFiles
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.parseSharedThreadUploadedAttachments
 import build.raft.app.data.toHomeChannelRow
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -5213,7 +5213,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesPickedAttachmentFileRefsForSharedUpload() {
         val files =
-            parseSharedThreadPickedAttachmentFiles(
+            parseSharedThreadPickedPlatformFiles(
                 JSONObject().apply {
                     put(
                         "files",
@@ -5246,7 +5246,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesPickedAttachmentFileRefsFromBodyTextForSharedUpload() {
         val files =
-            parseSharedThreadPickedAttachmentFiles(
+            parseSharedThreadPickedPlatformFiles(
                 JSONObject().apply {
                     put(
                         "bodyText",
@@ -5285,7 +5285,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesPickedAttachmentBase64FallbackForSharedUpload() {
         val files =
-            parseSharedThreadPickedAttachmentFiles(
+            parseSharedThreadPickedPlatformFiles(
                 JSONObject().apply {
                     put(
                         "files",

@@ -488,7 +488,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockKuiklyThreadAdapter.execute("thread-attachment-upload") {
                     val result =
                             runCatching {
-                                        readThreadAttachmentUploadFiles(uris)
+                                        readThreadPlatformPickedFiles(uris)
                                     }
                                     .getOrElse { throwable ->
                                         mapOf(
@@ -525,7 +525,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 
-    private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
+    private fun readThreadPlatformPickedFiles(uris: List<Uri>): Map<String, Any> {
         val files = uris.map { uri -> pickedThreadAttachmentRef(uri) }
         if (files.isEmpty()) {
             return mapOf(
@@ -545,6 +545,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             .put("sizeBytes", file.sizeBytes)
                             .put("previewUri", file.previewUri)
                             .put("fileRef", file.fileRef)
+                            .put("source", "platform_picker")
             )
         }
         SlockDiagnosticsLogger.record(

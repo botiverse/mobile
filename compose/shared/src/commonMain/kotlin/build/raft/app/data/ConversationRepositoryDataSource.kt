@@ -1028,7 +1028,7 @@ private fun ChannelId.toThreadActionBody(): String =
 private fun MessageId.toParentMessageThreadBody(): String =
     conversationRepositoryJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId = value))
 
-private fun AttachmentUploadFile.toMultipartFile(): MultipartFile =
+private fun PlatformFile.toMultipartFile(): MultipartFile =
     MultipartFile(
         name = "files",
         fileName = fileName,

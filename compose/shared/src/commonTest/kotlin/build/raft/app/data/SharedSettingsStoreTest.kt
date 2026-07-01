@@ -120,7 +120,7 @@ class SharedSettingsStoreTest {
                             FakeSettingsCapabilities(
                                 avatarFileResult =
                                     DataResult.Content(
-                                        AttachmentUploadFile(
+                                        PlatformFile(
                                             id = "avatar-1",
                                             fileName = "avatar.png",
                                             mimeType = "image/png",
@@ -234,7 +234,7 @@ class SharedSettingsStoreTest {
             FakeSettingsCapabilities(
                 connectedAppLogoFileResult =
                     DataResult.Content(
-                        AttachmentUploadFile(
+                        PlatformFile(
                             id = "logo-1",
                             fileName = "logo.png",
                             mimeType = "image/png",
@@ -2520,9 +2520,9 @@ class SharedSettingsStoreTest {
                 )
             ),
         private var developerSnapshot: SharedSettingsDeveloperSnapshot = buildDeveloperSnapshot("production"),
-        private val avatarFileResult: DataResult<AttachmentUploadFile> =
+        private val avatarFileResult: DataResult<PlatformFile> =
             DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
-        private val connectedAppLogoFileResult: DataResult<AttachmentUploadFile> =
+        private val connectedAppLogoFileResult: DataResult<PlatformFile> =
             DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable"))
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
@@ -2590,12 +2590,12 @@ class SharedSettingsStoreTest {
             return DataResult.Content(Unit)
         }
 
-        override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
+        override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
             calls += "pickAccountAvatarFile"
             return avatarFileResult
         }
 
-        override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<AttachmentUploadFile> {
+        override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> {
             calls += "pickConnectedAppLogoFile:$clientRecordId"
             return connectedAppLogoFileResult
         }

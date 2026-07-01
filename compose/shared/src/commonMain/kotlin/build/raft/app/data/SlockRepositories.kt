@@ -466,7 +466,7 @@ data class AccountPasswordChangeRequest(
 )
 
 data class AccountAvatarUploadRequest(
-    val file: AttachmentUploadFile
+    val file: PlatformFile
 )
 
 data class AccountProviderLinkStartRequest(
@@ -499,7 +499,7 @@ data class SettingsConnectedAppUpdateRequest(
 
 data class SettingsConnectedAppLogoUploadRequest(
     val id: String,
-    val file: AttachmentUploadFile
+    val file: PlatformFile
 )
 
 data class SettingsConnectedAppPublishRequest(
@@ -648,7 +648,7 @@ data class AgentProfileUpdateRequest(
 
 data class AgentAvatarUploadRequest(
     val agentId: MemberId,
-    val file: AttachmentUploadFile
+    val file: PlatformFile
 )
 
 enum class AgentResetMode(val wireValue: String) {

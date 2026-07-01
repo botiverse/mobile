@@ -3,7 +3,7 @@ package build.raft.app.core.data.network
 import build.raft.app.data.StoredAuthSession as AuthSession
 import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
-import build.raft.app.data.AttachmentUploadFile
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.CreateChannelRequest
@@ -130,7 +130,7 @@ class LiveSlockDbFlowTest {
                     AttachmentUploadRequest(
                         channelId = channelId,
                         files = listOf(
-                            AttachmentUploadFile(
+                            PlatformFile(
                                 id = "live-file-$suffix",
                                 fileName = fileName,
                                 mimeType = "text/plain",

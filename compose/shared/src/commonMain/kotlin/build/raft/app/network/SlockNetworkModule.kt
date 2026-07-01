@@ -41,6 +41,40 @@ class SlockNetworkModule : Module() {
             )
         }
 
+    suspend fun readPlatformFile(fileRef: String): SlockNativeFileReadResponse =
+        suspendCancellableCoroutine { continuation ->
+            val requestId = nextRequestId()
+            val command =
+                JSONObject().apply {
+                    put("requestId", requestId)
+                    put("fileRef", fileRef)
+                }
+            val callback: CallbackFn =
+                { response: JSONObject? ->
+                    if (continuation.isActive) {
+                        continuation.resume(response.toSlockNativeFileReadResponse())
+                    }
+                }
+            continuation.invokeOnCancellation {
+                val cancelCommand = JSONObject()
+                cancelCommand.put("requestId", requestId)
+                toNative(
+                    false,
+                    METHOD_CANCEL,
+                    cancelCommand.toString(),
+                    null,
+                    false
+                )
+            }
+            toNative(
+                false,
+                METHOD_READ_PLATFORM_FILE,
+                command.toString(),
+                callback,
+                false
+            )
+        }
+
     private fun nextRequestId(): String =
         "request-${nextRequestOrdinal++}"
 
@@ -52,9 +86,19 @@ class SlockNetworkModule : Module() {
             message = this?.optString("message").orEmpty()
         )
 
+    private fun JSONObject?.toSlockNativeFileReadResponse(): SlockNativeFileReadResponse =
+        SlockNativeFileReadResponse(
+            code = this?.optInt("code") ?: 0,
+            bodyBase64 = this?.optString("bodyBase64").orEmpty(),
+            sizeBytes = this?.optLong("sizeBytes", -1L)?.takeIf { it >= 0L },
+            errorCode = this?.optString("errorCode").orEmpty(),
+            message = this?.optString("message").orEmpty()
+        )
+
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
+        private const val METHOD_READ_PLATFORM_FILE = "readPlatformFile"
         private const val METHOD_CANCEL = "cancel"
     }
 }
@@ -63,5 +107,13 @@ data class SlockNativeNetworkResponse(
     val code: Int,
     val bodyText: String,
     val errorBodyText: String,
+    val message: String
+)
+
+data class SlockNativeFileReadResponse(
+    val code: Int,
+    val bodyBase64: String,
+    val sizeBytes: Long?,
+    val errorCode: String,
     val message: String
 )

@@ -943,7 +943,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           "mimeType": file.mimeType,
           "sizeBytes": file.sizeBytes,
           "previewUri": file.previewUri,
-          "fileRef": file.fileRef
+          "fileRef": file.fileRef,
+          "source": "platform_picker"
         };
       })
     };

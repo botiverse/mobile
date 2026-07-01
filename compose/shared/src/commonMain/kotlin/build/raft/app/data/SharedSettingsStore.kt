@@ -365,10 +365,10 @@ sealed interface SharedSettingsEffect {
 }
 
 interface SharedSettingsPlatformCapabilities {
-    suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> =
+    suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
 
-    suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<AttachmentUploadFile> =
+    suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable", retryable = false))
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =

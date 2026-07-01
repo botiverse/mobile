@@ -102,7 +102,7 @@ class SettingsRepositoryDataSourceTest {
         val avatar =
             repository.uploadAccountAvatar(
                 AccountAvatarUploadRequest(
-                    AttachmentUploadFile(
+                    PlatformFile(
                         id = "avatar-1",
                         fileName = "avatar.png",
                         mimeType = "image/png",
@@ -239,7 +239,7 @@ class SettingsRepositoryDataSourceTest {
                 SettingsConnectedAppLogoUploadRequest(
                     id = "client-1",
                     file =
-                        AttachmentUploadFile(
+                        PlatformFile(
                             id = "logo-1",
                             fileName = "logo.png",
                             mimeType = "image/png",

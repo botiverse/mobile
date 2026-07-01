@@ -381,7 +381,7 @@ class ConversationRepositoryDataSourceTest {
                     channelId = ChannelId("channel-1"),
                     files =
                         listOf(
-                            AttachmentUploadFile(
+                            PlatformFile(
                                 id = "local-upload-1",
                                 fileName = "upload.txt",
                                 mimeType = "text/plain",
