@@ -4,6 +4,9 @@ import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.data.KuiklyMMKVModule
 import build.raft.app.network.SlockNetworkModule
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.module.NotifyModule
@@ -14,6 +17,9 @@ import com.tencent.kuikly.core.reactive.handler.*
 
 internal abstract class BasePager : ComposeContainer() {
     private var nightModel: Boolean? by observable(null)
+    protected var slockPageVisibleResumeTick by mutableStateOf(0)
+        private set
+    private var slockHasAppeared = false
 
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
@@ -56,6 +62,18 @@ internal abstract class BasePager : ComposeContainer() {
         super.created()
         isNightMode()
     }
+
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        val initialAppearance = !slockHasAppeared
+        slockHasAppeared = true
+        if (!initialAppearance) {
+            slockPageVisibleResumeTick += 1
+        }
+        onSlockPageDidAppear(isInitialAppearance = initialAppearance)
+    }
+
+    protected open fun onSlockPageDidAppear(isInitialAppearance: Boolean) = Unit
 
     override fun themeDidChanged(data: JSONObject) {
         super.themeDidChanged(data)

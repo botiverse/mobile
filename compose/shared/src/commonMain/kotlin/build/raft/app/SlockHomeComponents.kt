@@ -133,7 +133,7 @@ private const val HomeListMaxBeyondBoundsItemCount = 6
 internal class ComposeSlockHomePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockHomePageContent() }
+        setContent { SlockHomePageContent(slockPageVisibleResumeTick) }
     }
 }
 
@@ -278,7 +278,7 @@ internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullR
     contentRefreshing && !pullRefreshing
 
 @Composable
-private fun SlockHomePageContent() {
+private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     var payloadText by remember { mutableStateOf(pager.pageData.params.optString("payload")) }
@@ -312,6 +312,14 @@ private fun SlockHomePageContent() {
     }
     LaunchedEffect(payload.instanceId, payload.channels.size, payload.directMessages.size) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
+    }
+    LaunchedEffect(routeVisibleTick, payload.instanceId) {
+        if (
+            activityPageDidAppearShouldRefresh(routeVisibleTick) &&
+            payload.instanceId.isNotBlank()
+        ) {
+            bridge.settingsEvent(payload.instanceId, "refresh", null)
+        }
     }
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val agentStatusResolver =

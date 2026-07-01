@@ -607,7 +607,7 @@ internal class ComposeBottomTabBarSmokePage : build.raft.app.base.BasePager() {
 internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationSearch) }
+        setContent { HomeSecondaryRouterContent(HomeDestinationSearch, slockPageVisibleResumeTick) }
     }
 }
 
@@ -615,27 +615,15 @@ internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
 internal class ComposeHomeSavedPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationSaved) }
+        setContent { HomeSecondaryRouterContent(HomeDestinationSaved, slockPageVisibleResumeTick) }
     }
 }
 
 @Page(HOME_ACTIVITY_PAGE, supportInLocal = true)
 internal class ComposeHomeActivityPage : build.raft.app.base.BasePager() {
-    private var pageVisibleTick by mutableStateOf(0)
-    private var consumedInitialPageAppearance = false
-
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationActivity, pageVisibleTick) }
-    }
-
-    override fun pageDidAppear() {
-        super.pageDidAppear()
-        if (!consumedInitialPageAppearance) {
-            consumedInitialPageAppearance = true
-            return
-        }
-        pageVisibleTick += 1
+        setContent { HomeSecondaryRouterContent(HomeDestinationActivity, slockPageVisibleResumeTick) }
     }
 }
 
@@ -732,8 +720,8 @@ private fun HomeSecondaryRouterContent(destination: String, routeVisibleTick: In
     )
     when (retainedDestination) {
         HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
-        HomeDestinationSearch -> HomeSearchRouterContent(environment)
-        HomeDestinationSaved -> HomeSavedRouterContent(environment)
+        HomeDestinationSearch -> HomeSearchRouterContent(environment, routeVisibleTick)
+        HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
         else -> SlockCenteredLoading(message = "Opening...")
     }
 }
@@ -770,7 +758,10 @@ private fun HomeActivityRouterContent(
 }
 
 @Composable
-private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) {
+private fun HomeSearchRouterContent(
+    environment: HomeSecondaryRouteEnvironment,
+    routeVisibleTick: Int = 0
+) {
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
@@ -798,6 +789,11 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
     }
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
+    LaunchedEffect(routeVisibleTick) {
+        if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
+            searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
+        }
+    }
     val searchServerId =
         (homeState.content as? SharedHomeContentState.Content)
             ?.snapshot
@@ -853,9 +849,17 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
 }
 
 @Composable
-private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
+private fun HomeSavedRouterContent(
+    environment: HomeSecondaryRouteEnvironment,
+    routeVisibleTick: Int = 0
+) {
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
+    LaunchedEffect(routeVisibleTick) {
+        if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
+            searchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
+        }
+    }
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
@@ -973,23 +977,17 @@ internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
 
 @Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
-    private var pageVisibleTick by mutableStateOf(0)
     private var initialAuthRestoreTick by mutableStateOf(0)
-    private var consumedInitialPageAppearance = false
 
     override fun willInit() {
         super.willInit()
-        setContent { SlockAppShellContent(pageVisibleTick, initialAuthRestoreTick) }
+        setContent { SlockAppShellContent(slockPageVisibleResumeTick, initialAuthRestoreTick) }
     }
 
-    override fun pageDidAppear() {
-        super.pageDidAppear()
-        if (!consumedInitialPageAppearance) {
-            consumedInitialPageAppearance = true
+    override fun onSlockPageDidAppear(isInitialAppearance: Boolean) {
+        if (isInitialAppearance) {
             initialAuthRestoreTick += 1
-            return
         }
-        pageVisibleTick += 1
     }
 }
 
@@ -1303,8 +1301,7 @@ internal fun retainedHomeSecondaryDestination(destination: String?): String? =
 
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
     when (retainedHomeSecondaryDestination(destination)) {
-        null, HomeDestinationActivity, HomeDestinationSaved -> true
-        HomeDestinationSearch -> false
+        null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch -> true
         else -> false
     }
 

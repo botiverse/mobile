@@ -100,7 +100,8 @@ class SharedHomeShellStoreTest {
                 SharedHomeSearchSavedIntent.RefreshSaved,
                 SharedHomeSearchSavedIntent.OpenSaved,
                 SharedHomeSearchSavedIntent.RefreshSaved,
-                SharedHomeSearchSavedIntent.OpenSearch
+                SharedHomeSearchSavedIntent.OpenSearch,
+                SharedHomeSearchSavedIntent.RefreshSearch
             ),
             fixture.searchSavedIntents
         )

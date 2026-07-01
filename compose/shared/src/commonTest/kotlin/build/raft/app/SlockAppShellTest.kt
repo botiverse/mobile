@@ -326,11 +326,11 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun searchSurfaceDoesNotRefreshOnLifecycleResume() {
+    fun searchSurfaceRefreshesOnLifecycleResume() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("saved"))
-        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))
     }
 
