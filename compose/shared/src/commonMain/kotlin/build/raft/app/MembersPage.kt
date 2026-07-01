@@ -1247,6 +1247,23 @@ private class MemberDetailRouteProvider(
         }
     }
 
+    suspend fun refreshAgentActivity(agentId: MemberId) {
+        when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
+            is DataResult.Content ->
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetAgentActivity(
+                        agentId = agentId,
+                        activity = activityResult.data.activity
+                    )
+                )
+            is DataResult.Empty -> Unit
+            is DataResult.Error ->
+                bridge.log("member_detail_agent_activity_load_failed agentId=${agentId.value} code=${activityResult.error.code}")
+            is DataResult.NoPermission ->
+                bridge.log("member_detail_agent_activity_load_blocked agentId=${agentId.value} code=${activityResult.blocker.code}")
+        }
+    }
+
     private suspend fun loadHumanMember(selectedId: MemberId, profileServerId: ServerId): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
         return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
@@ -1527,6 +1544,11 @@ private fun MemberDetailPageContent() {
     LaunchedEffect(payload.memberId, expectedKind, payload.sourceServerId, localAgentDetailRefreshKey) {
         val cached = provider.cachedContext(payload.memberId, expectedKind)
         routeState = cached ?: MemberDetailRouteState.Loading
+        if (cached != null && selectedMemberId != null && expectedKind != MemberKind.Human) {
+            launch {
+                provider.refreshAgentActivity(selectedMemberId)
+            }
+        }
         routeState = provider.loadMember(payload.memberId, expectedKind, payload.sourceServerId)
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {

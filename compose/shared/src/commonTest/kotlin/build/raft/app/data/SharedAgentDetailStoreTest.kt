@@ -158,6 +158,38 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun seedDetailFromMemberUsesCachedAgentActivity() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SetAgentActivity(
+                testMemberId,
+                listOf(
+                    AgentActivityEntry(
+                        id = "activity-1",
+                        type = "tool_start",
+                        title = "Run command",
+                        timestamp = "200"
+                    )
+                )
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Agent One",
+                    handle = "agent-one",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working
+                )
+            )
+        )
+
+        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
+    }
+
+    @Test
     fun deselectMemberResetsState() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
@@ -569,6 +601,69 @@ class SharedAgentDetailStoreTest {
         assertEquals("Building", rows.last().body)
         assertEquals("working", rows.last().statusActivity)
         assertEquals("200", rows.last().timestamp)
+        assertEquals(listOf("rest:older", "realtime:agent-1:seq:10"), s.state.value.agentActivityLogs[testMemberId]?.map { it.id })
+    }
+
+    @Test
+    fun agentActivitySnapshotMergesIntoVisibleDetailAndCache() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(
+                    status = "Working",
+                    activityEntries = listOf(
+                        AgentActivityEntry(
+                            id = "activity-1",
+                            type = "status",
+                            title = "Working",
+                            timestamp = "100"
+                        )
+                    )
+                )
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.SetAgentActivity(
+                testMemberId,
+                listOf(
+                    AgentActivityEntry(
+                        id = "activity-2",
+                        type = "tool_start",
+                        title = "Run command",
+                        timestamp = "200"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("activity-1", "activity-2"), s.state.value.detail?.activity?.map { it.id })
+        assertEquals(listOf("activity-1", "activity-2"), s.state.value.agentActivityLogs[testMemberId]?.map { it.id })
+    }
+
+    @Test
+    fun cachedAgentActivitySurvivesMemberSwitchAndRestRefresh() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SetAgentActivity(
+                testMemberId,
+                listOf(
+                    AgentActivityEntry(
+                        id = "activity-1",
+                        type = "tool_start",
+                        title = "Run command",
+                        timestamp = "200"
+                    )
+                )
+            )
+        )
+        s.dispatch(SharedAgentDetailIntent.SelectMember(MemberId("agent-2")))
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Working")))
+
+        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
     }
 
     @Test

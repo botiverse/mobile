@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 internal data class SharedAgentDetailState(
     val agentId: MemberId? = null,
     val detail: AgentDetailSnapshot? = null,
+    val agentActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
     val agentActivityObservedAt: Map<MemberId, Long> = emptyMap(),
     val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
     val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
@@ -95,6 +96,10 @@ internal sealed interface SharedAgentDetailIntent {
         val agentId: MemberId,
         val detail: AgentDetailSnapshot,
         val preserveSequencedActivity: Boolean = true
+    ) : SharedAgentDetailIntent
+    data class SetAgentActivity(
+        val agentId: MemberId,
+        val activity: List<AgentActivityEntry>
     ) : SharedAgentDetailIntent
     data class SetDetailNoPermission(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailError(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
@@ -154,6 +159,7 @@ internal class SharedAgentDetailStore(
                 } else {
                     SharedAgentDetailState(
                         agentId = intent.memberId,
+                        agentActivityLogs = current.agentActivityLogs,
                         agentActivityObservedAt = current.agentActivityObservedAt,
                         agentActivityVersions = current.agentActivityVersions,
                         agentActivitySeq = current.agentActivitySeq
@@ -161,6 +167,7 @@ internal class SharedAgentDetailStore(
                 }
             is SharedAgentDetailIntent.SeedDetailFromMember -> current.seedDetailFromMember(intent.member)
             SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState(
+                agentActivityLogs = current.agentActivityLogs,
                 agentActivityObservedAt = current.agentActivityObservedAt,
                 agentActivityVersions = current.agentActivityVersions,
                 agentActivitySeq = current.agentActivitySeq
@@ -186,15 +193,19 @@ internal class SharedAgentDetailStore(
                         agentId = intent.agentId,
                         incoming = incoming,
                         preserveSequencedActivity = intent.preserveSequencedActivity
-                    )
+                    ).withCachedAgentActivity(current.agentActivityLogs[intent.agentId])
+                    val nextActivityLogs = current.agentActivityLogs.withAgentActivityLog(intent.agentId, detail.activity)
                     current.copy(
                         detail = detail,
+                        agentActivityLogs = nextActivityLogs,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
                         detailErrorCode = null
                     )
                 } else {
                     current
                 }
+            is SharedAgentDetailIntent.SetAgentActivity ->
+                current.applyAgentActivitySnapshot(intent.agentId, intent.activity)
             is SharedAgentDetailIntent.SetDetailNoPermission ->
                 if (current.agentId == intent.agentId) {
                     current.copy(
@@ -407,17 +418,37 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     if (event.kind != MemberKind.Agent) return this
     val agentId = event.memberId
     if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
+    val nextActivityLog = agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextDetail =
         if (this.agentId == agentId) {
-            detail?.withAgentActivity(event, observedAtMillis)
+            detail?.withAgentActivity(event, observedAtMillis)?.copy(activity = nextActivityLog)
         } else {
             detail
         }
     return copy(
         detail = nextDetail,
+        agentActivityLogs = agentActivityLogs.withAgentActivityLog(agentId, nextActivityLog),
         agentActivityObservedAt = agentActivityObservedAt + (agentId to observedAtMillis),
         agentActivityVersions = agentActivityVersions + (agentId to ((agentActivityVersions[agentId] ?: 0L) + 1L)),
         agentActivitySeq = event.serverSeq?.let { agentActivitySeq + (agentId to it) } ?: agentActivitySeq
+    )
+}
+
+private fun SharedAgentDetailState.applyAgentActivitySnapshot(
+    agentId: MemberId,
+    activity: List<AgentActivityEntry>
+): SharedAgentDetailState {
+    if (activity.isEmpty()) return this
+    val nextActivityLog = mergeAgentActivityLogs(agentActivityLogs[agentId].orEmpty() + activity)
+    val nextDetail =
+        if (this.agentId == agentId && detail?.agentId == agentId) {
+            detail.copy(activity = nextActivityLog)
+        } else {
+            detail
+        }
+    return copy(
+        detail = nextDetail,
+        agentActivityLogs = agentActivityLogs.withAgentActivityLog(agentId, nextActivityLog)
     )
 }
 
@@ -426,7 +457,7 @@ private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): 
     if (agentId == member.id && detail?.agentId == member.id) return this
     return copy(
         agentId = member.id,
-        detail = member.toAgentDetailSeed(),
+        detail = member.toAgentDetailSeed(agentActivityLogs[member.id].orEmpty()),
         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
         detailErrorCode = null,
         lifecycleActionInFlight = null,
@@ -444,7 +475,7 @@ private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): 
     )
 }
 
-private fun MemberProfile.toAgentDetailSeed(): AgentDetailSnapshot {
+private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>): AgentDetailSnapshot {
     val fallbackName = handle.ifBlank { displayName.ifBlank { id.value } }
     val display = displayName.ifBlank { fallbackName }
     val status = agentStatus?.label
@@ -464,7 +495,7 @@ private fun MemberProfile.toAgentDetailSeed(): AgentDetailSnapshot {
         ),
         directMessages = emptyList(),
         reminders = emptyList(),
-        activity = emptyList()
+        activity = activity
     )
 }
 
@@ -510,6 +541,13 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
         summary = nextSummary,
         activity = nextActivity
     )
+}
+
+private fun AgentDetailSnapshot.withCachedAgentActivity(
+    cachedActivity: List<AgentActivityEntry>?
+): AgentDetailSnapshot {
+    val mergedActivity = mergeAgentActivityLogs(cachedActivity.orEmpty() + activity)
+    return if (mergedActivity.isEmpty()) this else copy(activity = mergedActivity)
 }
 
 private fun AgentDetailSnapshot.withExistingAgentDetailSections(
@@ -633,6 +671,21 @@ private fun AgentActivityEntry.isDuplicateAgentStatusEntry(
 
 private fun List<AgentActivityEntry>.dedupeAgentActivityEntries(): List<AgentActivityEntry> =
     distinctBy { it.id.ifBlank { "${it.type}:${it.timestamp.orEmpty()}:${it.body.orEmpty()}:${it.statusActivity.orEmpty()}" } }
+
+private fun Map<MemberId, List<AgentActivityEntry>>.withAgentActivityLog(
+    agentId: MemberId,
+    activity: List<AgentActivityEntry>
+): Map<MemberId, List<AgentActivityEntry>> {
+    if (activity.isEmpty()) return this
+    val mergedActivity = mergeAgentActivityLogs(activity)
+    return if (this[agentId] == mergedActivity) this else this + (agentId to mergedActivity)
+}
+
+private fun mergeAgentActivityLogs(activity: List<AgentActivityEntry>): List<AgentActivityEntry> =
+    activity
+        .dedupeAgentActivityEntries()
+        .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.orEmpty() }.thenBy { it.id })
+        .takeLast(MaxAgentActivityEntries)
 
 private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
 
