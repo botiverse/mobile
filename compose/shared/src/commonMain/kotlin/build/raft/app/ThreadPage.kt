@@ -6627,10 +6627,11 @@ private fun ThreadPageContent(
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
         val fragments = mutableListOf<String>()
         selectedShareMessages.forEach { message ->
-            selectedShareBounds.remove(message.id)
             val targetIndex = timelineSlice.threadMessageListItemIndex(message.id)
             if (targetIndex < 0) return@forEach
+            selectedShareBounds.clear()
             shareCaptureTargetMessageId = message.id
+            delay(ThreadShareCaptureScrollSettleMs + 64L)
             var attempts = 0
             while (attempts < 24 && selectedShareBounds[message.id] == null) {
                 delay(32)
@@ -6643,7 +6644,7 @@ private fun ThreadPageContent(
                 fragments += path
             }
         }
-        if (fragments.isEmpty()) return null
+        if (fragments.size != selectedShareMessages.size) return null
         return ThreadShareCaptureRect(
             x = 0f,
             y = 0f,
