@@ -590,9 +590,9 @@ class SlockMarkdownTest {
         val envVarWidth = slockMarkdownInlineCodeWidthSp("MIMO_API_KEY").value
         val pathWidth = slockMarkdownInlineCodeWidthSp("~/.pi/agent/auth.json").value
 
-        assertTrue(shortTokenWidth in 44f..48f)
-        assertTrue(envVarWidth in 102f..110f)
-        assertTrue(pathWidth < 145f)
+        assertTrue(shortTokenWidth in 54f..58f)
+        assertTrue(envVarWidth in 112f..120f)
+        assertTrue(pathWidth < 155f)
     }
 
     @Test
@@ -679,8 +679,21 @@ class SlockMarkdownTest {
                 inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
             ).inlineContent?.invoke().orEmpty()
 
-        assertTrue(fallbackWidth.value in 42f..46f)
+        assertTrue(fallbackWidth.value in 52f..56f)
         assertTrue(inlineContent.containsKey("slock-code:4"))
+    }
+
+    @Test
+    fun compactInlineCodePlaceholderKeepsTextSafetySpace() {
+        val nearLimitCode = "MIMO_API_KEY"
+        val fallbackWidth = slockMarkdownInlineCodeWidthSp(nearLimitCode)
+        val narrowMeasuredWidth = (fallbackWidth.value - 6f).sp
+        val wideMeasuredWidth = (fallbackWidth.value + 4f).sp
+
+        assertTrue(nearLimitCode.shouldRenderThreadInlineCodeAsChip())
+        assertEquals(fallbackWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode))
+        assertEquals(fallbackWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode, narrowMeasuredWidth))
+        assertEquals(wideMeasuredWidth, slockMarkdownInlineCodePlaceholderWidthSp(nearLimitCode, wideMeasuredWidth))
     }
 
     @Test

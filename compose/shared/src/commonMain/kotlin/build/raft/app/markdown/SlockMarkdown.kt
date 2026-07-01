@@ -1141,7 +1141,7 @@ private fun measureSlockMarkdownInlineCodeWidthSp(
         shadow.setProp(TextConst.TEXT_USE_DP_FONT_SIZE_DIM, 1)
         val measuredWidth = shadow.calculateRenderViewSize(100000f, 100000f).width
         if (measuredWidth.isFinite() && measuredWidth > 0f) {
-            (measuredWidth + SlockMarkdownInlineCodeHorizontalChromeSp + SlockMarkdownMeasuredWidthSafetySp)
+            (measuredWidth + SlockMarkdownInlineCodeHorizontalChromeSp + SlockMarkdownInlineCodeTextSafetySp)
                 .coerceAtLeast(fallbackWidth.value)
                 .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
                 .sp
@@ -1481,7 +1481,11 @@ internal fun slockMarkdownInlineChipWidthSp(label: String) =
         .sp
 
 internal fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() + SlockMarkdownInlineCodeHorizontalChromeSp)
+    (
+        code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() +
+            SlockMarkdownInlineCodeHorizontalChromeSp +
+            SlockMarkdownInlineCodeTextSafetySp
+        )
         .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
         .sp
 
@@ -1552,8 +1556,8 @@ private const val SlockMarkdownInlineCodeHorizontalChromeSp = 14f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
 private const val SlockMarkdownInlineCodeMinHeightSp = 24f
 private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
+private const val SlockMarkdownInlineCodeTextSafetySp = 10f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
-private const val SlockMarkdownMeasuredWidthSafetySp = 6f
 private val SlockMarkdownInlineChipTextHeight = 22.dp
 private val SlockMarkdownMentionUnderlineInset = 3.dp
 
@@ -1706,7 +1710,8 @@ private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
             maxLines = 1,
-            overflow = TextOverflow.Clip
+            softWrap = false,
+            overflow = TextOverflow.Visible
         )
     }
 }
