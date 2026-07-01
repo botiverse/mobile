@@ -276,7 +276,6 @@ private fun RegisterScreen() {
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
     var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
-    AuthBackToSignInHandler(pager, label = "auth_register")
 
     LaunchedEffect(pendingRegister) {
         val effect = pendingRegister ?: return@LaunchedEffect
@@ -336,7 +335,7 @@ private fun RegisterScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
+        onBackToSignIn = { pager.closeAuthSubPage() },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
     )
 }
@@ -349,7 +348,6 @@ private fun ForgotPasswordScreen() {
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
     var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
-    AuthBackToSignInHandler(pager, label = "auth_forgot_password")
 
     LaunchedEffect(pendingForgotPassword) {
         val effect = pendingForgotPassword ?: return@LaunchedEffect
@@ -395,16 +393,9 @@ private fun ForgotPasswordScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
+        onBackToSignIn = { pager.closeAuthSubPage() },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
     )
-}
-
-@Composable
-private fun AuthBackToSignInHandler(pager: Pager, label: String) {
-    SlockBackHandler(enabled = true, label = label) {
-        pager.openAuthPage(LOGIN_PAGE)
-    }
 }
 
 @Composable
@@ -1223,6 +1214,10 @@ private fun Pager.openAuthPage(pageName: String) {
             }
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
+}
+
+private fun Pager.closeAuthSubPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
 private fun Pager.socialAuthProviders(): Set<AuthProvider> =
