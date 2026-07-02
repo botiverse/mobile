@@ -10,6 +10,20 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val googleServicesConfigFiles =
+    listOf(
+        file("google-services.json"),
+        file("src/debug/google-services.json"),
+        file("src/connectedTest/google-services.json"),
+        file("src/release/google-services.json")
+    )
+
+if (googleServicesConfigFiles.any { it.isFile }) {
+    pluginManager.apply("com.google.gms.google-services")
+} else {
+    logger.lifecycle("Firebase google-services.json not found; skipping Google Services Gradle plugin for this local build.")
+}
+
 val googleServerClientId =
     providers.gradleProperty("SLOCK_GOOGLE_SERVER_CLIENT_ID")
         .orElse(providers.environmentVariable("SLOCK_GOOGLE_SERVER_CLIENT_ID"))
@@ -213,6 +227,8 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation(libs.bugly.pro) {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
     }

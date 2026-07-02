@@ -11,6 +11,8 @@
 .cxx
 local.properties
 github-packages.properties
+google-services.json
+**/google-services.json
 
 .kotlin
 

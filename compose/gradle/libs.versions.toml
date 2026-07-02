@@ -28,6 +28,8 @@ androidsvg = "1.4"
 mmkv = "2.4.0"
 buglyPro = "4.4.7.8"
 buglyDiagnose = "0.4.11"
+firebaseBom = "34.15.0"
+googleServices = "4.5.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -66,6 +68,8 @@ mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 bugly-pro = { group = "com.tencent.bugly_16kb", name = "bugly-pro", version.ref = "buglyPro" }
 bugly-diagnose-logger = { group = "com.tencent.tdos-diagnose", name = "logger", version.ref = "buglyDiagnose" }
 bugly-diagnose = { group = "com.tencent.tdos-diagnose", name = "diagnose", version.ref = "buglyDiagnose" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 kuikly-core = { group = "com.tencent.kuikly-open", name = "core", version.ref = "kuiklyAndroid" }
 kuikly-core-annotations = { group = "com.tencent.kuikly-open", name = "core-annotations", version.ref = "kuiklyAndroid" }
 kuikly-compose = { group = "com.tencent.kuikly-open", name = "compose", version.ref = "kuiklyAndroid" }
@@ -82,3 +86,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composePlugin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
