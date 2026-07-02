@@ -40,6 +40,7 @@ import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
 import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
+import build.raft.app.data.AppLocale
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
@@ -1630,9 +1631,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
-    val localeRepository =
+    val localePreferenceStore =
         remember(sharedPreferenceStore) {
-            PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore))
+            KeyValueLocalePreferenceStore(sharedPreferenceStore)
+        }
+    val localeRepository =
+        remember(localePreferenceStore) {
+            PersistentLocaleRepository(localePreferenceStore)
         }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -2783,6 +2788,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         val homeListServerId = readyServerId
+                        val prefersChineseCommunity =
+                            localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
                         key("home-list-${homeListServerId.orEmpty()}") {
                             SharedHomeScreen(
@@ -2795,6 +2802,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 activityUnreadCount = homeActivityState.totalUnreadCount,
                                 activityTotalCount = homeActivityState.totalCount,
                                 savedCount = homeSearchSavedState.saved.totalCount,
+                                prefersChineseCommunity = prefersChineseCommunity,
                                 onIntent = { intent ->
                                     if (intent is SharedHomeIntent.SelectServer) {
                                         readySession
@@ -9673,6 +9681,7 @@ private fun SharedHomeScreen(
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     savedCount: Int = 0,
+    prefersChineseCommunity: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     selectedConversationId: String? = null,
@@ -9704,6 +9713,7 @@ private fun SharedHomeScreen(
                     session = session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverUnreadCounts = state.serverUnreadCounts,
+                    prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -9723,6 +9733,7 @@ private fun SharedHomeScreen(
                 session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverUnreadCounts = state.serverUnreadCounts,
+                prefersChineseCommunity = prefersChineseCommunity,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -9857,6 +9868,7 @@ private fun SharedHomeScreen(
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 pendingServerId = serverSwitchState.pendingServerId,
+                prefersChineseCommunity = prefersChineseCommunity,
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
@@ -12652,6 +12664,7 @@ private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
+    prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
@@ -12667,6 +12680,7 @@ private fun SharedHomeSessionShell(
         channels = emptyList(),
         directMessages = emptyList(),
         serverSwitcherExpanded = serverSwitcherExpanded,
+        prefersChineseCommunity = prefersChineseCommunity,
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,

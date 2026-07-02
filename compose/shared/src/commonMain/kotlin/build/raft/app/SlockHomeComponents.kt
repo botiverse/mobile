@@ -227,6 +227,7 @@ data class SlockHomeShellLabels(
     val archive: String = "Archive",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
+    val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join community server",
     val switchOrCreateServer: String = "Switch or create server"
 ) {
@@ -598,6 +599,7 @@ internal fun SlockStructuralHomeShell(
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
     pendingServerId: String? = null,
+    prefersChineseCommunity: Boolean = false,
     applyTopSafeArea: Boolean = true,
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
@@ -1102,6 +1104,7 @@ internal fun SlockStructuralHomeShell(
                     servers,
                     currentServerId,
                     pendingServerId,
+                    prefersChineseCommunity,
                     labels,
                     onServerSelected,
                     onCreateServerClick,
@@ -1349,6 +1352,37 @@ internal fun homeServerSwitcherHasOtherUnread(
 ): Boolean =
     servers.any { server ->
         server.id != currentServerId && server.unreadCount > 0
+    }
+
+private const val DefaultCommunityServerSlug = "community"
+private const val ChineseCommunityServerSlug = "community-cn"
+
+internal data class SlockServerSwitcherCommunityAction(
+    val slug: String,
+    val label: String
+)
+
+internal fun homeServerSwitcherHasJoinedCommunity(
+    servers: List<SlockServerSwitcherItem>,
+    slug: String
+): Boolean =
+    servers.any { it.slug == slug }
+
+internal fun homeServerSwitcherJoinCommunityActions(
+    servers: List<SlockServerSwitcherItem>,
+    labels: SlockHomeShellLabels,
+    includeChineseCommunity: Boolean
+): List<SlockServerSwitcherCommunityAction> =
+    buildList {
+        if (
+            includeChineseCommunity &&
+            !homeServerSwitcherHasJoinedCommunity(servers, ChineseCommunityServerSlug)
+        ) {
+            add(SlockServerSwitcherCommunityAction(ChineseCommunityServerSlug, labels.joinChineseCommunityServer))
+        }
+        if (!homeServerSwitcherHasJoinedCommunity(servers, DefaultCommunityServerSlug)) {
+            add(SlockServerSwitcherCommunityAction(DefaultCommunityServerSlug, labels.joinCommunityServer))
+        }
     }
 
 internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
@@ -1830,8 +1864,13 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 }
 
 @Composable
-private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
-    val hasCommunityServer = servers.any { it.slug == "community" }
+private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, prefersChineseCommunity: Boolean, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
+    val joinCommunityActions =
+        homeServerSwitcherJoinCommunityActions(
+            servers = servers,
+            labels = labels,
+            includeChineseCommunity = prefersChineseCommunity
+        )
     HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
@@ -1856,8 +1895,8 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
             }
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        if (!hasCommunityServer) {
-            ServerSwitcherActionRow(labels.joinCommunityServer, onCreateServerClick)
+        joinCommunityActions.forEach { action ->
+            ServerSwitcherActionRow(action.label, onCreateServerClick)
         }
         ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
     }

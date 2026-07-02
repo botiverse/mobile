@@ -124,6 +124,65 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerSwitcherCommunityActionsFollowJoinedSlugsIndependently() {
+        val labels = SlockHomeShellLabels()
+
+        assertEquals(
+            listOf(
+                SlockServerSwitcherCommunityAction("community-cn", labels.joinChineseCommunityServer),
+                SlockServerSwitcherCommunityAction("community", labels.joinCommunityServer)
+            ),
+            homeServerSwitcherJoinCommunityActions(
+                servers = emptyList(),
+                labels = labels,
+                includeChineseCommunity = true
+            )
+        )
+        assertEquals(
+            listOf(SlockServerSwitcherCommunityAction("community-cn", labels.joinChineseCommunityServer)),
+            homeServerSwitcherJoinCommunityActions(
+                servers = listOf(SlockServerSwitcherItem(id = "server-1", name = "Community", slug = "community")),
+                labels = labels,
+                includeChineseCommunity = true
+            )
+        )
+        assertEquals(
+            listOf(SlockServerSwitcherCommunityAction("community", labels.joinCommunityServer)),
+            homeServerSwitcherJoinCommunityActions(
+                servers = listOf(SlockServerSwitcherItem(id = "server-cn", name = "Community CN", slug = "community-cn")),
+                labels = labels,
+                includeChineseCommunity = true
+            )
+        )
+        assertEquals(
+            emptyList(),
+            homeServerSwitcherJoinCommunityActions(
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(id = "server-cn", name = "Community CN", slug = "community-cn"),
+                        SlockServerSwitcherItem(id = "server-1", name = "Community", slug = "community")
+                    ),
+                labels = labels,
+                includeChineseCommunity = true
+            )
+        )
+    }
+
+    @Test
+    fun homeServerSwitcherChineseCommunityActionRequiresChinesePreference() {
+        val labels = SlockHomeShellLabels()
+
+        assertEquals(
+            listOf(SlockServerSwitcherCommunityAction("community", labels.joinCommunityServer)),
+            homeServerSwitcherJoinCommunityActions(
+                servers = emptyList(),
+                labels = labels,
+                includeChineseCommunity = false
+            )
+        )
+    }
+
+    @Test
     fun expressiveTopScrollUsesNearbyAnchorOnlyForFarDistances() {
         assertEquals(
             null,
