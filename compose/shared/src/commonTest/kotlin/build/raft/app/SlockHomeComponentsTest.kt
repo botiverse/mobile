@@ -104,6 +104,26 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerSwitcherServerListHeightCapsLongLists() {
+        assertEquals(
+            46.dp,
+            homeServerSwitcherServerListMaxHeight(serverCount = 1)
+        )
+        assertEquals(
+            46.dp,
+            homeServerSwitcherServerListMaxHeight(serverCount = 0)
+        )
+        assertEquals(
+            276.dp,
+            homeServerSwitcherServerListMaxHeight(serverCount = 6)
+        )
+        assertEquals(
+            276.dp,
+            homeServerSwitcherServerListMaxHeight(serverCount = 30)
+        )
+    }
+
+    @Test
     fun expressiveTopScrollUsesNearbyAnchorOnlyForFarDistances() {
         assertEquals(
             null,

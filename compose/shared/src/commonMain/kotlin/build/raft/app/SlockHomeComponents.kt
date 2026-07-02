@@ -124,6 +124,8 @@ private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
+private val HomeServerSwitcherRowMinHeight = 46.dp
+private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
@@ -1352,6 +1354,11 @@ internal fun homeServerSwitcherHasOtherUnread(
 internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + SlockSize.PageHeaderHeight + HomeServerSwitcherTopGap
 
+internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp {
+    val visibleRows = serverCount.coerceIn(1, HomeServerSwitcherMaxVisibleRows)
+    return (HomeServerSwitcherRowMinHeight.value * visibleRows).dp
+}
+
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,
     val conversationId: String? = null,
@@ -1825,11 +1832,28 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 @Composable
 private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
     val hasCommunityServer = servers.any { it.slug == "community" }
-    HardShadowPanel(modifier = modifier.homeServerSwitcherPanelPointerBarrier(), minWidth = 276.dp, maxWidth = 328.dp) {
+    HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
         } else {
-            servers.forEach { ServerSwitcherRow(it, it.id == currentServerId, it.id == pendingServerId) { onServerSelected(it.id) } }
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = homeServerSwitcherServerListMaxHeight(servers.size)),
+                beyondBoundsItemCount = homeListBeyondBoundsItemCount(servers.size)
+            ) {
+                items(servers.size, key = { index -> servers[index].id }) { index ->
+                    val server = servers[index]
+                    ServerSwitcherRow(
+                        server,
+                        server.id == currentServerId,
+                        server.id == pendingServerId
+                    ) {
+                        onServerSelected(server.id)
+                    }
+                }
+            }
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         if (!hasCommunityServer) {
@@ -1838,23 +1862,6 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
         ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
     }
 }
-
-private fun Modifier.homeServerSwitcherPanelPointerBarrier(): Modifier =
-    pointerInput(Unit) {
-        forEachGesture {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    event.changes.forEach { change ->
-                        if (change.positionChanged()) {
-                            change.consume()
-                        }
-                    }
-                    if (event.changes.all { !it.pressed }) break
-                }
-            }
-        }
-    }
 
 @Composable
 private fun HardShadowPanel(
@@ -1878,7 +1885,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 46.dp)
+                .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(SlockColor.SurfaceWhite)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
