@@ -12,7 +12,7 @@ class SettingsHomePageAuthGateTest {
     @Test
     fun homeAuthErrorDoesNotOverrideRestore() {
         assertFalse(
-            shouldRestoreHomeAuthErrorGate(
+            shouldApplyHomeAuthErrorGate(
                 errorCode = "unauthenticated",
                 authGateState = SharedAuthGateState.Restoring,
                 cachedSession = null
@@ -21,9 +21,9 @@ class SettingsHomePageAuthGateTest {
     }
 
     @Test
-    fun homeAuthErrorRestoresCachedSession() {
-        assertTrue(
-            shouldRestoreHomeAuthErrorGate(
+    fun homeAuthErrorDoesNotOverrideCachedSession() {
+        assertFalse(
+            shouldApplyHomeAuthErrorGate(
                 errorCode = "unauthenticated",
                 authGateState = SharedAuthGateState.AuthRequired,
                 cachedSession = storedSession()
@@ -32,9 +32,9 @@ class SettingsHomePageAuthGateTest {
     }
 
     @Test
-    fun homeAuthErrorDoesNotForceSignedOutWhenSessionIsMissing() {
-        assertFalse(
-            shouldRestoreHomeAuthErrorGate(
+    fun homeAuthErrorAppliesOnlyAfterSessionIsConfirmedMissing() {
+        assertTrue(
+            shouldApplyHomeAuthErrorGate(
                 errorCode = "unauthenticated",
                 authGateState = SharedAuthGateState.AuthRequired,
                 cachedSession = null
@@ -43,22 +43,11 @@ class SettingsHomePageAuthGateTest {
     }
 
     @Test
-    fun activeHomeAuthErrorRequestsRestoreBeforeLogin() {
-        assertTrue(
-            shouldRestoreHomeAuthErrorGate(
-                errorCode = "unauthenticated",
-                authGateState = SharedAuthGateState.Ready(storedSession()),
-                cachedSession = null
-            )
-        )
-    }
-
-    @Test
     fun nonAuthHomeErrorDoesNotApplyAuthGate() {
         assertFalse(
-            shouldRestoreHomeAuthErrorGate(
+            shouldApplyHomeAuthErrorGate(
                 errorCode = "network",
-                authGateState = SharedAuthGateState.Ready(storedSession()),
+                authGateState = SharedAuthGateState.AuthRequired,
                 cachedSession = null
             )
         )
