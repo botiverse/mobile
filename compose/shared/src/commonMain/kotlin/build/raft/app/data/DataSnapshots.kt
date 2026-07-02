@@ -1094,6 +1094,19 @@ data class SettingsMobileSnapshot(
             available = true,
             statusLabel = "Off",
             detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
+        ),
+    val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
+        SettingsMobileMultiSelectionSnapshot(
+            selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),
+            statusLabel = "Reactions",
+            detail = "Choose which message row actions are visible in conversations.",
+            options =
+                ThreadRowAffordancePreference.entries.map {
+                    SettingsMobileSelectionOptionSnapshot(
+                        key = it.storageKey,
+                        label = it.name
+                    )
+                }
         )
 )
 
@@ -1113,6 +1126,14 @@ data class SettingsMobileActionSnapshot(
 data class SettingsMobileSelectionSnapshot(
     val selectedKey: String,
     val selectedLabel: String,
+    val statusLabel: String,
+    val detail: String,
+    val options: List<SettingsMobileSelectionOptionSnapshot>,
+    val available: Boolean = true
+)
+
+data class SettingsMobileMultiSelectionSnapshot(
+    val selectedKeys: Set<String>,
     val statusLabel: String,
     val detail: String,
     val options: List<SettingsMobileSelectionOptionSnapshot>,

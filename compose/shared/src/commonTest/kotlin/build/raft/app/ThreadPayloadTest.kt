@@ -1886,6 +1886,22 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun wireThreadLaunchPayloadCarriesRowActionAffordancesIntoInitialPayload() {
+        val payload =
+            WireThreadLaunchPayload(
+                instanceId = "row-actions-thread",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                showReactionActions = false,
+                showInlineSaveAction = true
+            ).toInitialPayload("fallback")
+
+        assertFalse(payload.showReactionActions)
+        assertTrue(payload.showInlineSaveAction)
+    }
+
+    @Test
     fun memberSuggestionRealtimeRefreshOnlyTracksRelevantMemberScopes() {
         assertTrue(
             RealtimeRefreshRequired(

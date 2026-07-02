@@ -702,6 +702,8 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
+        store.accept(SharedSettingsIntent.SetThreadRowAffordance("saved", true))
+        store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
@@ -709,6 +711,7 @@ class SharedSettingsStoreTest {
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
+        assertEquals(setOf(ThreadRowAffordancePreference.Saved), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
@@ -716,6 +719,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
+        assertEquals(setOf("saved"), mobile.threadRowAffordances.selectedKeys)
+        assertEquals("Saved", mobile.threadRowAffordances.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
         scope.cancel()
     }
@@ -2744,13 +2749,16 @@ class SharedSettingsStoreTest {
     private class FakeChatLayoutPreferenceRepository(
         var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
         var compactConsecutiveMessages: Boolean = false,
-        var imageAnnotationEnabled: Boolean = false
+        var imageAnnotationEnabled: Boolean = false,
+        var threadRowAffordances: Set<ThreadRowAffordancePreference> =
+            ThreadRowAffordancePreference.Default
     ) : ChatLayoutPreferenceRepository {
         override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
             )
 
         override suspend fun selectMyMessageAlignment(
@@ -2760,7 +2768,8 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = this.alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -2771,7 +2780,8 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 largeScreenNavigation = navigation,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
             )
 
         override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot {
@@ -2779,7 +2789,8 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -2788,7 +2799,26 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
+            )
+        }
+
+        override suspend fun setThreadRowAffordance(
+            affordance: ThreadRowAffordancePreference,
+            enabled: Boolean
+        ): ChatLayoutPreferenceSnapshot {
+            threadRowAffordances =
+                if (enabled) {
+                    threadRowAffordances + affordance
+                } else {
+                    threadRowAffordances - affordance
+                }
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                threadRowAffordances = threadRowAffordances
             )
         }
     }

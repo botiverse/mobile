@@ -32,6 +32,7 @@ import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
+import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
@@ -48,6 +49,7 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import build.raft.app.data.MyMessageAlignmentPreference
+import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
 import build.raft.app.data.CONNECTED_APPS_ACTION_INSTALL
 import build.raft.app.data.CONNECTED_APPS_ACTION_LOGO_CLEAR
@@ -661,6 +663,7 @@ private data class HomeSecondaryRouteEnvironment(
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
+    val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val shellScope: SlockAppShellScope
 )
 
@@ -687,10 +690,12 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        threadRowAffordances = chatLayout.threadRowAffordances
     }
     val timeContext =
         remember(pager.pageData.params.toString()) {
@@ -709,6 +714,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         timeContext,
         myMessageAlignment,
         compactConsecutiveMessages,
+        threadRowAffordances,
         shellScope
     ) {
         HomeSecondaryRouteEnvironment(
@@ -723,6 +729,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances,
             shellScope = shellScope
         )
     }
@@ -774,7 +781,8 @@ private fun HomeActivityRouterContent(
                 source = "home_activity",
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages
+                compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                threadRowAffordances = environment.threadRowAffordances
             )
         },
         onClose = { environment.pager.closeHomeSecondaryPage() },
@@ -877,7 +885,8 @@ private fun HomeSearchRouterContent(
                 source = "home_search",
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages
+                compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                threadRowAffordances = environment.threadRowAffordances
             )
         },
         onOpenEntity = { entity ->
@@ -886,7 +895,8 @@ private fun HomeSearchRouterContent(
                 entity = entity,
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages
+                compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                threadRowAffordances = environment.threadRowAffordances
             )
         },
         initialOpenFilterId = initialOpenFilterId,
@@ -942,7 +952,8 @@ private fun HomeSavedRouterContent(
                 source = "home_saved",
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages
+                compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                threadRowAffordances = environment.threadRowAffordances
             )
         },
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
@@ -1737,6 +1748,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     var createChannelError by remember { mutableStateOf<String?>(null) }
@@ -1991,6 +2003,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        threadRowAffordances = chatLayout.threadRowAffordances
     }
     DisposableEffect(notificationPreferenceEvents) {
         val callbackRef =
@@ -2099,6 +2112,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
+                threadRowAffordances = threadRowAffordances,
                 anchorMessageId = anchorMessageId
             )
         bridge.log(
@@ -2286,7 +2300,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             conversation = conversation,
                             timeContext = threadTimeContext,
                             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                            compactConsecutiveMessages = compactConsecutiveMessages
+                            compactConsecutiveMessages = compactConsecutiveMessages,
+                            threadRowAffordances = threadRowAffordances
                         ).withDiagnosticsFeedbackDraft(
                             draft = draft
                         )
@@ -2755,7 +2770,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                     task = task,
                                     timeContext = threadTimeContext,
                                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                    compactConsecutiveMessages = compactConsecutiveMessages
+                                    compactConsecutiveMessages = compactConsecutiveMessages,
+                                    threadRowAffordances = threadRowAffordances
                                 )
                             }
                         )
@@ -2867,6 +2883,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             },
                             onCompactConsecutiveMessagesSelected = {
                                 compactConsecutiveMessages = it
+                            },
+                            onThreadRowAffordanceSelected = { affordance, enabled ->
+                                threadRowAffordances =
+                                    if (enabled) {
+                                        threadRowAffordances + affordance
+                                    } else {
+                                        threadRowAffordances - affordance
+                                    }
                             },
                             onSettingsAction = { action, itemId ->
                                 bridge.log("settings_shell_unsupported_action action=$action itemId=${itemId.orEmpty()}")
@@ -2987,6 +3011,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
+    onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
     diagnosticsFeedbackDraft: SettingsDiagnosticsFeedbackDraft?,
@@ -3707,6 +3732,15 @@ private fun SettingsAppShellContent(
                     },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
+                    },
+                    onThreadRowAffordanceChange = { affordance, enabled ->
+                        onSettingsIntent(
+                            SharedSettingsIntent.SetThreadRowAffordance(
+                                affordance.storageKey,
+                                enabled
+                            )
+                        )
+                        onThreadRowAffordanceSelected(affordance, enabled)
                     }
                 )
             SettingsDestinationAbout ->
@@ -4487,7 +4521,8 @@ private fun SettingsMobileContent(
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
-    onImageAnnotationChange: (Boolean) -> Unit
+    onImageAnnotationChange: (Boolean) -> Unit,
+    onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -4511,6 +4546,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+                )
+            }
+            item {
+                SettingsThreadRowAffordancesCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onThreadRowAffordanceChange = onThreadRowAffordanceChange
                 )
             }
             item {
@@ -4598,6 +4640,69 @@ private fun SettingsCompactMessagesCard(
         }
     }
 }
+
+@Composable
+private fun SettingsThreadRowAffordancesCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
+) {
+    val preference = snapshot.threadRowAffordances
+    SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = "Message row actions") {
+        SettingsFormDetailText(preference.detail)
+        preference.options.forEach { option ->
+            val affordance = ThreadRowAffordancePreference.fromStorageKey(option.key) ?: return@forEach
+            val enabled = option.key in preference.selectedKeys
+            val busy =
+                actionState?.action == MOBILE_ACTION_THREAD_ROW_AFFORDANCES &&
+                    actionState.itemId == option.key &&
+                    actionState.inProgress
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = preference.available && !busy) {
+                            onThreadRowAffordanceChange(affordance, !enabled)
+                        }
+                        .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = option.label,
+                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = affordance.settingsDetail(enabled),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                SlockSwitchButton(
+                    checked = enabled,
+                    enabled = preference.available && !busy
+                )
+            }
+        }
+        if (actionState?.action == MOBILE_ACTION_THREAD_ROW_AFFORDANCES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): String =
+    when (this) {
+        ThreadRowAffordancePreference.Reactions ->
+            if (enabled) "Show reaction actions in message menus" else "Hide reaction actions"
+        ThreadRowAffordancePreference.Saved ->
+            if (enabled) "Show the inline save action on message rows" else "Keep save in the action menu only"
+    }
 
 @Composable
 private fun SettingsImageAnnotationCard(
@@ -12797,6 +12902,7 @@ internal fun buildAppShellThreadPayload(
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ): KuiklyThreadScreenPayload =
@@ -12805,6 +12911,7 @@ internal fun buildAppShellThreadPayload(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        threadRowAffordances = threadRowAffordances,
         anchorMessageId = anchorMessageId,
         originFallback = originFallback
     )
@@ -12814,6 +12921,7 @@ internal fun buildAppShellThreadPayload(
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ): KuiklyThreadScreenPayload {
@@ -12903,6 +13011,8 @@ internal fun buildAppShellThreadPayload(
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        showReactionActions = threadRowAffordances.showReactionActions(),
+        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
         joined = conversation.joined,
         canSend = canSend,
@@ -12933,14 +13043,16 @@ private fun Pager.openStandaloneTaskThreadPage(
     task: TaskSummary,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
-    compactConsecutiveMessages: Boolean
+    compactConsecutiveMessages: Boolean,
+    threadRowAffordances: Set<ThreadRowAffordancePreference>
 ) {
     openStandaloneThreadLaunchPayload(
         buildStandaloneTaskThreadLaunchPayload(
             task = task,
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages
+            compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances
         )
     )
 }
@@ -12980,7 +13092,8 @@ private fun Pager.openStandaloneHomeMessageRequest(
     source: String,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
-    compactConsecutiveMessages: Boolean
+    compactConsecutiveMessages: Boolean,
+    threadRowAffordances: Set<ThreadRowAffordancePreference>
 ) {
     openStandaloneHomeConversation(
         bridge = bridge,
@@ -12989,6 +13102,7 @@ private fun Pager.openStandaloneHomeMessageRequest(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        threadRowAffordances = threadRowAffordances,
         anchorMessageId = request.anchorMessageId
     )
 }
@@ -13000,6 +13114,7 @@ private fun Pager.openStandaloneHomeConversation(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
+    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     anchorMessageId: String? = null
 ) {
     openStandaloneHomeConversation(
@@ -13009,6 +13124,7 @@ private fun Pager.openStandaloneHomeConversation(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        threadRowAffordances = threadRowAffordances,
         anchorMessageId = anchorMessageId
     )
 }
@@ -13020,6 +13136,7 @@ private fun Pager.openStandaloneHomeConversation(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
+    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     anchorMessageId: String? = null
 ) {
     bridge.log(
@@ -13044,6 +13161,7 @@ private fun Pager.openStandaloneHomeConversation(
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId
         )
     bridge.log(
@@ -13060,7 +13178,8 @@ private fun Pager.openHomeSearchEntity(
     entity: SearchEntityResult,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
-    compactConsecutiveMessages: Boolean
+    compactConsecutiveMessages: Boolean,
+    threadRowAffordances: Set<ThreadRowAffordancePreference>
 ) {
     val conversation = entity.conversation
     if (conversation != null) {
@@ -13070,7 +13189,8 @@ private fun Pager.openHomeSearchEntity(
             source = "home_search_entity",
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages
+            compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances
         )
         return
     }
@@ -13099,6 +13219,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload =
     buildStandaloneConversationThreadLaunchPayload(
@@ -13106,6 +13227,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        threadRowAffordances = threadRowAffordances,
         anchorMessageId = anchorMessageId
     )
 
@@ -13114,6 +13236,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload {
     val summary = conversation.toConversationSummary()
@@ -13149,6 +13272,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        showReactionActions = threadRowAffordances.showReactionActions(),
+        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
@@ -13156,11 +13281,18 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     )
 }
 
+private fun Set<ThreadRowAffordancePreference>.showReactionActions(): Boolean =
+    ThreadRowAffordancePreference.Reactions in this
+
+private fun Set<ThreadRowAffordancePreference>.showInlineSaveAction(): Boolean =
+    ThreadRowAffordancePreference.Saved in this
+
 internal fun buildStandaloneTaskThreadLaunchPayload(
     task: TaskSummary,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
-    compactConsecutiveMessages: Boolean = false
+    compactConsecutiveMessages: Boolean = false,
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default
 ): WireThreadLaunchPayload {
     val streamThreadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val parentMessageId =
@@ -13181,6 +13313,8 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        showReactionActions = threadRowAffordances.showReactionActions(),
+        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,

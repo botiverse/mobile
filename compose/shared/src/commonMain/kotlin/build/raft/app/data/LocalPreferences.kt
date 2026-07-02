@@ -116,6 +116,21 @@ enum class LargeScreenNavigationPreference(val storageKey: String) {
     }
 }
 
+enum class ThreadRowAffordancePreference(val storageKey: String) {
+    Reactions("reactions"),
+    Saved("saved");
+
+    companion object {
+        val Default: Set<ThreadRowAffordancePreference> = setOf(Reactions)
+
+        fun fromStorageKey(value: String?): ThreadRowAffordancePreference? =
+            entries.firstOrNull { it.storageKey == value }
+
+        fun fromStorageKeys(value: Set<String>): Set<ThreadRowAffordancePreference> =
+            value.mapNotNull(::fromStorageKey).toSet()
+    }
+}
+
 data class ChatLayoutPreferenceSnapshot(
     val myMessageAlignment: MyMessageAlignmentPreference,
     val supportedAlignments: List<MyMessageAlignmentPreference> =
@@ -125,7 +140,11 @@ data class ChatLayoutPreferenceSnapshot(
     val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = false,
-    val imageAnnotationEnabled: Boolean = false
+    val imageAnnotationEnabled: Boolean = false,
+    val threadRowAffordances: Set<ThreadRowAffordancePreference> =
+        ThreadRowAffordancePreference.Default,
+    val supportedThreadRowAffordances: List<ThreadRowAffordancePreference> =
+        ThreadRowAffordancePreference.entries
 )
 
 interface ChatLayoutPreferenceStore {
@@ -141,6 +160,9 @@ interface ChatLayoutPreferenceStore {
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
+    fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference>
+    suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference>
+    suspend fun saveThreadRowAffordances(affordances: Set<ThreadRowAffordancePreference>)
 }
 
 class KeyValueChatLayoutPreferenceStore(
@@ -190,11 +212,37 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_IMAGE_ANNOTATION_ENABLED, enabled)
     }
 
+    override fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference> {
+        val stored = store.getString(KEY_THREAD_ROW_AFFORDANCES)
+        return if (stored == null) {
+            ThreadRowAffordancePreference.Default
+        } else {
+            ThreadRowAffordancePreference.fromStorageKeys(
+                stored.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+            )
+        }
+    }
+
+    override suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference> =
+        readThreadRowAffordancesSync()
+
+    override suspend fun saveThreadRowAffordances(
+        affordances: Set<ThreadRowAffordancePreference>
+    ) {
+        store.putString(
+            KEY_THREAD_ROW_AFFORDANCES,
+            affordances
+                .sortedBy { it.ordinal }
+                .joinToString(",") { it.storageKey }
+        )
+    }
+
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
+        const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
 }
 
@@ -208,6 +256,10 @@ interface ChatLayoutPreferenceRepository {
     ): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setThreadRowAffordance(
+        affordance: ThreadRowAffordancePreference,
+        enabled: Boolean
+    ): ChatLayoutPreferenceSnapshot
 }
 
 class PersistentChatLayoutPreferenceRepository(
@@ -218,7 +270,8 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled()
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            threadRowAffordances = store.readThreadRowAffordances()
         )
 
     override suspend fun selectMyMessageAlignment(
@@ -229,7 +282,8 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = alignment,
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled()
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -241,7 +295,8 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = navigation,
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled()
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -251,7 +306,8 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = enabled,
-            imageAnnotationEnabled = store.readImageAnnotationEnabled()
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -261,7 +317,29 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            imageAnnotationEnabled = enabled
+            imageAnnotationEnabled = enabled,
+            threadRowAffordances = store.readThreadRowAffordances()
+        )
+    }
+
+    override suspend fun setThreadRowAffordance(
+        affordance: ThreadRowAffordancePreference,
+        enabled: Boolean
+    ): ChatLayoutPreferenceSnapshot {
+        val current = store.readThreadRowAffordances()
+        val next =
+            if (enabled) {
+                current + affordance
+            } else {
+                current - affordance
+            }
+        store.saveThreadRowAffordances(next)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            threadRowAffordances = next
         )
     }
 }

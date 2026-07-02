@@ -325,6 +325,7 @@ sealed interface SharedSettingsIntent {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -791,6 +792,21 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setThreadRowAffordance(
+        affordanceKey: String,
+        enabled: Boolean
+    ): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_thread_row_affordances_unavailable", retryable = false))
+        val affordance =
+            ThreadRowAffordancePreference.entries.firstOrNull {
+                it.storageKey == affordanceKey || it.name.equals(affordanceKey, ignoreCase = true)
+            } ?: return DataResult.Error(ScreenError("settings_thread_row_affordance_unknown", retryable = false))
+        repository.setThreadRowAffordance(affordance, enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
 
@@ -1003,6 +1019,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Image annotation preference is not available on this platform."
+                    ),
+            threadRowAffordances =
+                chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
+                    ?: threadRowAffordances.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Message row actions preference is not available on this platform."
                     )
         )
     }
@@ -1602,6 +1625,19 @@ class SharedSettingsStore(
                 dataSource.setImageAnnotationEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
             }
+            is SharedSettingsIntent.SetThreadRowAffordance -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState =
+                            SharedSettingsActionState(
+                                MOBILE_ACTION_THREAD_ROW_AFFORDANCES,
+                                itemId = intent.affordance,
+                                inProgress = true
+                            )
+                    )
+                dataSource.setThreadRowAffordance(intent.affordance, intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_THREAD_ROW_AFFORDANCES, intent.affordance)
+            }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
                 loadStorage()
@@ -1928,7 +1964,7 @@ class SharedSettingsStore(
         block()
     }
 
-    private fun DataResult<SettingsMobileSnapshot>.applyMobileActionResult(action: String) {
+    private fun DataResult<SettingsMobileSnapshot>.applyMobileActionResult(action: String, itemId: String? = null) {
         val nextMobile = toScreenLoadState()
         _state.value =
             _state.value.copy(
@@ -1940,6 +1976,7 @@ class SharedSettingsStore(
                 actionState =
                     SharedSettingsActionState(
                         action = action,
+                        itemId = itemId,
                         inProgress = false,
                         errorCode = nextMobile.routeErrorCode()
                     ),
@@ -2372,6 +2409,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
+            is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -2531,6 +2569,7 @@ internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
+internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
@@ -2644,6 +2683,27 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot
         detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
     )
 
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =
+    SettingsMobileMultiSelectionSnapshot(
+        selectedKeys = threadRowAffordances.map { it.storageKey }.toSet(),
+        statusLabel =
+            if (threadRowAffordances.isEmpty()) {
+                "Off"
+            } else {
+                supportedThreadRowAffordances
+                    .filter { it in threadRowAffordances }
+                    .joinToString(", ") { it.mobileLabel() }
+            },
+        detail = "Choose which message row actions are visible in conversations.",
+        options =
+            supportedThreadRowAffordances.map {
+                SettingsMobileSelectionOptionSnapshot(
+                    key = it.storageKey,
+                    label = it.mobileLabel()
+                )
+            }
+    )
+
 private fun AppLocale.mobileLabel(): String =
     if (nativeLabel == englishLabel) {
         englishLabel
@@ -2655,6 +2715,12 @@ private fun MyMessageAlignmentPreference.mobileLabel(): String =
     when (this) {
         MyMessageAlignmentPreference.Left -> "Left"
         MyMessageAlignmentPreference.Right -> "Right"
+    }
+
+private fun ThreadRowAffordancePreference.mobileLabel(): String =
+    when (this) {
+        ThreadRowAffordancePreference.Reactions -> "Reactions"
+        ThreadRowAffordancePreference.Saved -> "Saved"
     }
 
 private fun SettingsMobileSnapshot.withSystemNotificationResult(

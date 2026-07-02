@@ -523,6 +523,8 @@ internal data class KuiklyThreadScreenPayload(
     val showSettingsAction: Boolean = true,
     val showOpenInChannelAction: Boolean = false,
     val showMessageSaveAction: Boolean = true,
+    val showInlineSaveAction: Boolean = false,
+    val showReactionActions: Boolean = true,
     val showTaskOpenActions: Boolean = true,
     val showTaskStatusActions: Boolean = true,
     val joinLabel: String = "Join channel",
@@ -1905,7 +1907,7 @@ internal fun ThreadMessageVisualScreen() {
                 Spacer(Modifier.height(SlockSpacing.Sm))
                 ThreadMessageMenuChrome(
                     actions = menuActions,
-                    showReactionActions = true,
+                    showReactionActions = payload.showReactionActions,
                     onReact = {},
                     modifier = Modifier
                 )
@@ -8582,6 +8584,7 @@ private fun ThreadMessagesList(
                             selectedForShare = message.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(message.id) },
                             showSaveAction = !captureShareBounds,
+                            showInlineSaveAction = renderPayload.showInlineSaveAction,
                             isMessageListScrolling = listState.isScrollInProgress,
                             alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                             compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
@@ -8697,7 +8700,7 @@ private fun ThreadMessagesList(
                     showConvertToTaskAction =
                         renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
                             message.id !in pendingTaskConvertMessageIds,
-                    showReactionActions = !message.hasLocalSendState(),
+                    showReactionActions = renderPayload.showReactionActions && !message.hasLocalSendState(),
                     showCopyLinkAction = !message.hasLocalSendState(),
                     showShareMessagesAction = !message.hasLocalSendState(),
                     showCancelAction = isSendingLocalSend,
@@ -11676,6 +11679,7 @@ private fun ThreadOriginCard(
                             taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = timelineSlice.showMessageSaveAction,
+                            showInlineSaveAction = timelineSlice.showInlineSaveAction,
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,

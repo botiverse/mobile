@@ -42,12 +42,14 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(false, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
+        assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
             snapshot.supportedLargeScreenNavigation.contains(
                 LargeScreenNavigationPreference.FloatingDock
             )
         )
+        assertTrue(snapshot.supportedThreadRowAffordances.contains(ThreadRowAffordancePreference.Saved))
     }
 
     @Test
@@ -62,6 +64,8 @@ class LocalPreferencesTest {
             repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
         val compact = repository.setCompactConsecutiveMessages(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
+        val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
+        val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
         val restored = repository.getChatLayoutPreference()
         val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
 
@@ -73,6 +77,12 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.imageAnnotationEnabled)
+        assertEquals(
+            setOf(ThreadRowAffordancePreference.Reactions, ThreadRowAffordancePreference.Saved),
+            savedAction.threadRowAffordances
+        )
+        assertEquals(setOf(ThreadRowAffordancePreference.Saved), reactionAction.threadRowAffordances)
+        assertEquals(setOf(ThreadRowAffordancePreference.Saved), restored.threadRowAffordances)
         assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
     }
 
