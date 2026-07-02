@@ -50,6 +50,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 const val HOME_BADGE_VISUAL_FIXTURE_PAGE = "compose_home_badge_visual_fixture"
+const val HOME_BADGE_DESIGN_VISUAL_FIXTURE_PAGE = "compose_home_badge_design_visual_fixture"
 
 @Page(HOME_BADGE_VISUAL_FIXTURE_PAGE, supportInLocal = true)
 internal class ComposeHomeBadgeVisualFixturePage : build.raft.app.base.BasePager() {
@@ -59,34 +60,28 @@ internal class ComposeHomeBadgeVisualFixturePage : build.raft.app.base.BasePager
     }
 }
 
+@Page(HOME_BADGE_DESIGN_VISUAL_FIXTURE_PAGE, supportInLocal = true)
+internal class ComposeHomeBadgeDesignVisualFixturePage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeBadgeDesignVisualFixtureScreen() }
+    }
+}
+
 @Composable
 internal fun HomeBadgeVisualFixtureScreen() {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceCream)
-                .padding(horizontal = 14.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    HomeBadgeFixtureFrame(
+        title = "Home Badge Render Paths",
+        subtitle = "All rows fit in one viewport; compare current render pipelines."
     ) {
-        Text(
-            text = "Home Badge Fixture",
-            style = SlockType.PageTitle.copy(fontSize = 24.sp, lineHeight = 28.sp),
-            color = SlockColor.TextBlack
-        )
-        Text(
-            text = "Same size/background; compare diagonal edges, 2px border, and shadow.",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.65f)
-        )
         HomeBadgeFixtureRow(
             title = "React CSS reference",
-            detail = "rotate(-2deg) + translateZ/will-change model",
+            detail = "rotate(-2deg) + translateZ/backface/will-change model",
             badge = { ReactCssModeledBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
             title = "KMP current rotate",
-            detail = "whole Kuikly layer rotate(-2f)",
+            detail = "current production: whole Kuikly layer rotate(-2f)",
             badge = { CurrentKmpRotateBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
@@ -111,9 +106,81 @@ internal fun HomeBadgeVisualFixtureScreen() {
         )
         HomeBadgeFixtureRow(
             title = "Path star diagnostic",
-            detail = "SVG-like five-point vector path sanity check",
+            detail = "control: vector path sanity check",
             badge = { VectorStarDiagnostic() }
         )
+    }
+}
+
+@Composable
+internal fun HomeBadgeDesignVisualFixtureScreen() {
+    HomeBadgeFixtureFrame(
+        title = "Home Badge Design Variables",
+        subtitle = "Same content; compare angle, edge contrast, and what stays tilted."
+    ) {
+        HomeBadgeFixtureRow(
+            title = "Current 2deg hard edge",
+            detail = "production shape: black fill, hard edge, tilted layer",
+            badge = { RotatedDesignBadge(HomeBadgeFixtureServerName, tiltDegrees = -2f) }
+        )
+        HomeBadgeFixtureRow(
+            title = "4deg hard edge",
+            detail = "more visible slope; shorter horizontal stair runs",
+            badge = { RotatedDesignBadge(HomeBadgeFixtureServerName, tiltDegrees = -4f) }
+        )
+        HomeBadgeFixtureRow(
+            title = "6deg hard edge",
+            detail = "stronger design gesture; stair pattern breaks up more",
+            badge = { RotatedDesignBadge(HomeBadgeFixtureServerName, tiltDegrees = -6f) }
+        )
+        HomeBadgeFixtureRow(
+            title = "2deg softer fill",
+            detail = "reduce black/cream contrast at the slanted edge",
+            badge = { RotatedDesignBadge(HomeBadgeFixtureServerName, tiltDegrees = -2f, fill = Color(0xFF171717)) }
+        )
+        HomeBadgeFixtureRow(
+            title = "2deg no stroke",
+            detail = "drop explicit border; keep fill + brutal shadow",
+            badge = { RotatedDesignBadge(HomeBadgeFixtureServerName, tiltDegrees = -2f, border = Color.Transparent) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Tilted shadow only",
+            detail = "main badge stays rectangular; tilt becomes decoration",
+            badge = { TiltedShadowOnlyBadge(HomeBadgeFixtureServerName) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Flat fallback",
+            detail = "React already strips tilt on short viewports",
+            badge = { FlatBadge(HomeBadgeFixtureServerName) }
+        )
+    }
+}
+
+@Composable
+private fun HomeBadgeFixtureFrame(
+    title: String,
+    subtitle: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Text(
+            text = title,
+            style = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 26.sp),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = subtitle,
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.65f)
+        )
+        content()
     }
 }
 
@@ -123,7 +190,7 @@ private fun HomeBadgeFixtureRow(
     detail: String,
     badge: @Composable () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(100.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(88.dp)) {
         Box(Modifier.matchParentSize().offset(x = 3.dp, y = 3.dp).background(SlockColor.ShadowBlack))
         Column(
             modifier =
@@ -131,8 +198,8 @@ private fun HomeBadgeFixtureRow(
                     .fillMaxSize()
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+                    .padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -142,14 +209,14 @@ private fun HomeBadgeFixtureRow(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = title,
-                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = detail,
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.55f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -202,6 +269,68 @@ private fun CurrentKmpRotateBadge(text: String) {
             text = text,
             modifier = Modifier,
             chevronModifier = Modifier.rotate(2f)
+        )
+    }
+}
+
+@Composable
+private fun RotatedDesignBadge(
+    text: String,
+    tiltDegrees: Float,
+    fill: Color = SlockColor.TextBlack,
+    border: Color = SlockColor.BorderBlack
+) {
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset).rotate(tiltDegrees)) {
+        RectBadgeChrome(
+            color = SlockColor.ShadowBlack,
+            borderColor = Color.Transparent,
+            modifier = Modifier.matchParentSize().offset(x = HomeBadgeFixtureShadowOffset, y = HomeBadgeFixtureShadowOffset)
+        )
+        RectBadgeChrome(
+            color = fill,
+            borderColor = border,
+            modifier = Modifier.matchParentSize()
+        )
+        HomeBadgeFixtureContent(
+            text = text,
+            modifier = Modifier,
+            chevronModifier = Modifier.rotate(-tiltDegrees)
+        )
+    }
+}
+
+@Composable
+private fun TiltedShadowOnlyBadge(text: String) {
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(x = HomeBadgeFixtureShadowOffset, y = HomeBadgeFixtureShadowOffset)
+                .rotate(-2f)
+                .background(SlockColor.ShadowBlack)
+        )
+        HomeBadgeFixtureContent(
+            text = text,
+            modifier =
+                Modifier
+                    .background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            chevronModifier = Modifier
+        )
+    }
+}
+
+@Composable
+private fun FlatBadge(text: String) {
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+        Box(Modifier.matchParentSize().offset(x = HomeBadgeFixtureShadowOffset, y = HomeBadgeFixtureShadowOffset).background(SlockColor.ShadowBlack))
+        HomeBadgeFixtureContent(
+            text = text,
+            modifier =
+                Modifier
+                    .background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            chevronModifier = Modifier
         )
     }
 }
@@ -411,7 +540,7 @@ private fun PixelGuideStrip() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(18.dp)
+                .height(14.dp)
                 .background(HomeBadgeFixtureGuideBg)
                 .border(1.dp, SlockColor.BorderBlack),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -422,7 +551,7 @@ private fun PixelGuideStrip() {
                 modifier =
                     Modifier
                         .width(6.dp)
-                        .height(if (index % 2 == 0) 12.dp else 6.dp)
+                        .height(if (index % 2 == 0) 9.dp else 5.dp)
                         .background(if (index % 2 == 0) SlockColor.TextBlack.copy(alpha = 0.2f) else SlockColor.TextBlack.copy(alpha = 0.1f))
             )
         }

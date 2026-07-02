@@ -43,6 +43,26 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeBadgeRenderingFixture() {
+        captureKmpComponentCase(
+            caseId = "components.home.badge.rendering-fixture",
+            pageName = "compose_home_badge_visual_fixture",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeBadgeDesignFixture() {
+        captureKmpComponentCase(
+            caseId = "components.home.badge.design-fixture",
+            pageName = "compose_home_badge_design_visual_fixture",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureNavigationTabbarStates() {
         captureKmpComponentCase(
             caseId = "components.navigation.tabbar.states",
