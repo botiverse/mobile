@@ -8048,10 +8048,6 @@ private fun ThreadMessagesList(
         remember(timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible), contentExtrasVisible) {
             renderPayload.threadInitialMarkdownPreparsePlan(contentExtrasVisible)
         }
-    var readyMarkdownPreparseKeys by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
-    val initialMarkdownPreparseReady =
-        initialMarkdownPreparsePlan.key.isEmpty() ||
-            initialMarkdownPreparsePlan.key in readyMarkdownPreparseKeys
     LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
             return@LaunchedEffect
@@ -8063,7 +8059,6 @@ private fun ThreadMessagesList(
                     bodies = initialMarkdownPreparsePlan.bodies,
                     maxBodies = ThreadInitialMarkdownPreparseMessageCount
                 )
-            readyMarkdownPreparseKeys = readyMarkdownPreparseKeys + initialMarkdownPreparsePlan.key
             val durationMs = startedAt.elapsedNow().inWholeMilliseconds
             diagnosticsLogger(
                 "thread_markdown_preparse window=initial_latest requested=${result.requestedCount} " +
@@ -8073,16 +8068,11 @@ private fun ThreadMessagesList(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            readyMarkdownPreparseKeys = readyMarkdownPreparseKeys + initialMarkdownPreparsePlan.key
             diagnosticsLogger(
                 "thread_markdown_preparse window=initial_latest result=failed " +
                     "messages=${renderPayload.messages.size} error=${error::class.simpleName}"
             )
         }
-    }
-    if (!initialBottomAnchorReady && !revealLatestLocalSendBeforeInitialAnchor && !initialMarkdownPreparseReady) {
-        ThreadStateMessage("Loading...", null)
-        return
     }
     val initialBottomAnchorPending =
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
@@ -9863,18 +9853,20 @@ private fun ThreadMessageCard(
                                         .background(Color.Transparent)
                             ) {
                                 if (richContentEnabled) {
-                                    SlockMarkdownBody(
-                                        body = message.body,
-                                        textStyle = ThreadMessageBodyTextStyle,
-                                        highlightedMentions = highlightedMentions,
-                                        isTagValid = isMarkdownTagValid,
-                                        resolveTagLabel = resolveMarkdownTagLabel,
-                                        inlineContentScope = message.id,
-                                        onOpenTag = onOpenMarkdownTag,
-                                        onOpenUrl = onOpenMarkdownUrl,
-                                        performanceKey = messagePerformanceKey,
-                                        performanceLogger = diagnosticsLogger
-                                    )
+                                    key(message.id, message.body) {
+                                        SlockMarkdownBody(
+                                            body = message.body,
+                                            textStyle = ThreadMessageBodyTextStyle,
+                                            highlightedMentions = highlightedMentions,
+                                            isTagValid = isMarkdownTagValid,
+                                            resolveTagLabel = resolveMarkdownTagLabel,
+                                            inlineContentScope = message.id,
+                                            onOpenTag = onOpenMarkdownTag,
+                                            onOpenUrl = onOpenMarkdownUrl,
+                                            performanceKey = messagePerformanceKey,
+                                            performanceLogger = diagnosticsLogger
+                                        )
+                                    }
                                 } else {
                                     Text(
                                         text = message.body,
