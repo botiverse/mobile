@@ -41,6 +41,42 @@ fun slockBuildConfigString(name: String, fallback: String): String =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
+fun slockBuildConfigRawString(name: String, vararg aliases: String): String? =
+    sequenceOf(name, *aliases)
+        .mapNotNull { key ->
+            providers.gradleProperty(key)
+                .orElse(providers.environmentVariable(key))
+                .orNull
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+        .firstOrNull()
+
+fun slockBuildConfigInt(name: String, fallback: Int, vararg aliases: String): Int =
+    slockBuildConfigRawString(name, *aliases)?.toIntOrNull() ?: fallback
+
+val slockAndroidVersionMajor = slockBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
+val slockAndroidVersionMinor = slockBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
+val slockAndroidVersionPatch = slockBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
+val slockAndroidVersionBuild = slockBuildConfigInt("versionBuild", 0, "SLOCK_ANDROID_VERSION_BUILD")
+val slockAndroidVersionCode =
+    slockBuildConfigRawString("versionCode", "SLOCK_ANDROID_VERSION_CODE")?.toIntOrNull()
+        ?: (slockAndroidVersionMajor * 1_000_000 +
+            slockAndroidVersionMinor * 10_000 +
+            slockAndroidVersionPatch * 100 +
+            slockAndroidVersionBuild)
+val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
+val slockAndroidVersionName =
+    slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
+        ?: buildString {
+            append(slockAndroidVersionMajor)
+            append(".")
+            append(slockAndroidVersionMinor)
+            append(".")
+            append(slockAndroidVersionPatch)
+            slockAndroidVersionSuffix?.let { append("-").append(it) }
+        }
+
 fun slockBuildTime(): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
     formatter.timeZone = TimeZone.getTimeZone("UTC")
@@ -71,8 +107,8 @@ android {
         applicationId = "build.raft.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = slockAndroidVersionCode
+        versionName = slockAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
@@ -87,10 +123,14 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+        }
         create("connectedTest") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".connectedtest"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
             matchingFallbacks += listOf("debug")
         }
         release {
