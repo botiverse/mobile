@@ -231,6 +231,7 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
+private const val ThreadAttachmentUploadLocalRenderDelayMs = 32L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -3602,8 +3603,29 @@ internal fun SharedThreadRouteContent(
             bridge.toast("Attachment picker unavailable")
             return
         }
+        val activeUploadFileRefs =
+            attachmentUploadJobs
+                .filterValues { job -> job.isActive }
+                .keys
+                .mapNotNull { id -> attachmentUploadFilesByLocalId[id]?.fileRef?.takeIf { it.isNotBlank() } }
+                .toSet()
+        val acceptedFileRefs = mutableSetOf<String>()
+        val acceptedFiles =
+            files.filter { file ->
+                val fileRef = file.fileRef?.takeIf { it.isNotBlank() }
+                val isDuplicate =
+                    fileRef != null &&
+                        (fileRef in activeUploadFileRefs || !acceptedFileRefs.add(fileRef))
+                !isDuplicate
+            }
+        if (acceptedFiles.size != files.size) {
+            bridge.log(
+                "thread_composer_attachment_duplicate_skip skipped=${files.size - acceptedFiles.size} " +
+                    "activeUploads=${activeUploadFileRefs.size}"
+            )
+        }
         val localAttachments =
-            files
+            acceptedFiles
                 .filter { file -> file.id.isNotBlank() }
                 .map { file ->
                     SharedThreadComposerAttachment(
@@ -3618,18 +3640,26 @@ internal fun SharedThreadRouteContent(
         if (localAttachments.isNotEmpty()) {
             attachmentUploadFilesByLocalId =
                 attachmentUploadFilesByLocalId +
-                    files
+                    acceptedFiles
                         .filter { file -> file.id.isNotBlank() }
                         .associateBy { file -> file.id }
             composerDraftViewModel.dispatch(
                 SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
             )
+            bridge.log(
+                "thread_composer_attachment_local_queue fileCount=${localAttachments.size} " +
+                    "ids=${localAttachments.joinToString(",") { it.id }}"
+            )
         }
-        files.forEach { file ->
+        acceptedFiles.forEach { file ->
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
             val uploadJob =
                 coroutineScope.launch(start = CoroutineStart.LAZY) {
                     try {
+                        delay(ThreadAttachmentUploadLocalRenderDelayMs)
+                        bridge.log(
+                            "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
+                        )
                         val uploadResult =
                             attachmentUploadSemaphore.withPermit {
                                 dataSource.uploadAttachments(channelId, listOf(file))
