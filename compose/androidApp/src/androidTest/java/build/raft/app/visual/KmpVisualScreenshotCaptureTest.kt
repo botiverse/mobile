@@ -61,6 +61,51 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiButtonStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.button.states",
+            pageName = "compose_ui_button_visual",
+            crop = UI_BUTTON_CROP
+        )
+    }
+
+    @Test
+    fun captureUiBadgeStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.badge.states",
+            pageName = "compose_ui_badge_visual",
+            crop = UI_BADGE_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSectionHeaderStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.section-header.states",
+            pageName = "compose_ui_section_header_visual",
+            crop = UI_SECTION_HEADER_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSurfaceListItemStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.surface-list-item.states",
+            pageName = "compose_ui_surface_list_item_visual",
+            crop = UI_SURFACE_LIST_ITEM_CROP
+        )
+    }
+
+    @Test
+    fun captureUiAvatarListRowStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.avatar-list-row.states",
+            pageName = "compose_ui_avatar_list_row_visual",
+            crop = UI_AVATAR_LIST_ROW_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1295,6 +1340,41 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 96
+            )
+        private val UI_BUTTON_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 150
+            )
+        private val UI_BADGE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 92
+            )
+        private val UI_SECTION_HEADER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 88
+            )
+        private val UI_SURFACE_LIST_ITEM_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 150
+            )
+        private val UI_AVATAR_LIST_ROW_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 168
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(

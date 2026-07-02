@@ -196,6 +196,46 @@ internal class ComposeUiSegmentedControlVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_button_visual", supportInLocal = true)
+internal class ComposeUiButtonVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiButtonVisualContent() }
+    }
+}
+
+@Page("compose_ui_badge_visual", supportInLocal = true)
+internal class ComposeUiBadgeVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiBadgeVisualContent() }
+    }
+}
+
+@Page("compose_ui_section_header_visual", supportInLocal = true)
+internal class ComposeUiSectionHeaderVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSectionHeaderVisualContent() }
+    }
+}
+
+@Page("compose_ui_surface_list_item_visual", supportInLocal = true)
+internal class ComposeUiSurfaceListItemVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSurfaceListItemVisualContent() }
+    }
+}
+
+@Page("compose_ui_avatar_list_row_visual", supportInLocal = true)
+internal class ComposeUiAvatarListRowVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiAvatarListRowVisualContent() }
+    }
+}
+
 @Page("compose_members_agent_detail_visual", supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     override fun willInit() {
