@@ -828,7 +828,7 @@ internal fun SlockStructuralHomeShell(
                                     .fillMaxSize()
                                     .scrollToTop {
                                         listScope.launch {
-                                            listState.animateScrollToItem(0)
+                                            listState.animateScrollToTopExpressive()
                                         }
                                     },
                             verticalArrangement = Arrangement.spacedBy(2.dp),

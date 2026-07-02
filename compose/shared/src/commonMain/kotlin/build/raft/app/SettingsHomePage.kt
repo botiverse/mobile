@@ -781,7 +781,7 @@ private fun HomeActivityRouterContent(
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
         listState = listState,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToItem(0) } }
+        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
     )
 }
 
@@ -893,7 +893,7 @@ private fun HomeSearchRouterContent(
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
         listState = listState,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToItem(0) } }
+        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
     )
 }
 
@@ -948,7 +948,7 @@ private fun HomeSavedRouterContent(
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
         listState = listState,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToItem(0) } },
+        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } },
         onCopyLink = { item ->
             copyScope.launch {
                 val serverSlug = environment.authStore.readSession()?.currentServerSlug()

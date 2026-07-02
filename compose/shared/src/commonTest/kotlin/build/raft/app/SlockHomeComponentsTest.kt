@@ -103,6 +103,30 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun expressiveTopScrollUsesNearbyAnchorOnlyForFarDistances() {
+        assertEquals(
+            null,
+            slockExpressiveTopSettleAnchor(firstVisibleItemIndex = 12, visibleItemCount = 8)
+        )
+        assertEquals(
+            16,
+            slockExpressiveTopSettleAnchor(firstVisibleItemIndex = 40, visibleItemCount = 8)
+        )
+    }
+
+    @Test
+    fun expressiveTopScrollKeepsSettleWindowBounded() {
+        assertEquals(
+            8,
+            slockExpressiveTopSettleAnchor(firstVisibleItemIndex = 30, visibleItemCount = 1)
+        )
+        assertEquals(
+            24,
+            slockExpressiveTopSettleAnchor(firstVisibleItemIndex = 80, visibleItemCount = 30)
+        )
+    }
+
+    @Test
     fun homeSavedCountFormatsOverflow() {
         assertEquals(null, formatHomeSavedCount(0))
         assertEquals(null, formatHomeSavedCount(-1))
