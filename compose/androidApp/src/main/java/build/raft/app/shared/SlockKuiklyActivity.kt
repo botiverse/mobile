@@ -627,6 +627,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             renderViewExportCreator = { context -> SlockNativeFloatingTabBarRenderView(context) }
         )
         kuiklyRenderExport.renderViewExport(
+            SlockNativeTiltedBadgeChromeRenderView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockNativeTiltedBadgeChromeRenderView(context) }
+        )
+        kuiklyRenderExport.renderViewExport(
             SlockSandboxWebViewRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockSandboxWebViewRenderView(context) }
         )

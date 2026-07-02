@@ -40,6 +40,7 @@ import com.tencent.kuikly.core.annotations.Page
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 
 const val HOME_BADGE_VISUAL_FIXTURE_PAGE = "compose_home_badge_visual_fixture"
@@ -92,6 +93,16 @@ internal fun HomeBadgeVisualFixtureScreen() {
             detail = "fill + fill + stroke, no rotated layer",
             badge = { DrawPathTiltedBadge(HomeBadgeFixtureServerName) }
         )
+        HomeBadgeFixtureRow(
+            title = "Android native 3x path",
+            detail = "KRView Paint path + supersample, no rotate",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Path star diagnostic",
+            detail = "SVG-like five-point vector path sanity check",
+            badge = { VectorStarDiagnostic() }
+        )
     }
 }
 
@@ -101,7 +112,7 @@ private fun HomeBadgeFixtureRow(
     detail: String,
     badge: @Composable () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(118.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(112.dp)) {
         Box(Modifier.matchParentSize().offset(x = 3.dp, y = 3.dp).background(SlockColor.ShadowBlack))
         Column(
             modifier =
@@ -239,6 +250,51 @@ private fun DrawPathTiltedBadge(text: String) {
                 chevronModifier = Modifier
             )
         }
+    }
+}
+
+@Composable
+private fun NativeTiltedPathBadge(text: String) {
+    if (!isSlockNativeTiltedBadgeChromeSupported()) {
+        Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+            ShapeTiltedPathBadge(text)
+        }
+        return
+    }
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+        Box(modifier = Modifier.width(HomeBadgeFixtureBadgeWidth).height(HomeBadgeFixtureBadgeHeight)) {
+            SlockNativeTiltedBadgeChrome(
+                modifier = Modifier.matchParentSize(),
+                width = HomeBadgeFixtureBadgeWidth,
+                height = HomeBadgeFixtureBadgeHeight,
+                fill = SlockColor.TextBlackArgb,
+                border = SlockColor.BorderBlackArgb,
+                shadow = SlockColor.ShadowBlackArgb,
+                strokeWidth = SlockStroke.Default,
+                shadowOffset = HomeBadgeFixtureShadowOffset,
+                tiltDegrees = HomeBadgeFixtureTiltDegrees,
+                supersample = 3
+            )
+            HomeBadgeFixtureForeground(
+                text = text,
+                modifier = Modifier.matchParentSize().padding(horizontal = 12.dp),
+                chevronModifier = Modifier
+            )
+        }
+    }
+}
+
+@Composable
+private fun VectorStarDiagnostic() {
+    Canvas(modifier = Modifier.size(68.dp)) {
+        val strokeWidth = SlockStroke.Default.toPx()
+        val star = starPath(size.width, size.height, inset = strokeWidth / 2f)
+        drawPath(star, SlockColor.BrandYellow, style = Fill)
+        drawPath(
+            star,
+            SlockColor.BorderBlack,
+            style = Stroke(width = strokeWidth, join = StrokeJoin.Miter)
+        )
     }
 }
 
@@ -383,6 +439,27 @@ private fun tiltedBadgePath(
         lineTo(corners[1].x, corners[1].y)
         lineTo(corners[2].x, corners[2].y)
         lineTo(corners[3].x, corners[3].y)
+        close()
+    }
+}
+
+private fun starPath(width: Float, height: Float, inset: Float): Path {
+    val centerX = width / 2f
+    val centerY = height / 2f
+    val outerRadius = (min(width, height) / 2f - inset).coerceAtLeast(1f)
+    val innerRadius = outerRadius * 0.45f
+    return Path().apply {
+        repeat(10) { index ->
+            val radius = if (index % 2 == 0) outerRadius else innerRadius
+            val angle = (-90.0 + index * 36.0) * PI / 180.0
+            val x = centerX + (cos(angle).toFloat() * radius)
+            val y = centerY + (sin(angle).toFloat() * radius)
+            if (index == 0) {
+                moveTo(x, y)
+            } else {
+                lineTo(x, y)
+            }
+        }
         close()
     }
 }
