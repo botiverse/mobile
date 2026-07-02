@@ -36,14 +36,6 @@ internal class ComposeThreadMessageVisualPage : BasePager() {
     }
 }
 
-@Page("compose_thread_message_row_visual", supportInLocal = true)
-internal class ComposeThreadMessageRowVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadMessageVisualScreen() }
-    }
-}
-
 @Page("compose_thread_header_visual", supportInLocal = true)
 internal class ComposeThreadHeaderVisualPage : BasePager() {
     override fun willInit() {
@@ -193,6 +185,14 @@ internal class TokenPaletteVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { TokenPaletteVisualContent() }
+    }
+}
+
+@Page("compose_ui_segmented_control_visual", supportInLocal = true)
+internal class ComposeUiSegmentedControlVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSegmentedControlVisualContent() }
     }
 }
 

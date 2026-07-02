@@ -52,6 +52,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiSegmentedControlStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.segmented-control.states",
+            pageName = "compose_ui_segmented_control_visual",
+            crop = UI_SEGMENTED_CONTROL_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1279,6 +1288,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 620
+            )
+        private val UI_SEGMENTED_CONTROL_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 96
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(
