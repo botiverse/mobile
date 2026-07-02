@@ -8,18 +8,29 @@ import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalBadgeButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalTextarea
+import build.raft.app.components.SlockAttentionDot
+import build.raft.app.components.SlockCheckMarker
+import build.raft.app.components.SlockCheckMarkerShape
+import build.raft.app.components.SlockCheckMarkerTone
 import build.raft.app.components.SlockCheckboxLabelRow
 import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockFormFieldLabelStyle
 import build.raft.app.components.SlockFormFieldSize
 import build.raft.app.components.SlockMenuItemRow
+import build.raft.app.components.SlockProgressBar
+import build.raft.app.components.SlockProgressBarTone
 import build.raft.app.components.SlockBrutalTone
 import build.raft.app.components.SlockSectionHeader
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockSelectTrigger
 import build.raft.app.components.SlockSelectionPopover
 import build.raft.app.components.SlockSelectionPopoverOption
+import build.raft.app.components.SlockSkeleton
+import build.raft.app.components.SlockSkeletonRow
+import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.components.SlockSlugInput
+import build.raft.app.components.SlockSpinner
+import build.raft.app.components.SlockStatusDot
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -31,11 +42,13 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -188,6 +201,145 @@ internal fun UiCheckboxVisualContent() {
             SlockCheckboxLabelRow(label = "As Task selected", checked = true, size = 14.dp)
             SlockCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 16.dp)
             SlockCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 16.dp)
+        }
+    }
+}
+
+@Composable
+internal fun UiCheckMarkerVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(112.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockCheckMarker(checked = true, size = 14.dp)
+                Text("Square checked", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockCheckMarker(checked = false, size = 16.dp)
+                Text("Square unchecked", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockCheckMarker(checked = true, shape = SlockCheckMarkerShape.Circle, size = 20.dp, tone = SlockCheckMarkerTone.YellowFill)
+                Text("Circle yellow", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiAttentionDotVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(80.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockAttentionDot()
+                Text("Unread", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockAttentionDot(size = 4.dp)
+                Text("Compact", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockAttentionDot(color = SlockColor.AccentOrange)
+                Text("Warning", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiStatusDotVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(92.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockStatusDot(color = SlockColor.AccentLime)
+                SlockStatusDot(color = SlockColor.AccentOrange, size = 8.dp)
+                SlockStatusDot(color = SlockColor.EmptyStateGray, size = 11.dp)
+                SlockStatusDot(color = SlockColor.AccentCyan)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockStatusDot(color = SlockColor.AccentPink, pulsing = true)
+                Text("Waiting pulse", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiProgressBarVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(124.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockProgressBar(modifier = Modifier.width(310.dp), value = 64, label = "Downloading update", showPercent = true, tone = SlockProgressBarTone.Pink)
+            SlockProgressBar(modifier = Modifier.width(310.dp), value = 28, label = "Verifying package", showPercent = true, tone = SlockProgressBarTone.Cyan)
+        }
+    }
+}
+
+@Composable
+internal fun UiSkeletonVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(150.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
+            SlockSkeleton(modifier = Modifier.fillMaxWidth().height(48.dp), variant = SlockSkeletonVariant.Block)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockSkeleton(modifier = Modifier.size(32.dp), variant = SlockSkeletonVariant.Circle)
+                SlockSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = SlockSkeletonVariant.Line)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiSpinnerVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(92.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            SlockSpinner(size = 10.dp)
+            SlockSpinner(size = 16.dp)
+            SlockSpinner(size = 20.dp)
+            SlockSpinner(size = 32.dp)
+            Box(modifier = Modifier.background(SlockColor.TextBlack).padding(8.dp)) {
+                SlockSpinner(size = 16.dp, inverse = true)
+            }
         }
     }
 }

@@ -228,6 +228,54 @@ internal class ComposeUiCheckboxVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_check_marker_visual", supportInLocal = true)
+internal class ComposeUiCheckMarkerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiCheckMarkerVisualContent() }
+    }
+}
+
+@Page("compose_ui_attention_dot_visual", supportInLocal = true)
+internal class ComposeUiAttentionDotVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiAttentionDotVisualContent() }
+    }
+}
+
+@Page("compose_ui_status_dot_visual", supportInLocal = true)
+internal class ComposeUiStatusDotVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiStatusDotVisualContent() }
+    }
+}
+
+@Page("compose_ui_progress_bar_visual", supportInLocal = true)
+internal class ComposeUiProgressBarVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiProgressBarVisualContent() }
+    }
+}
+
+@Page("compose_ui_skeleton_visual", supportInLocal = true)
+internal class ComposeUiSkeletonVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSkeletonVisualContent() }
+    }
+}
+
+@Page("compose_ui_spinner_visual", supportInLocal = true)
+internal class ComposeUiSpinnerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSpinnerVisualContent() }
+    }
+}
+
 @Page("compose_ui_slug_input_visual", supportInLocal = true)
 internal class ComposeUiSlugInputVisualPage : BasePager() {
     override fun willInit() {

@@ -97,6 +97,60 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiCheckMarkerStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.check-marker.states",
+            pageName = "compose_ui_check_marker_visual",
+            crop = UI_CHECK_MARKER_CROP
+        )
+    }
+
+    @Test
+    fun captureUiAttentionDotStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.attention-dot.states",
+            pageName = "compose_ui_attention_dot_visual",
+            crop = UI_ATTENTION_DOT_CROP
+        )
+    }
+
+    @Test
+    fun captureUiStatusDotStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.status-dot.states",
+            pageName = "compose_ui_status_dot_visual",
+            crop = UI_STATUS_DOT_CROP
+        )
+    }
+
+    @Test
+    fun captureUiProgressBarStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.progress-bar.states",
+            pageName = "compose_ui_progress_bar_visual",
+            crop = UI_PROGRESS_BAR_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSkeletonStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.skeleton.states",
+            pageName = "compose_ui_skeleton_visual",
+            crop = UI_SKELETON_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSpinnerStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.spinner.states",
+            pageName = "compose_ui_spinner_visual",
+            crop = UI_SPINNER_CROP
+        )
+    }
+
+    @Test
     fun captureUiSlugInputStates() {
         captureKmpComponentCase(
             caseId = "components.ui.slug-input.states",
@@ -1440,6 +1494,48 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 132
+            )
+        private val UI_CHECK_MARKER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 112
+            )
+        private val UI_ATTENTION_DOT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 80
+            )
+        private val UI_STATUS_DOT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 92
+            )
+        private val UI_PROGRESS_BAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 124
+            )
+        private val UI_SKELETON_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 150
+            )
+        private val UI_SPINNER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 92
             )
         private val UI_SLUG_INPUT_CROP =
             VisualCrop(
