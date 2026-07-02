@@ -21,7 +21,6 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
-import build.raft.app.network.SlockNetworkModule
 import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +31,8 @@ import kotlin.coroutines.EmptyCoroutineContext
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
     private val authKeyValueStore: SlockKeyValueStore,
-    private val sharedPreferenceStore: RebindableKuiklyMMKVKeyValueStore,
-    private val apiEnvironmentKeyValueStore: RebindableKuiklyMMKVKeyValueStore,
+    private val sharedPreferenceStore: SlockKeyValueStore,
+    private val apiEnvironmentKeyValueStore: SlockKeyValueStore,
     val authStore: KuiklyMMKVAuthSessionStore,
     val authSessionEvents: KuiklyAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
@@ -60,8 +59,8 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun updatePager(pager: Pager) {
         (authKeyValueStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
-        sharedPreferenceStore.updatePager(pager)
-        apiEnvironmentKeyValueStore.updatePager(pager)
+        (sharedPreferenceStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
+        (apiEnvironmentKeyValueStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
         authSessionEvents.updatePager(pager)
     }
 
@@ -214,28 +213,38 @@ internal class SlockSharedStoreProvider private constructor(
                     sessionClearEvents = authSessionEvents,
                     diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
                 )
-            val sharedPreferenceStore =
-                RebindableKuiklyMMKVKeyValueStore(
+            val sharedPreferenceStoreBinding =
+                SlockSharedKeyValueStoreProvider.create(
                     pager = pager,
-                    namespace = SlockLocalPreferenceStore.KuiklyNamespace
+                    namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+                    storageName = "shared preference"
                 )
-            val apiEnvironmentKeyValueStore =
-                RebindableKuiklyMMKVKeyValueStore(
+            val sharedPreferenceStore = sharedPreferenceStoreBinding.store
+            bridge.log(
+                "shared_key_value storage_scope name=sharedPreference " +
+                    "namespace=${SlockLocalPreferenceStore.KuiklyNamespace} scope=${sharedPreferenceStoreBinding.scope}"
+            )
+            val apiEnvironmentKeyValueStoreBinding =
+                SlockSharedKeyValueStoreProvider.create(
                     pager = pager,
-                    namespace = SharedApiEnvironmentStore.Namespace
+                    namespace = SharedApiEnvironmentStore.Namespace,
+                    storageName = "API environment"
                 )
+            val apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStoreBinding.store
+            bridge.log(
+                "shared_key_value storage_scope name=apiEnvironment " +
+                    "namespace=${SharedApiEnvironmentStore.Namespace} scope=${apiEnvironmentKeyValueStoreBinding.scope}"
+            )
             val apiEnvironmentStore =
                 SharedApiEnvironmentStore(
                     apiEnvironmentKeyValueStore
                 )
             val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
-            val networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
-            val nativeNetworkFallback =
-                KuiklySlockNetworkClient(
-                    sessionStore = authStore,
-                    networkModule = networkModule,
-                    warningLogger = { message -> bridge.log("shared_network_native_fallback $message") }
-                )
+            val platformFileResolver = SlockSharedPlatformFileResolverProvider.create()
+            bridge.log(
+                "shared_network_file_resolver storage_scope=" +
+                    if (platformFileResolver == null) "missing" else "app"
+            )
             val authDataSource =
                 SharedAuthDataSource(
                     transport = SharedKtorSlockAuthTransport(
@@ -250,7 +259,7 @@ internal class SlockSharedStoreProvider private constructor(
                     sessionStore = authStore,
                     baseUrl = apiBaseUrl,
                     warningLogger = { message -> bridge.log("shared_network $message") },
-                    nativeFileRefFallback = nativeNetworkFallback
+                    platformFileResolver = platformFileResolver
                 )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,

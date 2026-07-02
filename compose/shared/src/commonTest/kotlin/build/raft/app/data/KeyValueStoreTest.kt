@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -84,25 +85,95 @@ class KeyValueStoreTest {
     @Test
     fun authSessionKeyValueProviderUsesInstalledAppScopeFactory() {
         val appScopeStore = InMemorySlockKeyValueStore()
-        SlockSharedAuthSessionKeyValueStoreProvider.installAppScopeFactory { appScopeStore }
+        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SLOCK_AUTH_SESSION_MMKV_NAMESPACE) { appScopeStore }
         try {
             val binding = SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
 
             assertEquals("app", binding.scope)
             assertSame(appScopeStore, binding.store)
         } finally {
-            SlockSharedAuthSessionKeyValueStoreProvider.clearAppScopeFactoryForTests()
+            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
     }
 
     @Test
     fun authSessionKeyValueProviderFallsBackToPagerScopeStore() {
-        SlockSharedAuthSessionKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
 
-        val binding = SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
+        if (slockRequiresAppScopeKeyValueStore(SLOCK_AUTH_SESSION_MMKV_NAMESPACE)) {
+            assertFailsWith<IllegalStateException> {
+                SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
+            }
+        } else {
+            val binding = SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
 
-        assertEquals("pager", binding.scope)
-        assertTrue(binding.store is RebindableSlockKeyValueStore)
+            assertEquals("pager", binding.scope)
+            assertTrue(binding.store is RebindableSlockKeyValueStore)
+        }
+    }
+
+    @Test
+    fun globalKeyValueProviderUsesInstalledAppScopeFactoryForNamespace() {
+        val sharedPreferenceStore = InMemorySlockKeyValueStore()
+        val apiEnvironmentStore = InMemorySlockKeyValueStore()
+        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SlockLocalPreferenceStore.KuiklyNamespace) {
+            sharedPreferenceStore
+        }
+        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) {
+            apiEnvironmentStore
+        }
+        try {
+            val sharedBinding =
+                SlockSharedKeyValueStoreProvider.create(
+                    pager = FakePager(),
+                    namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+                    storageName = "shared preference"
+                )
+            val apiBinding =
+                SlockSharedKeyValueStoreProvider.create(
+                    pager = FakePager(),
+                    namespace = SharedApiEnvironmentStore.Namespace,
+                    storageName = "API environment"
+                )
+
+            assertEquals("app", sharedBinding.scope)
+            assertSame(sharedPreferenceStore, sharedBinding.store)
+            assertEquals("app", apiBinding.scope)
+            assertSame(apiEnvironmentStore, apiBinding.store)
+        } finally {
+            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        }
+    }
+
+    @Test
+    fun globalKeyValueProviderRequiresAppScopeForAndroidGlobalNamespaces() {
+        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+
+        listOf(
+            SLOCK_AUTH_SESSION_MMKV_NAMESPACE to "auth session",
+            SlockLocalPreferenceStore.KuiklyNamespace to "shared preference",
+            SharedApiEnvironmentStore.Namespace to "API environment"
+        ).forEach { (namespace, storageName) ->
+            if (slockRequiresAppScopeKeyValueStore(namespace)) {
+                assertFailsWith<IllegalStateException> {
+                    SlockSharedKeyValueStoreProvider.create(
+                        pager = FakePager(),
+                        namespace = namespace,
+                        storageName = storageName
+                    )
+                }
+            } else {
+                val binding =
+                    SlockSharedKeyValueStoreProvider.create(
+                        pager = FakePager(),
+                        namespace = namespace,
+                        storageName = storageName
+                    )
+
+                assertEquals("pager", binding.scope)
+                assertTrue(binding.store is RebindableSlockKeyValueStore)
+            }
+        }
     }
 
     private class FakeMMKVBackend(

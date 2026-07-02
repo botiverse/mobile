@@ -1,7 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
@@ -61,16 +59,16 @@ class SharedKtorSlockNetworkClientTest {
     }
 
     @Test
-    fun fileRefUploadUsesNativeFallbackWithoutKtorRequest() = runBlocking {
+    fun fileRefUploadUsesAppScopeResolverThenKtorRequest() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val httpClient =
             HttpClient(
                 MockEngine { request ->
                     requests += request
-                    respond("""{"unexpected":true}""", HttpStatusCode.OK)
+                    respond("""{"ok":true}""", HttpStatusCode.Created)
                 }
             )
-        val fallback = RecordingFallbackNetworkClient()
+        val resolver = RecordingPlatformFileResolver()
         val file =
             MultipartFile(
                 name = "avatar",
@@ -83,7 +81,7 @@ class SharedKtorSlockNetworkClientTest {
             SharedKtorSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
-                nativeFileRefFallback = fallback,
+                platformFileResolver = resolver,
                 foregroundHttpClient = httpClient,
                 visibleHttpClient = httpClient,
                 backgroundHttpClient = httpClient
@@ -92,56 +90,23 @@ class SharedKtorSlockNetworkClientTest {
         val response = client.uploadAccountAvatar(DataRequestPriority.Foreground, file)
 
         assertEquals(201, response.code)
-        assertTrue(requests.isEmpty())
-        assertEquals(listOf("account:avatar.png:native://avatar"), fallback.calls)
+        assertEquals(listOf("native://avatar"), resolver.calls)
+        val request = requests.single()
+        assertEquals("POST", request.method.value)
+        assertEquals("/api/auth/me/avatar", request.url.encodedPath)
+        assertEquals("Bearer access-token", request.headers[HttpHeaders.Authorization])
     }
 
-    private class RecordingFallbackNetworkClient : SlockNetworkClient {
+    private class RecordingPlatformFileResolver : SlockPlatformFileResolver {
         val calls = mutableListOf<String>()
 
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?
-        ): HomeNetworkResponse =
-            error("unexpected request fallback")
-
-        override suspend fun uploadAttachments(
-            priority: DataRequestPriority,
-            channelId: ChannelId,
-            files: List<MultipartFile>
-        ): HomeNetworkResponse {
-            calls += "attachments:${channelId.value}:${files.size}"
-            return HomeNetworkResponse(code = 201, bodyText = """{"ok":true}""")
-        }
-
-        override suspend fun uploadAccountAvatar(
-            priority: DataRequestPriority,
-            file: MultipartFile
-        ): HomeNetworkResponse {
-            calls += "account:${file.fileName}:${file.fileRef}"
-            return HomeNetworkResponse(code = 201, bodyText = """{"ok":true}""")
-        }
-
-        override suspend fun uploadAgentAvatar(
-            priority: DataRequestPriority,
-            agentId: MemberId,
-            file: MultipartFile
-        ): HomeNetworkResponse {
-            calls += "agent:${agentId.value}:${file.fileName}"
-            return HomeNetworkResponse(code = 201, bodyText = """{"ok":true}""")
-        }
-
-        override suspend fun uploadConnectedAppLogo(
-            priority: DataRequestPriority,
-            clientRecordId: String,
-            file: MultipartFile
-        ): HomeNetworkResponse {
-            calls += "client:$clientRecordId:${file.fileName}"
-            return HomeNetworkResponse(code = 201, bodyText = """{"ok":true}""")
+        override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult {
+            calls += fileRef
+            return SlockPlatformFileReadResult(
+                code = 200,
+                bytes = byteArrayOf(1, 2, 3),
+                sizeBytes = 3
+            )
         }
     }
 

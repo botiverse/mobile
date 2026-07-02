@@ -29,7 +29,7 @@ internal class SharedKtorSlockNetworkClient(
     private val baseUrl: String = SLOCK_API_BASE_URL,
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
-    private val nativeFileRefFallback: SlockNetworkClient? = null,
+    private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val foregroundHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Foreground),
     private val visibleHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Visible),
     private val backgroundHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Background)
@@ -121,18 +121,15 @@ internal class SharedKtorSlockNetworkClient(
         channelId: ChannelId,
         files: List<MultipartFile>
     ): HomeNetworkResponse {
-        if (files.requiresNativeFileRefFallback()) {
-            return nativeFileRefFallback?.uploadAttachments(priority, channelId, files)
-                ?: fileRefUnsupportedResponse()
-        }
+        val resolvedFiles = files.resolvePlatformFileRefs().getOrElse { return it }
         return uploadMultipart(
             priority = priority,
             path = "attachments/upload",
             category = "attachments_upload",
             diagnosticPath = "attachments/upload",
             fields = mapOf("channelId" to channelId.value),
-            files = files,
-            requestBytes = files.uploadByteEstimate(),
+            files = resolvedFiles,
+            requestBytes = resolvedFiles.uploadByteEstimate(),
             key = "attachments/upload"
         )
     }
@@ -141,18 +138,15 @@ internal class SharedKtorSlockNetworkClient(
         priority: DataRequestPriority,
         file: MultipartFile
     ): HomeNetworkResponse {
-        if (file.requiresNativeFileRefFallback()) {
-            return nativeFileRefFallback?.uploadAccountAvatar(priority, file)
-                ?: fileRefUnsupportedResponse()
-        }
+        val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         return uploadMultipart(
             priority = priority,
             path = "auth/me/avatar",
             category = "account_avatar_upload",
             diagnosticPath = "auth/me/avatar",
             fields = emptyMap(),
-            files = listOf(file),
-            requestBytes = file.bytes.size.toLong(),
+            files = listOf(resolvedFile),
+            requestBytes = resolvedFile.bytes.size.toLong(),
             key = "auth/me/avatar"
         )
     }
@@ -162,10 +156,7 @@ internal class SharedKtorSlockNetworkClient(
         agentId: MemberId,
         file: MultipartFile
     ): HomeNetworkResponse {
-        if (file.requiresNativeFileRefFallback()) {
-            return nativeFileRefFallback?.uploadAgentAvatar(priority, agentId, file)
-                ?: fileRefUnsupportedResponse()
-        }
+        val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         val path = "agents/${agentId.value}/avatar"
         return uploadMultipart(
             priority = priority,
@@ -173,8 +164,8 @@ internal class SharedKtorSlockNetworkClient(
             category = "agent_avatar_upload",
             diagnosticPath = path,
             fields = emptyMap(),
-            files = listOf(file),
-            requestBytes = file.bytes.size.toLong(),
+            files = listOf(resolvedFile),
+            requestBytes = resolvedFile.bytes.size.toLong(),
             key = path
         )
     }
@@ -184,10 +175,7 @@ internal class SharedKtorSlockNetworkClient(
         clientRecordId: String,
         file: MultipartFile
     ): HomeNetworkResponse {
-        if (file.requiresNativeFileRefFallback()) {
-            return nativeFileRefFallback?.uploadConnectedAppLogo(priority, clientRecordId, file)
-                ?: fileRefUnsupportedResponse()
-        }
+        val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         val path = "integrations/clients/$clientRecordId/logo"
         return uploadMultipart(
             priority = priority,
@@ -195,10 +183,45 @@ internal class SharedKtorSlockNetworkClient(
             category = "connected_app_logo_upload",
             diagnosticPath = "integrations/clients/:id/logo",
             fields = emptyMap(),
-            files = listOf(file),
-            requestBytes = file.bytes.size.toLong(),
+            files = listOf(resolvedFile),
+            requestBytes = resolvedFile.bytes.size.toLong(),
             key = path
         )
+    }
+
+    private suspend fun List<MultipartFile>.resolvePlatformFileRefs(): KtorResolvedPlatformFiles {
+        if (!requiresPlatformFileResolver()) return KtorResolvedPlatformFiles.Content(this)
+        val resolver = platformFileResolver
+            ?: return KtorResolvedPlatformFiles.Error(fileRefUnsupportedResponse())
+        val resolved = mutableListOf<MultipartFile>()
+        forEach { file ->
+            val fileRef = file.fileRef
+            if (fileRef == null || file.bytes.isNotEmpty()) {
+                resolved += file
+                return@forEach
+            }
+            val response = resolver.readFile(fileRef)
+            if (!response.success) {
+                return KtorResolvedPlatformFiles.Error(
+                    HomeNetworkResponse(
+                        code = 400,
+                        bodyText = null,
+                        errorBodyText =
+                            platformFileReadErrorBody(
+                                errorCode = response.errorCode,
+                                message = response.message
+                            )
+                    )
+                )
+            }
+            resolved +=
+                file.copy(
+                    bytes = response.bytes,
+                    fileRef = null,
+                    sizeBytes = file.sizeBytes ?: response.sizeBytes ?: response.bytes.size.toLong()
+                )
+        }
+        return KtorResolvedPlatformFiles.Content(resolved)
     }
 
     private suspend fun uploadMultipart(
@@ -420,24 +443,52 @@ private fun DataRequestPriority.toNetworkPriority(): SlockRequestPriority =
         DataRequestPriority.Background -> SlockRequestPriority.Background
     }
 
-private fun List<MultipartFile>.requiresNativeFileRefFallback(): Boolean =
-    any { it.requiresNativeFileRefFallback() }
+private fun List<MultipartFile>.requiresPlatformFileResolver(): Boolean =
+    any { it.requiresPlatformFileResolver() }
 
-private fun MultipartFile.requiresNativeFileRefFallback(): Boolean =
+private fun MultipartFile.requiresPlatformFileResolver(): Boolean =
     fileRef != null && bytes.isEmpty()
 
 private fun fileRefUnsupportedResponse(): HomeNetworkResponse =
     HomeNetworkResponse(
         code = 501,
         bodyText = null,
-        errorBodyText = """{"error":"file_ref_upload_requires_native_network_module"}"""
+        errorBodyText = """{"error":"file_ref_upload_requires_app_scope_file_resolver"}"""
     )
+
+private sealed interface KtorResolvedPlatformFiles {
+    data class Content(val files: List<MultipartFile>) : KtorResolvedPlatformFiles
+    data class Error(val response: HomeNetworkResponse) : KtorResolvedPlatformFiles
+}
+
+private inline fun KtorResolvedPlatformFiles.getOrElse(onError: (HomeNetworkResponse) -> Nothing): List<MultipartFile> =
+    when (this) {
+        is KtorResolvedPlatformFiles.Content -> files
+        is KtorResolvedPlatformFiles.Error -> onError(response)
+    }
+
+private fun platformFileReadErrorBody(errorCode: String, message: String): String =
+    """{"error":"${errorCode.ifBlank { "attachment_read_failed" }.jsonString()}","message":"${message.jsonString()}"}"""
 
 private fun List<MultipartFile>.uploadByteEstimate(): Long =
     sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L }
 
 private fun String.sanitizeMultipartFileName(): String =
     replace("\"", "'").replace("\r", "").replace("\n", "")
+
+private fun String.jsonString(): String =
+    buildString {
+        this@jsonString.forEach { char ->
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+    }
 
 private fun String.networkDiagnosticsCategory(): String {
     val normalized = trim().trimStart('/')

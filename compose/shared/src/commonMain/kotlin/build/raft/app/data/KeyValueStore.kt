@@ -15,41 +15,69 @@ internal interface RebindableSlockKeyValueStore : SlockKeyValueStore {
     fun updatePager(pager: Pager)
 }
 
-object SlockSharedAuthSessionKeyValueStoreProvider {
-    private var appScopeFactory: (() -> SlockKeyValueStore)? = null
+object SlockSharedKeyValueStoreProvider {
+    private val appScopeFactories = mutableMapOf<String, () -> SlockKeyValueStore>()
 
-    fun installAppScopeFactory(factory: () -> SlockKeyValueStore) {
-        appScopeFactory = factory
+    fun installAppScopeFactory(namespace: String, factory: () -> SlockKeyValueStore) {
+        appScopeFactories[namespace] = factory
     }
 
-    internal fun create(pager: Pager): SlockSharedAuthSessionKeyValueStoreBinding {
-        val factory = appScopeFactory
-        return if (factory == null) {
-            SlockSharedAuthSessionKeyValueStoreBinding(
-                store =
-                    RebindableKuiklyMMKVKeyValueStore(
-                        pager = pager,
-                        namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                    ),
-                scope = "pager"
-            )
-        } else {
-            SlockSharedAuthSessionKeyValueStoreBinding(
+    internal fun create(
+        pager: Pager,
+        namespace: String,
+        storageName: String
+    ): SlockSharedKeyValueStoreBinding {
+        val factory = appScopeFactories[namespace]
+        if (factory != null) {
+            return SlockSharedKeyValueStoreBinding(
                 store = factory(),
                 scope = "app"
             )
         }
+        check(!slockRequiresAppScopeKeyValueStore(namespace)) {
+            "Android $storageName storage requires app-scope MMKV; installAndroidAppScopeSharedKeyValueStores() must run before shared store creation."
+        }
+        return SlockSharedKeyValueStoreBinding(
+            store =
+                RebindableKuiklyMMKVKeyValueStore(
+                    pager = pager,
+                    namespace = namespace
+                ),
+            scope = "pager"
+        )
     }
 
     internal fun clearAppScopeFactoryForTests() {
-        appScopeFactory = null
+        appScopeFactories.clear()
     }
 }
 
-internal data class SlockSharedAuthSessionKeyValueStoreBinding(
+object SlockSharedAuthSessionKeyValueStoreProvider {
+    fun installAppScopeFactory(factory: () -> SlockKeyValueStore) {
+        SlockSharedKeyValueStoreProvider.installAppScopeFactory(
+            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
+            factory = factory
+        )
+    }
+
+    internal fun create(pager: Pager): SlockSharedKeyValueStoreBinding =
+        SlockSharedKeyValueStoreProvider.create(
+            pager = pager,
+            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
+            storageName = "auth session"
+        )
+
+    internal fun clearAppScopeFactoryForTests() {
+        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+    }
+}
+
+internal data class SlockSharedKeyValueStoreBinding(
     val store: SlockKeyValueStore,
     val scope: String
 )
+
+internal expect fun slockRequiresAppScopeKeyValueStore(namespace: String): Boolean
 
 object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
