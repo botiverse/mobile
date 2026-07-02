@@ -11,24 +11,31 @@ add_library(mmkv_c_wrapper SHARED
     mmkv_c_wrapper.cpp
     include/mmkv_c_wrapper.h)
 
-# Add these lines
 set(MODULE_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+set(PROJECT_ROOT_PATH ${MODULE_ROOT_PATH}/..)
 
-# project/entry/oh_modules/@tencent/mmkv
-set(MMKV_MODULE_PATH ${MODULE_ROOT_PATH}/oh_modules/@tencent/mmkv)
-# project/entry/oh_modules/@tencent/mmkv/include
+set(MMKV_CANDIDATE_PATHS
+    ${MODULE_ROOT_PATH}/oh_modules/@tencent/mmkv
+    ${MODULE_ROOT_PATH}/oh_modules/.ohpm/oh_modules/@tencent/mmkv
+    ${PROJECT_ROOT_PATH}/oh_modules/@tencent/mmkv
+    ${PROJECT_ROOT_PATH}/oh_modules/.ohpm/oh_modules/@tencent/mmkv)
+
+foreach(CANDIDATE_PATH ${MMKV_CANDIDATE_PATHS})
+    if (EXISTS ${CANDIDATE_PATH}/libs/${OHOS_ARCH}/libmmkv.so)
+        set(MMKV_MODULE_PATH ${CANDIDATE_PATH})
+        break()
+    endif()
+endforeach()
+
+if (NOT MMKV_MODULE_PATH)
+    message(FATAL_ERROR "Can't find @tencent/mmkv module. Checked: ${MMKV_CANDIDATE_PATHS}")
+endif()
+
 set(MMKV_INCLUDE_PATH ${MMKV_MODULE_PATH}/include)
-# project/entry/oh_modules/@tencent/mmkv/libs/arm64-v8a
 set(MMKV_LIB_PATH ${MMKV_MODULE_PATH}/libs/${OHOS_ARCH})
 
-# setup mmkv include path
 target_include_directories(mmkv_c_wrapper PRIVATE ${MMKV_INCLUDE_PATH})
 
-# setup mmkv lib path
 add_library(mmkv SHARED IMPORTED)
-if (EXISTS ${MMKV_LIB_PATH}/libmmkv.so)
-    set_target_properties(mmkv PROPERTIES IMPORTED_LOCATION ${MMKV_LIB_PATH}/libmmkv.so)
-else()
-    message(FATAL_ERROR "Can't find libmmkv.so in @tencent/mmkv module:${MMKV_MODULE_PATH}, check if \"ohpm install @tencent/mmkv\" fail!")
-endif()
+set_target_properties(mmkv PROPERTIES IMPORTED_LOCATION ${MMKV_LIB_PATH}/libmmkv.so)
 target_link_libraries(mmkv_c_wrapper PRIVATE mmkv)
