@@ -41,6 +41,7 @@ import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
+import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
@@ -3764,6 +3765,9 @@ private fun SettingsAppShellContent(
                     onSharedSocketIoTransportChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetSharedSocketIoTransport(enabled))
                     },
+                    onCheckQuiverUpdate = {
+                        onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
+                    },
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
                 )
@@ -6723,6 +6727,7 @@ internal fun SharedSettingsDeveloperContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenApiEnvironment: () -> Unit,
     onSharedSocketIoTransportChange: (Boolean) -> Unit,
+    onCheckQuiverUpdate: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -6732,6 +6737,7 @@ internal fun SharedSettingsDeveloperContent(
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT -> onSharedSocketIoTransportChange(value?.toBooleanStrictOrNull() ?: true)
+            DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
@@ -8224,7 +8230,10 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
         }
     val sharedTransportBusy =
         actionState?.action == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT && actionState.inProgress
+    val updateCheckBusy =
+        actionState?.action == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK && actionState.inProgress
     val sharedTransportEnabled = this?.sharedSocketIoTransportEnabled == true
+    val updateCheck = this?.updateCheck
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
         title = "Developer",
@@ -8273,6 +8282,19 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                     },
                                 enabled = state is ScreenLoadState.Content && !sharedTransportBusy,
                                 toggleValue = sharedTransportEnabled
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
+                                iconName = SlockLucideIconName.Download,
+                                title = "Check for app update",
+                                detail = updateCheck?.detail.orEmpty().ifBlank { "Checks Quiver for a newer Android APK without downloading or installing it." },
+                                status =
+                                    when {
+                                        updateCheckBusy -> "Checking"
+                                        updateCheck?.statusLabel.orEmpty().isNotBlank() -> updateCheck?.statusLabel.orEmpty()
+                                        else -> "Check"
+                                    },
+                                enabled = state is ScreenLoadState.Content && updateCheck?.supported == true && !updateCheckBusy
                             )
                         )
                 ),

@@ -115,6 +115,7 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -2022,6 +2023,22 @@ internal class SlockKuiklyBridgeModule(
 
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
         val request = JSONObject(params ?: "{}")
+        if (request.optString("action") == "quiverUpdateCheck") {
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launch {
+                val result =
+                        runCatching { checkQuiverUpdate() }
+                                .getOrElse { throwable ->
+                                    mapOf(
+                                            "status" to "error",
+                                            "code" to "settings_quiver_update_check_failed",
+                                            "message" to (throwable.message ?: "Quiver update check failed")
+                                    )
+                                }
+                callback?.invoke(result)
+            }
+            return
+        }
         val result =
                 runCatching {
                     when (request.optString("action")) {
@@ -2367,9 +2384,49 @@ internal class SlockKuiklyBridgeModule(
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
                 "sharedSocketIoTransportEnabled" to AndroidApiServerEnvironmentStore(appContext).sharedSocketIoTransportEnabled(),
+                "updateCheckSupported" to true,
+                "updateCheckStatusLabel" to "Ready",
+                "updateCheckDetail" to "Check Quiver channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. This does not download or install updates.",
                 "options" to options,
                 "feedback" to feedback.orEmpty()
         )
+    }
+
+    private suspend fun checkQuiverUpdate(): Map<String, Any> {
+        val result =
+                AndroidQuiverUpdateCheckClient.check(
+                        baseUrl = BuildConfig.QUIVER_BASE_URL,
+                        appSlug = BuildConfig.QUIVER_APP_SLUG,
+                        channel = BuildConfig.QUIVER_CHANNEL,
+                        currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                        arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
+                )
+        SlockDiagnosticsLogger.record(
+                "SlockQuiverUpdate",
+                "check status=${result.status} slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
+                        "current=${BuildConfig.VERSION_CODE} latest=${result.latestVersionCode ?: 0} available=${result.updateAvailable} code=${result.errorCode.orEmpty()}"
+        )
+        val feedback =
+                when {
+                    result.status == "ok" && result.updateAvailable ->
+                            "Update available: ${result.latestVersion.ifBlank { "version code ${result.latestVersionCode}" }}."
+                    result.status == "ok" ->
+                            "No Quiver update available on ${BuildConfig.QUIVER_CHANNEL}."
+                    else ->
+                            "Quiver update check failed: ${result.errorCode ?: result.status}."
+                }
+        return loadSettingsDeveloper(feedback = feedback) +
+                mapOf(
+                        "updateCheckSupported" to true,
+                        "updateCheckStatusLabel" to result.statusLabel,
+                        "updateCheckDetail" to result.detail,
+                        "updateAvailable" to result.updateAvailable,
+                        "latestVersionLabel" to result.latestVersion,
+                        "latestVersionCode" to (result.latestVersionCode ?: 0L),
+                        "updateDownloadUrl" to result.downloadUrl.orEmpty(),
+                        "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
+                        "updateCheckErrorCode" to result.errorCode.orEmpty()
+                )
     }
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {

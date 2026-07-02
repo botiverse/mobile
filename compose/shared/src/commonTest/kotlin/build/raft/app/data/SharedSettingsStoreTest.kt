@@ -1592,6 +1592,33 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun developerQuiverUpdateCheckRunsThroughPlatformCapabilities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.CheckQuiverUpdate)
+
+        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals(true, updated.updateCheck.supported)
+        assertEquals("Update available", updated.updateCheck.statusLabel)
+        assertEquals(true, updated.updateCheck.updateAvailable)
+        assertEquals(2L, updated.updateCheck.latestVersionCode)
+        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK, inProgress = false), store.state.value.actionState)
+        assertEquals(listOf("developer", "quiverUpdateCheck"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun defaultDeveloperEnvironmentPresetsIncludeProductionAndStaging() {
         val options = sharedSettingsDefaultApiEnvironmentOptions()
 
@@ -2618,6 +2645,25 @@ class SharedSettingsStoreTest {
         override suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> {
             calls += "sharedSocketIo:$enabled"
             developerSnapshot = developerSnapshot.copy(sharedSocketIoTransportEnabled = enabled)
+            return DataResult.Content(developerSnapshot)
+        }
+
+        override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
+            calls += "quiverUpdateCheck"
+            developerSnapshot =
+                developerSnapshot.copy(
+                    updateCheck =
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            statusLabel = "Update available",
+                            detail = "Quiver has version 1.0.1 on main.",
+                            updateAvailable = true,
+                            latestVersionLabel = "1.0.1",
+                            latestVersionCode = 2L,
+                            downloadUrl = "https://example.test/app.apk"
+                        ),
+                    feedback = "Update available: 1.0.1."
+                )
             return DataResult.Content(developerSnapshot)
         }
 

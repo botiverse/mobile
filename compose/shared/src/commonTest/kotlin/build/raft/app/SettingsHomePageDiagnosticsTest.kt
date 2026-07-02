@@ -6,9 +6,11 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
+import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
+import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -117,6 +119,12 @@ class SettingsHomePageDiagnosticsTest {
                 apiBaseUrl = production.apiBaseUrl,
                 socketBaseUrl = production.socketBaseUrl,
                 webUrl = production.webUrl,
+                updateCheck =
+                    SharedSettingsUpdateCheckSnapshot(
+                        supported = true,
+                        statusLabel = "Current",
+                        detail = "No Quiver update is available on main."
+                    ),
                 options = listOf(production, staging)
             )
 
@@ -129,6 +137,7 @@ class SettingsHomePageDiagnosticsTest {
         val apiRows = payload.sections.first { it.title == "API Server" }.rows
         val environmentRow = apiRows.first { it.key == DEVELOPER_ACTION_API_ENVIRONMENT }
         val transportRow = apiRows.first { it.key == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT }
+        val updateRow = apiRows.first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
 
         assertEquals("API Environment", environmentRow.title)
         assertEquals("Production", environmentRow.status)
@@ -138,6 +147,10 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals(false, transportRow.toggleValue)
         assertEquals("true", transportRow.value)
         assertTrue(transportRow.detail.contains("Android"))
+        assertEquals("Check for app update", updateRow.title)
+        assertEquals("Current", updateRow.status)
+        assertTrue(updateRow.enabled)
+        assertTrue(updateRow.detail.contains("Quiver"))
     }
 
     @Test

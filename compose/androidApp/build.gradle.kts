@@ -34,6 +34,13 @@ val buglyAndroidAppKey =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
+fun slockBuildConfigString(name: String, fallback: String): String =
+    providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
+        .getOrElse(fallback)
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+
 fun slockBuildTime(): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
     formatter.timeZone = TimeZone.getTimeZone("UTC")
@@ -74,6 +81,9 @@ android {
         buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
+        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver-worker.artin.workers.dev")}\"")
+        buildConfigField("String", "QUIVER_APP_SLUG", "\"${slockBuildConfigString("SLOCK_QUIVER_APP_SLUG", "slock-android")}\"")
+        buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "main")}\"")
     }
 
     buildTypes {

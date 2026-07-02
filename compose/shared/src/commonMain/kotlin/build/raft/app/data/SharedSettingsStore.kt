@@ -148,8 +148,21 @@ data class SharedSettingsDeveloperSnapshot(
     val socketBaseUrl: String = "",
     val webUrl: String = "",
     val sharedSocketIoTransportEnabled: Boolean = false,
+    val updateCheck: SharedSettingsUpdateCheckSnapshot = SharedSettingsUpdateCheckSnapshot(),
     val options: List<SharedSettingsApiEnvironmentOption> = emptyList(),
     val feedback: String? = null
+)
+
+data class SharedSettingsUpdateCheckSnapshot(
+    val supported: Boolean = false,
+    val statusLabel: String = "Unavailable",
+    val detail: String = "App update checks are unavailable on this host.",
+    val updateAvailable: Boolean = false,
+    val latestVersionLabel: String = "",
+    val latestVersionCode: Long = 0L,
+    val downloadUrl: String = "",
+    val checkedAtLabel: String = "",
+    val errorCode: String = ""
 )
 
 data class SharedSettingsApiEnvironmentOption(
@@ -331,6 +344,7 @@ sealed interface SharedSettingsIntent {
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
     data class SetSharedSocketIoTransport(val enabled: Boolean) : SharedSettingsIntent
+    data object CheckQuiverUpdate : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -394,6 +408,9 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> =
         DataResult.Error(ScreenError("settings_shared_socketio_transport_unavailable", retryable = false))
+
+    suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Error(ScreenError("settings_quiver_update_check_unavailable", retryable = false))
 
     suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> =
         DataResult.Content(Unit)
@@ -866,6 +883,9 @@ class SharedSettingsDataSource(
             }
             DataResult.Content(snapshot)
         } ?: platformCapabilities.setSharedSocketIoTransport(enabled)
+
+    suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.checkQuiverUpdate()
 
     private suspend fun applyApiEnvironmentChange(
         store: SharedApiEnvironmentStore,
@@ -1666,6 +1686,12 @@ class SharedSettingsStore(
                         .applyDeveloperActionResult(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT)
                 }
             }
+            SharedSettingsIntent.CheckQuiverUpdate -> {
+                runAction(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK) {
+                    dataSource.checkQuiverUpdate()
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK)
+                }
+            }
             is SharedSettingsIntent.CompleteStorageClear ->
                 completeStorageClear(intent)
             SharedSettingsIntent.CopyDiagnostics ->
@@ -2414,6 +2440,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
             is SharedSettingsIntent.SetSharedSocketIoTransport,
+            SharedSettingsIntent.CheckQuiverUpdate,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
@@ -2564,6 +2591,7 @@ internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
 internal const val DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT = "sharedSocketIoTransport"
+internal const val DEVELOPER_ACTION_QUIVER_UPDATE_CHECK = "quiverUpdateCheck"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
