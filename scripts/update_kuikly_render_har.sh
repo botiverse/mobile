@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 KUIKLY_DIR="${KUIKLY_DIR:-${REPO_ROOT}/third_party/kuikly-ui}"
 KUIKLY_OHOS_APP_DIR="${KUIKLY_DIR}/ohosApp"
 SOURCE_HAR="${KUIKLY_DIR}/core-render-ohos/build/default/outputs/default/render.har"
-TARGET_HAR="${TARGET_HAR:-${REPO_ROOT}/compose/ohosApp/entry/libs/kuikly-render-staging2-652ba003.har}"
+TARGET_HAR="${TARGET_HAR:-${REPO_ROOT}/compose/ohosApp/entry/libs/kuikly-render-staging2-3509beef.har}"
 DEVECO_STUDIO_HOME="${DEVECO_STUDIO_HOME:-/Applications/DevEco-Studio.app/Contents}"
 
 if [[ ! -d "${KUIKLY_OHOS_APP_DIR}" ]]; then
