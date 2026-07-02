@@ -854,6 +854,36 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun markdownRenderSignature_changesWhenSameMessageBodyChanges() {
+        val emptyFirstPaint = message("m1", body = "")
+        val hydratedBody = message("m1", body = "Loaded reply body with #channel and @artin")
+
+        assertNotEquals(emptyFirstPaint.threadMarkdownRenderSignature(), hydratedBody.threadMarkdownRenderSignature())
+        assertNotEquals(
+            emptyFirstPaint.threadMarkdownRenderSignature().inlineContentScope,
+            hydratedBody.threadMarkdownRenderSignature().inlineContentScope
+        )
+    }
+
+    @Test
+    fun markdownRenderSignature_ignoresUnrelatedMessageChromeChanges() {
+        val base = message("m1", body = "Stable body with #123")
+        val chromeOnlyChange =
+            base.copy(
+                avatarWireValue = "https://example.com/avatar.png",
+                replyCount = 3,
+                unreadReplyCount = 1,
+                isSaved = true
+            )
+
+        assertEquals(base.threadMarkdownRenderSignature(), chromeOnlyChange.threadMarkdownRenderSignature())
+        assertEquals(
+            base.threadMarkdownRenderSignature().inlineContentScope,
+            chromeOnlyChange.threadMarkdownRenderSignature().inlineContentScope
+        )
+    }
+
+    @Test
     fun rowDerivedSignatures_ignoreUnrelatedMessageChromeChanges() {
         val metadata =
             mapOf(

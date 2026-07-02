@@ -8973,6 +8973,22 @@ internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
 
+internal data class ThreadMessageMarkdownRenderSignature(
+    val messageId: String,
+    val bodyLength: Int,
+    val bodyHash: Int
+) {
+    val inlineContentScope: String =
+        "$messageId:$bodyLength:${bodyHash.toString(16)}"
+}
+
+internal fun KuiklyThreadMessageItem.threadMarkdownRenderSignature(): ThreadMessageMarkdownRenderSignature =
+    ThreadMessageMarkdownRenderSignature(
+        messageId = id,
+        bodyLength = body.length,
+        bodyHash = body.hashCode()
+    )
+
 internal data class ThreadMessageActionCardSignature(
     val messageId: String,
     val metadata: Map<String, String>
@@ -9853,14 +9869,18 @@ private fun ThreadMessageCard(
                                         .background(Color.Transparent)
                             ) {
                                 if (richContentEnabled) {
-                                    key(message.id, message.body) {
+                                    val markdownRenderSignature =
+                                        remember(message.id, message.body) {
+                                            message.threadMarkdownRenderSignature()
+                                        }
+                                    key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = message.body,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
                                             resolveTagLabel = resolveMarkdownTagLabel,
-                                            inlineContentScope = message.id,
+                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
                                             onOpenTag = onOpenMarkdownTag,
                                             onOpenUrl = onOpenMarkdownUrl,
                                             performanceKey = messagePerformanceKey,
