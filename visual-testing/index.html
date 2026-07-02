@@ -12,7 +12,7 @@
     .hero { border: 2px solid #141111; background: #fff; padding: 18px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
     .hero h2 { margin: 0 0 8px; font-size: 22px; }
     .hero p { margin: 0 0 14px; color: #514946; }
-    .entryGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 18px 0; }
+    .entryGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 12px 0 18px; }
     .entryCard { border: 2px solid #141111; background: #fff; padding: 16px; box-shadow: 4px 4px 0 #141111; }
     .entryCard h2 { margin: 0 0 8px; font-size: 20px; }
     .entryCard p { margin: 0 0 12px; color: #514946; }
@@ -27,54 +27,48 @@
     th, td { border: 2px solid #141111; padding: 10px; text-align: left; vertical-align: top; }
     th { background: #FFD440; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    @media (max-width: 760px) {
+      body { margin: 14px; }
+      h1 { font-size: 26px; }
+      .entryGrid { grid-template-columns: 1fr; gap: 12px; }
+      .entryCard { padding: 14px; }
+      .primary { display: block; text-align: center; }
+      table { font-size: 13px; }
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Slock Visual Testing</h1>
-    <section class="hero">
-      <h2>最新视觉对比</h2>
-      <p><code>695c99afb-20260702202831</code> · react vs android</p>
-      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-02T20:28:59.301Z" data-timestamp="2026-07-02T20:28:59.301Z" title="2026-07-02T20:28:59.301Z">2026-07-02 20:28:59 UTC</time></p>
-      <div class="meta">
-        <span class="pill">Total 103</span>
-        <span class="pill">Pass 0</span>
-        <span class="pill">Basic pass 3</span>
-        <span class="pill">Different 99</span>
-        <span class="pill">Missing 1</span>
-        <span class="pill">AI 0/103 ready</span>
-        <span class="pill">Components Parity 93/96 active</span><span class="pill">Screens Parity 11/26 active</span>
-      </div>
-    </section>
     <section class="entryGrid" aria-label="Visual testing entry points">
       <article class="entryCard">
         <h2>Product Visual Diff</h2>
         <p>产品页面和产品化组件的完整 React-vs-Android 视觉对比。</p>
-        <a class="primary" href="runs/695c99afb-20260702202831/">查看产品 diff</a>
+        <a class="primary" href="runs/695c99afb-20260702214109/">查看产品 diff</a>
         <div class="meta">
-          <span class="pill">Total 103</span>
+          <span class="pill">Total 104</span>
           <span class="pill">Basic pass 3</span>
-          <span class="pill">Different 99</span>
+          <span class="pill">Different 100</span>
           <span class="pill">Missing 1</span>
         </div>
       </article>
       <article class="entryCard">
         <h2>Raft UI Library</h2>
         <p>只看标记为 <code>library: raft-ui</code> 的库组件 parity；来源是独立发布包 <code>raft-ui</code>。</p>
-        <a class="primary" href="runs/695c99afb-20260702202831/raft-ui/">查看 Raft UI library</a>
+        <a class="primary" href="runs/695c99afb-20260702214109/raft-ui/">查看 Raft UI library</a>
         <div class="meta">
-          <span class="pill">Total 41</span>
+          <span class="pill">Total 42</span>
           <span class="pill">Basic pass 0</span>
-          <span class="pill">Different 41</span>
+          <span class="pill">Different 42</span>
           <span class="pill">Missing 0</span>
-          <span class="pill">Compared 41</span>
-          <span class="pill">AI 0/41 ready</span>
+          <span class="pill">Compared 42</span>
+          <span class="pill">AI 0/42 ready</span>
         </div>
       </article>
       <article class="entryCard">
         <h2>Components Real Diff</h2>
         <p>Slock app components 和 KMP components 抽象的真实组件级 React-vs-Android 视觉对比。</p>
-        <a class="primary" href="runs/695c99afb-20260702202831/components/">查看 components diff</a>
+        <a class="primary" href="runs/695c99afb-20260702214109/components/">查看 components diff</a>
         <div class="meta">
           <span class="pill">Total 71</span>
           <span class="pill">Basic pass 3</span>
@@ -84,6 +78,20 @@
           <span class="pill">AI 0/71 ready</span>
         </div>
       </article>
+    </section>
+    <section class="hero">
+      <h2>最新视觉对比</h2>
+      <p><code>695c99afb-20260702214109</code> · react vs android</p>
+      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-02T21:41:37.377Z" data-timestamp="2026-07-02T21:41:37.377Z" title="2026-07-02T21:41:37.377Z">2026-07-02 21:41:37 UTC</time></p>
+      <div class="meta">
+        <span class="pill">Total 104</span>
+        <span class="pill">Pass 0</span>
+        <span class="pill">Basic pass 3</span>
+        <span class="pill">Different 100</span>
+        <span class="pill">Missing 1</span>
+        <span class="pill">AI 0/104 ready</span>
+        <span class="pill">Components Parity 94/97 active</span><span class="pill">Screens Parity 11/26 active</span>
+      </div>
     </section>
     <section class="downloads">
       <h2>下载 / 机器数据</h2>
@@ -99,6 +107,13 @@
     <table>
       <thead><tr><th>Commit</th><th>Generated</th><th>Providers</th><th>Diff Summary</th><th>Action</th></tr></thead>
       <tbody><tr>
+    <td><code>695c99afb-20260702214109</code><br/>test(visual): add raft ui interaction states</td>
+    <td><time class="localizedTime" datetime="2026-07-02T21:41:37.377Z" data-timestamp="2026-07-02T21:41:37.377Z" title="2026-07-02T21:41:37.377Z">2026-07-02 21:41:37 UTC</time></td>
+    <td>react vs android</td>
+    <td>Total 104<br/>Pass 0<br/>Basic pass 3<br/>Different 100<br/>Missing 1</td>
+    <td><a href="runs/695c99afb-20260702214109/">查看详情</a></td>
+  </tr>
+<tr>
     <td><code>695c99afb-20260702202831</code><br/>test(visual): add raft ui interaction states</td>
     <td><time class="localizedTime" datetime="2026-07-02T20:28:59.301Z" data-timestamp="2026-07-02T20:28:59.301Z" title="2026-07-02T20:28:59.301Z">2026-07-02 20:28:59 UTC</time></td>
     <td>react vs android</td>

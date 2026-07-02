@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-07-02T20:28:59.301Z",
-  "runId": "695c99afb-20260702202831",
+  "generatedAt": "2026-07-02T21:41:37.377Z",
+  "runId": "695c99afb-20260702214109",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 41,
-    "active": 41,
+    "total": 42,
+    "active": 42,
     "pending": 0,
     "skipped": 0,
     "captureTypes": {
       "component-fixture": {
-        "total": 41,
-        "active": 41,
+        "total": 42,
+        "active": 42,
         "pending": 0,
         "skipped": 0
       },
@@ -24,16 +24,16 @@
     },
     "providers": {
       "react": {
-        "active": 41,
+        "active": 42,
         "pending": 0,
         "unsupported": 0,
-        "total": 41
+        "total": 42
       },
       "android": {
-        "active": 41,
+        "active": 42,
         "pending": 0,
         "unsupported": 0,
-        "total": 41
+        "total": 42
       }
     }
   },
@@ -1121,6 +1121,56 @@
         "rgbSimilarity": 0.8595852122071541,
         "pixelPerfectSimilarity": 0.5447889750215331,
         "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.combobox-surface.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "library.raft-ui.controlled-open-overlays",
+      "title": "Raft UI Library Controlled Open Overlays",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "library": "raft-ui",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "raft-ui/DropdownMenu",
+            "raft-ui/ContextMenu",
+            "raft-ui/Tooltip",
+            "raft-ui/Popover",
+            "raft-ui/Select",
+            "raft-ui/Combobox"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/library.raft-ui.controlled-open-overlays.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockRaftUiButton",
+            "build.raft.app.components.SlockSelectTrigger",
+            "build.raft.app.components.SlockRaftUiPopupSurface",
+            "build.raft.app.components.SlockRaftUiMenuRow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RaftUiLibraryVisualFixtures.kt",
+          "fixture": "compose_raft_ui_controlled_open_overlays_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8462674049376994,
+        "pixelPerfectSimilarity": 0.7077968960863698,
+        "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.controlled-open-overlays.side-by-side.png"
       }
     },
     {

@@ -1,37 +1,37 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-02T20:28:59.301Z",
-  "latestRunId": "695c99afb-20260702202831",
+  "generatedAt": "2026-07-02T21:41:37.377Z",
+  "latestRunId": "695c99afb-20260702214109",
   "latest": {
-    "runId": "695c99afb-20260702202831",
-    "commit": "695c99afb-20260702202831",
+    "runId": "695c99afb-20260702214109",
+    "commit": "695c99afb-20260702214109",
     "commitSubject": "test(visual): add raft ui interaction states",
-    "generatedAt": "2026-07-02T20:28:59.301Z",
+    "generatedAt": "2026-07-02T21:41:37.377Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 103,
+      "total": 104,
       "same": 0,
       "pass": 0,
       "basic-pass": 3,
-      "different": 99,
+      "different": 100,
       "missing": 1
     },
     "analysisSummary": {
-      "total": 103,
+      "total": 104,
       "ready": 0,
-      "pending": 103
+      "pending": 104
     },
     "componentMatrixSummary": {
-      "total": 122,
-      "active": 104,
+      "total": 123,
+      "active": 105,
       "pending": 16,
       "skipped": 2,
       "captureTypes": {
         "component-fixture": {
-          "total": 96,
-          "active": 93,
+          "total": 97,
+          "active": 94,
           "pending": 2,
           "skipped": 1
         },
@@ -44,16 +44,16 @@
       },
       "providers": {
         "react": {
-          "active": 105,
+          "active": 106,
           "pending": 13,
           "unsupported": 0,
-          "total": 118
+          "total": 119
         },
         "android": {
-          "active": 103,
+          "active": 104,
           "pending": 15,
           "unsupported": 0,
-          "total": 118
+          "total": 119
         },
         "harmony": {
           "active": 0,
@@ -64,27 +64,27 @@
       }
     },
     "raftUiSummary": {
-      "total": 41,
+      "total": 42,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 41,
+      "different": 42,
       "missing": 0
     },
     "raftUiAnalysisSummary": {
-      "total": 41,
+      "total": 42,
       "ready": 0,
-      "pending": 41
+      "pending": 42
     },
     "raftUiComponentMatrixSummary": {
-      "total": 41,
-      "active": 41,
+      "total": 42,
+      "active": 42,
       "pending": 0,
       "skipped": 0,
       "captureTypes": {
         "component-fixture": {
-          "total": 41,
-          "active": 41,
+          "total": 42,
+          "active": 42,
           "pending": 0,
           "skipped": 0
         },
@@ -97,20 +97,20 @@
       },
       "providers": {
         "react": {
-          "active": 41,
+          "active": 42,
           "pending": 0,
           "unsupported": 0,
-          "total": 41
+          "total": 42
         },
         "android": {
-          "active": 41,
+          "active": 42,
           "pending": 0,
           "unsupported": 0,
-          "total": 41
+          "total": 42
         }
       }
     },
-    "raftUiReport": "runs/695c99afb-20260702202831/raft-ui/",
+    "raftUiReport": "runs/695c99afb-20260702214109/raft-ui/",
     "componentsUiSummary": {
       "total": 71,
       "same": 0,
@@ -164,21 +164,21 @@
         }
       }
     },
-    "componentsUiReport": "runs/695c99afb-20260702202831/components/",
-    "href": "runs/695c99afb-20260702202831/",
-    "report": "runs/695c99afb-20260702202831/report.html",
-    "componentMatrix": "runs/695c99afb-20260702202831/component-matrix.json",
-    "llms": "runs/695c99afb-20260702202831/metadata.json"
+    "componentsUiReport": "runs/695c99afb-20260702214109/components/",
+    "href": "runs/695c99afb-20260702214109/",
+    "report": "runs/695c99afb-20260702214109/report.html",
+    "componentMatrix": "runs/695c99afb-20260702214109/component-matrix.json",
+    "llms": "runs/695c99afb-20260702214109/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 122,
-    "active": 104,
+    "total": 123,
+    "active": 105,
     "pending": 16,
     "skipped": 2,
     "captureTypes": {
       "component-fixture": {
-        "total": 96,
-        "active": 93,
+        "total": 97,
+        "active": 94,
         "pending": 2,
         "skipped": 1
       },
@@ -191,16 +191,16 @@
     },
     "providers": {
       "react": {
-        "active": 105,
+        "active": 106,
         "pending": 13,
         "unsupported": 0,
-        "total": 118
+        "total": 119
       },
       "android": {
-        "active": 103,
+        "active": 104,
         "pending": 15,
         "unsupported": 0,
-        "total": 118
+        "total": 119
       },
       "harmony": {
         "active": 0,
@@ -212,27 +212,27 @@
   },
   "raftUi": {
     "summary": {
-      "total": 41,
+      "total": 42,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 41,
+      "different": 42,
       "missing": 0
     },
     "analysisSummary": {
-      "total": 41,
+      "total": 42,
       "ready": 0,
-      "pending": 41
+      "pending": 42
     },
     "componentMatrixSummary": {
-      "total": 41,
-      "active": 41,
+      "total": 42,
+      "active": 42,
       "pending": 0,
       "skipped": 0,
       "captureTypes": {
         "component-fixture": {
-          "total": 41,
-          "active": 41,
+          "total": 42,
+          "active": 42,
           "pending": 0,
           "skipped": 0
         },
@@ -245,16 +245,16 @@
       },
       "providers": {
         "react": {
-          "active": 41,
+          "active": 42,
           "pending": 0,
           "unsupported": 0,
-          "total": 41
+          "total": 42
         },
         "android": {
-          "active": 41,
+          "active": 42,
           "pending": 0,
           "unsupported": 0,
-          "total": 41
+          "total": 42
         }
       }
     }
@@ -315,6 +315,173 @@
     }
   },
   "runs": [
+    {
+      "runId": "695c99afb-20260702214109",
+      "commit": "695c99afb-20260702214109",
+      "commitSubject": "test(visual): add raft ui interaction states",
+      "generatedAt": "2026-07-02T21:41:37.377Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 104,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 100,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 104,
+        "ready": 0,
+        "pending": 104
+      },
+      "componentMatrixSummary": {
+        "total": 123,
+        "active": 105,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 97,
+            "active": 94,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 106,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 119
+          },
+          "android": {
+            "active": 104,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 119
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {
+        "total": 42,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 42,
+        "missing": 0
+      },
+      "raftUiAnalysisSummary": {
+        "total": 42,
+        "ready": 0,
+        "pending": 42
+      },
+      "raftUiComponentMatrixSummary": {
+        "total": 42,
+        "active": 42,
+        "pending": 0,
+        "skipped": 0,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 42,
+            "active": 42,
+            "pending": 0,
+            "skipped": 0
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          },
+          "android": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          }
+        }
+      },
+      "raftUiReport": "runs/695c99afb-20260702214109/raft-ui/",
+      "componentsUiSummary": {
+        "total": 71,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 67,
+        "missing": 1
+      },
+      "componentsUiAnalysisSummary": {
+        "total": 71,
+        "ready": 0,
+        "pending": 71
+      },
+      "componentsUiComponentMatrixSummary": {
+        "total": 74,
+        "active": 72,
+        "pending": 1,
+        "skipped": 1,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 74,
+            "active": 72,
+            "pending": 1,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 72,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 72
+          },
+          "android": {
+            "active": 71,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 72
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 52,
+            "unsupported": 0,
+            "total": 52
+          }
+        }
+      },
+      "componentsUiReport": "runs/695c99afb-20260702214109/components/",
+      "href": "runs/695c99afb-20260702214109/",
+      "report": "runs/695c99afb-20260702214109/report.html",
+      "componentMatrix": "runs/695c99afb-20260702214109/component-matrix.json",
+      "llms": "runs/695c99afb-20260702214109/metadata.json"
+    },
     {
       "runId": "695c99afb-20260702202831",
       "commit": "695c99afb-20260702202831",

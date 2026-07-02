@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-02T20:28:59.233Z",
+  "generatedAt": "2026-07-02T21:41:37.309Z",
   "baseline": "react",
   "current": "android",
   "results": [
@@ -3697,6 +3697,106 @@
         "rgbSimilarity": 0.8077899060245087,
         "pixelPerfectSimilarity": 0.5959119496855346,
         "pixelMismatchRatio": 0.4040880503144654,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.controlled-open-overlays",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.controlled-open-overlays.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.controlled-open-overlays.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.controlled-open-overlays",
+        "image": "visual-testing-results/react/library.raft-ui.controlled-open-overlays.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.controlled-open-overlays']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 760
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 760
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T21:34:00.039Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.controlled-open-overlays",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.controlled-open-overlays.png",
+        "viewport": {
+          "width": 390,
+          "height": 760,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 760
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 704,
+            "dominantRatio": 0.82624155
+          }
+        },
+        "capturedAt": "1783028240513"
+      },
+      "status": "different",
+      "baselineSha256": "424f88876b5648abd2052172849390b32164d2db82e9b45fbdd7c9c0c018118e",
+      "currentSha256": "f3a7b526c9718de72b6222475791d80bd823ad9455458265a4c3dd9c94cc76a3",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.controlled-open-overlays.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 390,
+        "baselineHeight": 760,
+        "currentWidth": 390,
+        "currentHeight": 760,
+        "comparisonWidth": 390,
+        "comparisonHeight": 760,
+        "rgbSimilarity": 0.8462674049376994,
+        "pixelPerfectSimilarity": 0.7077968960863698,
+        "pixelMismatchRatio": 0.29220310391363025,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -10195,11 +10295,11 @@
     }
   ],
   "summary": {
-    "total": 103,
+    "total": 104,
     "same": 0,
     "pass": 0,
     "basic-pass": 3,
-    "different": 99,
+    "different": 100,
     "missing": 1
   }
 }

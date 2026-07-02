@@ -1,24 +1,24 @@
 # Slock Visual Testing
 
-Generated: 2026-07-02 20:28:59 UTC
-Latest run: 695c99afb-20260702202831
-Latest commit: 695c99afb-20260702202831
+Generated: 2026-07-02 21:41:37 UTC
+Latest run: 695c99afb-20260702214109
+Latest commit: 695c99afb-20260702214109
 Commit subject: test(visual): add raft ui interaction states
 Providers: react vs android
-Summary: total 103, same 0, pass 0, basic-pass 3, different 99, missing 1
-AI analysis: ready 0 / total 103, pending 103
-Visual coverage matrix: active 104 / total 122, pending 16, skipped 2
+Summary: total 104, same 0, pass 0, basic-pass 3, different 100, missing 1
+AI analysis: ready 0 / total 104, pending 104
+Visual coverage matrix: active 105 / total 123, pending 16, skipped 2
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 93, pending 2, total 96
+- Components Parity (component-fixture): active 94, pending 2, total 97
 - Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 105, pending 13, unsupported 0
-- android: active 103, pending 15, unsupported 0
+- react: active 106, pending 13, unsupported 0
+- android: active 104, pending 15, unsupported 0
 - harmony: active 0, pending 77, unsupported 0
 
 ## Pending Coverage Rows
@@ -104,6 +104,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 695c99afb-20260702214109: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/695c99afb-20260702214109/component-matrix.json, report runs/695c99afb-20260702214109/report.html
 - 695c99afb-20260702202831: react vs android, total 103, pass 0, basic-pass 3, different 99, matrix runs/695c99afb-20260702202831/component-matrix.json, report runs/695c99afb-20260702202831/report.html
 - b1d7a3d01-20260702184638: react vs android, total 102, pass 0, basic-pass 3, different 98, matrix runs/b1d7a3d01-20260702184638/component-matrix.json, report runs/b1d7a3d01-20260702184638/report.html
 - 1c6dce5ad-20260701181253: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181253/component-matrix.json, report runs/1c6dce5ad-20260701181253/report.html
