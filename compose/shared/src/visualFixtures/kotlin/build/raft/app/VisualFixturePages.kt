@@ -204,6 +204,46 @@ internal class ComposeUiButtonVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_form_field_visual", supportInLocal = true)
+internal class ComposeUiFormFieldVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiFormFieldVisualContent() }
+    }
+}
+
+@Page("compose_ui_textarea_visual", supportInLocal = true)
+internal class ComposeUiTextareaVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiTextareaVisualContent() }
+    }
+}
+
+@Page("compose_ui_checkbox_visual", supportInLocal = true)
+internal class ComposeUiCheckboxVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiCheckboxVisualContent() }
+    }
+}
+
+@Page("compose_ui_slug_input_visual", supportInLocal = true)
+internal class ComposeUiSlugInputVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSlugInputVisualContent() }
+    }
+}
+
+@Page("compose_ui_section_eyebrow_visual", supportInLocal = true)
+internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSectionEyebrowVisualContent() }
+    }
+}
+
 @Page("compose_ui_badge_visual", supportInLocal = true)
 internal class ComposeUiBadgeVisualPage : BasePager() {
     override fun willInit() {

@@ -6,8 +6,16 @@ import build.raft.app.components.SlockAvatarListRow
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalBadgeButton
+import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.components.SlockBrutalTextarea
+import build.raft.app.components.SlockCheckboxLabelRow
+import build.raft.app.components.SlockFormField
+import build.raft.app.components.SlockFormFieldLabelStyle
+import build.raft.app.components.SlockFormFieldSize
 import build.raft.app.components.SlockBrutalTone
 import build.raft.app.components.SlockSectionHeader
+import build.raft.app.components.SlockSectionEyebrow
+import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -68,6 +76,149 @@ internal fun UiButtonVisualContent() {
                 SlockBrutalActionButton(label = "Add", onClick = {}, backgroundColor = SlockColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 SlockBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = SlockColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
                 SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.SurfaceCream, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiFormFieldVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(226.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockFormField(
+                label = "Email",
+                required = true,
+                labelStyle = SlockFormFieldLabelStyle.Plain
+            ) {
+                SlockBrutalInputField(
+                    value = "cindy@slock.ai",
+                    onValueChange = {},
+                    placeholder = "",
+                    autoFocus = false,
+                    fieldMinHeight = 42.dp
+                )
+            }
+            SlockFormField(
+                label = "Description",
+                optional = true,
+                hint = "Shown in channel discovery."
+            ) {
+                SlockBrutalInputField(
+                    value = "Visual parity fixture",
+                    onValueChange = {},
+                    placeholder = "",
+                    autoFocus = false,
+                    fieldMinHeight = 42.dp
+                )
+            }
+            SlockFormField(
+                label = "Server Name",
+                size = SlockFormFieldSize.Compact,
+                error = "Name is required"
+            ) {
+                SlockBrutalInputField(
+                    value = "",
+                    onValueChange = {},
+                    placeholder = "",
+                    autoFocus = false,
+                    fieldMinHeight = 42.dp,
+                    borderColor = SlockColor.AccentRed
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun UiTextareaVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(240.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockBrutalTextarea(
+                value = "Capture the Android visual artifact and compare it with React.",
+                onValueChange = {},
+                hint = "Plain helper text",
+                showCounter = true,
+                limit = 120,
+                fieldHeight = 90.dp,
+                maxLines = 3
+            )
+            SlockBrutalTextarea(
+                value = "This agreement copy is too long for the configured limit.",
+                onValueChange = {},
+                error = "Agreement body must be shorter.",
+                showCounter = true,
+                limit = 40,
+                fieldHeight = 60.dp,
+                maxLines = 2
+            )
+        }
+    }
+}
+
+@Composable
+internal fun UiCheckboxVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(132.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockCheckboxLabelRow(label = "As Task selected", checked = true, size = 14.dp)
+            SlockCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 16.dp)
+            SlockCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 16.dp)
+        }
+    }
+}
+
+@Composable
+internal fun UiSlugInputVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(122.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockSlugInput(value = "design-lab", onValueChange = {})
+            SlockSlugInput(value = "partner-workspace", onValueChange = {}, enabled = false)
+        }
+    }
+}
+
+@Composable
+internal fun UiSectionEyebrowVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(92.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockSectionEyebrow(label = "Recent Activity")
+            SlockSectionEyebrow(label = "Connected Apps", color = SlockColor.TextBlack)
+            Box(modifier = Modifier.background(SlockColor.SurfaceWhite.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                SlockSectionEyebrow(label = "Choose Avatar")
             }
         }
     }

@@ -70,6 +70,51 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiFormFieldStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.form-field.states",
+            pageName = "compose_ui_form_field_visual",
+            crop = UI_FORM_FIELD_CROP
+        )
+    }
+
+    @Test
+    fun captureUiTextareaStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.textarea.states",
+            pageName = "compose_ui_textarea_visual",
+            crop = UI_TEXTAREA_CROP
+        )
+    }
+
+    @Test
+    fun captureUiCheckboxStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.checkbox.states",
+            pageName = "compose_ui_checkbox_visual",
+            crop = UI_CHECKBOX_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSlugInputStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.slug-input.states",
+            pageName = "compose_ui_slug_input_visual",
+            crop = UI_SLUG_INPUT_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSectionEyebrowStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.section-eyebrow.states",
+            pageName = "compose_ui_section_eyebrow_visual",
+            crop = UI_SECTION_EYEBROW_CROP
+        )
+    }
+
+    @Test
     fun captureUiBadgeStates() {
         captureKmpComponentCase(
             caseId = "components.ui.badge.states",
@@ -1347,6 +1392,41 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 150
+            )
+        private val UI_FORM_FIELD_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 226
+            )
+        private val UI_TEXTAREA_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 240
+            )
+        private val UI_CHECKBOX_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 132
+            )
+        private val UI_SLUG_INPUT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 122
+            )
+        private val UI_SECTION_EYEBROW_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 92
             )
         private val UI_BADGE_CROP =
             VisualCrop(
