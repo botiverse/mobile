@@ -10,6 +10,7 @@
     "@ohos/apng": "^1.0.0-rc.8",
     "@kuiklybase/knoi": "0.0.4",
     "@tencent/mmkv": "2.1.0",
+    "mmkv_c_wrapper": "file:../mmkv_c_wrapper",
     "bugly": "0.5.1",
     "libentry.so": "file:./src/main/cpp/types/libentry"
   }

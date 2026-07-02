@@ -27,6 +27,18 @@
   },
   "modules": [
     {
+      "name": "mmkv_c_wrapper",
+      "srcPath": "./mmkv_c_wrapper",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
       "name": "entry",
       "srcPath": "./entry",
       "targets": [

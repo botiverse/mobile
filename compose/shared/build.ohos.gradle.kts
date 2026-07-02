@@ -109,11 +109,20 @@ kotlin {
 
     ohosArm64 {
         val sqliteLibDir = ohosSqliteProviderLibDir()
+        val mmkvWrapperLibDir = project.file("src/libs/arm64-v8a")
+        val main by compilations.getting
+        main.cinterops.create("slockMmkv") {
+            definitionFile = file("src/nativeInterop/cinterop/slock_mmkv.def")
+            includeDirs(file("src/nativeInterop/cinterop"))
+            extraOpts("-libraryPath", mmkvWrapperLibDir.absolutePath)
+        }
         binaries.sharedLib {
             // Preserve lightweight K/N debug metadata so OHOS crash stacks can be symbolicated.
             freeCompilerArgs += "-Xadd-light-debug=enable"
             linkerOpts("--build-id=sha1")
             linkerOpts("-L${sqliteLibDir.absolutePath}")
+            linkerOpts("-L${mmkvWrapperLibDir.absolutePath}")
+            linkerOpts("-lmmkv_c_wrapper")
         }
     }
 
