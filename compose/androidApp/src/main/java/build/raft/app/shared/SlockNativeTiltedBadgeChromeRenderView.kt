@@ -27,6 +27,7 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
     private var useDrawFilter: Boolean = false
     private var layerTypeMode: String = LAYER_TYPE_NONE
     private var geometryMode: String = GEOMETRY_PATH
+    private var viewRotationDegrees: Float = 0f
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG).apply {
         style = Paint.Style.FILL
@@ -67,6 +68,7 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
                 PROP_DRAW_FILTER -> updateDrawFilter(propValue)
                 PROP_LAYER_TYPE -> updateLayerType(propValue.toString())
                 PROP_GEOMETRY -> updateGeometry(propValue.toString())
+                PROP_VIEW_ROTATION -> updateViewRotation(propValue)
                 else -> return super.setProp(propKey, propValue)
             }
         if (changed) invalidate()
@@ -86,6 +88,7 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
                 PROP_DRAW_FILTER -> updateDrawFilter(false)
                 PROP_LAYER_TYPE -> updateLayerType(LAYER_TYPE_NONE)
                 PROP_GEOMETRY -> updateGeometry(GEOMETRY_PATH)
+                PROP_VIEW_ROTATION -> updateViewRotation(0f)
                 else -> return super.resetProp(propKey)
             }
         if (changed) invalidate()
@@ -127,6 +130,10 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         val strokeWidth = (strokeWidthDp * density).coerceAtLeast(1f)
         val shadowOffset = shadowOffsetDp * density
         val inset = strokeWidth / 2f
+        if (geometryMode == GEOMETRY_RECT) {
+            drawRectChrome(canvas, viewWidth, viewHeight, strokeWidth, shadowOffset)
+            return
+        }
         if (geometryMode == GEOMETRY_ROTATED_RECT) {
             drawRotatedRectChrome(canvas, viewWidth, viewHeight, strokeWidth, shadowOffset)
             return
@@ -172,6 +179,26 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         strokePaint.strokeWidth = strokeWidth
         canvas.drawRect(rect, strokePaint)
         canvas.restore()
+    }
+
+    private fun drawRectChrome(
+        canvas: Canvas,
+        viewWidth: Float,
+        viewHeight: Float,
+        strokeWidth: Float,
+        shadowOffset: Float
+    ) {
+        val contentWidth = (viewWidth - shadowOffset).coerceAtLeast(1f)
+        val contentHeight = (viewHeight - shadowOffset).coerceAtLeast(1f)
+        val rect = RectF(0f, 0f, contentWidth, contentHeight)
+        val shadowRect = RectF(shadowOffset, shadowOffset, shadowOffset + contentWidth, shadowOffset + contentHeight)
+        fillPaint.color = shadowColor
+        canvas.drawRect(shadowRect, fillPaint)
+        fillPaint.color = fillColor
+        canvas.drawRect(rect, fillPaint)
+        strokePaint.color = borderColor
+        strokePaint.strokeWidth = strokeWidth
+        canvas.drawRect(rect, strokePaint)
     }
 
     private fun tiltedBadgePath(
@@ -303,10 +330,19 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         val next =
             when (value.lowercase()) {
                 GEOMETRY_ROTATED_RECT -> GEOMETRY_ROTATED_RECT
+                GEOMETRY_RECT -> GEOMETRY_RECT
                 else -> GEOMETRY_PATH
             }
         if (geometryMode == next) return false
         geometryMode = next
+        return true
+    }
+
+    private fun updateViewRotation(value: Any): Boolean {
+        val next = value.toString().toFloatOrNull() ?: return false
+        if (viewRotationDegrees == next) return false
+        viewRotationDegrees = next
+        rotation = next
         return true
     }
 
@@ -327,10 +363,12 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         private const val PROP_DRAW_FILTER = "drawFilter"
         private const val PROP_LAYER_TYPE = "layerType"
         private const val PROP_GEOMETRY = "geometry"
+        private const val PROP_VIEW_ROTATION = "viewRotation"
         private const val LAYER_TYPE_NONE = "none"
         private const val LAYER_TYPE_HARDWARE = "hardware"
         private const val LAYER_TYPE_SOFTWARE = "software"
         private const val GEOMETRY_PATH = "path"
         private const val GEOMETRY_ROTATED_RECT = "rotatedRect"
+        private const val GEOMETRY_RECT = "rect"
     }
 }

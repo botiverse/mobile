@@ -24,6 +24,7 @@ internal class SlockNativeTiltedBadgeChromeView :
     private var appliedDrawFilter: Boolean? = null
     private var appliedLayerType: String? = null
     private var appliedGeometry: String? = null
+    private var appliedViewRotation: Float? = null
 
     override fun createAttr(): SlockNativeTiltedBadgeChromeAttr = SlockNativeTiltedBadgeChromeAttr()
 
@@ -42,6 +43,7 @@ internal class SlockNativeTiltedBadgeChromeView :
         drawFilter: Boolean,
         layerType: String,
         geometry: String,
+        viewRotation: Float,
         force: Boolean = false
     ) {
         if (
@@ -55,7 +57,8 @@ internal class SlockNativeTiltedBadgeChromeView :
                 appliedSupersample == supersample &&
                 appliedDrawFilter == drawFilter &&
                 appliedLayerType == layerType &&
-                appliedGeometry == geometry
+                appliedGeometry == geometry &&
+                appliedViewRotation == viewRotation
         ) {
             return
         }
@@ -69,6 +72,7 @@ internal class SlockNativeTiltedBadgeChromeView :
         appliedDrawFilter = drawFilter
         appliedLayerType = layerType
         appliedGeometry = geometry
+        appliedViewRotation = viewRotation
         getViewAttr().run {
             fill(fill)
             border(border)
@@ -80,6 +84,7 @@ internal class SlockNativeTiltedBadgeChromeView :
             drawFilter(drawFilter)
             layerType(layerType)
             geometry(geometry)
+            viewRotation(viewRotation)
         }
     }
 
@@ -138,6 +143,11 @@ internal class SlockNativeTiltedBadgeChromeAttr : Attr() {
         "geometry" with value
         return this
     }
+
+    fun viewRotation(value: Float): SlockNativeTiltedBadgeChromeAttr {
+        "viewRotation" with value
+        return this
+    }
 }
 
 @Composable
@@ -154,7 +164,8 @@ internal fun SlockNativeTiltedBadgeChrome(
     supersample: Int,
     drawFilter: Boolean = false,
     layerType: String = "none",
-    geometry: String = "path"
+    geometry: String = "path",
+    viewRotation: Float = 0f
 ) {
     MakeKuiklyComposeNode<SlockNativeTiltedBadgeChromeView>(
         factory = { SlockNativeTiltedBadgeChromeView() },
@@ -171,6 +182,7 @@ internal fun SlockNativeTiltedBadgeChrome(
                 drawFilter = drawFilter,
                 layerType = layerType,
                 geometry = geometry,
+                viewRotation = viewRotation,
                 force = true
             )
         },
@@ -185,7 +197,8 @@ internal fun SlockNativeTiltedBadgeChrome(
                 supersample = supersample,
                 drawFilter = drawFilter,
                 layerType = layerType,
-                geometry = geometry
+                geometry = geometry,
+                viewRotation = viewRotation
             )
         }
     )

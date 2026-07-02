@@ -192,9 +192,9 @@ internal fun HomeBadgeAaVisualFixtureScreen() {
             badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, layerType = "hardware", geometry = "rotatedRect") }
         )
         HomeBadgeFixtureRow(
-            title = "Native rotate software",
-            detail = "software layer + PaintFlagsDrawFilter",
-            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, layerType = "software", geometry = "rotatedRect") }
+            title = "Native View.rotation HW",
+            detail = "rect chrome + Android View.rotation",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, layerType = "hardware", geometry = "rect", viewRotation = HomeBadgeFixtureTiltDegrees) }
         )
         HomeBadgeFixtureRow(
             title = "Native path + DrawFilter",
@@ -452,7 +452,8 @@ private fun NativeTiltedPathBadge(
     supersample: Int = 3,
     drawFilter: Boolean = false,
     layerType: String = "none",
-    geometry: String = "path"
+    geometry: String = "path",
+    viewRotation: Float = 0f
 ) {
     if (!isSlockNativeTiltedBadgeChromeSupported()) {
         Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
@@ -475,7 +476,8 @@ private fun NativeTiltedPathBadge(
                 supersample = supersample,
                 drawFilter = drawFilter,
                 layerType = layerType,
-                geometry = geometry
+                geometry = geometry,
+                viewRotation = viewRotation
             )
             HomeBadgeFixtureForeground(
                 text = text,
