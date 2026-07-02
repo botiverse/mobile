@@ -11,7 +11,11 @@ task/action affordances, mention insertion, pending mention actions, diagnostics
 feedback, draft persistence, keyboard/safe-area behavior, and send failure
 recovery.
 
-Those features are useful, but IM quality depends on the boring path first:
+Many of those capabilities already exist in KMP. This document is not saying
+Composer is mostly missing. It is a baseline and regression contract for the
+parts that already work, plus a narrow list of remaining normalization gaps.
+
+The IM path that must stay protected is:
 
 ```text
 focus -> type -> attach optionally -> send -> see result -> retry if needed
@@ -19,6 +23,53 @@ focus -> type -> attach optionally -> send -> see result -> retry if needed
 
 This document defines the KMP/shared baseline that must stay stable while
 advanced collaboration features are layered above it.
+
+## Current Implemented Baseline
+
+As of 2026-07-03, the KMP Composer already has meaningful coverage:
+
+- `SharedThreadComposerDraftStore`
+  - persists draft text and `asTask`
+  - keys active draft records by send channel, parent message, and mention
+    channel
+  - projects active root drafts back to Home rows
+  - restores drafts on start
+  - clears draft persistence on completed send
+  - stages uploaded attachments by draft key and consumes them on restore
+- Composer intents already model:
+  - text changes
+  - mention insertion
+  - begin send / complete send
+  - restore after failure
+  - uploaded/local attachments
+  - attachment failure, removal, and retry
+  - pending mention actions and action execution notices
+- `SharedThreadStore` already models local send start, local send failure,
+  local send cancellation, replacement with sent page, and failed local row
+  dismissal.
+- `ThreadPage.kt` already owns the rendered Composer chrome, including text,
+  attachment strip, quote/reply context, pending-action notices, and keyboard /
+  safe-area layout behavior.
+
+So the remaining work is not "build Composer from scratch". It is to make the
+existing behavior easier to reason about, test, and keep stable across route
+changes, foreground recovery, and visual parity work.
+
+## Remaining Normalization Gaps
+
+The gaps this document is concerned with are:
+
+- there is no single named send-operation lifecycle that ties Composer draft,
+  local failed row, server ack, and retry together
+- keyboard/safe-area behavior exists but needs a small regression matrix so it
+  does not regress during Thread chrome changes
+- attachment states exist in Composer, but media-group/message lifecycle docs
+  should define how uploaded attachment state joins final message media state
+- failure copy is mostly represented as labels/error codes; product categories
+  should be typed so UI/tests do not infer behavior from ad hoc strings
+- advanced extensions should continue using Composer seed/banner/send metadata
+  boundaries and should not start owning draft persistence or send target
+  directly
 
 ## Identity
 
@@ -50,7 +101,9 @@ Not allowed in production route/pageData:
 
 ## Baseline State Model
 
-Recommended shared model:
+The current implementation is split across `SharedThreadComposerDraftStore`,
+`SharedThreadStore`, and `ThreadPage.kt`. A future normalized model could be
+described as:
 
 ```text
 ComposerSession(
@@ -69,7 +122,7 @@ ComposerSession(
 
 ### Text State
 
-Required fields:
+Already-covered or target fields:
 
 - raw text
 - normalized send body
@@ -89,7 +142,7 @@ Rules:
 
 ### Keyboard And Layout State
 
-Required invariants:
+Regression invariants:
 
 - opening keyboard must not change the send target
 - bottom safe area and keyboard inset must compose additively, not fight
@@ -106,8 +159,9 @@ Validation:
 
 ### Attachment State
 
-Attachment state should not be just a list of files. It should be part of the
-send operation:
+Composer already tracks uploaded/local attachments, staged uploaded attachments,
+removed attachment ids, and attachment failures. The normalization target is to
+describe those states as part of the send operation:
 
 ```text
 LocalSelected
@@ -128,10 +182,14 @@ Rules:
 
 ### Send Queue
 
-The baseline contract should support at least one active send per composer, but
-the state shape should allow multiple queued operations later.
+KMP already supports the practical V1 behavior: one active local send path, a
+local sending row, failure restoration, and failed-row dismissal. The remaining
+gap is naming the operation state so retry/failure tests can target it directly.
 
-Required fields:
+A future state shape can allow multiple queued operations later, but that is not
+a V1 requirement.
+
+Target fields:
 
 ```text
 operationId
@@ -175,7 +233,7 @@ No extension should own the send target or draft persistence directly.
 
 ## UI Contract
 
-Minimum user-visible states:
+User-visible states already present or expected to stay covered:
 
 - idle empty composer
 - draft restored
@@ -196,7 +254,9 @@ Recommended copy categories:
 - `session_expired`
 - `server_switch_in_progress`
 
-The UI may localize copy, but the state categories should remain typed.
+The UI may localize copy, but the state categories should become typed over
+time. This is a cleanup/testability goal, not proof that current failure UI is
+absent.
 
 ## Existing Code Touchpoints
 

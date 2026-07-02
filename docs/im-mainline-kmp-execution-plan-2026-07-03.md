@@ -16,8 +16,8 @@ The product target is simple:
 - opening a conversation is identity-only and loads canonical state
 - messages have observable lifecycle state from local compose through server
   confirmation, read/unread convergence, and weak-network recovery
-- the composer is stable for high-frequency chat before advanced collaboration
-  actions are layered on top
+- existing Composer stability remains protected as high-frequency chat work
+  continues; advanced collaboration actions stay layered on top
 - attachments, notifications, and presence are projected as IM state, not
   scattered per-feature UI state
 - cross-platform validation proves the core path before regressions reach
@@ -55,8 +55,10 @@ This proposal adds four concrete follow-up specs:
   - one shared state machine for send, ack, retry, seq gap, read/unread,
     mention, and weak-network convergence.
 - `docs/im-composer-baseline-contract-2026-07-03.md`
-  - the baseline composer contract for keyboard, draft, send, failure recovery,
-    attachments, mention actions, and route scoping.
+  - a current-state-aware baseline Composer contract for keyboard, draft, send,
+    failure recovery, attachments, mention actions, and route scoping. This is a
+    regression/normalization contract, not a claim that those capabilities are
+    absent.
 - `docs/im-media-notification-presence-contract-2026-07-03.md`
   - a shared projection contract for media groups, notification presentation,
     and low-noise presence/activity signals.
@@ -119,16 +121,20 @@ Acceptance:
 
 ### Phase 2: Composer Baseline
 
-After lifecycle state exists, harden composer as a high-frequency IM surface.
+Preserve the Composer work that already exists, then normalize the remaining
+state boundaries as a high-frequency IM surface.
 
 Acceptance:
 
-- keyboard/safe-area changes do not jump the timeline or detach attachment /
-  quote bars
-- draft restore is keyed by send identity and parent reply identity
-- send queue state is visible, retryable, and route-safe
-- attachments and mention actions cannot leak between conversations or reply
-  contexts
+- current draft persistence, staged uploaded attachments, pending mention
+  actions, failed-send restore, and local failed-row retention keep working
+- keyboard/safe-area changes do not regress timeline anchoring or detach
+  attachment / quote bars
+- draft restore remains keyed by send identity and parent reply identity
+- send operation state is named enough for retry/failure tests to target it
+  directly
+- attachments and mention actions remain scoped to the correct conversation or
+  reply context
 - advanced actions such as task conversion stay additive and cannot break plain
   text send
 
