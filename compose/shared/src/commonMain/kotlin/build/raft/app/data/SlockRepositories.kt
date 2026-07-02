@@ -152,7 +152,7 @@ interface ConversationRepository {
         includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
-    suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot>
+    suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<ThreadSnapshot>
     suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,

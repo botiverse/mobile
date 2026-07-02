@@ -3185,12 +3185,73 @@ class SharedThreadStoreTest {
             (dataSource.fetchThreadPayload(basePayload().copy(focusedMessageId = "target")) as DataResult.Content).data
 
         assertEquals(listOf(MessageId("target")), repository.getMessageContextRequests)
+        assertEquals(listOf<ChannelId?>(null), repository.getMessageContextChannelIdRequests)
         assertEquals(emptyList(), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals(listOf("older", "target", "newer"), payload.messages.map { it.id })
         assertEquals("target", payload.focusedMessageId)
         assertTrue(payload.canLoadMoreBefore)
         assertTrue(payload.canLoadMoreAfter)
+    }
+
+    @Test
+    fun fetchReplyThreadPayloadScopesFocusedMessageContextToLocalThreadChannel() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository = FakeConversationRepository(
+            threadResult = DataResult.Content(threadSnapshot(body = "fallback body")),
+            messageContextResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        threadId = "joint-thread-local",
+                        messages =
+                            listOf(
+                                message(
+                                    threadId = "joint-thread-local",
+                                    channelId = "joint-thread-local",
+                                    id = "joint-reply-1",
+                                    seq = 44,
+                                    body = "joint reply body"
+                                )
+                            ),
+                        conversation =
+                            conversationSummary("joint-thread-local").copy(
+                                kind = ConversationKind.Thread,
+                                channelId = ChannelId("joint-parent-local"),
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = ChannelId("joint-parent-local"),
+                                        parentMessageId = MessageId("parent-1"),
+                                        streamChannelId = ChannelId("joint-thread-local")
+                                    )
+                            )
+                    ).copy(highlightedMessageId = MessageId("joint-reply-1"))
+                )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val route =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "joint-thread-local",
+                streamChannelId = "joint-thread-local",
+                parentChannelId = "joint-parent-local",
+                parentMessageId = "parent-1",
+                originParentMessageId = "parent-1",
+                focusedMessageId = "joint-reply-1"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(route) as DataResult.Content).data
+
+        assertEquals(listOf(MessageId("joint-reply-1")), repository.getMessageContextRequests)
+        assertEquals(listOf<ChannelId?>(ChannelId("joint-thread-local")), repository.getMessageContextChannelIdRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf("joint reply body"), payload.messages.map { it.body })
+        assertEquals("joint-reply-1", payload.focusedMessageId)
+        assertEquals("joint-thread-local", payload.sourceThreadId)
     }
 
     @Test
@@ -3221,6 +3282,7 @@ class SharedThreadStoreTest {
             (dataSource.fetchThreadPayload(basePayload().copy(focusedMessageId = "target")) as DataResult.Content).data
 
         assertEquals(listOf(MessageId("target")), repository.getMessageContextRequests)
+        assertEquals(listOf<ChannelId?>(null), repository.getMessageContextChannelIdRequests)
         assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals(listOf("repository body"), payload.messages.map { it.body })
@@ -6592,6 +6654,7 @@ class SharedThreadStoreTest {
         val syncNewerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val syncNewerLimits: MutableList<Int> = mutableListOf()
         val getMessageContextRequests: MutableList<MessageId> = mutableListOf()
+        val getMessageContextChannelIdRequests: MutableList<ChannelId?> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
         val getReplyThreadRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
         val getReplyThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
@@ -6646,8 +6709,9 @@ class SharedThreadStoreTest {
             return resolvedResult
         }
 
-        override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
+        override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
             getMessageContextRequests += messageId
+            getMessageContextChannelIdRequests += channelId
             return messageContextResult
         }
 

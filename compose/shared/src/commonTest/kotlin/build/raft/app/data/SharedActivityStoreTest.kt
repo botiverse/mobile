@@ -1101,7 +1101,7 @@ class SharedActivityStoreTest {
         override suspend fun getReplyThread(parentChannelId: ChannelId, parentMessageId: MessageId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
             error("unused")
 
-        override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> =
+        override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
             error("unused")
 
         override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long, limit: Int): DataResult<ThreadSnapshot> =

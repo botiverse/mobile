@@ -1568,9 +1568,10 @@ internal class SharedThreadDataSource(
         headerFallback: ConversationSummary?
     ): DataResult<KuiklyThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
+        val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         val contextResult =
             fetchThreadSnapshotFromRepository("thread_focused_context") { repository ->
-                repository.getMessageContext(MessageId(focusedMessageId))
+                repository.getMessageContext(MessageId(focusedMessageId), focusedContextChannelId)
             }
         val context = (contextResult as? DataResult.Content)?.data ?: return null
         if (!context.matchesFocusedThreadRoute(routeThreadId, focusedMessageId)) {
@@ -1644,6 +1645,23 @@ internal class SharedThreadDataSource(
             ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
         val headerFallback = resolveConversationHeaderFallback(basePayload, session)
+        val routeThreadId =
+            basePayload.streamChannelId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
+                ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
+        val focusedContext =
+            if (includeFollowedSummaries || routeThreadId == null) {
+                null
+            } else {
+                fetchFocusedInitialThreadPayloadFromRepository(
+                    session = session,
+                    basePayload = basePayload,
+                    routeThreadId = routeThreadId,
+                    headerFallback = headerFallback
+                )
+            }
+        if (focusedContext != null) {
+            return focusedContext
+        }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
                 repository.getReplyThread(
@@ -4734,6 +4752,12 @@ private fun ThreadSnapshot.matchesFocusedThreadRoute(
             ?: parentMessage?.takeIf { message -> message.id.value == focusedMessageId }
             ?: return false
     return focusedMessage.channelId?.value == routeId || focusedMessage.threadId.value == routeId
+}
+
+private fun KuiklyThreadScreenPayload.focusedMessageContextChannelIdOrNull(): ChannelId? {
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    return listOfNotNull(streamChannelId, sourceThreadId)
+        .firstNotNullOfOrNull { value -> value.takeIf { it.isNotBlank() }?.let(::ChannelId) }
 }
 
 private fun ThreadSnapshot.withConversationAccessFallback(

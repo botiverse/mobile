@@ -372,7 +372,7 @@ class ConversationRepositoryDataSourceTest {
         val repository = RealConversationRepository(sampleStore(), network)
 
         val older = repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 8)
-        val context = repository.getMessageContext(MessageId("message-1"))
+        val context = repository.getMessageContext(MessageId("message-1"), ChannelId("channel-1"))
         val files = repository.getChannelFiles(ChannelId("channel-1"), limit = 25, cursor = "cursor-1")
         val target = repository.getAttachmentOpenTarget(AttachmentId("attachment-1"))
         val uploaded =
@@ -406,6 +406,12 @@ class ConversationRepositoryDataSourceTest {
         assertEquals("https://cdn.slock.test/a.png", assertIs<DataResult.Content<AttachmentOpenTarget>>(target).data.url)
         assertEquals("uploaded-1", assertIs<DataResult.Content<AttachmentUploadResult>>(uploaded).data.attachments.single().id.value)
         assertEquals(listOf("upload.txt"), network.uploadedFileNames)
+        assertTrue(
+            network.requests.any { request ->
+                request.path == "messages/context/message-1" &&
+                    request.query == listOf("channelId" to "channel-1")
+            }
+        )
     }
 
     private fun sampleStore(): SlockAuthSessionStore =

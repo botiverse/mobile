@@ -60,9 +60,14 @@ private suspend fun SlockNetworkClient.channelMessages(
 
 private suspend fun SlockNetworkClient.messageContext(
     priority: DataRequestPriority,
-    messageId: MessageId
+    messageId: MessageId,
+    channelId: ChannelId? = null
 ): HomeNetworkResponse =
-    request(priority, "messages/context/${messageId.value}")
+    request(
+        priority = priority,
+        path = "messages/context/${messageId.value}",
+        query = listOfNotNull(channelId?.let { "channelId" to it.value })
+    )
 
 private suspend fun SlockNetworkClient.messageSync(
     priority: DataRequestPriority,
@@ -193,11 +198,11 @@ class RealConversationRepository(
         )
     }
 
-    override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
+    override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
-            block = { networkClient.messageContext(DataRequestPriority.Foreground, messageId) },
+            block = { networkClient.messageContext(DataRequestPriority.Foreground, messageId, channelId) },
             emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
             source = "messages_context",
             mapper = { bodyText ->
