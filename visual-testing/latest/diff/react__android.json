@@ -1,8 +1,4008 @@
 {
-  "generatedAt": "2026-07-01T18:13:58.980Z",
+  "generatedAt": "2026-07-02T18:47:05.052Z",
   "baseline": "react",
   "current": "android",
   "results": [
+    {
+      "id": "components.ui.segmented-control.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.segmented-control.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.segmented-control.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.segmented-control.states",
+        "image": "visual-testing-results/react/components.ui.segmented-control.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.segmented-control.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:06.564Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.segmented-control.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.segmented-control.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 96,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 291,
+            "dominantRatio": 0.8646442
+          }
+        },
+        "capturedAt": "1782981949071"
+      },
+      "status": "different",
+      "baselineSha256": "1d7919b73abefaa8c6405513901cbe05ebe2ee9f48bbebfeaa002337f3b1746a",
+      "currentSha256": "ffd8259ab276738ee9225fbaaa02921ff47b5fef0e5626fa823a9ce41321bea8",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.segmented-control.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 96,
+        "currentWidth": 342,
+        "currentHeight": 96,
+        "comparisonWidth": 342,
+        "comparisonHeight": 96,
+        "rgbSimilarity": 0.9317146749863042,
+        "pixelPerfectSimilarity": 0.8803910818713451,
+        "pixelMismatchRatio": 0.11960891812865493,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.button.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.button.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.button.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.button.states",
+        "image": "visual-testing-results/react/components.ui.button.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.button.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:07.867Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.button.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.button.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 150,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 650,
+            "dominantRatio": 0.7626121
+          }
+        },
+        "capturedAt": "1782985547458"
+      },
+      "status": "different",
+      "baselineSha256": "40cb91153f3beae50a4b03707df454971da7daa2a375123bcad89d53d69bf883",
+      "currentSha256": "ed0479814a1c90e203a6eda187be70be35e2a12878440b831089922e92b414d7",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.button.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 150,
+        "currentWidth": 342,
+        "currentHeight": 150,
+        "comparisonWidth": 342,
+        "comparisonHeight": 150,
+        "rgbSimilarity": 0.87931949699958,
+        "pixelPerfectSimilarity": 0.7670760233918129,
+        "pixelMismatchRatio": 0.2329239766081871,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.badge.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.badge.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.badge.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.badge.states",
+        "image": "visual-testing-results/react/components.ui.badge.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.badge.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:09.129Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.badge.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.badge.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 92,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 437,
+            "dominantRatio": 0.8296466
+          }
+        },
+        "capturedAt": "1782985551135"
+      },
+      "status": "different",
+      "baselineSha256": "5f557029cc8e43edbe26039599c6fa641829c446d64ec6df4b29f2ac64d0821e",
+      "currentSha256": "57b22a80eef805dfc5371d91f1f0ee94d405e4beaa9f564db952e1271cf59246",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.badge.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 92,
+        "currentWidth": 342,
+        "currentHeight": 92,
+        "comparisonWidth": 342,
+        "comparisonHeight": 92,
+        "rgbSimilarity": 0.8752175325592638,
+        "pixelPerfectSimilarity": 0.7835303839308416,
+        "pixelMismatchRatio": 0.21646961606915838,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.form-field.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.form-field.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.form-field.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.form-field.states",
+        "image": "visual-testing-results/react/components.ui.form-field.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.form-field.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 226
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 226
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:10.421Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.form-field.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.form-field.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 226,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 226
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 400,
+            "dominantRatio": 0.8733634
+          }
+        },
+        "capturedAt": "1782987534035"
+      },
+      "status": "different",
+      "baselineSha256": "c0659745ece970b9213a6f901a1b9fb75549c3ba75bdea62654d0ac8a18134eb",
+      "currentSha256": "c8ca0e6d9547b40c4f0402594767944dded273427bdb58ccd6026a0d54b9f5d3",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 226,
+        "currentWidth": 342,
+        "currentHeight": 226,
+        "comparisonWidth": 342,
+        "comparisonHeight": 226,
+        "rgbSimilarity": 0.9066004852492087,
+        "pixelPerfectSimilarity": 0.8249754178957719,
+        "pixelMismatchRatio": 0.1750245821042281,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.textarea.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.textarea.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.textarea.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.textarea.states",
+        "image": "visual-testing-results/react/components.ui.textarea.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.textarea.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 240
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 240
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:11.687Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.textarea.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.textarea.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 240,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 240
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 853,
+            "dominantRatio": 0.6604045
+          }
+        },
+        "capturedAt": "1782988756155"
+      },
+      "status": "different",
+      "baselineSha256": "9ee6edfd278f735dabc8b4565c2030856cf0f18390361b3ced17d169ccfabf02",
+      "currentSha256": "fb5e46a17636b4c7940823d40494b319786569f230d5d5016822e9b627ff0397",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.textarea.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 240,
+        "currentWidth": 342,
+        "currentHeight": 240,
+        "comparisonWidth": 342,
+        "comparisonHeight": 240,
+        "rgbSimilarity": 0.877640911465279,
+        "pixelPerfectSimilarity": 0.5747319688109161,
+        "pixelMismatchRatio": 0.42526803118908385,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.checkbox.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.checkbox.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.checkbox.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.checkbox.states",
+        "image": "visual-testing-results/react/components.ui.checkbox.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.checkbox.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 132
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 132
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:12.988Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.checkbox.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.checkbox.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 132,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 132
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 259,
+            "dominantRatio": 0.93228334
+          }
+        },
+        "capturedAt": "1782987540701"
+      },
+      "status": "different",
+      "baselineSha256": "da056e6d8da0905006fb284365f861570b574ef9df2fb07a04123ef63f550089",
+      "currentSha256": "d90bd1dbbc118273295353dc3e920ddb7322ab353062f1cbfd069b4c5a615a4e",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.checkbox.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 132,
+        "currentWidth": 342,
+        "currentHeight": 132,
+        "comparisonWidth": 342,
+        "comparisonHeight": 132,
+        "rgbSimilarity": 0.9532606479888902,
+        "pixelPerfectSimilarity": 0.905458089668616,
+        "pixelMismatchRatio": 0.09454191033138404,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.check-marker.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.check-marker.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.check-marker.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.check-marker.states",
+        "image": "visual-testing-results/react/components.ui.check-marker.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.check-marker.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:14.279Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.check-marker.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.check-marker.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 112,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 378,
+            "dominantRatio": 0.8858083
+          }
+        },
+        "capturedAt": "1783003825710"
+      },
+      "status": "different",
+      "baselineSha256": "b9b8398d98d6712c3b25c1ecb95fcacdf47ada078796a48978a47098705352f9",
+      "currentSha256": "cdc2ef4ba1a048416f22923d7940bee20316ed0d7856cabb41637c2d23c50f7b",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.check-marker.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 112,
+        "currentWidth": 342,
+        "currentHeight": 112,
+        "comparisonWidth": 342,
+        "comparisonHeight": 112,
+        "rgbSimilarity": 0.9203603029905919,
+        "pixelPerfectSimilarity": 0.8574300334168755,
+        "pixelMismatchRatio": 0.14256996658312449,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.attention-dot.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.attention-dot.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.attention-dot.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.attention-dot.states",
+        "image": "visual-testing-results/react/components.ui.attention-dot.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.attention-dot.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 80
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 80
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:15.511Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.attention-dot.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.attention-dot.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 80,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 80
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 346,
+            "dominantRatio": 0.9247807
+          }
+        },
+        "capturedAt": "1783003823092"
+      },
+      "status": "different",
+      "baselineSha256": "48df973bed84a91de3f7b21b6305853b7bbd7e692f0f865703c9118c5e2b9416",
+      "currentSha256": "89573bc00e03b000ea440685d4d0fdd8339895e0d0276e863523731d886e8647",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.attention-dot.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 80,
+        "currentWidth": 342,
+        "currentHeight": 80,
+        "comparisonWidth": 342,
+        "comparisonHeight": 80,
+        "rgbSimilarity": 0.9481742346061232,
+        "pixelPerfectSimilarity": 0.9011330409356725,
+        "pixelMismatchRatio": 0.09886695906432752,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.status-dot.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.status-dot.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.status-dot.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.status-dot.states",
+        "image": "visual-testing-results/react/components.ui.status-dot.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.status-dot.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:16.803Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.status-dot.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.status-dot.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 92,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 431,
+            "dominantRatio": 0.9463514
+          }
+        },
+        "capturedAt": "1783003820595"
+      },
+      "status": "different",
+      "baselineSha256": "f7460fe893c0d9de458df352c9d3e6f41b4fe919b2add25286cc0b76d0c733da",
+      "currentSha256": "856efe415cbf5df0f2e1a18e971d4437fdf2e20b4432c21a436d7b4df3786fab",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 92,
+        "currentWidth": 342,
+        "currentHeight": 92,
+        "comparisonWidth": 342,
+        "comparisonHeight": 92,
+        "rgbSimilarity": 0.9636190089223248,
+        "pixelPerfectSimilarity": 0.9254385964912281,
+        "pixelMismatchRatio": 0.07456140350877194,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.progress-bar.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.progress-bar.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.progress-bar.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.progress-bar.states",
+        "image": "visual-testing-results/react/components.ui.progress-bar.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.progress-bar.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 124
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 124
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:18.087Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.progress-bar.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.progress-bar.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 124,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 124
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 166,
+            "dominantRatio": 0.6876297
+          }
+        },
+        "capturedAt": "1783004424934"
+      },
+      "status": "different",
+      "baselineSha256": "fa7840493cd880641ad5af082a04d896bba31be09148581b54bca82ec4652f2d",
+      "currentSha256": "8ff8449f1329d26cc7a6a22fe87bede461027f80c09011afb84f682b20ffc291",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.progress-bar.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 124,
+        "currentWidth": 342,
+        "currentHeight": 124,
+        "comparisonWidth": 342,
+        "comparisonHeight": 124,
+        "rgbSimilarity": 0.755756806275295,
+        "pixelPerfectSimilarity": 0.6347858894548198,
+        "pixelMismatchRatio": 0.36521411054518016,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.skeleton.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.skeleton.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.skeleton.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.skeleton.states",
+        "image": "visual-testing-results/react/components.ui.skeleton.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.skeleton.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:19.103Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.skeleton.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.skeleton.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 150,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 159,
+            "dominantRatio": 0.51962966
+          }
+        },
+        "capturedAt": "1783003828070"
+      },
+      "status": "different",
+      "baselineSha256": "92c39970387708e05afe3f79f67649e3d4c50d19b6e8b7e81eaabba02214cb61",
+      "currentSha256": "a5c3e22240a55402f64b8f095ce83b1e5b57a7b7579b0249d63e03524af2d49a",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 150,
+        "currentWidth": 342,
+        "currentHeight": 150,
+        "comparisonWidth": 342,
+        "comparisonHeight": 150,
+        "rgbSimilarity": 0.9546404464319841,
+        "pixelPerfectSimilarity": 0.38497076023391813,
+        "pixelMismatchRatio": 0.6150292397660819,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.spinner.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.spinner.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.spinner.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.spinner.states",
+        "image": "visual-testing-results/react/components.ui.spinner.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.spinner.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:20.394Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.spinner.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.spinner.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 92,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 185,
+            "dominantRatio": 0.9164124
+          }
+        },
+        "capturedAt": "1783003830635"
+      },
+      "status": "different",
+      "baselineSha256": "1435b192d043140d22a343ee623dbc754d0398f9b9afb1960e3946f175c2e634",
+      "currentSha256": "5d5e2a52c9499e50dfc5838a39288c722b8451fcdf13423b32ca050bdc3e6898",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.spinner.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 92,
+        "currentWidth": 342,
+        "currentHeight": 92,
+        "comparisonWidth": 342,
+        "comparisonHeight": 92,
+        "rgbSimilarity": 0.904860955315256,
+        "pixelPerfectSimilarity": 0.8660055936943809,
+        "pixelMismatchRatio": 0.1339944063056191,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.slug-input.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.slug-input.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.slug-input.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.slug-input.states",
+        "image": "visual-testing-results/react/components.ui.slug-input.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.slug-input.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:21.653Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.slug-input.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.slug-input.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 122,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 263,
+            "dominantRatio": 0.81825805
+          }
+        },
+        "capturedAt": "1782988489466"
+      },
+      "status": "different",
+      "baselineSha256": "307af46fc58cbfc098760e30efbdda164e1cc58b885fcdfec4548c8c93901f68",
+      "currentSha256": "81bf40069f356f3a95de72dc6065582b47a32842fc82bf75e369d1b75f0696ba",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 122,
+        "currentWidth": 342,
+        "currentHeight": 122,
+        "comparisonWidth": 342,
+        "comparisonHeight": 122,
+        "rgbSimilarity": 0.8809160477535888,
+        "pixelPerfectSimilarity": 0.7461173425366695,
+        "pixelMismatchRatio": 0.2538826574633305,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.section-eyebrow.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.section-eyebrow.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.section-eyebrow.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.section-eyebrow.states",
+        "image": "visual-testing-results/react/components.ui.section-eyebrow.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.section-eyebrow.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:22.954Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.section-eyebrow.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.section-eyebrow.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 92,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 92
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 210,
+            "dominantRatio": 0.9448258
+          }
+        },
+        "capturedAt": "1782987523815"
+      },
+      "status": "different",
+      "baselineSha256": "86e7eb49afde764175fc1c7406ac4b4a3600e55a26899a9493589cc729f19af0",
+      "currentSha256": "27db3643ce97ea5411aab34cf43cc72b9c425dfa1db49fd74f0699609d7101e2",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-eyebrow.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 92,
+        "currentWidth": 342,
+        "currentHeight": 92,
+        "comparisonWidth": 342,
+        "comparisonHeight": 92,
+        "rgbSimilarity": 0.9589477921857784,
+        "pixelPerfectSimilarity": 0.9036994660564455,
+        "pixelMismatchRatio": 0.09630053394355453,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.section-header.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.section-header.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.section-header.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.section-header.states",
+        "image": "visual-testing-results/react/components.ui.section-header.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.section-header.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 88
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 88
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:24.228Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.section-header.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.section-header.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 88,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 88
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 161,
+            "dominantRatio": 0.925206
+          }
+        },
+        "capturedAt": "1782985557475"
+      },
+      "status": "different",
+      "baselineSha256": "a2d87cada8a1e6a6d1a742f6671f0aec5839e7f8b202159dd2709f58c00c3ccc",
+      "currentSha256": "1dff84f1d45dec293f149f0c18e380f06b686b50f15fe9f03cd8f7da9d8d5415",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-header.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 88,
+        "currentWidth": 342,
+        "currentHeight": 88,
+        "comparisonWidth": 342,
+        "comparisonHeight": 88,
+        "rgbSimilarity": 0.923677043916982,
+        "pixelPerfectSimilarity": 0.8766281233386497,
+        "pixelMismatchRatio": 0.1233718766613503,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.selection-popover.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.selection-popover.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.selection-popover.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.selection-popover.states",
+        "image": "visual-testing-results/react/components.ui.selection-popover.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.selection-popover.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 252
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 252
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:25.595Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.selection-popover.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.selection-popover.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 252,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 252
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 241,
+            "dominantRatio": 0.87887543
+          }
+        },
+        "capturedAt": "1782991039907"
+      },
+      "status": "different",
+      "baselineSha256": "859890ec20799d1271cb29392105596019b08cdc7942e7b9aad82db41c375e32",
+      "currentSha256": "d08f9c7ce8b4144b1713503c9f4ff814df200cb6f0e872b2c2351836320cb42e",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.selection-popover.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 252,
+        "currentWidth": 342,
+        "currentHeight": 252,
+        "comparisonWidth": 342,
+        "comparisonHeight": 252,
+        "rgbSimilarity": 0.8650682170204014,
+        "pixelPerfectSimilarity": 0.7998004269934095,
+        "pixelMismatchRatio": 0.20019957300659053,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.menu-item.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.menu-item.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.menu-item.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.menu-item.states",
+        "image": "visual-testing-results/react/components.ui.menu-item.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.menu-item.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:26.837Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.menu-item.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.menu-item.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 154,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 233,
+            "dominantRatio": 0.9115972
+          }
+        },
+        "capturedAt": "1782991036268"
+      },
+      "status": "different",
+      "baselineSha256": "f83465d0a5f2c32764375be3c9a783159473e97b1683e21c2d4ca36cee6c7e79",
+      "currentSha256": "723935d1f0abe4ee5f881317323a5da4a71c9d98c8b3b806887cffd0a1c6d91c",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.menu-item.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 154,
+        "currentWidth": 342,
+        "currentHeight": 154,
+        "comparisonWidth": 342,
+        "comparisonHeight": 154,
+        "rgbSimilarity": 0.9249931126092117,
+        "pixelPerfectSimilarity": 0.8609212425001899,
+        "pixelMismatchRatio": 0.13907875749981014,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.select.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.select.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.select.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.select.states",
+        "image": "visual-testing-results/react/components.ui.select.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.select.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 194
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 194
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:28.035Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.select.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.select.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 194,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 194
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 254,
+            "dominantRatio": 0.7291101
+          }
+        },
+        "capturedAt": "1782991479317"
+      },
+      "status": "different",
+      "baselineSha256": "cd3017231ad8e953dff06a081aadc2ebbc04c89e34d00cda4ac823bcd7034aa8",
+      "currentSha256": "4ca4f6acfd4a030535de468a7bf2ca7b61aa49d664125ab00d1d5df9fa2e94fe",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.select.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 194,
+        "currentWidth": 342,
+        "currentHeight": 194,
+        "comparisonWidth": 342,
+        "comparisonHeight": 194,
+        "rgbSimilarity": 0.8722156220459136,
+        "pixelPerfectSimilarity": 0.7790739735937783,
+        "pixelMismatchRatio": 0.22092602640622172,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.surface-list-item.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.surface-list-item.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.surface-list-item.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.surface-list-item.states",
+        "image": "visual-testing-results/react/components.ui.surface-list-item.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.surface-list-item.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:29.254Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.surface-list-item.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.surface-list-item.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 150,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 150
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 324,
+            "dominantRatio": 0.63345027
+          }
+        },
+        "capturedAt": "1782985554479"
+      },
+      "status": "different",
+      "baselineSha256": "de510c1d4ff31708bf0c0d15cfac52c0748fccf78bc78962ff2c74446897fe70",
+      "currentSha256": "14bf50c24d9b85ce451a067e75d49569d422c5150916b8c40045a0141a182214",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.surface-list-item.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 150,
+        "currentWidth": 342,
+        "currentHeight": 150,
+        "comparisonWidth": 342,
+        "comparisonHeight": 150,
+        "rgbSimilarity": 0.7288462332301351,
+        "pixelPerfectSimilarity": 0.5434697855750488,
+        "pixelMismatchRatio": 0.45653021442495123,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.avatar-list-row.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.ui.avatar-list-row.states.png",
+      "currentImage": "visual-testing-results/android/components.ui.avatar-list-row.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.ui.avatar-list-row.states",
+        "image": "visual-testing-results/react/components.ui.avatar-list-row.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.ui.avatar-list-row.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 168
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 168
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:30.487Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.avatar-list-row.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.avatar-list-row.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 168,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 168
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 464,
+            "dominantRatio": 0.5951685
+          }
+        },
+        "capturedAt": "1782985543604"
+      },
+      "status": "different",
+      "baselineSha256": "b413b0d145ab3e879e8614767b18b6fd828352438d82a7b5cf12293b2593bc8f",
+      "currentSha256": "de92e989cfc7be98c534d03425d84277b1acb05058907451d9006a912e40e760",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.avatar-list-row.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 168,
+        "currentWidth": 342,
+        "currentHeight": 168,
+        "comparisonWidth": 342,
+        "comparisonHeight": 168,
+        "rgbSimilarity": 0.7143766050929772,
+        "pixelPerfectSimilarity": 0.5810359231411864,
+        "pixelMismatchRatio": 0.41896407685881365,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.banner.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.banner.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.banner.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.banner.states",
+        "image": "visual-testing-results/react/library.raft-ui.banner.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.banner.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 176
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 176
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:31.728Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.banner.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.banner.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 176,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 176
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 1311,
+            "dominantRatio": 0.34868422
+          }
+        },
+        "capturedAt": "1783009517435"
+      },
+      "status": "different",
+      "baselineSha256": "9e532d709bd5353ff54efcf3a2c4347c9c862ac3561fb9c4b2f1231a98534a6b",
+      "currentSha256": "9545a935930afa2f51582cbc6001edf969dd94696aea272cd7baf9e1508d2927",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.banner.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 176,
+        "currentWidth": 342,
+        "currentHeight": 176,
+        "comparisonWidth": 342,
+        "comparisonHeight": 176,
+        "rgbSimilarity": 0.8259004301703232,
+        "pixelPerfectSimilarity": 0.20049175970228603,
+        "pixelMismatchRatio": 0.799508240297714,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.empty-state.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.empty-state.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.empty-state.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.empty-state.states",
+        "image": "visual-testing-results/react/library.raft-ui.empty-state.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.empty-state.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 248
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 248
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:32.961Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.empty-state.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.empty-state.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 248,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 248
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 434,
+            "dominantRatio": 0.8547326
+          }
+        },
+        "capturedAt": "1783010638124"
+      },
+      "status": "different",
+      "baselineSha256": "d9641cbb8d588c62b29637c29ab74648d23cd91d54abb512f2ab3bcd2b60f9af",
+      "currentSha256": "546097a6a5709ac568e78e1dbcc4375d3193a531a021c43dc21c229afa24ab54",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.empty-state.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 248,
+        "currentWidth": 342,
+        "currentHeight": 248,
+        "comparisonWidth": 342,
+        "comparisonHeight": 248,
+        "rgbSimilarity": 0.9235790694319603,
+        "pixelPerfectSimilarity": 0.787858422939068,
+        "pixelMismatchRatio": 0.21214157706093195,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.typography.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.typography.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.typography.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.typography.states",
+        "image": "visual-testing-results/react/library.raft-ui.typography.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.typography.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:34.145Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.typography.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.typography.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 178,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 513,
+            "dominantRatio": 0.88075763
+          }
+        },
+        "capturedAt": "1783010640512"
+      },
+      "status": "different",
+      "baselineSha256": "b6070a06e588b0a9f8a31f2201091fce3cc9db653b73265acbb36f35c24a5b3d",
+      "currentSha256": "ec164dbd8feb79a857dc2872ec2c4c7863c1f43f48c742ab0e98beeed6a13648",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.typography.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 178,
+        "currentWidth": 342,
+        "currentHeight": 178,
+        "comparisonWidth": 342,
+        "comparisonHeight": 178,
+        "rgbSimilarity": 0.9335743031908422,
+        "pixelPerfectSimilarity": 0.8109599842302385,
+        "pixelMismatchRatio": 0.18904001576976148,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.field-input.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.field-input.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.field-input.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.field-input.states",
+        "image": "visual-testing-results/react/library.raft-ui.field-input.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.field-input.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 236
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 236
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:35.378Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.field-input.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.field-input.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 236,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 236
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 1052,
+            "dominantRatio": 0.6993632
+          }
+        },
+        "capturedAt": "1783010642867"
+      },
+      "status": "different",
+      "baselineSha256": "3b36c3b72c201547a9f464eb1e2efa6b850bf1f92881f0f9e79f375328031212",
+      "currentSha256": "1971cc983061340b79cd238f3c930fb19bc8496894e4c916af6499e6d3b2d49d",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.field-input.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 236,
+        "currentWidth": 342,
+        "currentHeight": 236,
+        "comparisonWidth": 342,
+        "comparisonHeight": 236,
+        "rgbSimilarity": 0.8879066018319192,
+        "pixelPerfectSimilarity": 0.6185077807513133,
+        "pixelMismatchRatio": 0.3814922192486867,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.avatar.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.avatar.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.avatar.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.avatar.states",
+        "image": "visual-testing-results/react/library.raft-ui.avatar.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.avatar.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 116
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 116
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:10:36.577Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.avatar.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.avatar.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 116,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 116
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 560,
+            "dominantRatio": 0.6107834
+          }
+        },
+        "capturedAt": "1783010635587"
+      },
+      "status": "different",
+      "baselineSha256": "da47536f264e579ba0df3509cfa401b47a6bfa9fb32d53092c7804354e638b93",
+      "currentSha256": "96d646a29921326bbdd34f2e681170f61c41057a54391cc190b9b0716a3e22a5",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.avatar.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 116,
+        "currentWidth": 342,
+        "currentHeight": 116,
+        "comparisonWidth": 342,
+        "comparisonHeight": 116,
+        "rgbSimilarity": 0.829271430962646,
+        "pixelPerfectSimilarity": 0.5206190764266989,
+        "pixelMismatchRatio": 0.4793809235733011,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.button-badge.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.button-badge.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.button-badge.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.button-badge.states",
+        "image": "visual-testing-results/react/library.raft-ui.button-badge.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.button-badge.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 142
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 142
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:13:35.621Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.button-badge.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.button-badge.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 142,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 142
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 832,
+            "dominantRatio": 0.75102955
+          }
+        },
+        "capturedAt": "1783013425333"
+      },
+      "status": "different",
+      "baselineSha256": "9fcc1369f80a06b30ca96c66f29860d150321d91b8dbb93ecf373a52858afbd7",
+      "currentSha256": "b0ce6a761b51c140f9d23f56e3ed8cfe53eb53acc36022df513b3a167cf84896",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.button-badge.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 142,
+        "currentWidth": 342,
+        "currentHeight": 142,
+        "comparisonWidth": 342,
+        "comparisonHeight": 142,
+        "rgbSimilarity": 0.8318638352301584,
+        "pixelPerfectSimilarity": 0.655320813771518,
+        "pixelMismatchRatio": 0.34467918622848204,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.checkbox-status.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.checkbox-status.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.checkbox-status.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.checkbox-status.states",
+        "image": "visual-testing-results/react/library.raft-ui.checkbox-status.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.checkbox-status.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:13:36.886Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.checkbox-status.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.checkbox-status.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 122,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 122
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 325,
+            "dominantRatio": 0.9196386
+          }
+        },
+        "capturedAt": "1783013429574"
+      },
+      "status": "different",
+      "baselineSha256": "aebbc51d31a1f3d79c7ff831d50b677b5bac3186d3a9e26335fc546d5e2bf7be",
+      "currentSha256": "3559e397263aa7157d61b8fa275b7a34833bbe1cad824818fbe14a6e39172df0",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.checkbox-status.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 122,
+        "currentWidth": 342,
+        "currentHeight": 122,
+        "comparisonWidth": 342,
+        "comparisonHeight": 122,
+        "rgbSimilarity": 0.9450208748056792,
+        "pixelPerfectSimilarity": 0.8834004409931934,
+        "pixelMismatchRatio": 0.11659955900680663,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.textarea.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.textarea.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.textarea.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.textarea.states",
+        "image": "visual-testing-results/react/library.raft-ui.textarea.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.textarea.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:13:38.146Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.textarea.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.textarea.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 178,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 178
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 561,
+            "dominantRatio": 0.87865496
+          }
+        },
+        "capturedAt": "1783013432235"
+      },
+      "status": "different",
+      "baselineSha256": "8031e041c3f1f9b067ed453b6f8b11666a9fa55c91aeff682c9945bbadd40349",
+      "currentSha256": "f26ee807b042a52dc8f29c11cf18e8d1a5737212c85e055cac84f191297dc124",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.textarea.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 178,
+        "currentWidth": 342,
+        "currentHeight": 178,
+        "comparisonWidth": 342,
+        "comparisonHeight": 178,
+        "rgbSimilarity": 0.898755168011093,
+        "pixelPerfectSimilarity": 0.4336027334253236,
+        "pixelMismatchRatio": 0.5663972665746764,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.tabs.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.tabs.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.tabs.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.tabs.states",
+        "image": "visual-testing-results/react/library.raft-ui.tabs.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.tabs.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 144
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 144
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:13:39.369Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.tabs.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.tabs.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 144,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 144
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 316,
+            "dominantRatio": 0.8474659
+          }
+        },
+        "capturedAt": "1783013435446"
+      },
+      "status": "different",
+      "baselineSha256": "8bf6eee9a6e9b8186beba31abb9bf51c1f2809b22eac3e5331c0f292effc04d9",
+      "currentSha256": "3fdf4c5287a094140710f9b358c7782af61722035ee367b44cb9369d574691d1",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.tabs.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 144,
+        "currentWidth": 342,
+        "currentHeight": 144,
+        "comparisonWidth": 342,
+        "comparisonHeight": 144,
+        "rgbSimilarity": 0.9072363377883105,
+        "pixelPerfectSimilarity": 0.8416179337231969,
+        "pixelMismatchRatio": 0.15838206627680307,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.segmented-control.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.segmented-control.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.segmented-control.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.segmented-control.states",
+        "image": "visual-testing-results/react/library.raft-ui.segmented-control.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.segmented-control.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:53:46.723Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.segmented-control.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.segmented-control.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 96,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 96
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 291,
+            "dominantRatio": 0.8646442
+          }
+        },
+        "capturedAt": "1783014907113"
+      },
+      "status": "different",
+      "baselineSha256": "1d7919b73abefaa8c6405513901cbe05ebe2ee9f48bbebfeaa002337f3b1746a",
+      "currentSha256": "ffd8259ab276738ee9225fbaaa02921ff47b5fef0e5626fa823a9ce41321bea8",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.segmented-control.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 96,
+        "currentWidth": 342,
+        "currentHeight": 96,
+        "comparisonWidth": 342,
+        "comparisonHeight": 96,
+        "rgbSimilarity": 0.9317146749863042,
+        "pixelPerfectSimilarity": 0.8803910818713451,
+        "pixelMismatchRatio": 0.11960891812865493,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.label-radio.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.label-radio.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.label-radio.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.label-radio.states",
+        "image": "visual-testing-results/react/library.raft-ui.label-radio.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.label-radio.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:53:47.903Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.label-radio.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.label-radio.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 154,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 154
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 327,
+            "dominantRatio": 0.9379509
+          }
+        },
+        "capturedAt": "1783014903904"
+      },
+      "status": "different",
+      "baselineSha256": "47aed179cd4866b60a13af9135308b4820f3f73df8a17574a003605d3a7d9a1f",
+      "currentSha256": "560918e73a6b4f584b432f052b48ace8c4db15a615d9866713cf206d4795e418",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.label-radio.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 154,
+        "currentWidth": 342,
+        "currentHeight": 154,
+        "comparisonWidth": 342,
+        "comparisonHeight": 154,
+        "rgbSimilarity": 0.9513526835508258,
+        "pixelPerfectSimilarity": 0.8950786056049214,
+        "pixelMismatchRatio": 0.10492139439507864,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.select.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.select.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.select.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.select.states",
+        "image": "visual-testing-results/react/library.raft-ui.select.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.select.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 148
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 148
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T17:53:49.112Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.select.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.select.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 148,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 148
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 309,
+            "dominantRatio": 0.62717324
+          }
+        },
+        "capturedAt": "1783014901225"
+      },
+      "status": "different",
+      "baselineSha256": "7c48395a045a273ad5dba2d71e145098a3d629022cce2749a31f4cec20b8cca7",
+      "currentSha256": "a8e1101664a025bb03c976e6194b494e7196e6320f942b81f0fa5f77eba3cd09",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.select.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 148,
+        "currentWidth": 342,
+        "currentHeight": 148,
+        "comparisonWidth": 342,
+        "comparisonHeight": 148,
+        "rgbSimilarity": 0.846913115385716,
+        "pixelPerfectSimilarity": 0.5644065117749328,
+        "pixelMismatchRatio": 0.43559348822506716,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.menu-surfaces.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.menu-surfaces.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.menu-surfaces.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.menu-surfaces.states",
+        "image": "visual-testing-results/react/library.raft-ui.menu-surfaces.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.menu-surfaces.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 210
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 210
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:13:35.797Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.menu-surfaces.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.menu-surfaces.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 210,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 210
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 557,
+            "dominantRatio": 0.72663605
+          }
+        },
+        "capturedAt": "1783016100265"
+      },
+      "status": "different",
+      "baselineSha256": "5a3358278083e61677a547065d971bf0c425af399d482e5b7bb957bebedf7d51",
+      "currentSha256": "0c59110d8dd7c89f1d455dddf04866e14deee28b07dcd87d9211a9c069f03b95",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.menu-surfaces.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 210,
+        "currentWidth": 342,
+        "currentHeight": 210,
+        "comparisonWidth": 342,
+        "comparisonHeight": 210,
+        "rgbSimilarity": 0.8856953385642623,
+        "pixelPerfectSimilarity": 0.660609857978279,
+        "pixelMismatchRatio": 0.339390142021721,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.popover-surface.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.popover-surface.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.popover-surface.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.popover-surface.states",
+        "image": "visual-testing-results/react/library.raft-ui.popover-surface.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.popover-surface.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 174
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 174
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:13:36.986Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.popover-surface.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.popover-surface.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 174,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 174
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 246,
+            "dominantRatio": 0.88836795
+          }
+        },
+        "capturedAt": "1783016094786"
+      },
+      "status": "different",
+      "baselineSha256": "7425f59bddc6740b14383207ccd6f2f6dac36ad68917f5f7556d386503e68b95",
+      "currentSha256": "18022f79ba80defa0a14b3c9b438ca49568ee044281222a493ab2d629a30cc0f",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.popover-surface.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 174,
+        "currentWidth": 342,
+        "currentHeight": 174,
+        "comparisonWidth": 342,
+        "comparisonHeight": 174,
+        "rgbSimilarity": 0.8938429105593975,
+        "pixelPerfectSimilarity": 0.8244437722659138,
+        "pixelMismatchRatio": 0.1755562277340862,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.combobox-surface.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.combobox-surface.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.combobox-surface.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.combobox-surface.states",
+        "image": "visual-testing-results/react/library.raft-ui.combobox-surface.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.combobox-surface.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 258
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 258
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:13:38.188Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.combobox-surface.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.combobox-surface.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 258,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 258
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 652,
+            "dominantRatio": 0.627873
+          }
+        },
+        "capturedAt": "1783016091958"
+      },
+      "status": "different",
+      "baselineSha256": "24b5bde00c419404969dbecda238f868c09df730027d463edb85e36d38a632fa",
+      "currentSha256": "0c44fe7d399b89f9fdcac934d194935292e6978161924f2b802f6c81a0a5f3bc",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.combobox-surface.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 258,
+        "currentWidth": 342,
+        "currentHeight": 258,
+        "comparisonWidth": 342,
+        "comparisonHeight": 258,
+        "rgbSimilarity": 0.8595852122071541,
+        "pixelPerfectSimilarity": 0.5447889750215331,
+        "pixelMismatchRatio": 0.4552110249784669,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.notification-center.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.notification-center.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.notification-center.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.notification-center.states",
+        "image": "visual-testing-results/react/library.raft-ui.notification-center.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.notification-center.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 294
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 294
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:13:39.389Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.notification-center.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.notification-center.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 294,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 294
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 680,
+            "dominantRatio": 0.76321757
+          }
+        },
+        "capturedAt": "1783016097466"
+      },
+      "status": "different",
+      "baselineSha256": "fb8b9c55caa8712425ca042447d941f854906f9837df3b96112a38d7a2b0df63",
+      "currentSha256": "6eb3f043e86b6b78f1660a6c9a4c5cab014ff09d8ef2dbc1e941c5c3f9b9fc44",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.notification-center.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 294,
+        "currentWidth": 342,
+        "currentHeight": 294,
+        "comparisonWidth": 342,
+        "comparisonHeight": 294,
+        "rgbSimilarity": 0.8608349122625031,
+        "pixelPerfectSimilarity": 0.7588514938138998,
+        "pixelMismatchRatio": 0.24114850618610018,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.wip-toggle-group.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.wip-toggle-group.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.wip-toggle-group.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.wip-toggle-group.states",
+        "image": "visual-testing-results/react/library.raft-ui.wip-toggle-group.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.wip-toggle-group.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:32:56.380Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.wip-toggle-group.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.wip-toggle-group.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 112,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 112
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 286,
+            "dominantRatio": 0.896251
+          }
+        },
+        "capturedAt": "1783017272229"
+      },
+      "status": "different",
+      "baselineSha256": "7abd41f5e4f2dd20ba9ee0afbe6d791c989232f71fbbbf3724c004023b787862",
+      "currentSha256": "df686852dd766e5235490c4d4ac82ffb5801ada4297eb6bc10513bd3b5c8115e",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.wip-toggle-group.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 112,
+        "currentWidth": 342,
+        "currentHeight": 112,
+        "comparisonWidth": 342,
+        "comparisonHeight": 112,
+        "rgbSimilarity": 0.918138039816315,
+        "pixelPerfectSimilarity": 0.8762270258980785,
+        "pixelMismatchRatio": 0.12377297410192145,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.wip-list-panels.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.wip-list-panels.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.wip-list-panels.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.wip-list-panels.states",
+        "image": "visual-testing-results/react/library.raft-ui.wip-list-panels.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.wip-list-panels.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 388
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 388
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:32:57.573Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.wip-list-panels.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.wip-list-panels.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 388,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 388
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 828,
+            "dominantRatio": 0.79595464
+          }
+        },
+        "capturedAt": "1783017277806"
+      },
+      "status": "different",
+      "baselineSha256": "46f52458ace0767c19480db7b3e3287781499f47516dec2c0076ddb29b095a3b",
+      "currentSha256": "cb11ddb80ea60edd2fac117c5c64444a1873adaf88547f9a9471addb7e4b3832",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.wip-list-panels.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 388,
+        "currentWidth": 342,
+        "currentHeight": 388,
+        "comparisonWidth": 342,
+        "comparisonHeight": 388,
+        "rgbSimilarity": 0.850851442443874,
+        "pixelPerfectSimilarity": 0.4366974136371857,
+        "pixelMismatchRatio": 0.5633025863628143,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.wip-message-cards.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.wip-message-cards.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.wip-message-cards.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.wip-message-cards.states",
+        "image": "visual-testing-results/react/library.raft-ui.wip-message-cards.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.wip-message-cards.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 250
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 250
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:32:58.788Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.wip-message-cards.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.wip-message-cards.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 250,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 250
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 302,
+            "dominantRatio": 0.87130994
+          }
+        },
+        "capturedAt": "1783017274966"
+      },
+      "status": "different",
+      "baselineSha256": "16a247ebd6e468a21b0e2eb9026a84f8cf1cb7b98af57b976451b2afa44ecacc",
+      "currentSha256": "d19d3ebefb723e842bad7e6657b54ae1c4e42c31c60ba8ac948e2d98bfc34a67",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.wip-message-cards.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 250,
+        "currentWidth": 342,
+        "currentHeight": 250,
+        "comparisonWidth": 342,
+        "comparisonHeight": 250,
+        "rgbSimilarity": 0.9087183426976974,
+        "pixelPerfectSimilarity": 0.7938947368421052,
+        "pixelMismatchRatio": 0.2061052631578948,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.wip-overlay-shells.states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.wip-overlay-shells.states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.wip-overlay-shells.states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.wip-overlay-shells.states",
+        "image": "visual-testing-results/react/library.raft-ui.wip-overlay-shells.states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.wip-overlay-shells.states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 284
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 284
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T18:32:59.954Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.wip-overlay-shells.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.wip-overlay-shells.states.png",
+        "viewport": {
+          "width": 342,
+          "height": 284,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 284
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 435,
+            "dominantRatio": 0.7108558
+          }
+        },
+        "capturedAt": "1783017280428"
+      },
+      "status": "different",
+      "baselineSha256": "2805041b8f425d0d951ee634ead5c00a7027d0378b667ca9cd252e8092c26ce0",
+      "currentSha256": "da2339f4515c5da0af1a042fedc8288c9bdf9e5cba3c25ed33971be3e99820a7",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.wip-overlay-shells.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 284,
+        "currentWidth": 342,
+        "currentHeight": 284,
+        "comparisonWidth": 342,
+        "comparisonHeight": 284,
+        "rgbSimilarity": 0.8780118600991733,
+        "pixelPerfectSimilarity": 0.8032699118688741,
+        "pixelMismatchRatio": 0.1967300881311259,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
     {
       "id": "components.auth.register.inputs",
       "surface": "auth",
@@ -46,7 +4046,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:12.327Z"
+        "capturedAt": "2026-07-02T17:10:37.829Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -145,7 +4145,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:13.481Z"
+        "capturedAt": "2026-07-02T17:10:39.098Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -244,7 +4244,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:14.452Z"
+        "capturedAt": "2026-07-02T17:10:40.328Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -343,7 +4343,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:15.528Z"
+        "capturedAt": "2026-07-02T17:10:41.578Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -442,7 +4442,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:17.353Z"
+        "capturedAt": "2026-07-02T17:10:43.027Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -541,7 +4541,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:18.632Z"
+        "capturedAt": "2026-07-02T17:10:44.487Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -640,7 +4640,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:19.948Z"
+        "capturedAt": "2026-07-02T17:10:45.913Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -739,7 +4739,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:26.288Z"
+        "capturedAt": "2026-07-02T17:10:52.419Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -838,7 +4838,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:32.770Z"
+        "capturedAt": "2026-07-02T17:10:58.878Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -937,7 +4937,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:33.915Z"
+        "capturedAt": "2026-07-02T17:11:00.130Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1036,7 +5036,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:35.347Z"
+        "capturedAt": "2026-07-02T17:11:01.411Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -1084,7 +5084,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:36.515Z"
+        "capturedAt": "2026-07-02T17:11:02.653Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1120,7 +5120,7 @@
         "capturedAt": "1782925570070"
       },
       "status": "basic-pass",
-      "baselineSha256": "7df8e5fec2cde21e293bed6bb9711df3ccbc7e63df6e30f88ee671b2714b021b",
+      "baselineSha256": "811258475c4e99655f45e94f2cd4f4761fbc21417c55865418928c400904c4f2",
       "currentSha256": "499bf0334a6419c59166754c15ea5de1b7d11b1688cdcfc76e8dfb8b5d36e9c1",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png",
@@ -1131,7 +5131,7 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.9211233387104693,
+        "rgbSimilarity": 0.9211226437348647,
         "pixelPerfectSimilarity": 0.9679244136590108,
         "pixelMismatchRatio": 0.03207558634098917,
         "compositor": "sharp",
@@ -1284,7 +5284,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:39.723Z"
+        "capturedAt": "2026-07-02T17:11:10.671Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1320,7 +5320,7 @@
         "capturedAt": "1782925572537"
       },
       "status": "different",
-      "baselineSha256": "1d4b281c81ecae4a75a7057d288b07f32b4fcd031216e11218209156a119959c",
+      "baselineSha256": "a968e7e0548505d9b4baeaf57dc2ddcc38b9102d544772ad44ab8a1dd4a7bf8f",
       "currentSha256": "1f5263f7e5b3dc3ea51bc78c254a84568fda5f09d93876383e3b7477a5df99dd",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png",
@@ -1331,7 +5331,7 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.9327632190316885,
+        "rgbSimilarity": 0.9327713879735067,
         "pixelPerfectSimilarity": 0.9032689269656095,
         "pixelMismatchRatio": 0.09673107303439055,
         "compositor": "sharp",
@@ -1383,7 +5383,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:40.750Z"
+        "capturedAt": "2026-07-02T17:11:11.954Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1419,7 +5419,7 @@
         "capturedAt": "1782925526479"
       },
       "status": "different",
-      "baselineSha256": "48868b2221ebf62345e57863bd1a6d32097bb8b7396bd307563219d60b05c30a",
+      "baselineSha256": "901942bdaed5d85dbcc61f673449a35ce8030d3bfba47c2006d6a0329cda8ad9",
       "currentSha256": "7c3e233538aefd9c72dd386752e8918946fe2505206b74407aebc5379b43b24d",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png",
@@ -1430,7 +5430,7 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.9292163772788249,
+        "rgbSimilarity": 0.9292214803854055,
         "pixelPerfectSimilarity": 0.8943371004982379,
         "pixelMismatchRatio": 0.10566289950176211,
         "compositor": "sharp",
@@ -1482,7 +5482,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:42.314Z"
+        "capturedAt": "2026-07-02T17:11:13.153Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1581,7 +5581,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:43.616Z"
+        "capturedAt": "2026-07-02T17:11:14.547Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1681,7 +5681,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:44.867Z"
+        "capturedAt": "2026-07-02T17:11:15.782Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1780,7 +5780,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:46.994Z"
+        "capturedAt": "2026-07-02T17:11:17.949Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1816,7 +5816,7 @@
         "capturedAt": "1782925540382"
       },
       "status": "different",
-      "baselineSha256": "65242853fa5d4b26ddf468b88e56b6d9bc3400300ce489963995c30abf05ee4d",
+      "baselineSha256": "e39fc7ed3a53caf7c9c50adaf64cdb17cf188e73e2ace6527710beefc6d773d0",
       "currentSha256": "0609f7d4a6465429fbdf3bbd6f833818a1a2c3f6d699d2e9c24fcf731c4705d9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png",
@@ -1827,9 +5827,9 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.8977758755302141,
-        "pixelPerfectSimilarity": 0.7406701907886742,
-        "pixelMismatchRatio": 0.25932980921132576,
+        "rgbSimilarity": 0.8977847831318174,
+        "pixelPerfectSimilarity": 0.740730951512942,
+        "pixelMismatchRatio": 0.259269048487058,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -1879,7 +5879,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:49.246Z"
+        "capturedAt": "2026-07-02T17:11:20.351Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1915,7 +5915,7 @@
         "capturedAt": "1782925502144"
       },
       "status": "different",
-      "baselineSha256": "96f599be906d64cc4300d9ae9b65b7e560ae4e264f0da6d1be0543fb91d36a95",
+      "baselineSha256": "6b09982f8f43d9cef6a080439f984dd588979e43b3c860f7a3f7bad9cfacbecf",
       "currentSha256": "20c80b193ca868c71281fbfe031bfb7e1e97b82f9491a802fb1a1d76c6fb51b0",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png",
@@ -1926,9 +5926,9 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.8846751525172996,
-        "pixelPerfectSimilarity": 0.3958166241341597,
-        "pixelMismatchRatio": 0.6041833758658404,
+        "rgbSimilarity": 0.8846818679672823,
+        "pixelPerfectSimilarity": 0.3958105480617329,
+        "pixelMismatchRatio": 0.6041894519382671,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -1978,7 +5978,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:51.256Z"
+        "capturedAt": "2026-07-02T17:11:22.438Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2077,7 +6077,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:53.126Z"
+        "capturedAt": "2026-07-02T17:11:24.549Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2113,7 +6113,7 @@
         "capturedAt": "1782925532026"
       },
       "status": "different",
-      "baselineSha256": "59901f1faf5e8446cbd45c0f7770e0a8c32e82cdd4d6efb14b46eaf3b1dedf39",
+      "baselineSha256": "4a8ffd81b879da6d556fd23c5bd0fdeeb3b2002aaf6819602d92b2cbf789eadc",
       "currentSha256": "ab712f3cacacdeddc7cf9abc6f757d5654cccdab57fd7c2d132fa0999530c0ca",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png",
@@ -2124,9 +6124,9 @@
         "currentHeight": 620,
         "comparisonWidth": 342,
         "comparisonHeight": 620,
-        "rgbSimilarity": 0.8860772847150553,
-        "pixelPerfectSimilarity": 0.7795132993774759,
-        "pixelMismatchRatio": 0.22048670062252407,
+        "rgbSimilarity": 0.8860904342872781,
+        "pixelPerfectSimilarity": 0.7796406338426712,
+        "pixelMismatchRatio": 0.22035936615732876,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -2176,7 +6176,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:54.152Z"
+        "capturedAt": "2026-07-02T17:11:25.886Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2275,7 +6275,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:55.220Z"
+        "capturedAt": "2026-07-02T17:11:27.107Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2374,7 +6374,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:56.338Z"
+        "capturedAt": "2026-07-02T17:11:28.361Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2473,7 +6473,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:57.555Z"
+        "capturedAt": "2026-07-02T17:11:29.769Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2572,7 +6572,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:48:59.005Z"
+        "capturedAt": "2026-07-02T17:11:31.035Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2608,7 +6608,7 @@
         "capturedAt": "1782925709345"
       },
       "status": "different",
-      "baselineSha256": "b06a0282d84545835aba4339a90d862ae493259489bede669422aaf4a6e89147",
+      "baselineSha256": "8301608b969607f176e74d186431e4529733bfce711150e9966e1e515c604bfa",
       "currentSha256": "63fb196a99eee05bcfea42c8a3946b7d518b5b0d42b90dee22b64662d3833823",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png",
@@ -2619,9 +6619,9 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.8822007256339405,
-        "pixelPerfectSimilarity": 0.7689482318629238,
-        "pixelMismatchRatio": 0.23105176813707617,
+        "rgbSimilarity": 0.8843677866496186,
+        "pixelPerfectSimilarity": 0.7741007412808361,
+        "pixelMismatchRatio": 0.22589925871916394,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -2671,7 +6671,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:00.951Z"
+        "capturedAt": "2026-07-02T17:11:32.575Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2707,7 +6707,7 @@
         "capturedAt": "1782925562892"
       },
       "status": "different",
-      "baselineSha256": "c6a18662c47c99056aa41ad6d96d10c7cf7a0dec1780b002f5553ff049cc5da7",
+      "baselineSha256": "30becc20e167b8ca1d46563626a02dada860ff0eb69e5aaaea703c1d0ca324d7",
       "currentSha256": "9e23423229cd2076d35eccab14375baad4a4bc36acee7e7ff045e4897be5d30c",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.panel.side-by-side.png",
@@ -2718,7 +6718,7 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.7488132477450077,
+        "rgbSimilarity": 0.7488126758793676,
         "pixelPerfectSimilarity": 0.21966824644549762,
         "pixelMismatchRatio": 0.7803317535545023,
         "compositor": "sharp",
@@ -2770,7 +6770,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:01.926Z"
+        "capturedAt": "2026-07-02T17:11:33.774Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2869,7 +6869,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:03.335Z"
+        "capturedAt": "2026-07-02T17:11:35.340Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2968,7 +6968,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:05.263Z"
+        "capturedAt": "2026-07-02T17:11:36.842Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3067,7 +7067,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:06.520Z"
+        "capturedAt": "2026-07-02T17:11:38.092Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3166,7 +7166,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:08.287Z"
+        "capturedAt": "2026-07-02T17:11:39.334Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3265,7 +7265,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:09.552Z"
+        "capturedAt": "2026-07-02T17:11:40.559Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3364,7 +7364,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:10.713Z"
+        "capturedAt": "2026-07-02T17:11:41.808Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3463,7 +7463,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:12.408Z"
+        "capturedAt": "2026-07-02T17:11:43.015Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3562,7 +7562,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:13.603Z"
+        "capturedAt": "2026-07-02T17:11:44.508Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3661,7 +7661,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:14.912Z"
+        "capturedAt": "2026-07-02T17:11:45.741Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3760,7 +7760,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:16.912Z"
+        "capturedAt": "2026-07-02T17:11:46.992Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3859,7 +7859,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:18.402Z"
+        "capturedAt": "2026-07-02T17:11:48.268Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3958,7 +7958,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:19.527Z"
+        "capturedAt": "2026-07-02T17:11:49.508Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4057,7 +8057,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:20.854Z"
+        "capturedAt": "2026-07-02T17:11:50.817Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4156,7 +8156,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:22.437Z"
+        "capturedAt": "2026-07-02T17:11:52.058Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4354,7 +8354,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:24.912Z"
+        "capturedAt": "2026-07-02T17:11:59.726Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4453,7 +8453,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:26.267Z"
+        "capturedAt": "2026-07-02T17:12:01.001Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4489,7 +8489,7 @@
         "capturedAt": "1782925698366"
       },
       "status": "different",
-      "baselineSha256": "94ae25ab295855fc7aea843bacbb574fe498ae6e257c82ab2ab0056c0ce6c44d",
+      "baselineSha256": "e9df4b45cb4a3f34027b012e6c4001bdc7071d525e8db43104b601fd6b971948",
       "currentSha256": "23ee7a117e4f441edbae48da4524974aa9e522901e2d318edb3104de781bdcde",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png",
@@ -4500,7 +8500,7 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.9219792110954632,
+        "rgbSimilarity": 0.921981431046108,
         "pixelPerfectSimilarity": 0.7993468222141208,
         "pixelMismatchRatio": 0.2006531777858792,
         "compositor": "sharp",
@@ -4552,7 +8552,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:27.284Z"
+        "capturedAt": "2026-07-02T17:12:02.274Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4651,7 +8651,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:28.511Z"
+        "capturedAt": "2026-07-02T17:12:03.551Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4750,7 +8750,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:29.215Z"
+        "capturedAt": "2026-07-02T17:12:04.465Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4948,7 +8948,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:32.075Z"
+        "capturedAt": "2026-07-02T17:12:12.125Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5047,7 +9047,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:33.231Z"
+        "capturedAt": "2026-07-02T17:12:13.021Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5146,7 +9146,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:33.981Z"
+        "capturedAt": "2026-07-02T17:12:13.930Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5245,7 +9245,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:34.782Z"
+        "capturedAt": "2026-07-02T17:12:14.822Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5344,7 +9344,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:37.447Z"
+        "capturedAt": "2026-07-02T17:12:15.714Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5443,7 +9443,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:39.031Z"
+        "capturedAt": "2026-07-02T17:12:16.647Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5542,7 +9542,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:41.589Z"
+        "capturedAt": "2026-07-02T17:12:18.076Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5578,7 +9578,7 @@
         "capturedAt": "1782925640037"
       },
       "status": "different",
-      "baselineSha256": "c6fb773820964e6df508e5b09b45b68caeb26a28edbf36b2fe7205bafc71a9ee",
+      "baselineSha256": "20d31148a1d041c2eb07c93138920a16e30be51af73906c74ae7cc199ac3a906",
       "currentSha256": "7336698451336ad1681f84d87886628ae9324a54c2e3d8ea0ee1a03ec0dd24ef",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png",
@@ -5589,9 +9589,9 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.8719132082694858,
-        "pixelPerfectSimilarity": 0.03310851865354235,
-        "pixelMismatchRatio": 0.9668914813464576,
+        "rgbSimilarity": 0.8739966101075562,
+        "pixelPerfectSimilarity": 0.03316927937781018,
+        "pixelMismatchRatio": 0.9668307206221898,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5641,7 +9641,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:43.382Z"
+        "capturedAt": "2026-07-02T17:12:19.517Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5677,7 +9677,7 @@
         "capturedAt": "1782925683084"
       },
       "status": "different",
-      "baselineSha256": "b6a5e86fa728b213d5e93f965ab912fd0de58800029752865fffa121715bb383",
+      "baselineSha256": "3f581b0746c43a1c50152721a6baa6424518c0f4b9f2a6423b64d80d69cefcd4",
       "currentSha256": "b3de7bdad6c1b1944be82063293138894f87bd04df834057778e497c5211b8dd",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png",
@@ -5688,9 +9688,9 @@
         "currentHeight": 844,
         "comparisonWidth": 390,
         "comparisonHeight": 844,
-        "rgbSimilarity": 0.8349681701173498,
-        "pixelPerfectSimilarity": 0.6936596184226516,
-        "pixelMismatchRatio": 0.30634038157734844,
+        "rgbSimilarity": 0.8368400730082188,
+        "pixelPerfectSimilarity": 0.6947867298578199,
+        "pixelMismatchRatio": 0.30521327014218014,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5938,7 +9938,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:48.669Z"
+        "capturedAt": "2026-07-02T17:12:34.392Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6037,7 +10037,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-01T16:49:50.139Z"
+        "capturedAt": "2026-07-02T17:12:35.654Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6073,7 +10073,7 @@
         "capturedAt": "1782925509407"
       },
       "status": "different",
-      "baselineSha256": "d872a3b20d62f4e434cbdec7bfa9137c54da86f030b33e95fa4034b0015f9b64",
+      "baselineSha256": "3b240655e8aa4dfb4fc48092adcda522519533edd9984f0a80a5b482a201c15a",
       "currentSha256": "99c2caed50efcae6a6115e7fa637f3cdc694d0c88bf30d9b10a4803b5512dea9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png",
@@ -6084,7 +10084,7 @@
         "currentHeight": 394,
         "comparisonWidth": 342,
         "comparisonHeight": 394,
-        "rgbSimilarity": 0.8942926723929692,
+        "rgbSimilarity": 0.8942911008319376,
         "pixelPerfectSimilarity": 0.7510686615014694,
         "pixelMismatchRatio": 0.24893133849853055,
         "compositor": "sharp",
@@ -6095,11 +10095,11 @@
     }
   ],
   "summary": {
-    "total": 62,
+    "total": 102,
     "same": 0,
     "pass": 0,
     "basic-pass": 3,
-    "different": 58,
+    "different": 98,
     "missing": 1
   }
 }
