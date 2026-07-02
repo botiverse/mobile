@@ -8307,7 +8307,6 @@ private fun ThreadMessagesList(
         if (!listState.isThreadItemVisible(targetIndex)) {
             listState.scrollToItem(targetIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
-            return@LaunchedEffect
         }
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false

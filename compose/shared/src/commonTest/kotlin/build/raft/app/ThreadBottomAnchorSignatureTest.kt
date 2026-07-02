@@ -213,6 +213,19 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedThreadListItemIndex_canTargetOriginMessage() {
+        val slice =
+            payload(
+                originStatus = "content",
+                originMessage = message("parent-message"),
+                messages = listOf(message("reply-1"), message("reply-2"))
+            ).timelineSlice()
+
+        assertEquals(0, slice.threadMessageListItemIndex("parent-message"))
+        assertEquals(2, slice.threadMessageListItemIndex("reply-1"))
+    }
+
+    @Test
     fun markdownPreparseSignature_ignoresMemberOnlyChanges() {
         val fullRendererBody = "```kotlin\nprintln(\"hi\")\n```"
         val a = payload(messages = listOf(message("m1", body = fullRendererBody)))
