@@ -59,6 +59,13 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             "bool" -> store.encode(key, json.optBoolean("value"))
             "bytes" -> store.encode(key, Base64.decode(json.optString("value"), Base64.DEFAULT))
         }
+        logAuthKeyOperation(
+            operation = "encode",
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            result = "success",
+            valueLength = json.optString("value").takeIf { json.optString("type") == "string" }?.length
+        )
         maybeUpdateAuthSessionContext(
             mmapID = json.optNullableString("mmapID"),
             key = key,
@@ -76,7 +83,8 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
         val json = params?.let(::JSONObject) ?: return ""
         val key = json.optString("key").takeIf { it.isNotBlank() } ?: return ""
         val store = mmkv(json.optNullableString("mmapID"))
-        return when (json.optString("type")) {
+        val result =
+            when (json.optString("type")) {
             "string" -> store.decodeString(key, json.optString("defaultValue", "")) ?: json.optString("defaultValue", "")
             "int" -> store.decodeInt(key, json.optInt("defaultValue", 0)).toString()
             "long" -> store.decodeLong(key, json.optLong("defaultValue", 0L)).toString()
@@ -86,18 +94,39 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             "bytes" -> store.decodeBytes(key)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
             else -> ""
         }
+        logAuthKeyOperation(
+            operation = "decode",
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            result = if (result.isEmpty()) "empty" else "value",
+            valueLength = result.length
+        )
+        return result
     }
 
     private fun containsKey(params: String?): String {
         val json = params?.let(::JSONObject) ?: return "false"
         val key = json.optString("key").takeIf { it.isNotBlank() } ?: return "false"
-        return mmkv(json.optNullableString("mmapID")).containsKey(key).toString()
+        val result = mmkv(json.optNullableString("mmapID")).containsKey(key)
+        logAuthKeyOperation(
+            operation = "contains",
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            result = result.toString()
+        )
+        return result.toString()
     }
 
     private fun removeValueForKey(params: String?): Any? {
         val json = params?.let(::JSONObject) ?: return null
         val key = json.optString("key").takeIf { it.isNotBlank() } ?: return null
         mmkv(json.optNullableString("mmapID")).removeValueForKey(key)
+        logAuthKeyOperation(
+            operation = "remove",
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            result = "success"
+        )
         maybeUpdateAuthSessionContext(
             mmapID = json.optNullableString("mmapID"),
             key = key,
@@ -160,6 +189,13 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
                 key = key,
                 encodedSession = entry.optString("value").takeIf { entry.optString("type", "string") == "string" }
             )
+            logAuthKeyOperation(
+                operation = "batchEncode",
+                mmapID = json.optNullableString("mmapID"),
+                key = key,
+                result = "success",
+                valueLength = entry.optString("value").takeIf { entry.optString("type", "string") == "string" }?.length
+            )
             maybeUpdateForegroundKeepAlive(
                 mmapID = json.optNullableString("mmapID"),
                 key = key,
@@ -167,6 +203,34 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             )
         }
         return null
+    }
+
+    private fun logAuthKeyOperation(
+        operation: String,
+        mmapID: String?,
+        key: String,
+        result: String,
+        valueLength: Int? = null
+    ) {
+        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        SlockAndroidBuglyDiagnostics.recordLog(
+            "info",
+            "SlockKuikly",
+            buildString {
+                append("shared_auth_session_native mmkv_auth_key operation=")
+                append(operation)
+                append(" result=")
+                append(result)
+                append(" mmapID=")
+                append(mmapID)
+                append(" key=")
+                append(key)
+                if (valueLength != null) {
+                    append(" valueLen=")
+                    append(valueLength)
+                }
+            }
+        )
     }
 
     private fun maybeUpdateAuthSessionContext(mmapID: String?, key: String, encodedSession: String?) {

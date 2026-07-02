@@ -246,7 +246,8 @@ class InMemorySlockAuthSessionStore(
 
 class KuiklyMMKVAuthSessionStore(
     private val store: SlockKeyValueStore,
-    private val sessionClearEvents: SlockAuthSessionClearEventSink? = null
+    private val sessionClearEvents: SlockAuthSessionClearEventSink? = null,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -257,7 +258,31 @@ class KuiklyMMKVAuthSessionStore(
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock {
-            store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+            val caller = authSessionDiagnosticsCaller()
+            val encoded = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+            if (encoded == null) {
+                diagnosticsLogger("auth_session_read result=null raw=null caller=$caller")
+                return@withLock null
+            }
+            val session =
+                encoded.decodeStoredSessionOrNull(
+                    onFailure = { type ->
+                        diagnosticsLogger(
+                            "auth_session_read result=null rawLen=${encoded.length} " +
+                                "decode=failure errorType=$type caller=$caller"
+                        )
+                    }
+                )
+            if (session == null) {
+                null
+            } else {
+                diagnosticsLogger(
+                    "auth_session_read result=success rawLen=${encoded.length} " +
+                        "selectedServer=${!session.selectedServerId.isNullOrBlank()} " +
+                        "servers=${session.servers.size} caller=$caller"
+                )
+                session
+            }
         }
 
     override suspend fun saveSession(session: StoredAuthSession) {
@@ -274,6 +299,10 @@ class KuiklyMMKVAuthSessionStore(
         if (changed) {
             changes.emit(fingerprint)
         }
+        diagnosticsLogger(
+            "auth_session_save result=success changed=$changed " +
+                "selectedServer=${!session.selectedServerId.isNullOrBlank()} servers=${session.servers.size}"
+        )
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
@@ -304,12 +333,25 @@ class KuiklyMMKVAuthSessionStore(
             mutex.withLock {
                 val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
                 when {
-                    current == null -> true
-                    current.authSessionClearFingerprint() == previousSessionFingerprint -> {
-                        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                    current == null -> {
+                        diagnosticsLogger(
+                            "auth_session_clear_notify reason=$reason current=null result=invalidate"
+                        )
                         true
                     }
-                    else -> false
+                    current.authSessionClearFingerprint() == previousSessionFingerprint -> {
+                        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                        diagnosticsLogger(
+                            "auth_session_clear_notify reason=$reason current=matched result=removed"
+                        )
+                        true
+                    }
+                    else -> {
+                        diagnosticsLogger(
+                            "auth_session_clear_notify reason=$reason current=changed result=ignored"
+                        )
+                        false
+                    }
                 }
             }
         if (shouldInvalidate) {
@@ -325,6 +367,9 @@ class KuiklyMMKVAuthSessionStore(
                 store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
                 current
             }
+        diagnosticsLogger(
+            "auth_session_clear reason=$reason notifyPeers=$notifyPeers hadSession=${previousSession != null}"
+        )
         invalidations.emit(Unit)
         if (notifyPeers && previousSession != null) {
             val previousSessionFingerprint = previousSession.authSessionClearFingerprint()
@@ -354,9 +399,11 @@ class KuiklyMMKVAuthSessionStore(
         }
     }
 
-    private fun String.decodeStoredSessionOrNull(): StoredAuthSession? =
+    private fun String.decodeStoredSessionOrNull(onFailure: (String) -> Unit = {}): StoredAuthSession? =
         runCatching {
             authSessionStoreJson.decodeFromString(StoredAuthSession.serializer(), this)
+        }.onFailure { throwable ->
+            onFailure(throwable.safeAuthSessionDiagnosticsType())
         }.getOrNull()
 
     private fun String.decodeRememberedServerSelectionOrNull(): StoredAuthServerSelection? =
@@ -364,6 +411,20 @@ class KuiklyMMKVAuthSessionStore(
             authSessionStoreJson.decodeFromString(StoredAuthServerSelection.serializer(), this)
         }.getOrNull()
 }
+
+private fun Throwable.safeAuthSessionDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
+
+private fun authSessionDiagnosticsCaller(): String =
+    Throwable().stackTrace
+        .firstOrNull { frame ->
+            val className = frame.className
+            !className.contains("AuthSessionStore") &&
+                !className.startsWith("kotlin.") &&
+                !className.startsWith("kotlinx.")
+        }
+        ?.let { frame -> "${frame.className.substringAfterLast('.')}.${frame.methodName}" }
+        ?: "unknown"
 
 private val authSessionStoreJson = Json {
     ignoreUnknownKeys = true

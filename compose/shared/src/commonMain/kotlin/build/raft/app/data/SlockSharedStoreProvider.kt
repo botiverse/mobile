@@ -213,7 +213,8 @@ internal class SlockSharedStoreProvider private constructor(
             val authStore =
                 KuiklyMMKVAuthSessionStore(
                     store = authKeyValueStore,
-                    sessionClearEvents = authSessionEvents
+                    sessionClearEvents = authSessionEvents,
+                    diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
                 )
             val sharedPreferenceStore =
                 RebindableKuiklyMMKVKeyValueStore(
