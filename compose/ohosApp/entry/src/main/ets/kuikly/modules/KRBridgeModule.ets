@@ -685,7 +685,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     SlockOhosDiagnostics.record("SlockDeveloper", `shared_socketio_transport_enabled=${enabled}`);
     return this.loadDeveloperCapability(
       enabled
-        ? "Shared Socket.IO flag enabled. Android reconnects use the shared Ktor pilot; OHOS keeps the native ArkTS host until its shared Kotlin host bridge is wired."
+        ? "Shared Socket.IO flag enabled. Android and iOS reconnects use the shared Ktor pilot; OHOS keeps the native ArkTS host until async KNOI event callbacks are wired."
         : "Shared Socket.IO flag disabled. OHOS keeps the native ArkTS realtime host."
     );
   }

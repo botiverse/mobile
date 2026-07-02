@@ -189,3 +189,14 @@ fun createSharedKtorSocketIoTransport(
         logger = logger,
         scope = scope
     )
+
+fun createSharedKtorSocketIoTransportForHost(
+    socketUrl: String,
+    headersProvider: () -> Map<String, String> = { emptyMap() },
+    logger: (String) -> Unit = {}
+): SharedKtorSocketIoTransport =
+    createSharedKtorSocketIoTransport(
+        socketUrl = socketUrl,
+        headersProvider = headersProvider,
+        logger = logger
+    )

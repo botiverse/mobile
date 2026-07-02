@@ -28,7 +28,7 @@ class SharedApiEnvironmentStore(
         return developerSnapshot(
             feedback =
                 if (enabled) {
-                    "Shared Socket.IO transport flag enabled. Android reconnects will use the shared Ktor pilot; iOS and OHOS keep native realtime hosts until their shared host bridge is wired."
+                    "Shared Socket.IO transport flag enabled. Android and iOS reconnects will use the shared Ktor pilot; OHOS keeps its native realtime host until async KNOI event callbacks are wired."
                 } else {
                     "Shared Socket.IO transport disabled. Realtime reconnects will use the platform transport."
                 }

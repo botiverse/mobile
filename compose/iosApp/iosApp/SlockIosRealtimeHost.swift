@@ -1,6 +1,7 @@
 import Foundation
 import SocketIO
 import UIKit
+import shared
 
 @objcMembers
 final class SlockIosRealtimeHost: NSObject {
@@ -17,11 +18,14 @@ final class SlockIosRealtimeHost: NSObject {
         let accessToken: String
         let socketUrl: String
         let lastSeq: Int64
+        let sharedTransportEnabled: Bool
     }
 
     private let queue = DispatchQueue(label: "build.raft.app.ios.realtime.host")
     private var manager: SocketManager?
     private var socket: SocketIOClient?
+    private var sharedTransport: SharedKtorSocketIoTransport?
+    private var sharedTransportSubscriptions: [RealtimeSubscription] = []
     private var connectParams: ConnectParams?
     private var state: State = .disconnected
     private var joinedChannels: Set<String> = []
@@ -55,6 +59,7 @@ final class SlockIosRealtimeHost: NSObject {
                 accessToken: stringValue(command["accessToken"]),
                 socketUrl: stringValue(command["socketUrl"]),
                 lastSeq: int64Value(command["lastSeq"]),
+                sharedTransportEnabled: boolValue(command["sharedSocketIoTransportEnabled"]),
                 forceReconnect: boolValue(command["forceReconnect"])
             )
         case "disconnect":
@@ -77,6 +82,7 @@ final class SlockIosRealtimeHost: NSObject {
         accessToken: String,
         socketUrl: String,
         lastSeq: Int64,
+        sharedTransportEnabled: Bool,
         forceReconnect: Bool
     ) {
         let cleanServerId = serverId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,11 +98,13 @@ final class SlockIosRealtimeHost: NSObject {
                 serverId: cleanServerId,
                 accessToken: cleanAccessToken,
                 socketUrl: cleanSocketUrl.isEmpty ? "https://api.raft.build" : cleanSocketUrl,
-                lastSeq: lastSeq
+                lastSeq: lastSeq,
+                sharedTransportEnabled: sharedTransportEnabled
             )
             let sameSession =
                 self.connectParams?.serverId == next.serverId &&
-                self.connectParams?.accessToken == next.accessToken
+                self.connectParams?.accessToken == next.accessToken &&
+                self.connectParams?.sharedTransportEnabled == next.sharedTransportEnabled
             if sameSession && !forceReconnect && self.state != .disconnected {
                 self.log("connect_skip reason=same_session state=\(self.stateLabel)")
                 return
@@ -116,7 +124,32 @@ final class SlockIosRealtimeHost: NSObject {
         }
     }
 
+    func realtimeTransportPreferenceChanged(enabled: Bool) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard let current = self.connectParams else {
+                self.disconnectLocked(reason: "realtime_transport_changed", keepSession: false)
+                return
+            }
+            let next =
+                ConnectParams(
+                    serverId: current.serverId,
+                    accessToken: current.accessToken,
+                    socketUrl: current.socketUrl,
+                    lastSeq: current.lastSeq,
+                    sharedTransportEnabled: enabled
+                )
+            self.connectParams = next
+            self.authRefreshInFlight = false
+            self.openSocket(params: next)
+        }
+    }
+
     private func openSocket(params: ConnectParams) {
+        if params.sharedTransportEnabled {
+            openSharedSocket(params: params)
+            return
+        }
         guard let url = URL(string: params.socketUrl) else {
             log("connect_skip reason=invalid_url")
             return
@@ -144,11 +177,81 @@ final class SlockIosRealtimeHost: NSObject {
         self.manager = manager
         self.socket = socket
         installSocketHandlers(socket)
-        log("connect_start serverId=\(params.serverId)")
+        log("connect_start transport=swift_socketio serverId=\(params.serverId)")
         socket.connect(withPayload: [
             "token": params.accessToken,
             "serverId": params.serverId,
         ])
+    }
+
+    private func openSharedSocket(params: ConnectParams) {
+        disconnectLocked(reason: "reconnect", keepSession: true)
+        state = .connecting
+        let transport =
+            SharedKtorSocketIoTransportKt.createSharedKtorSocketIoTransportForHost(
+                socketUrl: params.socketUrl,
+                headersProvider: {
+                    [
+                        "Authorization": "Bearer \(params.accessToken)",
+                        "X-Server-Id": params.serverId,
+                    ]
+                },
+                logger: { [weak self] message in
+                    self?.log(message)
+                }
+            )
+        sharedTransport = transport
+        installSharedTransportHandlers(transport)
+        log("connect_start transport=shared_ktor serverId=\(params.serverId)")
+        transport.connect(auth: [
+            "token": params.accessToken,
+            "serverId": params.serverId,
+        ])
+    }
+
+    private func installSharedTransportHandlers(_ transport: SharedKtorSocketIoTransport) {
+        sharedTransportSubscriptions.append(
+            transport.on(eventName: GeneratedRealtimeContract.SocketEvent.connect) { [weak self] _ in
+                self?.queue.async {
+                    self?.state = .connected
+                    self?.log("shared_socketio_connected")
+                    self?.rejoinChannels(reason: "connect")
+                }
+            }
+        )
+        sharedTransportSubscriptions.append(
+            transport.on(eventName: GeneratedRealtimeContract.SocketEvent.disconnect) { [weak self] payload in
+                self?.queue.async {
+                    self?.state = .disconnected
+                    self?.log("shared_socketio_disconnected reason=\(payload.map { "\($0)" } ?? "")")
+                }
+            }
+        )
+        sharedTransportSubscriptions.append(
+            transport.on(eventName: GeneratedRealtimeContract.SocketEvent.connectError) { [weak self] payload in
+                self?.queue.async {
+                    self?.state = .disconnected
+                    self?.log("shared_socketio_connect_error \(payload.map { "\($0)" } ?? "")")
+                    self?.requestAuthRefresh(reason: "connect_error")
+                }
+            }
+        )
+        sharedTransportSubscriptions.append(
+            transport.on(eventName: GeneratedRealtimeContract.SocketEvent.roomsJoined) { [weak self] payload in
+                self?.queue.async {
+                    self?.handleSocketEvent(eventName: GeneratedRealtimeContract.SocketEvent.roomsJoined, data: payload.map { [$0] } ?? [])
+                }
+            }
+        )
+        for eventName in Self.serverWireEvents where eventName != GeneratedRealtimeContract.SocketEvent.roomsJoined {
+            sharedTransportSubscriptions.append(
+                transport.on(eventName: eventName) { [weak self] payload in
+                    self?.queue.async {
+                        self?.handleSocketEvent(eventName: eventName, data: payload.map { [$0] } ?? [])
+                    }
+                }
+            )
+        }
     }
 
     private func installSocketHandlers(_ socket: SocketIOClient) {
@@ -239,6 +342,10 @@ final class SlockIosRealtimeHost: NSObject {
     }
 
     private func emit(eventName: String, payload: [String: Any]) {
+        if let sharedTransport {
+            sharedTransport.emit(eventName: eventName, payload: payload)
+            return
+        }
         guard state == .connected, let socket else {
             log("emit_deferred eventName=\(eventName)")
             return
@@ -254,6 +361,11 @@ final class SlockIosRealtimeHost: NSObject {
     }
 
     private func disconnectLocked(reason: String, keepSession: Bool) {
+        sharedTransportSubscriptions.forEach { $0.close() }
+        sharedTransportSubscriptions.removeAll()
+        sharedTransport?.disconnect()
+        sharedTransport?.close()
+        sharedTransport = nil
         socket?.removeAllHandlers()
         socket?.disconnect()
         socket = nil
@@ -388,6 +500,10 @@ final class SlockIosRealtimeHost: NSObject {
         } else if let array = value as? [Any], JSONSerialization.isValidJSONObject(array) {
             jsonObject = array
         } else {
+            let text = "\(value)"
+            if text.hasPrefix("{") || text.hasPrefix("[") {
+                return text
+            }
             jsonObject = [:]
         }
         guard
