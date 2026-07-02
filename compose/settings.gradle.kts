@@ -132,8 +132,24 @@ dependencyResolutionManagement {
         }
     }
 
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesQuiver() {
+        maven {
+            name = "GitHubPackagesQuiver"
+            url = uri("https://maven.pkg.github.com/oranix-io/quiver")
+            content {
+                includeModuleByRegex("io\\.quiver", ".*")
+            }
+            credentials {
+                val (user, token) = githubPackagesCredentials()
+                username = user
+                password = token
+            }
+        }
+    }
+
     repositories {
         githubPackagesKuiklyBase()
+        githubPackagesQuiver()
         mavenLocal()
         google()
         mavenCentral()

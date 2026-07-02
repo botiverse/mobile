@@ -105,6 +105,9 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.caverock.androidsvg.SVG
+import io.quiver.update.UpdateChecker
+import io.quiver.update.internal.QuiverClient
+import io.quiver.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -2386,48 +2389,160 @@ internal class SlockKuiklyBridgeModule(
                 "sharedSocketIoTransportEnabled" to AndroidApiServerEnvironmentStore(appContext).sharedSocketIoTransportEnabled(),
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Quiver channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. This does not download or install updates.",
+                "updateCheckDetail" to "Check Quiver channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
                 "options" to options,
                 "feedback" to feedback.orEmpty()
         )
     }
 
     private suspend fun checkQuiverUpdate(): Map<String, Any> {
-        val result =
-                AndroidQuiverUpdateCheckClient.check(
-                        baseUrl = BuildConfig.QUIVER_BASE_URL,
-                        appSlug = BuildConfig.QUIVER_APP_SLUG,
-                        channel = BuildConfig.QUIVER_CHANNEL,
-                        currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                        arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
-                )
+        val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
+        val response =
+                QuiverClient(BuildConfig.QUIVER_BASE_URL)
+                        .checkForUpdate(
+                                slug = BuildConfig.QUIVER_APP_SLUG,
+                                channel = BuildConfig.QUIVER_CHANNEL,
+                                currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                                productType = "android-apk",
+                                platform = "android",
+                                arch = arch,
+                                filetype = "apk"
+                        )
         SlockDiagnosticsLogger.record(
                 "SlockQuiverUpdate",
-                "check status=${result.status} slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
-                        "current=${BuildConfig.VERSION_CODE} latest=${result.latestVersionCode ?: 0} available=${result.updateAvailable} code=${result.errorCode.orEmpty()}"
+                "check status=ok slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
+                        "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
         )
+        val installResult =
+                if (response.requireUpdate() != null) {
+                    installQuiverUpdate(response, arch)
+                } else {
+                    QuiverInstallResult()
+                }
+        val updateStatusLabel = installResult.statusLabel.ifBlank { response.quiverStatusLabel() }
+        val updateDetail = installResult.detail.ifBlank { response.quiverDetail() }
+        val updateAvailable = response.requireUpdate() != null
         val feedback =
                 when {
-                    result.status == "ok" && result.updateAvailable ->
-                            "Update available: ${result.latestVersion.ifBlank { "version code ${result.latestVersionCode}" }}."
-                    result.status == "ok" ->
-                            "No Quiver update available on ${BuildConfig.QUIVER_CHANNEL}."
-                    else ->
-                            "Quiver update check failed: ${result.errorCode ?: result.status}."
+                    updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
+                    else -> "No Quiver update available on ${BuildConfig.QUIVER_CHANNEL}."
                 }
         return loadSettingsDeveloper(feedback = feedback) +
                 mapOf(
                         "updateCheckSupported" to true,
-                        "updateCheckStatusLabel" to result.statusLabel,
-                        "updateCheckDetail" to result.detail,
-                        "updateAvailable" to result.updateAvailable,
-                        "latestVersionLabel" to result.latestVersion,
-                        "latestVersionCode" to (result.latestVersionCode ?: 0L),
-                        "updateDownloadUrl" to result.downloadUrl.orEmpty(),
+                        "updateCheckStatusLabel" to updateStatusLabel,
+                        "updateCheckDetail" to updateDetail,
+                        "updateAvailable" to updateAvailable,
+                        "latestVersionLabel" to response.latest?.version.orEmpty(),
+                        "latestVersionCode" to (response.latest?.version_code ?: response.latest_version_code ?: 0L),
+                        "updateDownloadUrl" to response.asset?.download_url.orEmpty(),
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
-                        "updateCheckErrorCode" to result.errorCode.orEmpty()
+                        "updateCheckErrorCode" to installResult.errorCode.orEmpty()
                 )
     }
+
+    private suspend fun installQuiverUpdate(
+            response: UpdateCheckResponse,
+            arch: String?
+    ): QuiverInstallResult {
+        if (!canRequestPackageInstalls()) {
+            openUnknownAppSourcesSettings()
+            SlockDiagnosticsLogger.record(
+                    "SlockQuiverUpdate",
+                    "install_permission_required slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0}"
+            )
+            return QuiverInstallResult(
+                    statusLabel = "Permission required",
+                    detail = "Android settings opened. Allow Raft to install unknown apps, then check for the update again.",
+                    errorCode = "install_permission_required"
+            )
+        }
+        return runCatching {
+                    UpdateChecker(
+                            context = appContext,
+                            baseUrl = BuildConfig.QUIVER_BASE_URL,
+                            appSlug = BuildConfig.QUIVER_APP_SLUG,
+                            installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                            channel = BuildConfig.QUIVER_CHANNEL,
+                            productType = "android-apk",
+                            platform = "android",
+                            arch = arch
+                    ).checkAndInstall()
+                    SlockDiagnosticsLogger.record(
+                            "SlockQuiverUpdate",
+                            "install_queued slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0}"
+                    )
+                    QuiverInstallResult(
+                            statusLabel = "Installing",
+                            detail = "Quiver update download was queued. Android will open the installer when the APK download completes."
+                    )
+                }
+                .getOrElse { error ->
+                    SlockDiagnosticsLogger.record(
+                            "SlockQuiverUpdate",
+                            "install_failed slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
+                    )
+                    QuiverInstallResult(
+                            statusLabel = "Install failed",
+                            detail = error.message ?: "Unable to download or install the Quiver APK.",
+                            errorCode = error.javaClass.simpleName
+                    )
+                }
+    }
+
+    private fun canRequestPackageInstalls(): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                    appContext.packageManager.canRequestPackageInstalls()
+
+    private fun openUnknownAppSourcesSettings() {
+        val intent =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${appContext.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                } else {
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", appContext.packageName, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+        runCatching { appContext.startActivity(intent) }
+                .onFailure {
+                    runCatching {
+                        appContext.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", appContext.packageName, null)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                        )
+                    }
+                }
+    }
+
+    private data class QuiverInstallResult(
+            val statusLabel: String = "",
+            val detail: String = "",
+            val errorCode: String? = null
+    )
+
+    private fun UpdateCheckResponse.quiverStatusLabel(): String =
+            if (requireUpdate() != null) "Update available" else "Current"
+
+    private fun UpdateCheckResponse.quiverDetail(): String =
+            if (requireUpdate() != null) {
+                val version = latest?.version?.takeIf { it.isNotBlank() } ?: "version code ${latest?.version_code ?: 0L}"
+                val size = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
+                buildString {
+                    append("Quiver has ")
+                    append(version)
+                    append(" on ")
+                    append(channel)
+                    size?.let { append(" (").append(it).append(" APK).") } ?: append(".")
+                }
+            } else {
+                "No Quiver update is available on $channel for version code $current_version_code."
+            }
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
         val environmentKey = request.optString("environmentKey")
