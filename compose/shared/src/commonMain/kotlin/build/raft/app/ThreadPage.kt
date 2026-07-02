@@ -157,7 +157,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
@@ -8404,8 +8403,7 @@ private fun ThreadMessagesList(
                             latestItemIndex = latestItemIndex,
                             revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
                         )
-                    )
-                    .bouncesEnable(false),
+                    ),
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
