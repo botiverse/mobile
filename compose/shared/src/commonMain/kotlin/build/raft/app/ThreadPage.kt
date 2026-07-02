@@ -6400,6 +6400,7 @@ internal fun threadVisualFixture(
                                 "Plain text baseline before bold.\n\n" +
                                     "Normal: regular markdown bold sample abcdefg 123.\n\n" +
                                     "**Bold: regular markdown bold sample abcdefg 123.**\n\n" +
+                                    "Normal CN: 中文粗体 对照样本 123.\n\n" +
                                     "**粗体 Bold: 中文粗体 markdown bold sample 123.**\n\n" +
                                     "Mixed markers for #markdown专修: @artin please verify task #42 before release.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, and `git commit -s`.\n\n" +

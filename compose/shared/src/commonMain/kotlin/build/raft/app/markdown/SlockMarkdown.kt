@@ -889,7 +889,19 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
         if (shouldNormalizeFamily &&
             (range.item.fontFamily == FontFamily.Monospace || family != resolvedBase.fontFamily)
         ) {
-            builder.addStyle(SpanStyle(fontFamily = family, fontWeight = FontWeight.Normal), range.start, range.end)
+            builder.addStyle(
+                SpanStyle(
+                    fontFamily = family,
+                    fontWeight =
+                        if (range.item.fontFamily == FontFamily.Monospace) {
+                            FontWeight.Normal
+                        } else {
+                            explicitWeight ?: FontWeight.Normal
+                        }
+                ),
+                range.start,
+                range.end
+            )
         }
     }
     return builder.toAnnotatedString()

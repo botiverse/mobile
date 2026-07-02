@@ -450,7 +450,7 @@ class SlockMarkdownTest {
         val strongFontSpan = annotated.spanStyles.last { it.start == 7 && it.end == 11 }
 
         assertEquals(SlockType.ButtonBold.fontFamily, strongFontSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, strongFontSpan.item.fontWeight)
+        assertEquals(FontWeight.Bold, strongFontSpan.item.fontWeight)
     }
 
     @Test
@@ -494,7 +494,7 @@ class SlockMarkdownTest {
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, boldSpan.item.fontWeight)
+        assertEquals(FontWeight.Bold, boldSpan.item.fontWeight)
     }
 
     @Test
