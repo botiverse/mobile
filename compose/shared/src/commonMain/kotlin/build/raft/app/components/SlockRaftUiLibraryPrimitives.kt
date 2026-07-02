@@ -443,6 +443,12 @@ internal enum class SlockRaftUiAvatarType {
     Human
 }
 
+internal enum class SlockRaftUiSurfaceStatus(val icon: SlockLucideIconName, val background: Color) {
+    Success(SlockLucideIconName.CircleCheck, SlockColor.AccentLime),
+    Warning(SlockLucideIconName.TriangleAlert, SlockColor.AccentOrange),
+    Info(SlockLucideIconName.Info, SlockColor.BrandYellow)
+}
+
 @Composable
 internal fun SlockRaftUiAvatarGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-6).dp), verticalAlignment = Alignment.CenterVertically) {
@@ -494,6 +500,124 @@ internal fun SlockRaftUiTabs(
                     .padding(12.dp)
         ) {
             SlockRaftUiTextSans(panelText)
+        }
+    }
+}
+
+@Composable
+internal fun SlockRaftUiPopupSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier =
+            modifier
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        content()
+    }
+}
+
+@Composable
+internal fun SlockRaftUiSurfaceLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        modifier = modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 12.dp, vertical = 8.dp),
+        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp).withSlockFontWeight(FontWeight.Bold),
+        color = SlockColor.TextBlack.copy(alpha = 0.60f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+internal fun SlockRaftUiMenuRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    trailing: String? = null,
+    highlighted: Boolean = false,
+    disabled: Boolean = false
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .background(if (highlighted) SlockColor.BrandYellow.copy(alpha = 0.30f) else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f))
+                .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.SemiBold),
+            color = if (disabled) SlockColor.TextBlack.copy(alpha = 0.30f) else SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        trailing?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
+                color = if (disabled) SlockColor.TextBlack.copy(alpha = 0.30f) else SlockColor.TextBlack.copy(alpha = 0.60f),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SlockRaftUiNotificationItem(
+    title: String,
+    body: String,
+    status: SlockRaftUiSurfaceStatus,
+    modifier: Modifier = Modifier,
+    read: Boolean = false,
+    actionLabel: String? = null
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .alpha(if (read) 0.70f else 1f)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(24.dp)
+                    .background(status.background)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(status.icon, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = title,
+                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = body,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.70f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            actionLabel?.let {
+                Box(modifier = Modifier.padding(top = 6.dp).align(Alignment.End)) {
+                    SlockRaftUiButton(label = it, variant = SlockRaftUiButtonVariant.Primary)
+                }
+            }
         }
     }
 }

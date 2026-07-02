@@ -22,11 +22,16 @@ import build.raft.app.components.SlockRaftUiLabel
 import build.raft.app.components.SlockRaftUiRadioRow
 import build.raft.app.components.SlockRaftUiSegmentedControl
 import build.raft.app.components.SlockRaftUiSegmentedItem
+import build.raft.app.components.SlockRaftUiMenuRow
+import build.raft.app.components.SlockRaftUiNotificationItem
+import build.raft.app.components.SlockRaftUiPopupSurface
 import build.raft.app.components.SlockRaftUiTabItem
 import build.raft.app.components.SlockRaftUiTabs
 import build.raft.app.components.SlockRaftUiTextHeading
 import build.raft.app.components.SlockRaftUiTextMono
 import build.raft.app.components.SlockRaftUiTextSans
+import build.raft.app.components.SlockRaftUiSurfaceLabel
+import build.raft.app.components.SlockRaftUiSurfaceStatus
 import build.raft.app.components.SlockSelectTrigger
 import build.raft.app.components.SlockSpinner
 import build.raft.app.components.SlockStatusDot
@@ -382,6 +387,112 @@ internal fun RaftUiSelectVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SlockSelectTrigger(label = "Raft UI Library")
             SlockSelectTrigger(label = "Components Real Diff", enabled = false)
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiMenuSurfacesVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(210.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+            SlockRaftUiSurfaceLabel("Visual actions")
+            SlockRaftUiMenuRow(label = "Publish report", trailing = "⌘ P")
+            SlockRaftUiMenuRow(label = "Review differences", trailing = "32", highlighted = true)
+            SlockRaftUiMenuRow(label = "Archive run", trailing = "⇧ A", disabled = true)
+            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+            SlockRaftUiMenuRow(label = "Move to components", trailing = "›")
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiPopoverSurfaceVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(174.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                SlockRaftUiTextMono("CAPTURE CONTRACT")
+                SlockRaftUiTextMono("CLOSE")
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack))
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SlockRaftUiLabel(text = "Portal content is deterministic")
+                SlockRaftUiTextSans("Static popup surfaces render without relying on interaction timing.")
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiComboboxSurfaceVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(258.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                SlockRaftUiSurfaceLabel("Combobox results")
+                SlockRaftUiMenuRow(label = "Raft UI Library")
+                SlockRaftUiMenuRow(label = "Components Real Diff", highlighted = true)
+                SlockRaftUiMenuRow(label = "Archived runs", disabled = true)
+            }
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                SlockRaftUiSurfaceLabel("Select run")
+                SlockRaftUiMenuRow(label = "Latest Android capture", highlighted = true)
+                SlockRaftUiMenuRow(label = "Previous baseline")
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiNotificationCenterVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(294.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp).height(262.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockRaftUiTextMono("NOTIFICATIONS")
+                SlockRaftUiTextMono("3 unread")
+            }
+            SlockRaftUiNotificationItem(
+                title = "Raft UI library run finished",
+                body = "32 active library cases are ready for review.",
+                status = SlockRaftUiSurfaceStatus.Success,
+                actionLabel = "Open"
+            )
+            SlockRaftUiNotificationItem(
+                title = "Components diff has one missing case",
+                body = "Pending Android fixture remains excluded from this batch.",
+                status = SlockRaftUiSurfaceStatus.Warning,
+                read = true
+            )
         }
     }
 }

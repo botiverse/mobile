@@ -370,6 +370,42 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiMenuSurfacesStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.menu-surfaces.states",
+            pageName = "compose_raft_ui_menu_surfaces_visual",
+            crop = RAFT_UI_MENU_SURFACES_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiPopoverSurfaceStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.popover-surface.states",
+            pageName = "compose_raft_ui_popover_surface_visual",
+            crop = RAFT_UI_POPOVER_SURFACE_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiComboboxSurfaceStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.combobox-surface.states",
+            pageName = "compose_raft_ui_combobox_surface_visual",
+            crop = RAFT_UI_COMBOBOX_SURFACE_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiNotificationCenterStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.notification-center.states",
+            pageName = "compose_raft_ui_notification_center_visual",
+            crop = RAFT_UI_NOTIFICATION_CENTER_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1821,6 +1857,34 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 148
+            )
+        private val RAFT_UI_MENU_SURFACES_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 210
+            )
+        private val RAFT_UI_POPOVER_SURFACE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 174
+            )
+        private val RAFT_UI_COMBOBOX_SURFACE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 258
+            )
+        private val RAFT_UI_NOTIFICATION_CENTER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 294
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(
