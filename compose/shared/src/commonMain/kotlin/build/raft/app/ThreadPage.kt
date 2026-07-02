@@ -201,6 +201,7 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -213,6 +214,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
@@ -230,7 +232,6 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
-private const val ThreadAttachmentUploadLocalRenderDelayMs = 32L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 20
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -3655,13 +3656,14 @@ internal fun SharedThreadRouteContent(
             val uploadJob =
                 coroutineScope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        delay(ThreadAttachmentUploadLocalRenderDelayMs)
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
                         )
                         val uploadResult =
-                            attachmentUploadSemaphore.withPermit {
-                                dataSource.uploadAttachments(channelId, listOf(file))
+                            withContext(Dispatchers.Default) {
+                                attachmentUploadSemaphore.withPermit {
+                                    dataSource.uploadAttachments(channelId, listOf(file))
+                                }
                             }
                         when (uploadResult) {
                             is DataResult.Content -> {
