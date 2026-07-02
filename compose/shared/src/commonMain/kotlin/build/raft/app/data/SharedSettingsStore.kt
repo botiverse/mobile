@@ -10,11 +10,13 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
 enum class SharedSettingsDestination {
@@ -462,7 +464,10 @@ class SharedSettingsDataSource(
     suspend fun uploadAccountAvatar(): DataResult<AccountSettingsSnapshot> {
         val repository = settingsRepository ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         return when (val picked = platformCapabilities.pickAccountAvatarFile()) {
-            is DataResult.Content -> repository.uploadAccountAvatar(AccountAvatarUploadRequest(picked.data))
+            is DataResult.Content ->
+                withContext(Dispatchers.Default) {
+                    repository.uploadAccountAvatar(AccountAvatarUploadRequest(picked.data))
+                }
             is DataResult.Empty -> DataResult.Empty(picked.reason)
             is DataResult.Error -> DataResult.Error(picked.error)
             is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
@@ -486,7 +491,10 @@ class SharedSettingsDataSource(
         val id = clientRecordId.trim()
         if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         return when (val picked = platformCapabilities.pickConnectedAppLogoFile(id)) {
-            is DataResult.Content -> repository.uploadConnectedAppLogo(SettingsConnectedAppLogoUploadRequest(id, picked.data))
+            is DataResult.Content ->
+                withContext(Dispatchers.Default) {
+                    repository.uploadConnectedAppLogo(SettingsConnectedAppLogoUploadRequest(id, picked.data))
+                }
             is DataResult.Empty -> DataResult.Empty(picked.reason)
             is DataResult.Error -> DataResult.Error(picked.error)
             is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)

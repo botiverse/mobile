@@ -163,9 +163,11 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -1365,10 +1367,12 @@ private class MemberDetailRouteProvider(
         agentId: MemberId,
         file: PlatformFile
     ): DataResult<MemberProfile> =
-        memberRepository.uploadAgentAvatar(
-            priority = DataRequestPriority.Foreground,
-            request = AgentAvatarUploadRequest(agentId = agentId, file = file)
-        )
+        withContext(Dispatchers.Default) {
+            memberRepository.uploadAgentAvatar(
+                priority = DataRequestPriority.Foreground,
+                request = AgentAvatarUploadRequest(agentId = agentId, file = file)
+            )
+        }
 
     suspend fun pickAgentAvatarFile(): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)

@@ -386,9 +386,11 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -2278,12 +2280,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         bridge.toast("Preparing diagnostics attachment...")
         appShellCoroutineScope.launch {
             val uploadResult =
-                conversationRepository.uploadAttachments(
-                    AttachmentUploadRequest(
-                        channelId = ChannelId(channelId),
-                        files = listOf(draft.toDiagnosticsPlatformFile())
+                withContext(Dispatchers.Default) {
+                    conversationRepository.uploadAttachments(
+                        AttachmentUploadRequest(
+                            channelId = ChannelId(channelId),
+                            files = listOf(draft.toDiagnosticsPlatformFile())
+                        )
                     )
-                )
+                }
             diagnosticsFeedbackUploadChannelId = null
             when (uploadResult) {
                 is DataResult.Content -> {
