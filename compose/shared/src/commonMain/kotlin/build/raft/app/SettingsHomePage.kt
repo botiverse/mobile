@@ -104,6 +104,7 @@ import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.hasCompletedTasksSnapshot
+import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeDataSource
@@ -1991,20 +1992,19 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
         if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
         val cachedSession = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
-        if (!shouldApplyHomeAuthErrorGate(error, authGateState, cachedSession)) {
+        if (shouldRestoreHomeAuthErrorGate(error, authGateState, cachedSession)) {
             bridge.logWarn(
-                "app_shell_home_auth_error_gate_skip code=$error " +
+                "app_shell_home_auth_error_gate_restore code=$error " +
                     "gate=${authGateState.authGateDiagnosticsName()} hasCachedSession=${cachedSession != null}"
             )
-            if (authGateState == SharedAuthGateState.AuthRequired && cachedSession != null) {
-                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-            }
+            authGateMessage = null
+            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
             return@LaunchedEffect
         }
-        bridge.logWarn("app_shell_home_auth_error_gate code=$error")
-        authGateMessage = "Sign in to continue."
-        authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-        resetAppShellSessionState()
+        bridge.logWarn(
+            "app_shell_home_auth_error_gate_skip code=$error " +
+                "gate=${authGateState.authGateDiagnosticsName()} hasCachedSession=${cachedSession != null}"
+        )
     }
 
     LaunchedEffect(notificationPreferenceRepository) {
@@ -2332,8 +2332,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
                 is DataResult.NoPermission -> {
-                    bridge.toast("You cannot attach diagnostics in this channel")
-                    bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
+                    if (uploadResult.blocker.isAuthSessionBlocker()) {
+                        bridge.toast("Restoring session before upload. Choose a channel again in a moment.")
+                        bridge.log(
+                            "diagnostics_feedback_attachment_upload_auth_required_restore " +
+                                "code=${uploadResult.blocker.code}"
+                        )
+                        authGateMessage = null
+                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                    } else {
+                        bridge.toast("You cannot attach diagnostics in this channel")
+                        bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
+                    }
                 }
                 is DataResult.Empty -> {
                     bridge.toast("Diagnostics attachment upload returned empty")
@@ -12924,15 +12934,21 @@ private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange)
     )
 }
 
-internal fun shouldApplyHomeAuthErrorGate(
+internal fun shouldRestoreHomeAuthErrorGate(
     errorCode: String?,
     authGateState: SharedAuthGateState,
     cachedSession: StoredAuthSession?
 ): Boolean {
     if (!ScreenError(errorCode.orEmpty(), retryable = false).isAuthSessionError()) return false
     if (authGateState == SharedAuthGateState.Restoring) return false
-    if (cachedSession != null) return false
-    return true
+    if (cachedSession != null) return true
+    return when (authGateState) {
+        SharedAuthGateState.AuthRequired -> false
+        SharedAuthGateState.Restoring -> false
+        is SharedAuthGateState.Error -> true
+        is SharedAuthGateState.Ready -> true
+        is SharedAuthGateState.ServerRequired -> true
+    }
 }
 
 private fun SharedAuthGateState.authGateDiagnosticsName(): String =
