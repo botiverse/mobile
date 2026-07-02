@@ -51,6 +51,7 @@ import kotlin.math.sin
 
 const val HOME_BADGE_VISUAL_FIXTURE_PAGE = "compose_home_badge_visual_fixture"
 const val HOME_BADGE_DESIGN_VISUAL_FIXTURE_PAGE = "compose_home_badge_design_visual_fixture"
+const val HOME_BADGE_AA_VISUAL_FIXTURE_PAGE = "compose_home_badge_aa_visual_fixture"
 
 @Page(HOME_BADGE_VISUAL_FIXTURE_PAGE, supportInLocal = true)
 internal class ComposeHomeBadgeVisualFixturePage : build.raft.app.base.BasePager() {
@@ -65,6 +66,14 @@ internal class ComposeHomeBadgeDesignVisualFixturePage : build.raft.app.base.Bas
     override fun willInit() {
         super.willInit()
         setContent { HomeBadgeDesignVisualFixtureScreen() }
+    }
+}
+
+@Page(HOME_BADGE_AA_VISUAL_FIXTURE_PAGE, supportInLocal = true)
+internal class ComposeHomeBadgeAaVisualFixturePage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeBadgeAaVisualFixtureScreen() }
     }
 }
 
@@ -152,6 +161,50 @@ internal fun HomeBadgeDesignVisualFixtureScreen() {
             title = "Flat fallback",
             detail = "React already strips tilt on short viewports",
             badge = { FlatBadge(HomeBadgeFixtureServerName) }
+        )
+    }
+}
+
+@Composable
+internal fun HomeBadgeAaVisualFixtureScreen() {
+    HomeBadgeFixtureFrame(
+        title = "Home Badge AA / Layer",
+        subtitle = "AA, DrawFilter, bitmap, and hardware/software layers."
+    ) {
+        HomeBadgeFixtureRow(
+            title = "KMP current rotate",
+            detail = "production: Kuikly layer rotate(-2f)",
+            badge = { CurrentKmpRotateBadge(HomeBadgeFixtureServerName) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Native rotate default",
+            detail = "native canvas rotate; AA paints only",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, geometry = "rotatedRect") }
+        )
+        HomeBadgeFixtureRow(
+            title = "Native rotate + DrawFilter",
+            detail = "canvas rotate + PaintFlagsDrawFilter",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, geometry = "rotatedRect") }
+        )
+        HomeBadgeFixtureRow(
+            title = "Native rotate hardware",
+            detail = "canvas rotate + View layerType(HARDWARE)",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, layerType = "hardware", geometry = "rotatedRect") }
+        )
+        HomeBadgeFixtureRow(
+            title = "Native rotate software",
+            detail = "software layer + PaintFlagsDrawFilter",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, layerType = "software", geometry = "rotatedRect") }
+        )
+        HomeBadgeFixtureRow(
+            title = "Native path + DrawFilter",
+            detail = "path geometry + PaintFlagsDrawFilter + 3x",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Kuikly Image PNG 4x",
+            detail = "painterResource pre-antialiased bitmap",
+            badge = { ImageTiltedBadge(HomeBadgeFixtureServerName) }
         )
     }
 }
@@ -394,7 +447,13 @@ private fun DrawPathTiltedBadge(text: String) {
 }
 
 @Composable
-private fun NativeTiltedPathBadge(text: String) {
+private fun NativeTiltedPathBadge(
+    text: String,
+    supersample: Int = 3,
+    drawFilter: Boolean = false,
+    layerType: String = "none",
+    geometry: String = "path"
+) {
     if (!isSlockNativeTiltedBadgeChromeSupported()) {
         Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
             ShapeTiltedPathBadge(text)
@@ -413,7 +472,10 @@ private fun NativeTiltedPathBadge(text: String) {
                 strokeWidth = SlockStroke.Default,
                 shadowOffset = HomeBadgeFixtureShadowOffset,
                 tiltDegrees = HomeBadgeFixtureTiltDegrees,
-                supersample = 3
+                supersample = supersample,
+                drawFilter = drawFilter,
+                layerType = layerType,
+                geometry = geometry
             )
             HomeBadgeFixtureForeground(
                 text = text,

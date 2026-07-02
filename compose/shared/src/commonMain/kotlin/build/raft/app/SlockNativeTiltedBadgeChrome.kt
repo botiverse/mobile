@@ -21,6 +21,9 @@ internal class SlockNativeTiltedBadgeChromeView :
     private var appliedShadowOffset: Float? = null
     private var appliedTiltDegrees: Float? = null
     private var appliedSupersample: Int? = null
+    private var appliedDrawFilter: Boolean? = null
+    private var appliedLayerType: String? = null
+    private var appliedGeometry: String? = null
 
     override fun createAttr(): SlockNativeTiltedBadgeChromeAttr = SlockNativeTiltedBadgeChromeAttr()
 
@@ -36,6 +39,9 @@ internal class SlockNativeTiltedBadgeChromeView :
         shadowOffset: Float,
         tiltDegrees: Float,
         supersample: Int,
+        drawFilter: Boolean,
+        layerType: String,
+        geometry: String,
         force: Boolean = false
     ) {
         if (
@@ -46,7 +52,10 @@ internal class SlockNativeTiltedBadgeChromeView :
                 appliedStrokeWidth == strokeWidth &&
                 appliedShadowOffset == shadowOffset &&
                 appliedTiltDegrees == tiltDegrees &&
-                appliedSupersample == supersample
+                appliedSupersample == supersample &&
+                appliedDrawFilter == drawFilter &&
+                appliedLayerType == layerType &&
+                appliedGeometry == geometry
         ) {
             return
         }
@@ -57,6 +66,9 @@ internal class SlockNativeTiltedBadgeChromeView :
         appliedShadowOffset = shadowOffset
         appliedTiltDegrees = tiltDegrees
         appliedSupersample = supersample
+        appliedDrawFilter = drawFilter
+        appliedLayerType = layerType
+        appliedGeometry = geometry
         getViewAttr().run {
             fill(fill)
             border(border)
@@ -65,6 +77,9 @@ internal class SlockNativeTiltedBadgeChromeView :
             shadowOffset(shadowOffset)
             tiltDegrees(tiltDegrees)
             supersample(supersample)
+            drawFilter(drawFilter)
+            layerType(layerType)
+            geometry(geometry)
         }
     }
 
@@ -108,6 +123,21 @@ internal class SlockNativeTiltedBadgeChromeAttr : Attr() {
         "supersample" with value
         return this
     }
+
+    fun drawFilter(value: Boolean): SlockNativeTiltedBadgeChromeAttr {
+        "drawFilter" with value
+        return this
+    }
+
+    fun layerType(value: String): SlockNativeTiltedBadgeChromeAttr {
+        "layerType" with value
+        return this
+    }
+
+    fun geometry(value: String): SlockNativeTiltedBadgeChromeAttr {
+        "geometry" with value
+        return this
+    }
 }
 
 @Composable
@@ -121,7 +151,10 @@ internal fun SlockNativeTiltedBadgeChrome(
     strokeWidth: Dp,
     shadowOffset: Dp,
     tiltDegrees: Float,
-    supersample: Int
+    supersample: Int,
+    drawFilter: Boolean = false,
+    layerType: String = "none",
+    geometry: String = "path"
 ) {
     MakeKuiklyComposeNode<SlockNativeTiltedBadgeChromeView>(
         factory = { SlockNativeTiltedBadgeChromeView() },
@@ -135,6 +168,9 @@ internal fun SlockNativeTiltedBadgeChrome(
                 shadowOffset = shadowOffset.value,
                 tiltDegrees = tiltDegrees,
                 supersample = supersample,
+                drawFilter = drawFilter,
+                layerType = layerType,
+                geometry = geometry,
                 force = true
             )
         },
@@ -146,7 +182,10 @@ internal fun SlockNativeTiltedBadgeChrome(
                 strokeWidth = strokeWidth.value,
                 shadowOffset = shadowOffset.value,
                 tiltDegrees = tiltDegrees,
-                supersample = supersample
+                supersample = supersample,
+                drawFilter = drawFilter,
+                layerType = layerType,
+                geometry = geometry
             )
         }
     )

@@ -5,8 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PaintFlagsDrawFilter
 import android.graphics.Path
 import android.graphics.RectF
+import android.view.View
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import kotlin.math.PI
 import kotlin.math.abs
@@ -22,6 +24,9 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
     private var shadowOffsetDp: Float = 2f
     private var tiltDegrees: Float = -2f
     private var supersample: Int = 3
+    private var useDrawFilter: Boolean = false
+    private var layerTypeMode: String = LAYER_TYPE_NONE
+    private var geometryMode: String = GEOMETRY_PATH
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG).apply {
         style = Paint.Style.FILL
@@ -39,6 +44,11 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         isFilterBitmap = true
         isDither = true
     }
+    private val antiAliasDrawFilter =
+        PaintFlagsDrawFilter(
+            0,
+            Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG
+        )
 
     init {
         setWillNotDraw(false)
@@ -54,6 +64,9 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
                 PROP_SHADOW_OFFSET -> updateShadowOffset(propValue)
                 PROP_TILT_DEGREES -> updateTiltDegrees(propValue)
                 PROP_SUPERSAMPLE -> updateSupersample(propValue)
+                PROP_DRAW_FILTER -> updateDrawFilter(propValue)
+                PROP_LAYER_TYPE -> updateLayerType(propValue.toString())
+                PROP_GEOMETRY -> updateGeometry(propValue.toString())
                 else -> return super.setProp(propKey, propValue)
             }
         if (changed) invalidate()
@@ -70,6 +83,9 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
                 PROP_SHADOW_OFFSET -> updateShadowOffset(2f)
                 PROP_TILT_DEGREES -> updateTiltDegrees(-2f)
                 PROP_SUPERSAMPLE -> updateSupersample(3)
+                PROP_DRAW_FILTER -> updateDrawFilter(false)
+                PROP_LAYER_TYPE -> updateLayerType(LAYER_TYPE_NONE)
+                PROP_GEOMETRY -> updateGeometry(GEOMETRY_PATH)
                 else -> return super.resetProp(propKey)
             }
         if (changed) invalidate()
@@ -83,16 +99,27 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         if (viewWidth <= 0 || viewHeight <= 0) return
         val scale = supersample.coerceAtLeast(1)
         if (scale == 1) {
-            drawChrome(canvas, viewWidth.toFloat(), viewHeight.toFloat())
+            drawChromeWithFilter(canvas, viewWidth.toFloat(), viewHeight.toFloat())
             return
         }
         val bitmap = Bitmap.createBitmap(viewWidth * scale, viewHeight * scale, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).also { offscreen ->
             offscreen.scale(scale.toFloat(), scale.toFloat())
-            drawChrome(offscreen, viewWidth.toFloat(), viewHeight.toFloat())
+            drawChromeWithFilter(offscreen, viewWidth.toFloat(), viewHeight.toFloat())
         }
         canvas.drawBitmap(bitmap, null, RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat()), bitmapPaint)
         bitmap.recycle()
+    }
+
+    private fun drawChromeWithFilter(canvas: Canvas, viewWidth: Float, viewHeight: Float) {
+        val previous = canvas.drawFilter
+        if (useDrawFilter) {
+            canvas.drawFilter = antiAliasDrawFilter
+        }
+        drawChrome(canvas, viewWidth, viewHeight)
+        if (useDrawFilter) {
+            canvas.drawFilter = previous
+        }
     }
 
     private fun drawChrome(canvas: Canvas, viewWidth: Float, viewHeight: Float) {
@@ -100,6 +127,10 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         val strokeWidth = (strokeWidthDp * density).coerceAtLeast(1f)
         val shadowOffset = shadowOffsetDp * density
         val inset = strokeWidth / 2f
+        if (geometryMode == GEOMETRY_ROTATED_RECT) {
+            drawRotatedRectChrome(canvas, viewWidth, viewHeight, strokeWidth, shadowOffset)
+            return
+        }
         val shadowPath =
             tiltedBadgePath(
                 width = viewWidth,
@@ -116,6 +147,31 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         strokePaint.color = borderColor
         strokePaint.strokeWidth = strokeWidth
         canvas.drawPath(bodyPath, strokePaint)
+    }
+
+    private fun drawRotatedRectChrome(
+        canvas: Canvas,
+        viewWidth: Float,
+        viewHeight: Float,
+        strokeWidth: Float,
+        shadowOffset: Float
+    ) {
+        val contentWidth = (viewWidth - shadowOffset).coerceAtLeast(1f)
+        val contentHeight = (viewHeight - shadowOffset).coerceAtLeast(1f)
+        val rect = RectF(0f, 0f, contentWidth, contentHeight)
+        val shadowRect = RectF(shadowOffset, shadowOffset, shadowOffset + contentWidth, shadowOffset + contentHeight)
+        val pivotX = contentWidth / 2f
+        val pivotY = contentHeight / 2f
+        canvas.save()
+        canvas.rotate(tiltDegrees, pivotX, pivotY)
+        fillPaint.color = shadowColor
+        canvas.drawRect(shadowRect, fillPaint)
+        fillPaint.color = fillColor
+        canvas.drawRect(rect, fillPaint)
+        strokePaint.color = borderColor
+        strokePaint.strokeWidth = strokeWidth
+        canvas.drawRect(rect, strokePaint)
+        canvas.restore()
     }
 
     private fun tiltedBadgePath(
@@ -217,6 +273,43 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         return true
     }
 
+    private fun updateDrawFilter(value: Any): Boolean {
+        val next = value.toString().toBooleanStrictOrNull() ?: false
+        if (useDrawFilter == next) return false
+        useDrawFilter = next
+        return true
+    }
+
+    private fun updateLayerType(value: String): Boolean {
+        val next =
+            when (value.lowercase()) {
+                LAYER_TYPE_HARDWARE -> LAYER_TYPE_HARDWARE
+                LAYER_TYPE_SOFTWARE -> LAYER_TYPE_SOFTWARE
+                else -> LAYER_TYPE_NONE
+            }
+        if (layerTypeMode == next) return false
+        layerTypeMode = next
+        val nativeLayerType =
+            when (next) {
+                LAYER_TYPE_HARDWARE -> View.LAYER_TYPE_HARDWARE
+                LAYER_TYPE_SOFTWARE -> View.LAYER_TYPE_SOFTWARE
+                else -> View.LAYER_TYPE_NONE
+            }
+        setLayerType(nativeLayerType, null)
+        return true
+    }
+
+    private fun updateGeometry(value: String): Boolean {
+        val next =
+            when (value.lowercase()) {
+                GEOMETRY_ROTATED_RECT -> GEOMETRY_ROTATED_RECT
+                else -> GEOMETRY_PATH
+            }
+        if (geometryMode == next) return false
+        geometryMode = next
+        return true
+    }
+
     private fun parseColor(value: String): Int =
         runCatching { Color.parseColor(value) }.getOrDefault(Color.TRANSPARENT)
 
@@ -231,5 +324,13 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         private const val PROP_SHADOW_OFFSET = "shadowOffset"
         private const val PROP_TILT_DEGREES = "tiltDegrees"
         private const val PROP_SUPERSAMPLE = "supersample"
+        private const val PROP_DRAW_FILTER = "drawFilter"
+        private const val PROP_LAYER_TYPE = "layerType"
+        private const val PROP_GEOMETRY = "geometry"
+        private const val LAYER_TYPE_NONE = "none"
+        private const val LAYER_TYPE_HARDWARE = "hardware"
+        private const val LAYER_TYPE_SOFTWARE = "software"
+        private const val GEOMETRY_PATH = "path"
+        private const val GEOMETRY_ROTATED_RECT = "rotatedRect"
     }
 }
