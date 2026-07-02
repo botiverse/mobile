@@ -3347,15 +3347,11 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationBilling ->
-                SettingsBillingContent(
-                    settingsState.billing.toBillingPayload(session, timeContext),
+                SettingsBillingWebViewContent(
+                    session = session,
+                    webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
                     bottomContentPadding = bottomContentPadding
-                ) { action, value ->
-                    when (action) {
-                        "comparePlans" -> settingsCapabilities.openUrl(value ?: "https://raft.build/#pricing")
-                        "portal" -> settingsCapabilities.openUrl(sharedSettingsWebUrl(settingsState.developer.configuredWebBaseUrlOrNull(), "settings/billing"))
-                    }
-                }
+                )
             SettingsDestinationLanguageRegion ->
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,

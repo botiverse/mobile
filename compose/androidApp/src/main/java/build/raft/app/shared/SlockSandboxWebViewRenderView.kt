@@ -16,6 +16,7 @@ import android.webkit.WebViewClient
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayInputStream
+import org.json.JSONObject
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
     private val webView = WebView(context)
@@ -288,7 +289,17 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             return
         }
         loadedSrc = normalized
-        webView.loadUrl(normalized)
+        if (shouldBootstrapInjectedJavaScript()) {
+            webView.loadDataWithBaseURL(
+                normalized,
+                injectedJavaScriptBootstrapHtml(normalized),
+                "text/html",
+                "UTF-8",
+                normalized
+            )
+        } else {
+            webView.loadUrl(normalized)
+        }
     }
 
     private fun shouldBlockNavigation(url: String?): Boolean {
@@ -330,6 +341,34 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             @Suppress("DEPRECATION")
             webView.loadUrl("javascript:$script")
         }
+    }
+
+    private fun shouldBootstrapInjectedJavaScript(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT &&
+            allowScripts &&
+            domStorageEnabled &&
+            injectedJavaScript.isNotBlank()
+
+    private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
+        val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
+        val safeTargetUrl = JSONObject.quote(targetUrl)
+        return """
+            <!doctype html>
+            <html>
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <script>
+                  (function() {
+                    try {
+                      $safeScript
+                    } catch (error) {}
+                    window.location.replace($safeTargetUrl);
+                  })();
+                </script>
+              </head>
+              <body></body>
+            </html>
+        """.trimIndent()
     }
 
     private fun Any.toBooleanValue(default: Boolean): Boolean =

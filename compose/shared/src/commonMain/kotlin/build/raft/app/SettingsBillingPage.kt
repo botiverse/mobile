@@ -6,11 +6,14 @@ import build.raft.app.components.SlockBrutalCard
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -41,6 +44,8 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 const val SETTINGS_BILLING_PAGE = "compose_settings_billing"
 
@@ -206,6 +211,7 @@ internal val settingsBillingSmokePayload =
 private fun SettingsBillingScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val launchPayload =
         rememberBillingPayload(
             pager.pageData.params.optString("payload"),
@@ -221,22 +227,21 @@ private fun SettingsBillingScreen() {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     LaunchedEffect(Unit) {
         bridge.log("settings_billing_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
     }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    val payload = settingsState.billing.toBillingPayload(session = null, timeContext = timeContext)
-    SettingsBillingContent(payload) { action, planId ->
-        when (action) {
-            "comparePlans" -> environment.settingsCapabilities.openUrl(planId ?: payload.comparePlansUrl)
-            "portal" -> {
-                bridge.toast("Billing portal is not yet available on mobile. Opening in browser.")
-                environment.settingsCapabilities.openUrl(sharedSettingsWebUrl(settingsState.developer.configuredWebBaseUrlOrNull(), "settings/billing"))
-            }
-            else -> bridge.log("settings_billing_unsupported_action action=$action planId=${planId.orEmpty()}")
-        }
+    LaunchedEffect(sharedStores.authStore) {
+        session = runCatching { sharedStores.authStore.readSession() }.getOrNull()
     }
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    SettingsBillingWebViewContent(
+        session = session,
+        webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        onUrlChange = { url -> bridge.log("settings_billing_webview_url_changed url=$url") },
+        onLoadFailure = { reason -> bridge.log("settings_billing_webview_load_failure reason=$reason") }
+    )
 }
 
 @Composable
@@ -302,6 +307,73 @@ internal fun SettingsBillingContent(
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
+
+@Composable
+internal fun SettingsBillingWebViewContent(
+    session: StoredAuthSession?,
+    webBaseUrl: String?,
+    modifier: Modifier = Modifier,
+    bottomContentPadding: Dp = 0.dp,
+    onUrlChange: (String) -> Unit = {},
+    onLoadFailure: (String) -> Unit = {}
+) {
+    val webUrl = remember(session, webBaseUrl) { settingsBillingWebViewUrl(webBaseUrl, session) }
+    val injectedJavaScript = remember(session) { settingsBillingWebViewInjectedJavaScript(session) }
+    if (session == null) {
+        SettingsBillingLoadingContent()
+        return
+    }
+    SlockWebView(
+        url = webUrl,
+        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(bottom = bottomContentPadding),
+        allowNavigation = true,
+        domStorageEnabled = true,
+        cacheEnabled = true,
+        ephemeral = false,
+        injectedJavaScript = injectedJavaScript,
+        onUrlChange = onUrlChange,
+        onLoadFailure = onLoadFailure
+    )
+}
+
+private val settingsBillingWebViewJson = Json
+
+private fun settingsBillingWebViewUrl(webBaseUrl: String?, session: StoredAuthSession?): String {
+    val serverSlug = session?.selectedServerSlug
+        ?: session?.servers?.firstOrNull { it.id == session.currentServerId }?.slug
+        ?: session?.servers?.firstOrNull()?.slug
+    val path = serverSlug
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "s/$it/settings/billing" }
+        ?: "settings/billing"
+    return sharedSettingsWebUrl(webBaseUrl, path)
+}
+
+private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
+    if (session == null) return ""
+    val currentServerSlug = session.selectedServerSlug
+        ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
+        ?: session.servers.firstOrNull()?.slug
+    val writes =
+        buildList {
+            add(settingsBillingLocalStorageWrite("slock_access_token", session.accessToken))
+            add(settingsBillingLocalStorageWrite("slock_refresh_token", session.refreshToken))
+            currentServerSlug?.takeIf { it.isNotBlank() }?.let {
+                add(settingsBillingLocalStorageWrite("slock_last_server_slug", it))
+            }
+        }
+            .joinToString(separator = ";")
+    return """
+        (function() {
+          try {
+            $writes;
+          } catch (error) {}
+        })();
+    """.trimIndent()
+}
+
+private fun settingsBillingLocalStorageWrite(key: String, value: String): String =
+    "window.localStorage.setItem(${settingsBillingWebViewJson.encodeToString(key)}, ${settingsBillingWebViewJson.encodeToString(value)})"
 
 @Composable
 private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {
