@@ -1,5 +1,6 @@
 import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
+import { registerSingleServiceProvider } from '@kuiklybase/knoi';
 import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
@@ -14,12 +15,38 @@ const ENHANCED_NOTIFY_EVENT_NAME = 'slockEnhancedNotify';
 const ENHANCED_NOTIFY_KEY_EVENT_NAME = 'eventName';
 const ENHANCED_NOTIFY_KEY_DATA = 'data';
 const ENHANCED_NOTIFY_KEY_SOURCE = 'source';
+const SHARED_TRANSPORT_SINK_SERVICE = 'slockOhosRealtimeSharedTransportSink';
 
 interface RealtimeConnectParams {
   serverId: string;
   accessToken: string;
   socketUrl: string;
   lastSeq: number;
+  sharedTransportEnabled: boolean;
+}
+
+class SlockOhosRealtimeSharedTransportSink {
+  private readonly hostContext: SlockOhosRealtimeHostContext;
+
+  constructor(hostContext: SlockOhosRealtimeHostContext) {
+    this.hostContext = hostContext;
+  }
+
+  onConnected(): void {
+    this.hostContext.handleSharedTransportConnected();
+  }
+
+  onDisconnected(reason: string): void {
+    this.hostContext.handleSharedTransportDisconnected(reason);
+  }
+
+  onConnectError(message: string): void {
+    this.hostContext.handleSharedTransportConnectError(message);
+  }
+
+  onEvent(eventName: string, rawPayload: string): void {
+    this.hostContext.handleSharedTransportEvent(eventName, rawPayload);
+  }
 }
 
 export class SlockOhosRealtimeHostContext {
@@ -33,12 +60,16 @@ export class SlockOhosRealtimeHostContext {
   private authRefreshInFlight: boolean = false;
   private enhancedNotifyCallback?: Callback<emitter.EventData>;
   private socketListenerInstalled: boolean = false;
+  private sharedTransportSinkInstalled: boolean = false;
+  private sharedTransportActive: boolean = false;
+  private sharedTransportConnected: boolean = false;
 
   bindController(controller?: KRNativeRenderController): void {
     this.controller = controller;
   }
 
   bootstrapRealtime(): void {
+    this.installSharedTransportSink();
     this.installSocketListener();
     this.installEnhancedNotifyBridge();
   }
@@ -52,6 +83,7 @@ export class SlockOhosRealtimeHostContext {
           accessToken: (params['accessToken'] as string) ?? '',
           socketUrl: (params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL,
           lastSeq: Number(params['lastSeq'] ?? 0),
+          sharedTransportEnabled: params['sharedSocketIoTransportEnabled'] === true,
         }, params['forceReconnect'] === true);
         break;
       case 'disconnect':
@@ -72,7 +104,13 @@ export class SlockOhosRealtimeHostContext {
 
   onPageShow(): void {
     slockOhosRealtimeKnoiBridge.onAppShown();
-    this.socketIo.resume();
+    if (this.connectParams?.sharedTransportEnabled === true) {
+      if (this.sharedTransportActive && !this.sharedTransportConnected) {
+        this.connectSharedTransport(this.connectParams);
+      }
+    } else {
+      this.socketIo.resume();
+    }
     this.sendAppLifecycleEvent('show');
   }
 
@@ -83,7 +121,11 @@ export class SlockOhosRealtimeHostContext {
       this.sendAppLifecycleEvent('hide_keep_alive');
       return;
     }
-    this.socketIo.suspend('background');
+    if (this.sharedTransportActive) {
+      this.disconnectSharedTransport();
+    } else {
+      this.socketIo.suspend('background');
+    }
   }
 
   disconnectForSessionEnd(reason: string): void {
@@ -92,6 +134,51 @@ export class SlockOhosRealtimeHostContext {
       return;
     }
     this.disconnect(reason);
+  }
+
+  handleSharedTransportConnected(): void {
+    this.markInbound();
+    this.sharedTransportConnected = true;
+    this.startHeartbeatWatchdog();
+    console.info('[SlockOhosRealtime] shared_transport_connected');
+    this.rejoinChannels('connect');
+  }
+
+  handleSharedTransportDisconnected(reason: string): void {
+    this.sharedTransportConnected = false;
+    this.stopHeartbeatWatchdog();
+    console.info(`[SlockOhosRealtime] shared_transport_disconnected reason=${reason}`);
+  }
+
+  handleSharedTransportConnectError(message: string): void {
+    this.markInbound();
+    this.sharedTransportConnected = false;
+    console.warn(`[SlockOhosRealtime] shared_transport_connect_error ${message}`);
+    this.requestAuthRefresh('connect_error');
+  }
+
+  handleSharedTransportEvent(eventName: string, rawPayload: string): void {
+    let payload: KRAny = {};
+    if (rawPayload.length > 0) {
+      try {
+        payload = JSON.parse(rawPayload) as KRAny;
+      } catch (error) {
+        console.warn(`[SlockOhosRealtime] shared_transport_payload_parse_failed eventName=${eventName} message=${JSON.stringify(error)}`);
+      }
+    }
+    this.handleSocketIoEvent(eventName, payload);
+  }
+
+  private installSharedTransportSink(): void {
+    if (this.sharedTransportSinkInstalled) {
+      return;
+    }
+    registerSingleServiceProvider(
+      SHARED_TRANSPORT_SINK_SERVICE,
+      new SlockOhosRealtimeSharedTransportSink(this)
+    );
+    this.sharedTransportSinkInstalled = true;
+    console.info('[SlockOhosRealtime] shared_transport_sink_registered');
   }
 
   private installSocketListener(): void {
@@ -144,6 +231,7 @@ export class SlockOhosRealtimeHostContext {
       accessToken: params.accessToken,
       socketUrl: params.socketUrl,
       lastSeq: decision.resumeSeq,
+      sharedTransportEnabled: params.sharedTransportEnabled,
     };
     if (!decision.shouldConnect) {
       return;
@@ -152,17 +240,27 @@ export class SlockOhosRealtimeHostContext {
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = undefined;
     this.disconnect('reconnect');
-    this.socketIo.connect({
-      socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this),
-      auth: {
-        token: params.accessToken,
-        serverId: params.serverId,
-      },
-      headers: {
-        'Authorization': `Bearer ${params.accessToken}`,
-        'X-Server-Id': params.serverId,
+    if (params.sharedTransportEnabled) {
+      const currentParams = this.connectParams;
+      if (currentParams === undefined) {
+        return;
       }
-    });
+      this.connectSharedTransport(currentParams);
+    } else {
+      this.sharedTransportActive = false;
+      const resolvedSocketUrl = SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this);
+      this.socketIo.connect({
+        socketUrl: resolvedSocketUrl,
+        auth: {
+          token: params.accessToken,
+          serverId: params.serverId,
+        },
+        headers: {
+          'Authorization': `Bearer ${params.accessToken}`,
+          'X-Server-Id': params.serverId,
+        }
+      });
+    }
   }
 
   private disconnectForRealtimeCommand(reason: string): void {
@@ -181,6 +279,7 @@ export class SlockOhosRealtimeHostContext {
     }
     this.authRefreshInFlight = false;
     this.stopHeartbeatWatchdog();
+    this.disconnectSharedTransport();
     this.socketIo.disconnect(reason);
   }
 
@@ -239,7 +338,7 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private emitRoomCommand(eventName: string, payload: string): void {
-    if (!this.socketIo.emit(eventName, payload)) {
+    if (!this.emitSocketEvent(eventName, { 'channelId': payload })) {
       console.info(`[SlockOhosRealtime] room_command_deferred eventName=${eventName}`);
     }
   }
@@ -249,6 +348,36 @@ export class SlockOhosRealtimeHostContext {
       console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
       this.emitRoomCommand(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
     });
+  }
+
+  private connectSharedTransport(params: RealtimeConnectParams): void {
+    const resolvedSocketUrl = SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this);
+    this.sharedTransportActive = true;
+    this.sharedTransportConnected = false;
+    slockOhosRealtimeKnoiBridge.sharedTransportConnect(
+      resolvedSocketUrl,
+      params.serverId,
+      params.accessToken
+    );
+  }
+
+  private disconnectSharedTransport(): void {
+    if (!this.sharedTransportActive && !this.sharedTransportConnected) {
+      return;
+    }
+    this.sharedTransportActive = false;
+    this.sharedTransportConnected = false;
+    slockOhosRealtimeKnoiBridge.sharedTransportDisconnect();
+  }
+
+  private emitSocketEvent(eventName: string, payload: KRRecord): boolean {
+    if (this.sharedTransportActive) {
+      return slockOhosRealtimeKnoiBridge.sharedTransportEmit(eventName, payload as Record<string, Object>);
+    }
+    if (eventName === GeneratedRealtimeContract.SocketEvent.JoinChannel || eventName === GeneratedRealtimeContract.SocketEvent.LeaveChannel) {
+      return this.socketIo.emit(eventName, (payload['channelId'] as string) ?? '');
+    }
+    return this.socketIo.emit(eventName, payload);
   }
 
   private installEnhancedNotifyBridge(): void {
@@ -286,7 +415,7 @@ export class SlockOhosRealtimeHostContext {
       return;
     }
     console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
-    this.socketIo.emit(GeneratedRealtimeContract.SocketEvent.SyncResume, { lastSeq: lastSeq });
+    this.emitSocketEvent(GeneratedRealtimeContract.SocketEvent.SyncResume, { 'lastSeq': lastSeq });
   }
 
   private markInbound(eventName?: string): void {
@@ -298,7 +427,7 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private connectionStateName(): string {
-    return this.socketIo.isConnected() ? 'Connected' : 'Disconnected';
+    return (this.socketIo.isConnected() || this.sharedTransportConnected) ? 'Connected' : 'Disconnected';
   }
 
   private startHeartbeatWatchdog(): void {

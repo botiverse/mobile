@@ -8158,7 +8158,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 key = DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT,
                                 iconName = SlockLucideIconName.Activity,
                                 title = "Shared Socket.IO transport",
-                                detail = "Opt Android and iOS into the shared Ktor websocket-only Socket.IO pilot on the next realtime reconnect. OHOS saves the same flag but keeps its native ArkTS host until async KNOI event callbacks are wired.",
+                                detail = "Opt Android, iOS, and OHOS into the shared Ktor websocket-only Socket.IO pilot on the next realtime reconnect.",
                                 value = (!sharedTransportEnabled).toString(),
                                 status =
                                     when {

@@ -2420,7 +2420,7 @@ internal class SlockKuiklyBridgeModule(
         return loadSettingsDeveloper(
                 feedback =
                         if (enabled) {
-                            "Shared Socket.IO transport enabled for Android and iOS. OHOS keeps its native realtime host until async KNOI event callbacks are wired."
+                            "Shared Socket.IO transport enabled for Android, iOS, and OHOS."
                         } else {
                             "Shared Socket.IO transport disabled. Android will use the platform transport on the next realtime reconnect."
                         }

@@ -33,6 +33,7 @@ interface OhosPickedThreadAttachmentPayload {
   sizeBytes: number;
   previewUri: string;
   fileRef: string;
+  source: string;
 }
 
 interface OhosDiagnosticEntryPayload {
@@ -421,7 +422,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (params == null) {
       return;
     }
-    slockOhosRealtimeBridge.handleCommand(this.parseRecord(params));
+    const command = this.parseRecord(params);
+    if (((command["action"] as string) ?? "") === "connect") {
+      command["sharedSocketIoTransportEnabled"] = SlockOhosApiEnvironmentStore.sharedSocketIoTransportEnabled(this);
+    }
+    slockOhosRealtimeBridge.handleCommand(command);
   }
 
   private motionCapability(params: KRAny, callback: KuiklyRenderCallback) {
@@ -685,7 +690,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     SlockOhosDiagnostics.record("SlockDeveloper", `shared_socketio_transport_enabled=${enabled}`);
     return this.loadDeveloperCapability(
       enabled
-        ? "Shared Socket.IO flag enabled. Android and iOS reconnects use the shared Ktor pilot; OHOS keeps the native ArkTS host until async KNOI event callbacks are wired."
+        ? "Shared Socket.IO flag enabled. Android, iOS, and OHOS reconnects use the shared Ktor pilot."
         : "Shared Socket.IO flag disabled. OHOS keeps the native ArkTS realtime host."
     );
   }

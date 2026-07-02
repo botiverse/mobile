@@ -82,12 +82,33 @@ class SlockOhosRealtimeKnoiBridge {
     this.invokeVoid('slockRealtimeKnoiOnAppHidden');
   }
 
+  sharedTransportConnect(socketUrl: string, serverId: string, accessToken: string): void {
+    this.invokeVoid(
+      'slockRealtimeKnoiSharedTransportConnect',
+      socketUrl,
+      serverId,
+      accessToken
+    );
+  }
+
+  sharedTransportDisconnect(): void {
+    this.invokeVoid('slockRealtimeKnoiSharedTransportDisconnect');
+  }
+
+  sharedTransportEmit(eventName: string, payload: Record<string, Object>): boolean {
+    return this.invokeValue<boolean>(
+      'slockRealtimeKnoiSharedTransportEmit',
+      eventName,
+      payload
+    );
+  }
+
   private invokeValue<T>(name: string, ...args: Object[]): T {
     return invoke<T>(name, ...args);
   }
 
-  private invokeVoid(name: string): void {
-    invoke<void>(name);
+  private invokeVoid(name: string, ...args: Object[]): void {
+    invoke<void>(name, ...args);
   }
 }
 

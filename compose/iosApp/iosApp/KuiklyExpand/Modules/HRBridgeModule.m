@@ -734,7 +734,7 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         @"environmentKey" : @"default",
         @"environmentLabel" : @"Default",
         @"sharedSocketIoTransportEnabled" : @(SlockBridgeSharedSocketIoTransportEnabled()),
-        @"feedback" : feedback.length > 0 ? feedback : @"API environment switching is not wired on iOS P0. Shared Socket.IO transport can switch the iOS realtime socket; OHOS still uses its native ArkTS host until async KNOI event callbacks are wired.",
+        @"feedback" : feedback.length > 0 ? feedback : @"API environment switching is not wired on iOS P0. Shared Socket.IO transport can switch the Android, iOS, and OHOS realtime socket.",
         @"options" : @[]
     };
 }
@@ -843,7 +843,7 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         [[SlockIosRealtimeHost shared] realtimeTransportPreferenceChangedWithEnabled:enabled];
         SlockDiagnosticsRecord(@"info", @"SlockDeveloper", [NSString stringWithFormat:@"shared_socketio_transport_enabled=%@", enabled ? @"true" : @"false"]);
         return [self slock_developerCapabilityResultWithFeedback:(enabled
-            ? @"Shared Socket.IO transport enabled. Android and iOS reconnects use the shared Ktor pilot; OHOS keeps its native ArkTS host until async KNOI event callbacks are wired."
+            ? @"Shared Socket.IO transport enabled. Android, iOS, and OHOS reconnects use the shared Ktor pilot."
             : @"Shared Socket.IO flag disabled. iOS keeps the native Swift realtime host.")];
     }
     if ([action isEqualToString:@"realtimeTransportPreferenceChanged"]) {
