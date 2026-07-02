@@ -1,33 +1,33 @@
 {
-  "generatedAt": "2026-07-02T18:47:05.118Z",
-  "runId": "b1d7a3d01-20260702184638",
-  "commit": "b1d7a3d01-20260702184638",
-  "commitSubject": "test(visual): add raft ui wip library cases",
+  "generatedAt": "2026-07-02T20:28:59.301Z",
+  "runId": "695c99afb-20260702202831",
+  "commit": "695c99afb-20260702202831",
+  "commitSubject": "test(visual): add raft ui interaction states",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "summary": {
-    "total": 40,
+    "total": 41,
     "same": 0,
     "pass": 0,
     "basic-pass": 0,
-    "different": 40,
+    "different": 41,
     "missing": 0
   },
   "analysisSummary": {
-    "total": 40,
+    "total": 41,
     "ready": 0,
-    "pending": 40
+    "pending": 41
   },
   "componentMatrixSummary": {
-    "total": 40,
-    "active": 40,
+    "total": 41,
+    "active": 41,
     "pending": 0,
     "skipped": 0,
     "captureTypes": {
       "component-fixture": {
-        "total": 40,
-        "active": 40,
+        "total": 41,
+        "active": 41,
         "pending": 0,
         "skipped": 0
       },
@@ -40,16 +40,16 @@
     },
     "providers": {
       "react": {
-        "active": 40,
+        "active": 41,
         "pending": 0,
         "unsupported": 0,
-        "total": 40
+        "total": 41
       },
       "android": {
-        "active": 40,
+        "active": 41,
         "pending": 0,
         "unsupported": 0,
-        "total": 40
+        "total": 41
       }
     }
   },
@@ -1237,6 +1237,55 @@
       }
     },
     {
+      "id": "library.raft-ui.interaction-states",
+      "title": "Raft UI Library Interaction States",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "library": "raft-ui",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "raft-ui/Button",
+            "raft-ui/SelectTrigger",
+            "raft-ui/DropdownMenuPopup",
+            "raft-ui/SelectPopup",
+            "raft-ui/PopoverPopup"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/library.raft-ui.interaction-states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockRaftUiButton",
+            "build.raft.app.components.SlockSelectTrigger",
+            "build.raft.app.components.SlockRaftUiPopupSurface",
+            "build.raft.app.components.SlockRaftUiMenuRow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RaftUiLibraryVisualFixtures.kt",
+          "fixture": "compose_raft_ui_interaction_states_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8077899060245087,
+        "pixelPerfectSimilarity": 0.5959119496855346,
+        "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.interaction-states.side-by-side.png"
+      }
+    },
+    {
       "id": "library.raft-ui.label-radio.states",
       "title": "Raft UI Library Label Radio",
       "captureType": "component-fixture",
@@ -1835,27 +1884,27 @@
   ],
   "raftUi": {
     "summary": {
-      "total": 40,
+      "total": 41,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 40,
+      "different": 41,
       "missing": 0
     },
     "analysisSummary": {
-      "total": 40,
+      "total": 41,
       "ready": 0,
-      "pending": 40
+      "pending": 41
     },
     "componentMatrixSummary": {
-      "total": 40,
-      "active": 40,
+      "total": 41,
+      "active": 41,
       "pending": 0,
       "skipped": 0,
       "captureTypes": {
         "component-fixture": {
-          "total": 40,
-          "active": 40,
+          "total": 41,
+          "active": 41,
           "pending": 0,
           "skipped": 0
         },
@@ -1868,16 +1917,16 @@
       },
       "providers": {
         "react": {
-          "active": 40,
+          "active": 41,
           "pending": 0,
           "unsupported": 0,
-          "total": 40
+          "total": 41
         },
         "android": {
-          "active": 40,
+          "active": 41,
           "pending": 0,
           "unsupported": 0,
-          "total": 40
+          "total": 41
         }
       }
     }

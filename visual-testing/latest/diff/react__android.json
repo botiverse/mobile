@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-02T18:47:05.052Z",
+  "generatedAt": "2026-07-02T20:28:59.233Z",
   "baseline": "react",
   "current": "android",
   "results": [
@@ -3597,6 +3597,106 @@
         "rgbSimilarity": 0.8608349122625031,
         "pixelPerfectSimilarity": 0.7588514938138998,
         "pixelMismatchRatio": 0.24114850618610018,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "library.raft-ui.interaction-states",
+      "surface": "library",
+      "category": "library",
+      "library": "raft-ui",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/library.raft-ui.interaction-states.png",
+      "currentImage": "visual-testing-results/android/library.raft-ui.interaction-states.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "library.raft-ui.interaction-states",
+        "image": "visual-testing-results/react/library.raft-ui.interaction-states.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='library.raft-ui.interaction-states']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 424
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 424
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-02T20:17:58.559Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "library.raft-ui.interaction-states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/library.raft-ui.interaction-states.png",
+        "viewport": {
+          "width": 342,
+          "height": 424,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 424
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 991,
+            "dominantRatio": 0.6584602
+          }
+        },
+        "capturedAt": "1783023757766"
+      },
+      "status": "different",
+      "baselineSha256": "a05bb5d2f307ca2c483375c408e1486a924316f102d4d1eef2e39dea231e82e0",
+      "currentSha256": "2948024a405cb367ea6804dccee67481678e056926d8b3d7f992fc6e4d537884",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/library.raft-ui.interaction-states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 342,
+        "baselineHeight": 424,
+        "currentWidth": 342,
+        "currentHeight": 424,
+        "comparisonWidth": 342,
+        "comparisonHeight": 424,
+        "rgbSimilarity": 0.8077899060245087,
+        "pixelPerfectSimilarity": 0.5959119496855346,
+        "pixelMismatchRatio": 0.4040880503144654,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -10095,11 +10195,11 @@
     }
   ],
   "summary": {
-    "total": 102,
+    "total": 103,
     "same": 0,
     "pass": 0,
     "basic-pass": 3,
-    "different": 98,
+    "different": 99,
     "missing": 1
   }
 }

@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-02T18:47:05.118Z",
-  "runId": "b1d7a3d01-20260702184638",
-  "commit": "b1d7a3d01-20260702184638",
-  "commitSubject": "test(visual): add raft ui wip library cases",
+  "generatedAt": "2026-07-02T20:28:59.301Z",
+  "runId": "695c99afb-20260702202831",
+  "commit": "695c99afb-20260702202831",
+  "commitSubject": "test(visual): add raft ui interaction states",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -3934,27 +3934,27 @@
   ],
   "raftUi": {
     "summary": {
-      "total": 40,
+      "total": 41,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 40,
+      "different": 41,
       "missing": 0
     },
     "analysisSummary": {
-      "total": 40,
+      "total": 41,
       "ready": 0,
-      "pending": 40
+      "pending": 41
     },
     "componentMatrixSummary": {
-      "total": 40,
-      "active": 40,
+      "total": 41,
+      "active": 41,
       "pending": 0,
       "skipped": 0,
       "captureTypes": {
         "component-fixture": {
-          "total": 40,
-          "active": 40,
+          "total": 41,
+          "active": 41,
           "pending": 0,
           "skipped": 0
         },
@@ -3967,16 +3967,16 @@
       },
       "providers": {
         "react": {
-          "active": 40,
+          "active": 41,
           "pending": 0,
           "unsupported": 0,
-          "total": 40
+          "total": 41
         },
         "android": {
-          "active": 40,
+          "active": 41,
           "pending": 0,
           "unsupported": 0,
-          "total": 40
+          "total": 41
         }
       }
     }

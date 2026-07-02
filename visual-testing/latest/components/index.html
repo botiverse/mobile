@@ -13,6 +13,11 @@
     a { color: #141111; font-weight: 700; }
     .summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
     .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; }
+    .reportNav { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 16px 0 0; }
+    .reportNav a { border: 2px solid #141111; background: #fff; padding: 10px 12px; box-shadow: 3px 3px 0 #141111; text-decoration: none; }
+    .reportNav a strong { display: block; font-size: 14px; }
+    .reportNav a span { display: block; margin-top: 4px; color: #514946; font-size: 12px; font-weight: 600; }
+    .reportNav a.active { background: #FFD440; }
     .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; max-width: 1180px; margin: 0 auto; align-items: start; }
     nav.tree { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; border: 2px solid #141111; background: #fff; padding: 12px; box-shadow: 4px 4px 0 #141111; }
     nav.tree ul { list-style: none; margin: 0; padding-left: 12px; }
@@ -90,7 +95,7 @@
   <header>
     <h1><a href="../../">Components Real Diff</a></h1>
     <p class="runMeta">Slock app component and KMP component abstraction parity cases. Library-only raft-ui package cases remain in the Raft UI Library report.</p>
-    <p class="runMeta"><code>b1d7a3d01-20260702184638</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-02T18:47:05.118Z" data-timestamp="2026-07-02T18:47:05.118Z" title="2026-07-02T18:47:05.118Z">2026-07-02 18:47:05 UTC</time></p>
+    <p class="runMeta"><code>695c99afb-20260702202831</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-02T20:28:59.301Z" data-timestamp="2026-07-02T20:28:59.301Z" title="2026-07-02T20:28:59.301Z">2026-07-02 20:28:59 UTC</time></p>
     <div class="summary">
       <span class="pill">Total 71</span>
       <span class="pill">Same 0</span>
@@ -102,6 +107,24 @@
       <span class="pill">Matrix 72/74 active</span>
       <span class="pill">Components Parity 72/74 active</span>
     </div>
+    <nav class="reportNav" aria-label="Report entry points">
+      <a href="../">
+        <strong>Product Visual Diff</strong>
+        <span>完整 React-vs-Android 产品和组件报告</span>
+      </a>
+      <a href="../raft-ui/">
+        <strong>Raft UI Library</strong>
+        <span>独立 <code>raft-ui</code> package export parity</span>
+      </a>
+      <a href="./" class="active">
+        <strong>Components Real Diff</strong>
+        <span>Slock app components / KMP abstraction parity</span>
+      </a>
+      <a href="../../">
+        <strong>Visual Testing Home</strong>
+        <span>回到发布首页和历史 runs</span>
+      </a>
+    </nav>
   </header>
   <div class="layout">
     <nav class="tree" aria-label="Visual case categories">
