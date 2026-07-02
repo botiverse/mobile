@@ -144,6 +144,9 @@ internal fun ThreadTimelineSlice.firstMessageListItemIndex(): Int {
 }
 
 internal fun ThreadTimelineSlice.threadMessageListItemIndex(messageId: String): Int {
+    if (hasThreadOriginItem() && originMessage?.id == messageId) {
+        return 0
+    }
     val messageIndex = messages.indexOfFirst { it.id == messageId }
     if (messageIndex < 0) return -1
     return firstMessageListItemIndex() + messageIndex
