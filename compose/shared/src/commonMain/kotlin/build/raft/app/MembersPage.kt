@@ -937,6 +937,16 @@ internal fun MembersPageContent() {
             { submit ->
                 val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
+                    // The create response carries machineId but usually no machineName
+                    // (runtimeProfile is empty for a fresh agent), so resolve the name
+                    // from the dialog's machine options to avoid a transient
+                    // "no computer" grouping until the members refresh lands.
+                    val machineId = result.data.machineId?.takeIf { it.isNotBlank() }
+                        ?: submit.machineId?.takeIf { it.isNotBlank() }
+                    val machineName = result.data.machineName?.takeIf { it.isNotBlank() }
+                        ?: machineId?.let { id ->
+                            computersSlice.machines.firstOrNull { it.id == id }?.name?.takeIf { name -> name.isNotBlank() }
+                        }
                     val profile = build.raft.app.model.MemberProfile(
                         id = build.raft.app.model.MemberId(result.data.id),
                         displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
@@ -947,7 +957,11 @@ internal fun MembersPageContent() {
                         avatarUrl = result.data.avatarUrl,
                         avatar = build.raft.app.model.AvatarReference.fromWireValue(result.data.avatarUrl),
                         presence = build.raft.app.model.Presence.Offline,
-                        agentStatus = build.raft.app.model.AgentStatus.Online
+                        agentStatus = build.raft.app.model.AgentStatus.Online,
+                        permissionBadges = listOfNotNull(
+                            machineName?.let { "computer:$it" },
+                            machineId?.let { "computer-id:$it" }
+                        )
                     )
                     optimisticMembers = optimisticMembers + profile
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
