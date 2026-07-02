@@ -406,6 +406,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiInteractionStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.interaction-states",
+            pageName = "compose_raft_ui_interaction_states_visual",
+            crop = RAFT_UI_INTERACTION_STATES_CROP
+        )
+    }
+
+    @Test
     fun captureRaftUiWipToggleGroupStates() {
         captureKmpComponentCase(
             caseId = "library.raft-ui.wip-toggle-group.states",
@@ -1921,6 +1930,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 294
+            )
+        private val RAFT_UI_INTERACTION_STATES_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 424
             )
         private val RAFT_UI_WIP_TOGGLE_GROUP_CROP =
             VisualCrop(

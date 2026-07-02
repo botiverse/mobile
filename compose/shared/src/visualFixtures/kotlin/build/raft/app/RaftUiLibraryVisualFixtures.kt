@@ -45,6 +45,7 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
@@ -493,6 +494,101 @@ internal fun RaftUiNotificationCenterVisualContent() {
                 status = SlockRaftUiSurfaceStatus.Warning,
                 read = true
             )
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiInteractionStatesVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(424.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockRaftUiButton(label = "Resting", modifier = Modifier.weight(1f), variant = SlockRaftUiButtonVariant.Primary)
+                SlockRaftUiButton(
+                    label = "Pressed",
+                    modifier = Modifier.weight(1f).offset(x = 1.dp, y = 1.dp),
+                    variant = SlockRaftUiButtonVariant.Primary
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.weight(1f).border(SlockStroke.Default, SlockColor.BorderBlack).padding(2.dp)) {
+                    SlockRaftUiButton(label = "Focused", modifier = Modifier.fillMaxWidth(), variant = SlockRaftUiButtonVariant.Outline)
+                }
+                SlockRaftUiButton(label = "Disabled", modifier = Modifier.weight(1f), variant = SlockRaftUiButtonVariant.Muted, enabled = false)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockSelectTrigger(label = "Library", modifier = Modifier.width(150.dp), expanded = true)
+                SlockRaftUiButton(label = "Actions", variant = SlockRaftUiButtonVariant.Outline)
+            }
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                SlockRaftUiSurfaceLabel("Menu states", modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(27.dp).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Default row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
+                    Text(text = "⌘ K", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(27.dp).background(SlockColor.BrandYellow.copy(alpha = 0.30f)).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Highlighted row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
+                    Text(text = "4", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(27.dp).background(SlockColor.BrandYellow.copy(alpha = 0.20f)).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Selected row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
+                    Text(text = "✓", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(27.dp).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Disabled row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack.copy(alpha = 0.30f))
+                    Text(text = "⇧ D", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.30f))
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Box(
+                    modifier =
+                        Modifier
+                            .width(112.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        text = "Tooltip open",
+                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+            }
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Row(modifier = Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    SlockRaftUiTextMono("POPOVER OPEN")
+                    SlockRaftUiTextMono("ACTIVE")
+                }
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack))
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    SlockRaftUiTextSans("Fixed open, highlighted, selected, pressed, focus, and disabled states.")
+                }
+            }
         }
     }
 }

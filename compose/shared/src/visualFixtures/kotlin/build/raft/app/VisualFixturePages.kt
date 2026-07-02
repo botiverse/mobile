@@ -476,6 +476,14 @@ internal class ComposeRaftUiNotificationCenterVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_interaction_states_visual", supportInLocal = true)
+internal class ComposeRaftUiInteractionStatesVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiInteractionStatesVisualContent() }
+    }
+}
+
 @Page("compose_raft_ui_wip_toggle_group_visual", supportInLocal = true)
 internal class ComposeRaftUiWipToggleGroupVisualPage : BasePager() {
     override fun willInit() {
