@@ -66,6 +66,8 @@ internal enum class SlockRaftUiBadgeVariant(val tone: SlockBrutalTone) {
 
 internal data class SlockRaftUiTabItem(val value: String, val label: String)
 
+internal data class SlockRaftUiSegmentedItem(val value: String, val label: String, val count: Int? = null)
+
 @Composable
 internal fun SlockRaftUiButton(
     label: String,
@@ -95,6 +97,87 @@ internal fun SlockRaftUiBadge(
     uppercase: Boolean = false
 ) {
     SlockBrutalBadge(label = label, modifier = modifier, tone = variant.tone, uppercase = uppercase)
+}
+
+@Composable
+internal fun SlockRaftUiLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    required: Boolean = false,
+    optional: Boolean = false,
+    small: Boolean = false,
+    disabled: Boolean = false
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = text,
+            style =
+                SlockType.ButtonBold.copy(
+                    fontSize = if (small) 12.sp else 14.sp,
+                    lineHeight = if (small) 14.sp else 18.sp
+                ),
+            color = if (disabled) SlockColor.TextMutedGray else SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (required) {
+            Text(
+                text = "*",
+                style = SlockType.ButtonBold.copy(fontSize = if (small) 12.sp else 14.sp, lineHeight = if (small) 14.sp else 18.sp),
+                color = if (disabled) SlockColor.TextMutedGray else SlockColor.AccentPink,
+                maxLines = 1
+            )
+        }
+        if (optional) {
+            Text(
+                text = "(optional)",
+                style =
+                    SlockType.Caption.copy(fontSize = if (small) 11.sp else 12.sp, lineHeight = if (small) 13.sp else 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                color = if (disabled) SlockColor.TextMutedGray else SlockColor.TextBlack.copy(alpha = 0.40f),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SlockRaftUiRadioRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        SlockCheckMarker(
+            checked = selected,
+            shape = SlockCheckMarkerShape.Circle,
+            tone = SlockCheckMarkerTone.YellowFill,
+            disabled = !enabled,
+            size = 16.dp
+        )
+        Text(
+            text = label,
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Medium),
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+internal fun SlockRaftUiSegmentedControl(
+    items: List<SlockRaftUiSegmentedItem>,
+    selectedValue: String,
+    modifier: Modifier = Modifier
+) {
+    SegmentedControl(
+        selectedValue = selectedValue,
+        options = items.map { SegmentedControlOption(value = it.value, label = it.label, count = it.count) },
+        onValueSelected = {},
+        modifier = modifier
+    )
 }
 
 @Composable

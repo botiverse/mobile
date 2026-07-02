@@ -343,6 +343,33 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiSegmentedControlStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.segmented-control.states",
+            pageName = "compose_raft_ui_segmented_control_visual",
+            crop = RAFT_UI_SEGMENTED_CONTROL_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiLabelRadioStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.label-radio.states",
+            pageName = "compose_raft_ui_label_radio_visual",
+            crop = RAFT_UI_LABEL_RADIO_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiSelectStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.select.states",
+            pageName = "compose_raft_ui_select_visual",
+            crop = RAFT_UI_SELECT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1773,6 +1800,27 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 144
+            )
+        private val RAFT_UI_SEGMENTED_CONTROL_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 96
+            )
+        private val RAFT_UI_LABEL_RADIO_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 154
+            )
+        private val RAFT_UI_SELECT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 148
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(

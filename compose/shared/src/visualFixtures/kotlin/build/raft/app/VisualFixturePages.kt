@@ -420,6 +420,30 @@ internal class ComposeRaftUiTabsVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_segmented_control_visual", supportInLocal = true)
+internal class ComposeRaftUiSegmentedControlVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiSegmentedControlVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_label_radio_visual", supportInLocal = true)
+internal class ComposeRaftUiLabelRadioVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiLabelRadioVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_select_visual", supportInLocal = true)
+internal class ComposeRaftUiSelectVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiSelectVisualContent() }
+    }
+}
+
 @Page("compose_members_agent_detail_visual", supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     override fun willInit() {

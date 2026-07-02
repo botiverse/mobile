@@ -18,11 +18,16 @@ import build.raft.app.components.SlockRaftUiField
 import build.raft.app.components.SlockRaftUiInlineCode
 import build.raft.app.components.SlockRaftUiInputGroup
 import build.raft.app.components.SlockRaftUiKbd
+import build.raft.app.components.SlockRaftUiLabel
+import build.raft.app.components.SlockRaftUiRadioRow
+import build.raft.app.components.SlockRaftUiSegmentedControl
+import build.raft.app.components.SlockRaftUiSegmentedItem
 import build.raft.app.components.SlockRaftUiTabItem
 import build.raft.app.components.SlockRaftUiTabs
 import build.raft.app.components.SlockRaftUiTextHeading
 import build.raft.app.components.SlockRaftUiTextMono
 import build.raft.app.components.SlockRaftUiTextSans
+import build.raft.app.components.SlockSelectTrigger
 import build.raft.app.components.SlockSpinner
 import build.raft.app.components.SlockStatusDot
 import androidx.compose.runtime.Composable
@@ -315,5 +320,68 @@ internal fun RaftUiTabsVisualContent() {
             selectedValue = "library",
             panelText = "25 active raft-ui library cases · no missing Android capture."
         )
+    }
+}
+
+@Composable
+internal fun RaftUiSegmentedControlVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(96.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiSegmentedControl(
+            selectedValue = "mentions",
+            items =
+                listOf(
+                    SlockRaftUiSegmentedItem(value = "all", label = "All", count = 24),
+                    SlockRaftUiSegmentedItem(value = "mentions", label = "Mentions", count = 3),
+                    SlockRaftUiSegmentedItem(value = "unread", label = "Unread", count = 9)
+                )
+        )
+    }
+}
+
+@Composable
+internal fun RaftUiLabelRadioVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(154.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockRaftUiLabel(text = "Notification level", required = true)
+                SlockRaftUiLabel(text = "Archive notes", optional = true, small = true)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockRaftUiRadioRow(label = "All activity", selected = false)
+                SlockRaftUiRadioRow(label = "Mentions only", selected = true)
+                SlockRaftUiRadioRow(label = "Muted", selected = false, enabled = false)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiSelectVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(148.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockSelectTrigger(label = "Raft UI Library")
+            SlockSelectTrigger(label = "Components Real Diff", enabled = false)
+        }
     }
 }
