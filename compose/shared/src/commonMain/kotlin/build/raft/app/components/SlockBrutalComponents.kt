@@ -645,7 +645,7 @@ internal fun SlockBrutalActionButton(
     leadingIcon: SlockLucideIconName? = null,
     leadingIconSpinning: Boolean = leadingIcon == SlockLucideIconName.Loader || leadingIcon == SlockLucideIconName.LoaderCircle,
     shadowOffset: Dp = 3.dp,
-    textStyle: TextStyle = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
+    textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     Box(
@@ -683,6 +683,9 @@ internal fun SlockBrutalActionButton(
         }
     }
 }
+
+internal val SlockBrutalActionButtonDefaultTextStyle =
+    SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
 
 @Composable
 internal fun SegmentedControl(

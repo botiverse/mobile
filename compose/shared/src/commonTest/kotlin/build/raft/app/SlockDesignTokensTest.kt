@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.SlockBrutalActionButtonDefaultTextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
@@ -43,6 +44,12 @@ class SlockDesignTokensTest {
         assertEquals("SpaceGrotesk-Medium", SlockType.Button.fontFamily.slockFontName())
         assertEquals("SpaceGrotesk-SemiBold", SlockType.PageTitle.fontFamily.slockFontName())
         assertEquals("SpaceGrotesk-Bold", SlockType.ButtonBold.fontFamily.slockFontName())
+    }
+
+    @Test
+    fun brutalActionButtonDefaultStyleIsBold() {
+        assertEquals(SlockType.ButtonBold.fontFamily, SlockBrutalActionButtonDefaultTextStyle.fontFamily)
+        assertEquals(FontWeight.Normal, SlockBrutalActionButtonDefaultTextStyle.fontWeight)
     }
 
     private fun Any?.slockFontName(): String? =
