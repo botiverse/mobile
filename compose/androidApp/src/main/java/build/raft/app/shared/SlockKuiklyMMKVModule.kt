@@ -229,6 +229,7 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
                     append(" valueLen=")
                     append(valueLength)
                 }
+                append(" scope=pager")
             }
         )
     }
@@ -296,22 +297,79 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
 
         internal fun containsKey(context: Context, key: String, mmapID: String): Boolean {
             ensureInitialized(context)
-            return MMKV.mmkvWithID(mmapID).containsKey(key)
+            val result = MMKV.mmkvWithID(mmapID).containsKey(key)
+            recordAuthKeyOperation(
+                operation = "contains",
+                mmapID = mmapID,
+                key = key,
+                result = result.toString()
+            )
+            return result
         }
 
         internal fun decodeString(context: Context, key: String, mmapID: String): String? {
             ensureInitialized(context)
-            return MMKV.mmkvWithID(mmapID).decodeString(key, null)
+            val result = MMKV.mmkvWithID(mmapID).decodeString(key, null)
+            recordAuthKeyOperation(
+                operation = "decode",
+                mmapID = mmapID,
+                key = key,
+                result = if (result.isNullOrEmpty()) "empty" else "value",
+                valueLength = result?.length
+            )
+            return result
         }
 
         internal fun encodeString(context: Context, key: String, value: String, mmapID: String) {
             ensureInitialized(context)
             MMKV.mmkvWithID(mmapID).encode(key, value)
+            recordAuthKeyOperation(
+                operation = "encode",
+                mmapID = mmapID,
+                key = key,
+                result = "success",
+                valueLength = value.length
+            )
         }
 
         internal fun removeValueForKey(context: Context, key: String, mmapID: String) {
             ensureInitialized(context)
             MMKV.mmkvWithID(mmapID).removeValueForKey(key)
+            recordAuthKeyOperation(
+                operation = "remove",
+                mmapID = mmapID,
+                key = key,
+                result = "success"
+            )
+        }
+
+        private fun recordAuthKeyOperation(
+            operation: String,
+            mmapID: String?,
+            key: String,
+            result: String,
+            valueLength: Int? = null
+        ) {
+            if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+            SlockAndroidBuglyDiagnostics.recordLog(
+                "info",
+                "SlockKuikly",
+                buildString {
+                    append("shared_auth_session_native mmkv_auth_key operation=")
+                    append(operation)
+                    append(" result=")
+                    append(result)
+                    append(" mmapID=")
+                    append(mmapID)
+                    append(" key=")
+                    append(key)
+                    if (valueLength != null) {
+                        append(" valueLen=")
+                        append(valueLength)
+                    }
+                    append(" scope=app")
+                }
+            )
         }
     }
 }

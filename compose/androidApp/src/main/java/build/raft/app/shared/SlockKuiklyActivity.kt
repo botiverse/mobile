@@ -72,6 +72,7 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingRequest
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
+import build.raft.app.core.data.auth.installAndroidAppScopeAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.diagnostics.SlockPerformanceDiagnostics
@@ -1029,6 +1030,7 @@ internal object SlockKuiklyAdapters {
     private var initialized = false
 
     fun init(context: Context) {
+        installAndroidAppScopeAuthKeyValueStore(context)
         SlockAndroidSqlDatabaseContext.init(context)
         if (initialized) {
             return

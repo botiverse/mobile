@@ -11,6 +11,46 @@ interface SharedPreferenceStore {
 
 interface SlockKeyValueStore : SharedPreferenceStore
 
+internal interface RebindableSlockKeyValueStore : SlockKeyValueStore {
+    fun updatePager(pager: Pager)
+}
+
+object SlockSharedAuthSessionKeyValueStoreProvider {
+    private var appScopeFactory: (() -> SlockKeyValueStore)? = null
+
+    fun installAppScopeFactory(factory: () -> SlockKeyValueStore) {
+        appScopeFactory = factory
+    }
+
+    internal fun create(pager: Pager): SlockSharedAuthSessionKeyValueStoreBinding {
+        val factory = appScopeFactory
+        return if (factory == null) {
+            SlockSharedAuthSessionKeyValueStoreBinding(
+                store =
+                    RebindableKuiklyMMKVKeyValueStore(
+                        pager = pager,
+                        namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+                    ),
+                scope = "pager"
+            )
+        } else {
+            SlockSharedAuthSessionKeyValueStoreBinding(
+                store = factory(),
+                scope = "app"
+            )
+        }
+    }
+
+    internal fun clearAppScopeFactoryForTests() {
+        appScopeFactory = null
+    }
+}
+
+internal data class SlockSharedAuthSessionKeyValueStoreBinding(
+    val store: SlockKeyValueStore,
+    val scope: String
+)
+
 object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
 }
@@ -178,7 +218,7 @@ class KuiklyMMKVKeyValueStore(
 class RebindableKuiklyMMKVKeyValueStore(
     pager: Pager,
     namespace: String
-) : SlockKeyValueStore {
+) : RebindableSlockKeyValueStore {
     private val backend = RebindableKuiklyMMKVKeyValueBackend(pager)
     private val delegate =
         KuiklyMMKVKeyValueStoreDelegate(
@@ -186,7 +226,7 @@ class RebindableKuiklyMMKVKeyValueStore(
             namespace = namespace
         )
 
-    fun updatePager(pager: Pager) {
+    override fun updatePager(pager: Pager) {
         backend.updatePager(pager)
     }
 

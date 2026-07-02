@@ -31,7 +31,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
-    private val authKeyValueStore: RebindableKuiklyMMKVKeyValueStore,
+    private val authKeyValueStore: SlockKeyValueStore,
     private val sharedPreferenceStore: RebindableKuiklyMMKVKeyValueStore,
     private val apiEnvironmentKeyValueStore: RebindableKuiklyMMKVKeyValueStore,
     val authStore: KuiklyMMKVAuthSessionStore,
@@ -59,7 +59,7 @@ internal class SlockSharedStoreProvider private constructor(
         get() = homeStore
 
     fun updatePager(pager: Pager) {
-        authKeyValueStore.updatePager(pager)
+        (authKeyValueStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
         sharedPreferenceStore.updatePager(pager)
         apiEnvironmentKeyValueStore.updatePager(pager)
         authSessionEvents.updatePager(pager)
@@ -205,11 +205,9 @@ internal class SlockSharedStoreProvider private constructor(
                     pager = pager,
                     source = "pager:${pager.pagerId}"
                 )
-            val authKeyValueStore =
-                RebindableKuiklyMMKVKeyValueStore(
-                    pager = pager,
-                    namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                )
+            val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create(pager)
+            val authKeyValueStore = authKeyValueStoreBinding.store
+            bridge.log("shared_auth_session auth_storage_scope scope=${authKeyValueStoreBinding.scope}")
             val authStore =
                 KuiklyMMKVAuthSessionStore(
                     store = authKeyValueStore,

@@ -2,6 +2,7 @@ package build.raft.app
 
 import android.app.Application
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
+import build.raft.app.core.data.auth.installAndroidAppScopeAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import build.raft.app.core.data.diagnostics.SlockCrashReporter
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
@@ -14,6 +15,7 @@ class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SlockAndroidBuglyDiagnostics.init(this)
+        installAndroidAppScopeAuthKeyValueStore(this)
         warmUpSlockJsonParseDispatcher()
         warmUpSlockMarkdownParseDispatcher()
         AndroidAppScopeRealtimeOwner.install(this)

@@ -3,6 +3,7 @@ package build.raft.app.core.data.auth
 import build.raft.app.shared.SlockKuiklyMMKVModule
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.SlockKeyValueStore
+import build.raft.app.data.SlockSharedAuthSessionKeyValueStoreProvider
 import android.content.Context
 
 class AndroidMMKVKeyValueStore(
@@ -35,3 +36,10 @@ class AndroidMMKVKeyValueStore(
 
 fun androidMMKVAuthKeyValueStore(context: Context): SlockKeyValueStore =
     AndroidMMKVKeyValueStore(context, SLOCK_AUTH_SESSION_MMKV_NAMESPACE)
+
+fun installAndroidAppScopeAuthKeyValueStore(context: Context) {
+    val appContext = context.applicationContext
+    SlockSharedAuthSessionKeyValueStoreProvider.installAppScopeFactory {
+        androidMMKVAuthKeyValueStore(appContext)
+    }
+}

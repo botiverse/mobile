@@ -1,9 +1,12 @@
 package build.raft.app.data
 
+import com.tencent.kuikly.core.base.ViewBuilder
+import com.tencent.kuikly.core.pager.Pager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class KeyValueStoreTest {
@@ -78,6 +81,30 @@ class KeyValueStoreTest {
         assertFalse(("slockLocal" to "slockLocal:locale") in backend.values)
     }
 
+    @Test
+    fun authSessionKeyValueProviderUsesInstalledAppScopeFactory() {
+        val appScopeStore = InMemorySlockKeyValueStore()
+        SlockSharedAuthSessionKeyValueStoreProvider.installAppScopeFactory { appScopeStore }
+        try {
+            val binding = SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
+
+            assertEquals("app", binding.scope)
+            assertSame(appScopeStore, binding.store)
+        } finally {
+            SlockSharedAuthSessionKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        }
+    }
+
+    @Test
+    fun authSessionKeyValueProviderFallsBackToPagerScopeStore() {
+        SlockSharedAuthSessionKeyValueStoreProvider.clearAppScopeFactoryForTests()
+
+        val binding = SlockSharedAuthSessionKeyValueStoreProvider.create(FakePager())
+
+        assertEquals("pager", binding.scope)
+        assertTrue(binding.store is RebindableSlockKeyValueStore)
+    }
+
     private class FakeMMKVBackend(
         initialValues: Map<Pair<String, String>, String> = emptyMap()
     ) : SlockMMKVKeyValueBackend {
@@ -96,6 +123,10 @@ class KeyValueStoreTest {
         override fun removeString(key: String, mmapID: String) {
             values.remove(mmapID to key)
         }
+    }
+
+    private class FakePager : Pager() {
+        override fun body(): ViewBuilder = {}
     }
 
 }
