@@ -164,6 +164,7 @@ can only implement a best-effort local fallback.
 
 Follow-up platform-specific server contracts:
 
+- `docs/mobile-native-push-server-requirements-2026-07-02.md`
 - `docs/mobile-killed-app-push-android-server-contract-2026-07-01.md`
 - `docs/mobile-killed-app-push-ios-server-contract-2026-07-01.md`
 - `docs/mobile-killed-app-push-ohos-server-contract-2026-07-01.md`
