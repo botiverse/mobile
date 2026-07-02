@@ -17,6 +17,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.input.pointer.nativeDispatchCapture
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -146,19 +147,20 @@ internal fun Modifier.slockFloatingContentClickTarget(): Modifier =
         .clickable(onClick = {})
 
 private fun Modifier.slockFloatingContentPointerBarrier(): Modifier =
-    pointerInput(Unit) {
-        awaitEachGesture {
-            while (true) {
-                val event = awaitPointerEvent()
-                event.changes.forEach { change ->
-                    if (change.positionChanged()) {
-                        change.consume()
+    nativeDispatchCapture()
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    event.changes.forEach { change ->
+                        if (change.positionChanged()) {
+                            change.consume()
+                        }
                     }
+                    if (event.changes.all { !it.pressed }) break
                 }
-                if (event.changes.all { !it.pressed }) break
             }
         }
-    }
 
 @Composable
 private fun SlockFloatingOverlayDismissBarrier(
@@ -169,6 +171,7 @@ private fun SlockFloatingOverlayDismissBarrier(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
+            .nativeDispatchCapture()
             .pointerInput(dismissClickableActive, onDismiss) {
                 awaitEachGesture {
                     var moved = false
