@@ -6,6 +6,7 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
+import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import kotlin.test.Test
@@ -127,11 +128,16 @@ class SettingsHomePageDiagnosticsTest {
 
         val apiRows = payload.sections.first { it.title == "API Server" }.rows
         val environmentRow = apiRows.first { it.key == DEVELOPER_ACTION_API_ENVIRONMENT }
+        val transportRow = apiRows.first { it.key == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT }
 
         assertEquals("API Environment", environmentRow.title)
         assertEquals("Production", environmentRow.status)
         assertTrue(environmentRow.enabled)
         assertTrue(environmentRow.detail.contains("Choose presets"))
+        assertEquals("Shared Socket.IO transport", transportRow.title)
+        assertEquals(false, transportRow.toggleValue)
+        assertEquals("true", transportRow.value)
+        assertTrue(transportRow.detail.contains("Android"))
     }
 
     @Test

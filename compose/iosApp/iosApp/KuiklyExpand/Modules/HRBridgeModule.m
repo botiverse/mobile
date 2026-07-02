@@ -2,6 +2,7 @@
 
 #import "KuiklyRenderViewController.h"
 #import "iosApp-Swift.h"
+#import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
 
 #if __has_include("SlockIosBuildMetadata.h")
@@ -20,6 +21,8 @@ static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
 static NSString *const SlockDiagnosticsLogDirName = @"Slock/diagnostics";
 static NSString *const SlockDiagnosticsLogFileName = @"slock-diagnostics.jsonl";
+static NSString *const SlockApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
+static NSString *const SlockSharedSocketIoTransportKey = @"slock_api_server_environment:shared_socket_io_transport_enabled";
 static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
 static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
 static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
@@ -74,6 +77,23 @@ static BOOL SlockBridgeBool(id value) {
     }
     NSString *text = [SlockBridgeString(value) lowercaseString];
     return [text isEqualToString:@"true"] || [text isEqualToString:@"1"] || [text isEqualToString:@"yes"];
+}
+
+static MMKV *SlockBridgeApiEnvironmentStore(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [MMKV initializeMMKV:nil];
+    });
+    return [MMKV mmkvWithID:SlockApiEnvironmentMMKVNamespace] ?: [MMKV defaultMMKV];
+}
+
+static BOOL SlockBridgeSharedSocketIoTransportEnabled(void) {
+    NSString *value = [SlockBridgeApiEnvironmentStore() getStringForKey:SlockSharedSocketIoTransportKey defaultValue:@"false"] ?: @"false";
+    return SlockBridgeBool(value);
+}
+
+static void SlockBridgeSetSharedSocketIoTransportEnabled(BOOL enabled) {
+    [SlockBridgeApiEnvironmentStore() setString:(enabled ? @"true" : @"false") forKey:SlockSharedSocketIoTransportKey];
 }
 
 static NSDictionary *SlockBridgeIdentityPageData(NSDictionary *pageData) {
@@ -704,6 +724,17 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     };
 }
 
+- (NSDictionary *)slock_developerCapabilityResultWithFeedback:(NSString *)feedback {
+    return @{
+        @"status" : @"ok",
+        @"environmentKey" : @"default",
+        @"environmentLabel" : @"Default",
+        @"sharedSocketIoTransportEnabled" : @(SlockBridgeSharedSocketIoTransportEnabled()),
+        @"feedback" : feedback.length > 0 ? feedback : @"API environment switching is not wired on iOS P0. Shared Socket.IO flag is saved, but iOS realtime still uses the native Swift host until a Kotlin realtime host bridge is wired.",
+        @"options" : @[]
+    };
+}
+
 - (NSDictionary *)slock_settingsCapabilityResultForAction:(NSString *)action params:(NSDictionary *)params {
     if (action.length == 0) {
         return [self slock_unsupportedResultWithCode:@"settings_capability_unknown"
@@ -761,13 +792,7 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         };
     }
     if ([action isEqualToString:@"loadDeveloper"]) {
-        return @{
-            @"status" : @"ok",
-            @"environmentKey" : @"default",
-            @"environmentLabel" : @"Default",
-            @"feedback" : @"API environment switching is not wired on iOS P0.",
-            @"options" : @[]
-        };
+        return [self slock_developerCapabilityResultWithFeedback:nil];
     }
     if ([action isEqualToString:@"loadDiagnostics"]) {
         NSString *recentText = SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars);
@@ -806,6 +831,19 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
+        return @{ @"status" : @"ok" };
+    }
+    if ([action isEqualToString:@"setSharedSocketIoTransport"]) {
+        BOOL enabled = SlockBridgeBool(params[@"enabled"]);
+        SlockBridgeSetSharedSocketIoTransportEnabled(enabled);
+        [[SlockIosRealtimeHost shared] disconnectWithReason:@"realtime_transport_changed"];
+        SlockDiagnosticsRecord(@"info", @"SlockDeveloper", [NSString stringWithFormat:@"shared_socketio_transport_enabled=%@", enabled ? @"true" : @"false"]);
+        return [self slock_developerCapabilityResultWithFeedback:(enabled
+            ? @"Shared Socket.IO flag enabled. Android reconnects use the shared Ktor pilot; iOS keeps the native Swift host until its Kotlin realtime bridge is wired."
+            : @"Shared Socket.IO flag disabled. iOS keeps the native Swift realtime host.")];
+    }
+    if ([action isEqualToString:@"realtimeTransportPreferenceChanged"]) {
+        [[SlockIosRealtimeHost shared] disconnectWithReason:@"realtime_transport_changed"];
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"setApiEnvironment"]) {

@@ -2022,6 +2022,8 @@ internal class SlockKuiklyBridgeModule(
                         "loadDeveloper" -> loadSettingsDeveloper()
                         "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
+                        "setSharedSocketIoTransport" -> setSharedSocketIoTransport(request)
+                        "realtimeTransportPreferenceChanged" -> onRealtimeTransportPreferenceChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
@@ -2355,6 +2357,7 @@ internal class SlockKuiklyBridgeModule(
                 "apiBaseUrl" to current.apiBaseUrl,
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
+                "sharedSocketIoTransportEnabled" to AndroidApiServerEnvironmentStore(appContext).sharedSocketIoTransportEnabled(),
                 "options" to options,
                 "feedback" to feedback.orEmpty()
         )
@@ -2406,6 +2409,28 @@ internal class SlockKuiklyBridgeModule(
                 "SlockDeveloper",
                 "api_environment_changed from=${request.optString("beforeEnvironmentKey")} to=${request.optString("afterEnvironmentKey")}"
         )
+        return mapOf("status" to "ok")
+    }
+
+    private fun setSharedSocketIoTransport(request: JSONObject): Map<String, Any> {
+        val enabled = request.optBoolean("enabled", false)
+        AndroidApiServerEnvironmentStore(appContext).setSharedSocketIoTransportEnabled(enabled)
+        AndroidAppScopeRealtimeOwner.onRealtimeTransportPreferenceChanged(appContext, enabled)
+        SlockDiagnosticsLogger.record("SlockDeveloper", "shared_socketio_transport_enabled=$enabled")
+        return loadSettingsDeveloper(
+                feedback =
+                        if (enabled) {
+                            "Shared Socket.IO transport enabled for Android. iOS and OHOS keep their native realtime hosts until their shared Kotlin host bridge is wired."
+                        } else {
+                            "Shared Socket.IO transport disabled. Android will use the platform transport on the next realtime reconnect."
+                        }
+        )
+    }
+
+    private fun onRealtimeTransportPreferenceChanged(request: JSONObject): Map<String, Any> {
+        val enabled = request.optBoolean("enabled", false)
+        AndroidAppScopeRealtimeOwner.onRealtimeTransportPreferenceChanged(appContext, enabled)
+        SlockDiagnosticsLogger.record("SlockDeveloper", "realtime_transport_preference_changed shared=$enabled")
         return mapOf("status" to "ok")
     }
 

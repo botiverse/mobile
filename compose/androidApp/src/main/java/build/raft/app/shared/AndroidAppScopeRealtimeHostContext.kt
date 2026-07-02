@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
+import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
@@ -23,6 +24,7 @@ import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeHostContext
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.createSharedKtorSocketIoTransport
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
@@ -125,12 +127,27 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             val appContext = context.applicationContext
             val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
+            val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
+            val sharedTransportEnabled =
+                AndroidApiServerEnvironmentStore(appContext).sharedSocketIoTransportEnabled()
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "shared_socketio_transport_selected=${if (sharedTransportEnabled) "shared" else "platform"}"
+            )
             val client =
                 SocketIoRealtimeClient(
                     transport =
-                        SocketIoSocketTransport(
-                            socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
-                        ),
+                        if (sharedTransportEnabled) {
+                            createSharedKtorSocketIoTransport(
+                                socketUrl = socketUrl,
+                                logger = { message ->
+                                    SlockDiagnosticsLogger.d(LOG_TAG, message)
+                                },
+                                scope = scope
+                            )
+                        } else {
+                            SocketIoSocketTransport(socketUrl = socketUrl)
+                        },
                     logger = { message ->
                         SlockDiagnosticsLogger.d(LOG_TAG, message)
                     }

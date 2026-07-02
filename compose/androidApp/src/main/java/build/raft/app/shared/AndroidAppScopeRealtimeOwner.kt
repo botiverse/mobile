@@ -14,6 +14,7 @@ import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedKtorSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockHostNetworkNotifyContract
+import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
@@ -389,6 +390,32 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         if (!disconnected) return
         backgroundKeepAliveEnabled = false
+    }
+
+    fun onRealtimeTransportPreferenceChanged(
+        context: Context,
+        enabled: Boolean
+    ) {
+        val appContext = context.applicationContext
+        val resumeSeq = realtimeRuntime?.lastSeq ?: 0L
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "realtime_transport_preference_changed shared=$enabled resumeSeq=$resumeSeq visibility=$appVisibility"
+        )
+        realtimeConnectJob?.cancel()
+        realtimeConnectJob = null
+        val runtime = realtimeRuntime
+        if (runtime != null) {
+            runtime.disconnectForSessionEnd(GeneratedRealtimeContract.DisconnectReason.ProcessTeardown)
+            runtime.dispose()
+        } else {
+            realtimeClient?.disconnect()
+        }
+        realtimeRuntime = null
+        realtimeClient = null
+        if (appVisibility == AppVisibility.Foreground || backgroundKeepAliveEnabled) {
+            connectFromStoredSession(appContext, resumeSeq)
+        }
     }
 
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {

@@ -147,6 +147,7 @@ data class SharedSettingsDeveloperSnapshot(
     val apiBaseUrl: String = "",
     val socketBaseUrl: String = "",
     val webUrl: String = "",
+    val sharedSocketIoTransportEnabled: Boolean = false,
     val options: List<SharedSettingsApiEnvironmentOption> = emptyList(),
     val feedback: String? = null
 )
@@ -328,6 +329,7 @@ sealed interface SharedSettingsIntent {
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
+    data class SetSharedSocketIoTransport(val enabled: Boolean) : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -388,6 +390,12 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
         setApiEnvironment(request.key)
+
+    suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Error(ScreenError("settings_shared_socketio_transport_unavailable", retryable = false))
+
+    suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> =
+        DataResult.Content(Unit)
 
     suspend fun onApiEnvironmentChanged(
         before: SharedSettingsApiEnvironmentOption,
@@ -827,6 +835,21 @@ class SharedSettingsDataSource(
                     ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
             return applyApiEnvironmentChange(store, before, after)
         } ?: platformCapabilities.saveApiEnvironment(request)
+
+    suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> =
+        apiEnvironmentStore?.let { store ->
+            val before = store.sharedSocketIoTransportEnabled()
+            val snapshot = store.setSharedSocketIoTransportEnabled(enabled)
+            if (before != enabled) {
+                when (val result = platformCapabilities.onRealtimeTransportPreferenceChanged(enabled)) {
+                    is DataResult.Content -> Unit
+                    is DataResult.Empty -> Unit
+                    is DataResult.Error -> diagnosticsLogger?.invoke("shared_socketio_preference_hook_error code=${result.error.code}")
+                    is DataResult.NoPermission -> diagnosticsLogger?.invoke("shared_socketio_preference_hook_no_permission code=${result.blocker.code}")
+                }
+            }
+            DataResult.Content(snapshot)
+        } ?: platformCapabilities.setSharedSocketIoTransport(enabled)
 
     private suspend fun applyApiEnvironmentChange(
         store: SharedApiEnvironmentStore,
@@ -1601,6 +1624,12 @@ class SharedSettingsStore(
                         .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key)
                 }
             }
+            is SharedSettingsIntent.SetSharedSocketIoTransport -> {
+                runAction(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT) {
+                    dataSource.setSharedSocketIoTransport(intent.enabled)
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT)
+                }
+            }
             is SharedSettingsIntent.CompleteStorageClear ->
                 completeStorageClear(intent)
             SharedSettingsIntent.CopyDiagnostics ->
@@ -2346,6 +2375,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
+            is SharedSettingsIntent.SetSharedSocketIoTransport,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
@@ -2495,6 +2525,7 @@ internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
+internal const val DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT = "sharedSocketIoTransport"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"

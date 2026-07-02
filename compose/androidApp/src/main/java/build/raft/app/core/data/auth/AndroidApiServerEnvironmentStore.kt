@@ -33,6 +33,13 @@ class AndroidApiServerEnvironmentStore(context: Context) {
     fun rewriteApiUrl(url: String): String =
         sharedStore.rewriteApiUrl(url)
 
+    fun sharedSocketIoTransportEnabled(): Boolean =
+        sharedStore.sharedSocketIoTransportEnabled()
+
+    fun setSharedSocketIoTransportEnabled(enabled: Boolean) {
+        sharedStore.setSharedSocketIoTransportEnabled(enabled)
+    }
+
     companion object {
         const val CustomKey = SharedApiEnvironmentStore.CustomKey
 

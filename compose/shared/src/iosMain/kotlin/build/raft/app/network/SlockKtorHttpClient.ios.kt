@@ -6,6 +6,7 @@ import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.request.header
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -24,6 +25,8 @@ internal actual fun createSlockKtorHttpClient(
         install(ContentNegotiation) {
             json(config.jsonConfig.toKtorJson())
         }
+
+        install(WebSockets)
 
         defaultRequest {
             config.headerProvider?.invoke()?.forEach { (key, value) ->

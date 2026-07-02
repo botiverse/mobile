@@ -471,6 +471,7 @@ private fun AuthDeveloperScreen() {
             val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
             pendingEnvironment = snapshot?.options?.firstOrNull { it.key != snapshot.environmentKey }?.key
         },
+        onSharedSocketIoTransportChange = {},
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
         onOpenRouter = { pager.openAuthPage("router") }
     )

@@ -18,6 +18,7 @@ export class SlockOhosApiEnvironmentStore {
   private static readonly KEY_CUSTOM_API_BASE_URL: string = 'custom_api_base_url';
   private static readonly KEY_CUSTOM_SOCKET_BASE_URL: string = 'custom_socket_base_url';
   private static readonly KEY_CUSTOM_WEB_URL: string = 'custom_web_url';
+  private static readonly KEY_SHARED_SOCKET_IO_TRANSPORT: string = 'shared_socket_io_transport_enabled';
   private static readonly AUTH_SESSION_MMKV_NAMESPACE: string = 'slockAuthSession';
   private static readonly AUTH_SESSION_MMKV_STORAGE_KEY: string = 'slockAuthSession:session';
   private static initialized: boolean = false;
@@ -139,6 +140,21 @@ export class SlockOhosApiEnvironmentStore {
     SlockOhosApiEnvironmentStore.ensureInitialized(owner);
     MMKV.mmkvWithID(SlockOhosApiEnvironmentStore.AUTH_SESSION_MMKV_NAMESPACE)
       .removeValueForKey(SlockOhosApiEnvironmentStore.AUTH_SESSION_MMKV_STORAGE_KEY);
+  }
+
+  static sharedSocketIoTransportEnabled(owner?: Object): boolean {
+    const value =
+      SlockOhosApiEnvironmentStore.store(owner).decodeString(
+        SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_SHARED_SOCKET_IO_TRANSPORT)
+      ) ?? 'false';
+    return value === 'true' || value === '1';
+  }
+
+  static setSharedSocketIoTransportEnabled(enabled: boolean, owner?: Object): void {
+    SlockOhosApiEnvironmentStore.store(owner).encodeString(
+      SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_SHARED_SOCKET_IO_TRANSPORT),
+      enabled ? 'true' : 'false'
+    );
   }
 
   private static currentEnvironment(key: string, store: MMKV): SlockOhosApiEnvironment {

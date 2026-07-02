@@ -1,6 +1,8 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.RealtimeSubscription
+import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.createSlockKtorHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.header
@@ -23,7 +25,7 @@ import kotlinx.coroutines.sync.withLock
  *
  * This intentionally implements the narrow Engine.IO v4 / Socket.IO v4 subset
  * already used by the OHOS ArkTS transport: websocket transport only, no
- * polling upgrade, no binary attachments, and no platform switch-over yet.
+ * polling upgrade, and no binary attachments.
  */
 class SharedKtorSocketIoTransport(
     private val socketUrl: String,
@@ -173,3 +175,17 @@ class SharedKtorSocketIoTransport(
         }
     }
 }
+
+fun createSharedKtorSocketIoTransport(
+    socketUrl: String,
+    headersProvider: () -> Map<String, String> = { emptyMap() },
+    logger: (String) -> Unit = {},
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+): SharedKtorSocketIoTransport =
+    SharedKtorSocketIoTransport(
+        socketUrl = socketUrl,
+        httpClient = createSlockKtorHttpClient(SlockRequestPriority.Background),
+        headersProvider = headersProvider,
+        logger = logger,
+        scope = scope
+    )

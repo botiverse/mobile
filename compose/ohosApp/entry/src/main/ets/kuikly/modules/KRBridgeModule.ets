@@ -474,6 +474,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(this.onApiEnvironmentChangedCapability(records));
           return;
         }
+        case "setSharedSocketIoTransport": {
+          callback(this.setSharedSocketIoTransportCapability(records));
+          return;
+        }
+        case "realtimeTransportPreferenceChanged": {
+          callback(this.onRealtimeTransportPreferenceChangedCapability(records));
+          return;
+        }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
           return;
@@ -618,6 +626,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "apiBaseUrl": current.apiBaseUrl,
       "socketBaseUrl": current.socketBaseUrl,
       "webUrl": current.webUrl,
+      "sharedSocketIoTransportEnabled": SlockOhosApiEnvironmentStore.sharedSocketIoTransportEnabled(this),
       "options": options,
       "feedback": feedback
     };
@@ -665,6 +674,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "SlockDeveloper",
       `api_environment_changed from=${(records["beforeEnvironmentKey"] as string) ?? ""} to=${(records["afterEnvironmentKey"] as string) ?? ""}`
     );
+    return { "status": "ok" };
+  }
+
+  private setSharedSocketIoTransportCapability(records: Record<string, Object>): Record<string, Object> {
+    const rawEnabled = records["enabled"];
+    const enabled = rawEnabled === true || rawEnabled === "true" || rawEnabled === "1";
+    SlockOhosApiEnvironmentStore.setSharedSocketIoTransportEnabled(enabled, this);
+    slockOhosRealtimeBridge.disconnectForSessionEnd("process_teardown");
+    SlockOhosDiagnostics.record("SlockDeveloper", `shared_socketio_transport_enabled=${enabled}`);
+    return this.loadDeveloperCapability(
+      enabled
+        ? "Shared Socket.IO flag enabled. Android reconnects use the shared Ktor pilot; OHOS keeps the native ArkTS host until its shared Kotlin host bridge is wired."
+        : "Shared Socket.IO flag disabled. OHOS keeps the native ArkTS realtime host."
+    );
+  }
+
+  private onRealtimeTransportPreferenceChangedCapability(records: Record<string, Object>): Record<string, Object> {
+    const rawEnabled = records["enabled"];
+    const enabled = rawEnabled === true || rawEnabled === "true" || rawEnabled === "1";
+    slockOhosRealtimeBridge.disconnectForSessionEnd("process_teardown");
+    SlockOhosDiagnostics.record("SlockDeveloper", `realtime_transport_preference_changed shared=${enabled}`);
     return { "status": "ok" };
   }
 
