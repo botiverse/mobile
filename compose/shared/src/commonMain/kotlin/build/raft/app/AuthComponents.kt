@@ -34,6 +34,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.semantics.Role
@@ -395,12 +396,7 @@ internal fun AuthActionButton(
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
-    val textStyle =
-        if (variant == AuthActionButtonVariant.Large) {
-            SlockType.Button.copy(fontSize = 13.sp, lineHeight = 18.sp, color = contentColor)
-        } else {
-            SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor)
-        }
+    val textStyle = authActionButtonTextStyle(variant, contentColor)
     Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
         Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
         Box(
@@ -431,6 +427,16 @@ internal fun AuthActionButton(
         }
     }
 }
+
+internal fun authActionButtonTextStyle(
+    variant: AuthActionButtonVariant,
+    contentColor: Color
+) =
+    if (variant == AuthActionButtonVariant.Large) {
+        SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp, color = contentColor)
+    } else {
+        SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor)
+    }
 
 @Composable
 internal fun AuthDivider() {

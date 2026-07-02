@@ -52,6 +52,17 @@ class SlockDesignTokensTest {
         assertEquals(FontWeight.Normal, SlockBrutalActionButtonDefaultTextStyle.fontWeight)
     }
 
+    @Test
+    fun authActionButtonStylesAreBold() {
+        val largeStyle = authActionButtonTextStyle(AuthActionButtonVariant.Large, SlockColor.TextBlack)
+        val defaultStyle = authActionButtonTextStyle(AuthActionButtonVariant.Default, SlockColor.TextBlack)
+
+        assertEquals(SlockType.ButtonBold.fontFamily, largeStyle.fontFamily)
+        assertEquals(SlockType.ButtonBold.fontFamily, defaultStyle.fontFamily)
+        assertEquals(FontWeight.Normal, largeStyle.fontWeight)
+        assertEquals(FontWeight.Normal, defaultStyle.fontWeight)
+    }
+
     private fun Any?.slockFontName(): String? =
         ((this as? FontListFontFamily)?.fonts?.singleOrNull() as? KuiklyFont)?.fontName
 }
