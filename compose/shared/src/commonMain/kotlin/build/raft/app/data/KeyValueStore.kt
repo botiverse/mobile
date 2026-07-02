@@ -3,6 +3,7 @@ package build.raft.app.data
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import kotlin.concurrent.Volatile
 
 interface SharedPreferenceStore {
     fun getString(key: String): String?

@@ -4,6 +4,7 @@ import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import kotlin.concurrent.Volatile
 
 private const val AUTH_SESSION_CLEARED_EVENT = "raft.authSessionCleared"
 private const val KEY_SOURCE = "source"

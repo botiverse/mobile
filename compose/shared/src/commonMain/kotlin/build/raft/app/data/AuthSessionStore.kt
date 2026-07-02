@@ -415,16 +415,7 @@ class KuiklyMMKVAuthSessionStore(
 private fun Throwable.safeAuthSessionDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
 
-private fun authSessionDiagnosticsCaller(): String =
-    Throwable().stackTrace
-        .firstOrNull { frame ->
-            val className = frame.className
-            !className.contains("AuthSessionStore") &&
-                !className.startsWith("kotlin.") &&
-                !className.startsWith("kotlinx.")
-        }
-        ?.let { frame -> "${frame.className.substringAfterLast('.')}.${frame.methodName}" }
-        ?: "unknown"
+private fun authSessionDiagnosticsCaller(): String = "unknown"
 
 private val authSessionStoreJson = Json {
     ignoreUnknownKeys = true
