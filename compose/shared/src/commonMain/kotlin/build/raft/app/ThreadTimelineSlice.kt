@@ -359,6 +359,23 @@ internal fun ThreadTimelineSlice.focusedMessageIndex(): Int =
         ?.let { targetMessageId -> messages.indexOfFirst { it.id == targetMessageId } }
         ?: -1
 
+internal fun ThreadTimelineSlice.focusedMessageListItemIndex(): Int =
+    focusedMessageId
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::threadMessageListItemIndex)
+        ?: -1
+
+internal fun ThreadTimelineSlice.focusedMessageTargetSignature(): String =
+    buildString {
+        append(focusedMessageId.orEmpty())
+        append(':')
+        append(originStatus)
+        append(':')
+        append(originMessage?.id.orEmpty())
+        append(':')
+        append(messageIndexSignature())
+    }
+
 internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible: Boolean): String {
     if (!contentExtrasVisible || messages.isEmpty()) return ""
     return messages

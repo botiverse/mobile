@@ -7939,9 +7939,14 @@ private fun ThreadMessagesList(
         remember(timelineSlice.messages) {
             timelineSlice.messageIndexSignature()
         }
-    val focusedMessageIndex =
-        remember(timelineSlice.focusedMessageId, messageIndexSignature) {
-            timelineSlice.focusedMessageIndex()
+    val focusedMessageTargetSignature =
+        remember(
+            timelineSlice.focusedMessageId,
+            timelineSlice.originStatus,
+            timelineSlice.originMessage?.id,
+            messageIndexSignature
+        ) {
+            timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
     val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
@@ -8289,7 +8294,7 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.focusedMessageId,
-        renderPayload.messages.size,
+        focusedMessageTargetSignature,
         lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -8332,6 +8337,7 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.focusedMessageId,
+        focusedMessageTargetSignature,
         latestMessageLayoutKey,
         latestItemIndex
     ) {
@@ -8440,6 +8446,7 @@ private fun ThreadMessagesList(
                     ThreadOriginCard(
                         renderConfig = renderConfig,
                         timelineSlice = renderPayload,
+                        focusedMessageId = activeFocusedMessageId,
                         linkedTasksProjection = linkedTasksProjection,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
@@ -11646,6 +11653,7 @@ private fun ThreadMessageMenuDivider() {
 private fun ThreadOriginCard(
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
+    focusedMessageId: String? = null,
     linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection(),
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
@@ -11756,7 +11764,8 @@ private fun ThreadOriginCard(
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
                             onMentionAuthor = onMentionAuthor,
-                            richContentEnabled = contentExtrasVisible
+                            richContentEnabled = contentExtrasVisible,
+                            focused = focusedMessageId == origin.id
                         )
                     }
                 } ?: renderConfig.originPreview?.takeIf { it.isNotBlank() }?.let {

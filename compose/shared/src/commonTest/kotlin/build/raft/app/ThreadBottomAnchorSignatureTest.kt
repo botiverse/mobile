@@ -226,6 +226,26 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedOriginTargetSignature_changesWhenOriginMessageHydrates() {
+        val loading =
+            payload(
+                originStatus = "loading",
+                originMessage = null,
+                messages = listOf(message("reply-1"))
+            ).copy(focusedMessageId = "parent-message").timelineSlice()
+        val loaded =
+            payload(
+                originStatus = "content",
+                originMessage = message("parent-message"),
+                messages = listOf(message("reply-1"))
+            ).copy(focusedMessageId = "parent-message").timelineSlice()
+
+        assertEquals(-1, loading.focusedMessageListItemIndex())
+        assertEquals(0, loaded.focusedMessageListItemIndex())
+        assertNotEquals(loading.focusedMessageTargetSignature(), loaded.focusedMessageTargetSignature())
+    }
+
+    @Test
     fun markdownPreparseSignature_ignoresMemberOnlyChanges() {
         val fullRendererBody = "```kotlin\nprintln(\"hi\")\n```"
         val a = payload(messages = listOf(message("m1", body = fullRendererBody)))
