@@ -1809,9 +1809,12 @@ private fun HomeNotificationActionButton(text: String, color: Color, onClick: ()
         minWidth = 72.dp,
         minHeight = 32.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Medium)
+        textStyle = HomeNotificationActionButtonTextStyle
     )
 }
+
+internal val HomeNotificationActionButtonTextStyle =
+    SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
 
 private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
     SlockHomeNotificationKind.Warning -> SlockColor.AccentOrange

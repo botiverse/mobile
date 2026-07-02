@@ -19,6 +19,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -582,6 +583,12 @@ class SlockHomeComponentsTest {
     fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
         assertEquals(66.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
         assertEquals(90.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
+    }
+
+    @Test
+    fun notificationActionButtonsUseBoldFontFamily() {
+        assertEquals(slockFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
+        assertEquals(FontWeight.Normal, HomeNotificationActionButtonTextStyle.fontWeight)
     }
 
     @Test
