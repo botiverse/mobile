@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -30,19 +31,18 @@ import com.tencent.kuikly.compose.ui.graphics.Shape
 import com.tencent.kuikly.compose.ui.graphics.StrokeJoin
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.LayoutDirection
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.compose.resources.DrawableResource
 import com.tencent.kuikly.compose.resources.InternalResourceApi
-import com.tencent.kuikly.compose.resources.imageResource
+import com.tencent.kuikly.compose.resources.painterResource
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.attr.ImageUri
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -105,9 +105,9 @@ internal fun HomeBadgeVisualFixtureScreen() {
             badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
-            title = "Kuikly Canvas PNG 4x",
-            detail = "imageResource common asset pre-antialiased bitmap",
-            badge = { CanvasImageTiltedBadge(HomeBadgeFixtureServerName) }
+            title = "Kuikly Image PNG 4x",
+            detail = "painterResource common asset pre-antialiased bitmap",
+            badge = { ImageTiltedBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
             title = "Path star diagnostic",
@@ -296,21 +296,15 @@ private fun NativeTiltedPathBadge(text: String) {
 }
 
 @Composable
-private fun CanvasImageTiltedBadge(text: String) {
-    val image = imageResource(HomeBadgeChromeImageResource)
+private fun ImageTiltedBadge(text: String) {
     Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
         Box(modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight)) {
-            if (image.width > 0 && image.height > 0) {
-                Canvas(modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight)) {
-                    drawImage(
-                        image = image,
-                        srcOffset = IntOffset.Zero,
-                        srcSize = IntSize(image.width, image.height),
-                        dstOffset = IntOffset.Zero,
-                        dstSize = size.toIntSize()
-                    )
-                }
-            }
+            Image(
+                painter = painterResource(HomeBadgeChromeImageResource),
+                contentDescription = null,
+                modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight),
+                contentScale = ContentScale.FillBounds
+            )
             HomeBadgeFixtureForeground(
                 text = text,
                 modifier =
@@ -530,5 +524,5 @@ private val HomeBadgeFixtureGuideBg = Color(0xFFF2F2F2)
 
 @OptIn(InternalResourceApi::class)
 private val HomeBadgeChromeImageResource by lazy(LazyThreadSafetyMode.NONE) {
-    DrawableResource("assets://common/home_badge/home_badge_chrome_4x.png")
+    DrawableResource(ImageUri.commonAssets("home_badge/home_badge_chrome_4x.png").toUrl(""))
 }
