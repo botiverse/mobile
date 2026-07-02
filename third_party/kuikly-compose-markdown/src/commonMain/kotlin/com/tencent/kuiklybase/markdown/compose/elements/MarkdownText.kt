@@ -124,7 +124,7 @@ fun MarkdownText(
     val animations = LocalMarkdownAnimations.current
     val transformer = LocalImageTransformer.current
 
-    if (content.canRenderAsPlainText()) {
+    if (content.canRenderAsPlainTextForMarkdown()) {
         MarkdownBasicText(
             text = content.text,
             maxLines = maxLines,
@@ -188,10 +188,11 @@ fun MarkdownText(
 private fun AnnotatedString.hasMarkdownImageInlineContent(): Boolean =
     getStringAnnotations(start = 0, end = length).any { it.item == MARKDOWN_TAG_IMAGE_URL }
 
-private fun AnnotatedString.canRenderAsPlainText(): Boolean {
+internal fun AnnotatedString.canRenderAsPlainTextForMarkdown(): Boolean {
     if (paragraphStyles.isNotEmpty()) return false
     if (getStringAnnotations(start = 0, end = length).isNotEmpty()) return false
     if (getLinkAnnotations(start = 0, end = length).isNotEmpty()) return false
+    if (spanStyles.size > 1) return false
     return spanStyles.all { range ->
         range.start == 0 && range.end == length
     }

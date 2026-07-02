@@ -21,6 +21,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
+import com.tencent.kuiklybase.markdown.compose.elements.canRenderAsPlainTextForMarkdown
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
@@ -124,6 +125,27 @@ class SlockMarkdownTest {
         assertEquals(TextOverflow.Clip, slockMarkdownContentOverflow(TextOverflow.Ellipsis))
         assertEquals(TextOverflow.Clip, slockMarkdownContentOverflow(TextOverflow.Clip))
         assertEquals(TextOverflow.Visible, slockMarkdownContentOverflow(TextOverflow.Visible))
+    }
+
+    @Test
+    fun markdownPlainTextFastPathKeepsFullRangeStrongSpansInRichText() {
+        val baseOnly =
+            buildAnnotatedString {
+                pushStyle(SlockType.Body.toSpanStyle())
+                append("plain paragraph")
+                pop()
+            }
+        val strongOnly =
+            buildAnnotatedString {
+                pushStyle(SlockType.Body.toSpanStyle())
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                append("bold paragraph")
+                pop()
+                pop()
+            }
+
+        assertTrue(baseOnly.canRenderAsPlainTextForMarkdown())
+        assertFalse(strongOnly.canRenderAsPlainTextForMarkdown())
     }
 
     @Test
