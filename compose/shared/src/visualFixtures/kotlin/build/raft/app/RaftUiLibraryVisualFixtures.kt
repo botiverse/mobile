@@ -496,3 +496,144 @@ internal fun RaftUiNotificationCenterVisualContent() {
         }
     }
 }
+
+@Composable
+internal fun RaftUiWipToggleGroupVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(112.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiSegmentedControl(
+            selectedValue = "wip",
+            items =
+                listOf(
+                    SlockRaftUiSegmentedItem(value = "stable", label = "Stable", count = 36),
+                    SlockRaftUiSegmentedItem(value = "wip", label = "WIP", count = 12),
+                    SlockRaftUiSegmentedItem(value = "open", label = "Open states", count = 6)
+                )
+        )
+    }
+}
+
+@Composable
+internal fun RaftUiWipListPanelsVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(388.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Thin, SlockColor.BorderBlack).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.width(36.dp).height(36.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+                        Text("V", style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        SlockRaftUiLabel(text = "Visual surfaces")
+                        SlockRaftUiTextMono("raft-ui/wip package exports")
+                    }
+                    SlockRaftUiBadge(label = "12", variant = SlockRaftUiBadgeVariant.Information)
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                SlockRaftUiSurfaceLabel(text = "WIP components", modifier = Modifier.width(180.dp))
+                SlockRaftUiTextMono("active")
+            }
+            SlockRaftUiNotificationItem(
+                title = "Media list item",
+                body = "fixture-ready · selected",
+                status = SlockRaftUiSurfaceStatus.Info,
+                actionLabel = "new"
+            )
+            SlockRaftUiMenuRow(label = "List item with metadata", trailing = "RGB 88.57%", highlighted = true)
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                SlockRaftUiMenuRow(label = "Preview shell muted state", disabled = true)
+                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                    Column { SlockRaftUiTextMono("Provider"); SlockRaftUiLabel(text = "Android", small = true) }
+                    Column { SlockRaftUiTextMono("Surface"); SlockRaftUiLabel(text = "library", small = true) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiWipMessageCardsVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(250.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SlockRaftUiTextMono("#visual-testing")
+                        SlockRaftUiTextMono("·")
+                        SlockRaftUiLabel(text = "Android-Developer-4", small = true)
+                        SlockRaftUiTextMono("02:20")
+                    }
+                    SlockRaftUiTextSans("Added deterministic package-surface cases before moving to WIP exports.")
+                    SlockRaftUiBadge(label = "Thread", variant = SlockRaftUiBadgeVariant.Information)
+                }
+            }
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SlockRaftUiTextMono("#raft-ui")
+                        SlockRaftUiLabel(text = "artin", small = true)
+                        SlockRaftUiTextMono("now")
+                    }
+                    SlockRaftUiTextSans("artin: 做完部署一版")
+                    SlockRaftUiTextMono("WIP package exports are being added as library rows.")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiWipOverlayShellsVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(284.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    SlockRaftUiLabel(text = "Lightbox shell")
+                    SlockRaftUiBadge(label = "Esc", variant = SlockRaftUiBadgeVariant.Information)
+                }
+                Box(modifier = Modifier.fillMaxWidth().height(86.dp).background(SlockColor.BorderBlack.copy(alpha = 0.05f)), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.width(192.dp).height(56.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+                        SlockRaftUiLabel(text = "Screenshot preview", small = true)
+                    }
+                }
+            }
+            SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SlockRaftUiLabel(text = "Bottom sheet shell")
+                    SlockRaftUiTextSans("Static slot capture for mobile actions.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SlockRaftUiButton(label = "Confirm", variant = SlockRaftUiButtonVariant.Primary)
+                        SlockRaftUiButton(label = "Cancel", variant = SlockRaftUiButtonVariant.Outline)
+                    }
+                }
+            }
+        }
+    }
+}

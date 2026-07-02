@@ -406,6 +406,42 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiWipToggleGroupStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.wip-toggle-group.states",
+            pageName = "compose_raft_ui_wip_toggle_group_visual",
+            crop = RAFT_UI_WIP_TOGGLE_GROUP_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiWipListPanelsStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.wip-list-panels.states",
+            pageName = "compose_raft_ui_wip_list_panels_visual",
+            crop = RAFT_UI_WIP_LIST_PANELS_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiWipMessageCardsStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.wip-message-cards.states",
+            pageName = "compose_raft_ui_wip_message_cards_visual",
+            crop = RAFT_UI_WIP_MESSAGE_CARDS_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiWipOverlayShellsStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.wip-overlay-shells.states",
+            pageName = "compose_raft_ui_wip_overlay_shells_visual",
+            crop = RAFT_UI_WIP_OVERLAY_SHELLS_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1885,6 +1921,34 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 294
+            )
+        private val RAFT_UI_WIP_TOGGLE_GROUP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 112
+            )
+        private val RAFT_UI_WIP_LIST_PANELS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 388
+            )
+        private val RAFT_UI_WIP_MESSAGE_CARDS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 250
+            )
+        private val RAFT_UI_WIP_OVERLAY_SHELLS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 284
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(

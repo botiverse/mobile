@@ -476,6 +476,38 @@ internal class ComposeRaftUiNotificationCenterVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_wip_toggle_group_visual", supportInLocal = true)
+internal class ComposeRaftUiWipToggleGroupVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiWipToggleGroupVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_wip_list_panels_visual", supportInLocal = true)
+internal class ComposeRaftUiWipListPanelsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiWipListPanelsVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_wip_message_cards_visual", supportInLocal = true)
+internal class ComposeRaftUiWipMessageCardsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiWipMessageCardsVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_wip_overlay_shells_visual", supportInLocal = true)
+internal class ComposeRaftUiWipOverlayShellsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiWipOverlayShellsVisualContent() }
+    }
+}
+
 @Page("compose_members_agent_detail_visual", supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     override fun willInit() {
