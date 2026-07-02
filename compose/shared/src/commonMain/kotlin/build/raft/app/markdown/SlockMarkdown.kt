@@ -1284,7 +1284,7 @@ internal fun slockMarkdownInlineTagWidthSp(
     if (kind == ThreadMarkdownTagKind.UserMention && !highlighted) {
         slockMarkdownPlainMentionWidthSp(label)
     } else {
-        slockMarkdownInlineChipWidthSp(label)
+        slockMarkdownInlineChipWidthSp(label, kind)
     }
 
 private fun slockMarkdownPlainMentionWidthSp(label: String) =
@@ -1292,8 +1292,13 @@ private fun slockMarkdownPlainMentionWidthSp(label: String) =
         .coerceAtLeast(28f)
         .sp
 
-internal fun slockMarkdownInlineChipWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 7.6f + SlockMarkdownInlineChipHorizontalChromeSp)
+internal fun slockMarkdownInlineChipWidthSp(
+    label: String,
+    kind: ThreadMarkdownTagKind? = null
+) =
+    (label.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() +
+        label.slockInlineChipWidthSafetySp(kind) +
+        SlockMarkdownInlineChipHorizontalChromeSp)
         .coerceAtLeast(40f)
         .sp
 
@@ -1307,6 +1312,37 @@ private val SlockMarkdownMentionUnderlineInset = 3.dp
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
         total + if (char.code > 0x7F) 2 else 1
+    }
+
+private fun String.slockInlineChipWidthSafetySp(kind: ThreadMarkdownTagKind?): Float =
+    when {
+        kind == ThreadMarkdownTagKind.Channel || kind == ThreadMarkdownTagKind.ChannelThread -> 16f
+        startsWith("#") && drop(1).any { !it.isDigit() } -> 16f
+        else -> 0f
+    }
+
+private fun Char.slockInlineChipWidthSp(): Float =
+    when {
+        code > 0x7F -> 15f
+        isDigit() -> 7.2f
+        isUpperCase() ->
+            when (this) {
+                'M', 'W' -> 10.8f
+                'I' -> 5.2f
+                else -> 8.8f
+            }
+        isLowerCase() ->
+            when (this) {
+                'f', 'i', 'j', 'l', 'r', 't' -> 5.2f
+                'm', 'w' -> 10.8f
+                else -> 8.2f
+            }
+        this == '@' -> 13.2f
+        this == '#' -> 8.2f
+        this == ':' -> 4.8f
+        this in "_-" -> 6f
+        this == '.' -> 4.2f
+        else -> 7f
     }
 
 private fun String.slockPlainMentionWidthSafetySp(): Float =

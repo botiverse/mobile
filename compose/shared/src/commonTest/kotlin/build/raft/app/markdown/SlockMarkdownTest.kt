@@ -581,14 +581,26 @@ class SlockMarkdownTest {
                 ThreadMarkdownTagKind.UserMention,
                 highlighted = true
             ).value
+        val channelWidth =
+            slockMarkdownInlineTagWidthSp(
+                "#markdown专修",
+                ThreadMarkdownTagKind.Channel
+            ).value
+        val threadRefWidth =
+            slockMarkdownInlineTagWidthSp(
+                "#markdown专修:692d9e88",
+                ThreadMarkdownTagKind.ChannelThread
+            ).value
         val taskWidth = slockMarkdownInlineChipWidthSp("#405").value
 
-        assertTrue(shortMentionWidth in 70f..80f)
-        assertTrue(mentionWidth in 160f..170f)
-        assertTrue(longAgentMentionWidth in 172f..182f)
-        assertTrue(qaMentionWidth in 110f..120f)
-        assertTrue(selfMentionWidth in 52f..62f)
-        assertTrue(taskWidth < 48f)
+        assertTrue(shortMentionWidth in 70f..80f, "shortMentionWidth=$shortMentionWidth")
+        assertTrue(mentionWidth in 160f..170f, "mentionWidth=$mentionWidth")
+        assertTrue(longAgentMentionWidth in 172f..182f, "longAgentMentionWidth=$longAgentMentionWidth")
+        assertTrue(qaMentionWidth in 110f..120f, "qaMentionWidth=$qaMentionWidth")
+        assertTrue(selfMentionWidth in 52f..62f, "selfMentionWidth=$selfMentionWidth")
+        assertTrue(channelWidth in 130f..140f, "channelWidth=$channelWidth")
+        assertTrue(threadRefWidth in 192f..204f, "threadRefWidth=$threadRefWidth")
+        assertTrue(taskWidth in 40f..48f, "taskWidth=$taskWidth")
     }
 
     @Test
