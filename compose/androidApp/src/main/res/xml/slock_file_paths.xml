@@ -9,4 +9,7 @@
     <cache-path
         name="slock_share_images"
         path="slock-share-images/" />
+    <external-files-path
+        name="slock_quiver_updates"
+        path="Download/" />
 </paths>
