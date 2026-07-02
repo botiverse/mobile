@@ -14,6 +14,7 @@ import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
+import { registerSlockOhosAppScopeMMKV } from '../kuikly/SlockOhosAppScopeMMKV';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
@@ -154,6 +155,7 @@ export default class EntryAbility extends UIAbility {
   private setupKnoi(): void {
     setup('libshared.so', BuildProfile.DEBUG);
     init();
+    registerSlockOhosAppScopeMMKV(this.context);
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 

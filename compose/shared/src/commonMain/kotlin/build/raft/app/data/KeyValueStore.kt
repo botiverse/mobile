@@ -35,8 +35,15 @@ object SlockSharedKeyValueStoreProvider {
                 scope = "app"
             )
         }
+        val platformStore = slockCreatePlatformAppScopeKeyValueStore(namespace)
+        if (platformStore != null) {
+            return SlockSharedKeyValueStoreBinding(
+                store = platformStore,
+                scope = "app"
+            )
+        }
         check(!slockRequiresAppScopeKeyValueStore(namespace)) {
-            "Android $storageName storage requires app-scope MMKV; installAndroidAppScopeSharedKeyValueStores() must run before shared store creation."
+            "$storageName storage requires app-scope MMKV; install app-scope shared key-value stores before shared store creation."
         }
         return SlockSharedKeyValueStoreBinding(
             store =
@@ -79,6 +86,8 @@ internal data class SlockSharedKeyValueStoreBinding(
 )
 
 internal expect fun slockRequiresAppScopeKeyValueStore(namespace: String): Boolean
+
+internal expect fun slockCreatePlatformAppScopeKeyValueStore(namespace: String): SlockKeyValueStore?
 
 object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
