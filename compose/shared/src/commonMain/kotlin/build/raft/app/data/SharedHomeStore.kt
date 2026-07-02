@@ -517,23 +517,16 @@ internal class SharedHomeStore(
         try {
             val session = authStore.readSession()
             if (session == null) {
-                val mappedContent = previous.asRefreshFailed("unauthenticated")
-                val mapping = previous.refreshFailureMapping()
-                diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=$mapping")
+                diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
                 reduceState(
                     _state.value.copy(
-                        content = mappedContent,
+                        content = SharedHomeContentState.Error("unauthenticated"),
                         // #81: clear badge on logout. The underlying
                         // SharedHomeSnapshot.unreadTotal is preserved for
                         // other surfaces (Home / Inbox), but the selected-
                         // server badge projection must not show a count after
                         // the user logs out.
-                        appBadgeCount =
-                            if (mappedContent is SharedHomeContentState.Content) {
-                                _state.value.appBadgeCount.copy(isStale = true)
-                            } else {
-                                AppBadgeCount.DISABLED
-                            }
+                        appBadgeCount = AppBadgeCount.DISABLED
                     )
                 )
                 return

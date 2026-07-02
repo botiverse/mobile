@@ -358,35 +358,6 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun foregroundRefreshKeepsContentWhenSessionReadTemporarilyMissing() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val logs = mutableListOf<String>()
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-        val store = SharedHomeStore(
-            authStore = sessionStore,
-            dataSource = source(api = RecordingHomeApi(), sessionStore = sessionStore),
-            scope = scope,
-            diagnosticsLogger = logs::add
-        )
-
-        store.accept(SharedHomeIntent.Start)
-        val before = store.state.value.content
-        assertTrue(before is SharedHomeContentState.Content)
-        val beforeBadge = store.state.value.appBadgeCount
-
-        sessionStore.clearSession()
-        store.accept(SharedHomeIntent.ForegroundRefresh)
-
-        val after = store.state.value.content
-        assertTrue(after is SharedHomeContentState.Content)
-        assertEquals("server-1", after.snapshot.server.id.value)
-        assertEquals(false, after.contentRefreshing)
-        assertEquals(beforeBadge.copy(isStale = true), store.state.value.appBadgeCount)
-        assertContains(logs, "home_ui_error source=shared_home_load code=unauthenticated mapped=keep_cached_content")
-        scope.cancel()
-    }
-
-    @Test
     fun firstHomeNetworkFailureLogsErrorPanelMapping() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
