@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Slock Alpha</string>
+    <string name="app_name">Raft Connected Test</string>
     <string name="settings_about_send_feedback">Send feedback</string>
 </resources>

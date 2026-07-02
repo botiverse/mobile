@@ -79,6 +79,7 @@ android {
     buildTypes {
         create("connectedTest") {
             initWith(getByName("debug"))
+            applicationIdSuffix = ".connectedtest"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             matchingFallbacks += listOf("debug")
         }
