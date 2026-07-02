@@ -202,6 +202,7 @@ uploaded file. Recommended fields:
 Slock provides a release helper:
 
 ```bash
+npm install -g @oranix/quiver-cli
 scripts/publish_android_quiver_release.sh --channel main --build <build>
 ```
 
@@ -212,9 +213,16 @@ The helper:
 - writes `artifacts/android-quiver/<version>-<code>-<git>/build-metadata.json`
 - reuses `scripts/prepare_android_bugly_symbols.sh` to stage mapping/native
   symbol archives when present
-- calls the Quiver CLI `builds publish-android` command to upload the APK as an
+- calls the npm-published Quiver CLI `builds publish-android` command to upload
+  the APK as an
   `installable` asset plus support artifacts as `proguard-mapping`,
   `native-symbols`, and `metadata-file`
+
+The helper looks for `quiver` on `PATH` by default. Override `QUIVER_CLI` only
+for local development, for example `QUIVER_CLI=/path/to/quiver/packages/cli/dist/index.js`.
+If `quiver` is not installed globally, the helper falls back to
+`npm exec --yes --package @oranix/quiver-cli@0.1.0 -- quiver`; override the
+package pin with `QUIVER_CLI_PACKAGE`.
 
 ## Validation Scope
 

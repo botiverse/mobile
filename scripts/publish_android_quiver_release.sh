@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-QUIVER_REPO="${QUIVER_REPO:-/Users/artin/0Workspace/github.com/oranix-io/quiver}"
-QUIVER_CLI="${QUIVER_CLI:-${QUIVER_REPO}/packages/cli/dist/index.js}"
+QUIVER_CLI="${QUIVER_CLI:-quiver}"
+QUIVER_CLI_PACKAGE="${QUIVER_CLI_PACKAGE:-@oranix/quiver-cli@0.1.0}"
 APP_SLUG="${QUIVER_APP_SLUG:-raft-android}"
 CHANNEL="${QUIVER_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
@@ -36,6 +36,27 @@ file_size() {
 
 json_string() {
   python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+}
+
+run_quiver() {
+  if [ -f "${QUIVER_CLI}" ]; then
+    case "${QUIVER_CLI}" in
+      *.js)
+        node "${QUIVER_CLI}" "$@"
+        ;;
+      *)
+        "${QUIVER_CLI}" "$@"
+        ;;
+    esac
+  else
+    if command -v "${QUIVER_CLI}" >/dev/null 2>&1; then
+      "${QUIVER_CLI}" "$@"
+    elif command -v npm >/dev/null 2>&1; then
+      npm exec --yes --package "${QUIVER_CLI_PACKAGE}" -- quiver "$@"
+    else
+      die "Quiver CLI not found: ${QUIVER_CLI}; install with: npm install -g @oranix/quiver-cli"
+    fi
+  fi
 }
 
 version_name() {
@@ -81,7 +102,9 @@ Environment overrides:
   QUIVER_CHANNEL=main
   QUIVER_API=https://quiver-worker.artin.workers.dev
   QUIVER_SESSION_COOKIE=<quiver_session cookie>
-  QUIVER_REPO=/Users/artin/0Workspace/github.com/oranix-io/quiver
+  QUIVER_AUTH_TOKEN=<agent or CI bearer token>
+  QUIVER_CLI=quiver
+  QUIVER_CLI_PACKAGE=@oranix/quiver-cli@0.1.0
   SLOCK_ANDROID_VERSION_MAJOR=1
   SLOCK_ANDROID_VERSION_MINOR=0
   SLOCK_ANDROID_VERSION_PATCH=0
@@ -245,8 +268,6 @@ if [ "${DRY_RUN}" = "1" ]; then
   exit 0
 fi
 
-[ -f "${QUIVER_CLI}" ] || die "Quiver CLI not found: ${QUIVER_CLI}; run pnpm --filter @oranix/quiver-cli build in ${QUIVER_REPO}"
-
 QUIVER_ARGS=(
   builds
   publish-android
@@ -268,4 +289,4 @@ if [ -n "${SYMBOL_ARCHIVE}" ]; then
   QUIVER_ARGS+=(--symbols "${SYMBOL_ARCHIVE}")
 fi
 
-node "${QUIVER_CLI}" "${QUIVER_ARGS[@]}"
+run_quiver "${QUIVER_ARGS[@]}"
