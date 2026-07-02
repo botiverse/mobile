@@ -594,6 +594,113 @@ internal fun RaftUiInteractionStatesVisualContent() {
 }
 
 @Composable
+internal fun RaftUiControlledOpenOverlaysVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(390.dp)
+                .height(760.dp)
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        SlockRaftUiButton(
+            label = "Dropdown open",
+            modifier = Modifier.offset(x = 16.dp, y = 16.dp).width(170.dp),
+            variant = SlockRaftUiButtonVariant.Outline
+        )
+        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 16.dp, y = 82.dp).width(170.dp)) {
+            SlockRaftUiSurfaceLabel("Deploy actions")
+            SlockRaftUiMenuRow("Publish page", trailing = "⌘ P", highlighted = true)
+            SlockRaftUiMenuRow("Keep history", trailing = "✓")
+            SlockRaftUiMenuRow("Mobile report", trailing = "✓")
+            SlockRaftUiMenuRow("Delete run", disabled = true)
+        }
+
+        SlockRaftUiButton(
+            label = "Popover open",
+            modifier = Modifier.offset(x = 204.dp, y = 16.dp).width(170.dp),
+            variant = SlockRaftUiButtonVariant.Outline
+        )
+        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 204.dp, y = 82.dp).width(170.dp)) {
+            SlockRaftUiSurfaceLabel("Review gate")
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                SlockRaftUiTextSans("Fixed portal capture.")
+            }
+        }
+
+        SlockRaftUiButton(
+            label = "Tooltip trigger",
+            modifier = Modifier.offset(x = 204.dp, y = 220.dp).width(170.dp),
+            variant = SlockRaftUiButtonVariant.Outline
+        )
+        Box(
+            modifier =
+                Modifier
+                    .offset(x = 204.dp, y = 258.dp)
+                    .width(170.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
+            SlockRaftUiTextSans("Real Tooltip open state.")
+        }
+
+        Box(
+            modifier =
+                Modifier
+                    .offset(x = 16.dp, y = 300.dp)
+                    .width(170.dp)
+                    .height(72.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockRaftUiLabel(text = "Context target")
+        }
+        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 16.dp, y = 378.dp).width(180.dp)) {
+            SlockRaftUiSurfaceLabel("Message menu")
+            SlockRaftUiMenuRow("Reply in thread", trailing = "R", highlighted = true)
+            SlockRaftUiMenuRow("Follow thread", trailing = "✓")
+            SlockRaftUiMenuRow("Archive", disabled = true)
+        }
+
+        SlockSelectTrigger(
+            label = "Raft UI Library",
+            modifier = Modifier.offset(x = 204.dp, y = 456.dp).width(170.dp),
+            expanded = true,
+            height = 32.dp
+        )
+        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 204.dp, y = 494.dp).width(170.dp)) {
+            SlockRaftUiSurfaceLabel("Report scope")
+            SlockRaftUiMenuRow("Raft UI Library", trailing = "✓", highlighted = true)
+            SlockRaftUiMenuRow("Components Real Diff")
+            SlockRaftUiMenuRow("Product Visual Diff")
+        }
+
+        SlockSelectTrigger(
+            label = "Android capture",
+            modifier = Modifier.offset(x = 16.dp, y = 590.dp).width(170.dp),
+            height = 32.dp
+        )
+        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 16.dp, y = 628.dp).width(220.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                SlockRaftUiTextMono("and")
+            }
+            SlockRaftUiSurfaceLabel("Matching reports")
+            SlockRaftUiMenuRow("Android capture", trailing = "✓")
+        }
+    }
+}
+
+@Composable
 internal fun RaftUiWipToggleGroupVisualContent() {
     Box(
         modifier =

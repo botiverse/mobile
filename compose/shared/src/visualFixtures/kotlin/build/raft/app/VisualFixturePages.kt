@@ -484,6 +484,14 @@ internal class ComposeRaftUiInteractionStatesVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_controlled_open_overlays_visual", supportInLocal = true)
+internal class ComposeRaftUiControlledOpenOverlaysVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiControlledOpenOverlaysVisualContent() }
+    }
+}
+
 @Page("compose_raft_ui_wip_toggle_group_visual", supportInLocal = true)
 internal class ComposeRaftUiWipToggleGroupVisualPage : BasePager() {
     override fun willInit() {

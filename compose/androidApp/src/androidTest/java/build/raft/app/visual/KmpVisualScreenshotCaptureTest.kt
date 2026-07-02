@@ -415,6 +415,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiControlledOpenOverlays() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.controlled-open-overlays",
+            pageName = "compose_raft_ui_controlled_open_overlays_visual",
+            crop = RAFT_UI_CONTROLLED_OPEN_OVERLAYS_CROP
+        )
+    }
+
+    @Test
     fun captureRaftUiWipToggleGroupStates() {
         captureKmpComponentCase(
             caseId = "library.raft-ui.wip-toggle-group.states",
@@ -1937,6 +1946,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 424
+            )
+        private val RAFT_UI_CONTROLLED_OPEN_OVERLAYS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 760
             )
         private val RAFT_UI_WIP_TOGGLE_GROUP_CROP =
             VisualCrop(
