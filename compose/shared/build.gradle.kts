@@ -195,6 +195,17 @@ tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKot
     dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
 }
 
+if (slockVisualFixturesEnabled) {
+    tasks.matching { task ->
+        task.name in setOf(
+            "bundleLibRuntimeToJarDebug",
+            "bundleLibRuntimeToDirDebug"
+        )
+    }.configureEach {
+        outputs.upToDateWhen { false }
+    }
+}
+
 tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
     val generatedResourcesTask =
         when (name) {

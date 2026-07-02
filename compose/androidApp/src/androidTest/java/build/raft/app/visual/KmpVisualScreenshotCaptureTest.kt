@@ -232,6 +232,51 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiBannerStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.banner.states",
+            pageName = "compose_raft_ui_banner_visual",
+            crop = RAFT_UI_BANNER_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiEmptyStateStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.empty-state.states",
+            pageName = "compose_raft_ui_empty_state_visual",
+            crop = RAFT_UI_EMPTY_STATE_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiTypographyStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.typography.states",
+            pageName = "compose_raft_ui_typography_visual",
+            crop = RAFT_UI_TYPOGRAPHY_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiFieldInputStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.field-input.states",
+            pageName = "compose_raft_ui_field_input_visual",
+            crop = RAFT_UI_FIELD_INPUT_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiAvatarStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.avatar.states",
+            pageName = "compose_raft_ui_avatar_visual",
+            crop = RAFT_UI_AVATAR_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1599,6 +1644,41 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 168
+            )
+        private val RAFT_UI_BANNER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 176
+            )
+        private val RAFT_UI_EMPTY_STATE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 248
+            )
+        private val RAFT_UI_TYPOGRAPHY_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 178
+            )
+        private val RAFT_UI_FIELD_INPUT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 236
+            )
+        private val RAFT_UI_AVATAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 116
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(

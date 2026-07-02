@@ -348,6 +348,46 @@ internal class ComposeUiAvatarListRowVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_banner_visual", supportInLocal = true)
+internal class ComposeRaftUiBannerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiBannerVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_empty_state_visual", supportInLocal = true)
+internal class ComposeRaftUiEmptyStateVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiEmptyStateVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_typography_visual", supportInLocal = true)
+internal class ComposeRaftUiTypographyVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiTypographyVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_field_input_visual", supportInLocal = true)
+internal class ComposeRaftUiFieldInputVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiFieldInputVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_avatar_visual", supportInLocal = true)
+internal class ComposeRaftUiAvatarVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiAvatarVisualContent() }
+    }
+}
+
 @Page("compose_members_agent_detail_visual", supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     override fun willInit() {
