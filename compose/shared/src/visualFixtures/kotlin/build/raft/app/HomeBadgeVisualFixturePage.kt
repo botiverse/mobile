@@ -33,9 +33,15 @@ import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.LayoutDirection
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.unit.toIntSize
+import com.tencent.kuikly.compose.resources.DrawableResource
+import com.tencent.kuikly.compose.resources.InternalResourceApi
+import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.core.annotations.Page
 import kotlin.math.PI
 import kotlin.math.abs
@@ -99,6 +105,11 @@ internal fun HomeBadgeVisualFixtureScreen() {
             badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
+            title = "Kuikly Canvas PNG 4x",
+            detail = "imageResource common asset pre-antialiased bitmap",
+            badge = { CanvasImageTiltedBadge(HomeBadgeFixtureServerName) }
+        )
+        HomeBadgeFixtureRow(
             title = "Path star diagnostic",
             detail = "SVG-like five-point vector path sanity check",
             badge = { VectorStarDiagnostic() }
@@ -112,7 +123,7 @@ private fun HomeBadgeFixtureRow(
     detail: String,
     badge: @Composable () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(112.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(100.dp)) {
         Box(Modifier.matchParentSize().offset(x = 3.dp, y = 3.dp).background(SlockColor.ShadowBlack))
         Column(
             modifier =
@@ -120,8 +131,8 @@ private fun HomeBadgeFixtureRow(
                     .fillMaxSize()
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+                    .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -278,6 +289,35 @@ private fun NativeTiltedPathBadge(text: String) {
             HomeBadgeFixtureForeground(
                 text = text,
                 modifier = Modifier.matchParentSize().padding(horizontal = 12.dp),
+                chevronModifier = Modifier
+            )
+        }
+    }
+}
+
+@Composable
+private fun CanvasImageTiltedBadge(text: String) {
+    val image = imageResource(HomeBadgeChromeImageResource)
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+        Box(modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight)) {
+            if (image.width > 0 && image.height > 0) {
+                Canvas(modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight)) {
+                    drawImage(
+                        image = image,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(image.width, image.height),
+                        dstOffset = IntOffset.Zero,
+                        dstSize = size.toIntSize()
+                    )
+                }
+            }
+            HomeBadgeFixtureForeground(
+                text = text,
+                modifier =
+                    Modifier
+                        .width(HomeBadgeFixtureBadgeWidth)
+                        .height(HomeBadgeFixtureBadgeHeight)
+                        .padding(horizontal = 12.dp),
                 chevronModifier = Modifier
             )
         }
@@ -483,5 +523,12 @@ private const val HomeBadgeFixtureTiltDegrees = -2f
 private val HomeBadgeFixtureBadgeWidth = 176.dp
 private val HomeBadgeFixtureBadgeHeight = 44.dp
 private val HomeBadgeFixtureShadowOffset = 2.dp
+private val HomeBadgeFixtureImageWidth = 178.dp
+private val HomeBadgeFixtureImageHeight = 46.dp
 private const val HomeBadgeFixtureServerName = "Jiachengs-MacBook"
 private val HomeBadgeFixtureGuideBg = Color(0xFFF2F2F2)
+
+@OptIn(InternalResourceApi::class)
+private val HomeBadgeChromeImageResource by lazy(LazyThreadSafetyMode.NONE) {
+    DrawableResource("assets://common/home_badge/home_badge_chrome_4x.png")
+}
