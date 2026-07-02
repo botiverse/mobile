@@ -1745,6 +1745,14 @@ private fun ThreadPageScreen() {
     )
 }
 
+@Page("compose_thread_message_row_visual", supportInLocal = true)
+internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMessageVisualScreen() }
+    }
+}
+
 @Composable
 internal fun ThreadMessageVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -1758,7 +1766,14 @@ internal fun ThreadMessageVisualScreen() {
         }
     val highlightedMentions =
         remember(visualFixture) {
-            if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT) setOf("artin") else emptySet()
+            if (
+                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
+                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE
+            ) {
+                setOf("artin")
+            } else {
+                emptySet()
+            }
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
@@ -6358,17 +6373,17 @@ internal fun threadVisualFixture(
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
-                subtitle = "Long inline code fixture",
+                subtitle = "Full markdown + long inline code fixture",
                 status = "content",
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
                 showModeTabs = false,
-                showReplyActions = false,
+                showReplyActions = true,
                 alignOwnMessagesRight = false,
                 showMessageSaveAction = false,
-                showTaskOpenActions = false,
+                showTaskOpenActions = true,
                 showTaskStatusActions = false,
                 messages =
                     listOf(
@@ -6381,13 +6396,49 @@ internal fun threadVisualFixture(
                             timestampLabel = "06/25 05:55",
                             messageType = "Chat",
                             body =
-                                "Long inline code preview: `reply/channel-markdown/msg-inline-visual/" +
-                                    "composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/" +
-                                    "without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu` " +
-                                    "Command preview: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.data.InboxUiStateTest` " +
-                                    "and file preview: `compose/shared/src/commonTest/kotlin/build/raft/app/data/InboxUiStateTest.kt` " +
-                                    "should wrap as inline code with the same yellow box and black frame style as short inline code.",
-                            threadChannelId = "thread-msg-long-inline-code-visual"
+                                "**Markdown fixture** for #markdown专修: @artin please verify task #42 before release.\n\n" +
+                                    "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, and `git commit -s`.\n\n" +
+                                    "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
+                                    "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
+                                    "> Quote block keeps normal markdown flow beside inline `code` and Slock tags.\n\n" +
+                                    "- Link: https://raft.build/visual-testing\n" +
+                                    "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`",
+                            threadChannelId = "thread-msg-long-inline-code-visual",
+                            replyCount = 4,
+                            unreadReplyCount = 1,
+                            firstUnreadReplyMessageId = "reply_long_inline_code_1",
+                            taskId = "task_42",
+                            taskNumber = 42,
+                            taskStatus = "in_review",
+                            taskAssigneeId = "agent-cindy",
+                            taskAssigneeName = "Cindy",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false),
+                                    KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true)
+                                ),
+                            attachments =
+                                listOf(
+                                    KuiklyThreadAttachmentItem(
+                                        id = "att-markdown-fixture",
+                                        name = "standard-markdown-fixture.md",
+                                        mimeType = "text/markdown",
+                                        sizeLabel = "6 KB"
+                                    )
+                                )
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task_42",
+                            title = "Markdown inline code uses standard CODE_SPAN renderer",
+                            status = "in_review",
+                            taskNumber = 42,
+                            messageId = "msg_long_inline_code_visual",
+                            assigneeId = "agent-cindy",
+                            assigneeName = "Cindy",
+                            updatedAtLabel = "06/25 05:55"
                         )
                     ),
                 members =
@@ -6398,6 +6449,13 @@ internal fun threadVisualFixture(
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
                         )
                     ),
                 showComposer = false,
