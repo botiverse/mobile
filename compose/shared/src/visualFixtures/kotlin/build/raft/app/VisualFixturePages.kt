@@ -244,6 +244,30 @@ internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_selection_popover_visual", supportInLocal = true)
+internal class ComposeUiSelectionPopoverVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSelectionPopoverVisualContent() }
+    }
+}
+
+@Page("compose_ui_menu_item_visual", supportInLocal = true)
+internal class ComposeUiMenuItemVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiMenuItemVisualContent() }
+    }
+}
+
+@Page("compose_ui_select_visual", supportInLocal = true)
+internal class ComposeUiSelectVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiSelectVisualContent() }
+    }
+}
+
 @Page("compose_ui_badge_visual", supportInLocal = true)
 internal class ComposeUiBadgeVisualPage : BasePager() {
     override fun willInit() {

@@ -12,13 +12,18 @@ import build.raft.app.components.SlockCheckboxLabelRow
 import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockFormFieldLabelStyle
 import build.raft.app.components.SlockFormFieldSize
+import build.raft.app.components.SlockMenuItemRow
 import build.raft.app.components.SlockBrutalTone
 import build.raft.app.components.SlockSectionHeader
 import build.raft.app.components.SlockSectionEyebrow
+import build.raft.app.components.SlockSelectTrigger
+import build.raft.app.components.SlockSelectionPopover
+import build.raft.app.components.SlockSelectionPopoverOption
 import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
@@ -220,6 +225,76 @@ internal fun UiSectionEyebrowVisualContent() {
             Box(modifier = Modifier.background(SlockColor.SurfaceWhite.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                 SlockSectionEyebrow(label = "Choose Avatar")
             }
+        }
+    }
+}
+
+@Composable
+internal fun UiSelectionPopoverVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(252.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockSelectionPopover(
+            title = "Channels",
+            showClear = true,
+            search = "des",
+            searchPlaceholder = "Search channels",
+            options =
+                listOf(
+                    SlockSelectionPopoverOption("design", "design", checked = true, reserveLeadingSlot = true),
+                    SlockSelectionPopoverOption("visual-testing", "visual-testing", reserveLeadingSlot = true),
+                    SlockSelectionPopoverOption("archive", "archived channel", enabled = false, reserveLeadingSlot = true),
+                    SlockSelectionPopoverOption("none", "No channel", italic = true, reserveLeadingSlot = true)
+                )
+        )
+    }
+}
+
+@Composable
+internal fun UiMenuItemVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(154.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(bottom = 3.dp),
+            verticalArrangement = Arrangement.Top
+        ) {
+            SlockMenuItemRow(label = "Open Channel", trailing = "⌘K")
+            SlockMenuItemRow(label = "Mark as Read")
+            SlockMenuItemRow(label = "Archive unavailable", enabled = false)
+            SlockMenuItemRow(label = "Delete Message", dividerBefore = true)
+        }
+    }
+}
+
+@Composable
+internal fun UiSelectVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(194.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockSelectTrigger(label = "Codex")
+            SlockSelectTrigger(label = "Select...", enabled = false)
         }
     }
 }

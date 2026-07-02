@@ -1,0 +1,293 @@
+package build.raft.app.components
+
+import build.raft.app.SlockColor
+import build.raft.app.SlockLucideIcon
+import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockStroke
+import build.raft.app.SlockType
+import build.raft.app.TextField
+import build.raft.app.withSlockFontWeight
+import androidx.compose.runtime.Composable
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.RectangleShape
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+
+internal data class SlockSelectionPopoverOption(
+    val id: String,
+    val label: String,
+    val checked: Boolean = false,
+    val enabled: Boolean = true,
+    val italic: Boolean = false,
+    val reserveLeadingSlot: Boolean = false,
+    val leadingIconName: SlockLucideIconName? = null
+)
+
+@Composable
+internal fun SlockSelectionPopover(
+    title: String,
+    options: List<SlockSelectionPopoverOption>,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    showClear: Boolean = false,
+    search: String? = null,
+    searchPlaceholder: String = "Search...",
+    emptyLabel: String = "No matches",
+    onClear: () -> Unit = {},
+    onSelect: (SlockSelectionPopoverOption) -> Unit = {}
+) {
+    Box(modifier = modifier.fillMaxWidth().padding(end = 3.dp, bottom = 3.dp)) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = 3.dp, y = 3.dp)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite, RectangleShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
+        ) {
+            if (showHeader) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(34.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title.uppercase(),
+                        style = SlockType.SectionLabel.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 1.0.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.60f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (showClear) {
+                        Text(
+                            text = "Clear",
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.5.sp).withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack.copy(alpha = 0.50f),
+                            maxLines = 1,
+                            modifier = Modifier.clickable { onClear() }
+                        )
+                    }
+                }
+                SlockThinDivider()
+            }
+            if (search != null) {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+                    SlockBrutalInputField(
+                        value = search,
+                        onValueChange = {},
+                        placeholder = searchPlaceholder,
+                        autoFocus = false,
+                        fieldMinHeight = 30.dp,
+                        horizontalPadding = 8.dp,
+                        verticalPadding = 5.dp,
+                        textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+                        showShadow = true
+                    )
+                }
+                SlockThinDivider()
+            }
+            if (options.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = emptyLabel,
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.40f)
+                    )
+                }
+            } else {
+                options.forEachIndexed { index, option ->
+                    SlockSelectionPopoverOptionRow(option = option, onSelect = onSelect)
+                    if (index != options.lastIndex) {
+                        SlockSubtleDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SlockMenuItemRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leadingIconName: SlockLucideIconName? = null,
+    trailing: String? = null,
+    dividerBefore: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (dividerBefore) {
+            SlockSubtleDivider()
+        }
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .clickable(enabled = enabled) { onClick() }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            leadingIconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = if (enabled) "#FF000000" else SlockColor.TextMutedGrayArgb)
+            }
+            Text(
+                text = label,
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Medium),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.30f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            trailing?.let {
+                Text(
+                    text = it,
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.40f),
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SlockSelectTrigger(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    expanded: Boolean = false,
+    height: Dp = 42.dp,
+    onClick: () -> Unit = {}
+) {
+    val shadowOffset = 3.dp
+    val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.50f)
+    val backgroundColor = if (enabled) SlockColor.SurfaceWhite else Color(0xFFF3F4F6)
+    Box(modifier = modifier.fillMaxWidth().height(height + shadowOffset)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .background(backgroundColor)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(enabled = enabled) { onClick() }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label.ifBlank { "Select..." },
+                style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            SlockLucideIcon(
+                SlockLucideIconName.ChevronDown,
+                modifier = Modifier.size(14.dp),
+                color = if (enabled) "#FF000000" else "#80000000",
+                rotationDegrees = if (expanded) 180f else 0f
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockSelectionPopoverOptionRow(
+    option: SlockSelectionPopoverOption,
+    onSelect: (SlockSelectionPopoverOption) -> Unit
+) {
+    val rowEnabled = option.enabled
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .background(SlockColor.SurfaceWhite)
+                .clickable(enabled = rowEnabled) { onSelect(option) }
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (option.reserveLeadingSlot || option.leadingIconName != null) {
+            Box(modifier = Modifier.width(20.dp), contentAlignment = Alignment.Center) {
+                option.leadingIconName?.let {
+                    SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = if (rowEnabled) "#FF000000" else SlockColor.TextMutedGrayArgb)
+                }
+            }
+        }
+        Text(
+            text = option.label,
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 12.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+            color =
+                when {
+                    !rowEnabled -> SlockColor.TextBlack.copy(alpha = 0.30f)
+                    option.italic -> SlockColor.TextBlack.copy(alpha = 0.70f)
+                    else -> SlockColor.TextBlack
+                },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (option.checked) {
+            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
+        }
+    }
+}
+
+@Composable
+private fun SlockThinDivider() {
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
+}
+
+@Composable
+private fun SlockSubtleDivider() {
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.10f)))
+}

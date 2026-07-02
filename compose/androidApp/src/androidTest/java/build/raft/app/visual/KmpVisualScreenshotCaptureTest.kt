@@ -115,6 +115,33 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiSelectionPopoverStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.selection-popover.states",
+            pageName = "compose_ui_selection_popover_visual",
+            crop = UI_SELECTION_POPOVER_CROP
+        )
+    }
+
+    @Test
+    fun captureUiMenuItemStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.menu-item.states",
+            pageName = "compose_ui_menu_item_visual",
+            crop = UI_MENU_ITEM_CROP
+        )
+    }
+
+    @Test
+    fun captureUiSelectStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.select.states",
+            pageName = "compose_ui_select_visual",
+            crop = UI_SELECT_CROP
+        )
+    }
+
+    @Test
     fun captureUiBadgeStates() {
         captureKmpComponentCase(
             caseId = "components.ui.badge.states",
@@ -1427,6 +1454,27 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 92
+            )
+        private val UI_SELECTION_POPOVER_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 252
+            )
+        private val UI_MENU_ITEM_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 154
+            )
+        private val UI_SELECT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 194
             )
         private val UI_BADGE_CROP =
             VisualCrop(
