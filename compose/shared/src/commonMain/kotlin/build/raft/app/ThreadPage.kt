@@ -1779,6 +1779,18 @@ internal fun ThreadMessageVisualScreen() {
                 emptySet()
             }
         }
+    val knownMarkdownChannelNames =
+        remember(payload.knownMarkdownChannelNames) {
+            payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
+        }
+    val knownMarkdownMentionNames =
+        remember(payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
+            payload.toKnownMarkdownMentionNameSet()
+        }
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
+        remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
+            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
+        }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
@@ -1799,6 +1811,7 @@ internal fun ThreadMessageVisualScreen() {
                     onOpenThread = {},
                     onOpenTask = {},
                     onOpenTaskStatusMenu = {},
+                    isMarkdownTagValid = isMarkdownTagValid,
                     onToggleReaction = {},
                     onToggleSaved = {},
                     onOpenAttachment = {},
@@ -1891,6 +1904,7 @@ internal fun ThreadMessageVisualScreen() {
                     },
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
+                isMarkdownTagValid = isMarkdownTagValid,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                 onShowActions = {},
                 onOpenMember = {},
@@ -6255,6 +6269,7 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = true,
                 showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("design"),
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -6419,6 +6434,7 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = true,
                 showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("markdown专修"),
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -6435,11 +6451,8 @@ internal fun threadVisualFixture(
                                     "**Bold: regular markdown bold sample abcdefg 123.**\n\n" +
                                     "Normal CN: 中文粗体 对照样本 123.\n\n" +
                                     "**粗体 Bold: 中文粗体 markdown bold sample 123.**\n\n" +
-                                    "Tag chip coverage:\n" +
-                                    "- Mention: @artin\n" +
-                                    "- Channel: #markdown专修\n" +
-                                    "- Thread: #markdown专修:692d9e88\n" +
-                                    "- Tasks: task #42 and task #43\n\n" +
+                                    "Tag chip coverage: mention @artin, channel #markdown专修, " +
+                                    "thread #markdown专修:692d9e88, tasks task #42 and task #43.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, and `git commit -s`.\n\n" +
                                     "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
                                     "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
@@ -6482,6 +6495,16 @@ internal fun threadVisualFixture(
                             assigneeId = "agent-cindy",
                             assigneeName = "Cindy",
                             updatedAtLabel = "06/25 05:55"
+                        ),
+                        KuiklyThreadTaskItem(
+                            id = "task_43",
+                            title = "Tighten markdown tag chip padding",
+                            status = "in_review",
+                            taskNumber = 43,
+                            messageId = "msg_long_inline_code_visual",
+                            assigneeId = "agent-cindy",
+                            assigneeName = "Cindy",
+                            updatedAtLabel = "07/02 22:46"
                         )
                     ),
                 members =

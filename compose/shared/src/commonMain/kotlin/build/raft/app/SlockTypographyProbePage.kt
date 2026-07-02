@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.markdown.ThreadMarkdownTagKind
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -121,7 +123,9 @@ private fun TypographyMarkdownProbeSection() {
         )
         SlockMarkdownBody(
             body = "Rich fixture for #design: @artin please compare the Android capture against task #222.\n\n中文正文：输入 at 之后选择成员，光标应该回到最后。",
-            textStyle = MessageBodyProbeStyle
+            textStyle = MessageBodyProbeStyle,
+            highlightedMentions = TypographyProbeHighlightedMentions,
+            isTagValid = ::isTypographyProbeMarkdownTagValid
         )
         Text(
             text = "SlockMarkdownBody · 14sp/24sp · medium probe",
@@ -130,7 +134,9 @@ private fun TypographyMarkdownProbeSection() {
         )
         SlockMarkdownBody(
             body = "Rich fixture for #design: @artin please compare the Android capture against task #222.\n\n中文正文：输入 at 之后选择成员，光标应该回到最后。",
-            textStyle = MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Medium)
+            textStyle = MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Medium),
+            highlightedMentions = TypographyProbeHighlightedMentions,
+            isTagValid = ::isTypographyProbeMarkdownTagValid
         )
     }
 }
@@ -143,6 +149,24 @@ private data class TypographyProbeRow(
 
 private val MessageBodyProbeStyle =
     SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
+
+private val TypographyProbeHighlightedMentions = setOf("artin")
+
+private val TypographyProbeKnownChannelNames = setOf("design")
+
+private fun isTypographyProbeMarkdownTagValid(tag: ThreadMarkdownTag): Boolean =
+    when (tag.kind) {
+        ThreadMarkdownTagKind.Task -> true
+        ThreadMarkdownTagKind.UserMention -> tag.label.removePrefix("@").equals("artin", ignoreCase = true)
+        ThreadMarkdownTagKind.Channel,
+        ThreadMarkdownTagKind.ChannelThread -> {
+            val channelKey =
+                (tag.channelName ?: tag.label.removePrefix("#").substringBefore(":"))
+                    .trim()
+                    .lowercase()
+            channelKey in TypographyProbeKnownChannelNames
+        }
+    }
 
 private val LatinWeightRows =
     listOf(

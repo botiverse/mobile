@@ -271,6 +271,41 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun visualFixtureTagCoverageUsesValidatedTags() {
+        val body =
+            "Tag chip coverage: mention @artin, channel #markdown专修, " +
+                "thread #markdown专修:692d9e88, tasks task #42 and task #43."
+        val validator =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownMentions = setOf("artin")
+            )
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                highlightedMentions = setOf("artin"),
+                isTagValid = validator
+            )
+        val annotator =
+            slockMarkdownAnnotator(
+                body,
+                highlightedMentions = setOf("artin"),
+                isTagValid = validator,
+                tokenPlan = plan
+            )
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
+
+        assertEquals(
+            listOf("@artin", "#markdown专修", "#markdown专修:692d9e88", "#42", "#43"),
+            plan.tagTokens().map { it.label }
+        )
+        assertEquals(listOf(true, false, false, false, false), plan.tagTokens().map { it.highlighted })
+        val expectedTokenIds = plan.tagTokens().mapTo(mutableSetOf()) { it.id }
+        assertEquals(expectedTokenIds, annotated.slockMarkdownClickableTags())
+        assertEquals(expectedTokenIds, annotated.slockMarkdownInlineContentIds())
+    }
+
+    @Test
     fun markdownReferenceTagsUseReactChipColors() {
         assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.Channel))
         assertEquals(SlockColor.AccentCyan.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
