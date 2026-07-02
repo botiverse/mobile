@@ -13,12 +13,20 @@ print_fix_instructions() {
   cat <<'EOF'
 
 How to fix:
-  1. Configure your Raft Mobile identity:
-       git config user.name  "<your-name>"
-       git config user.email "raft-mobile-<your-name>@mail.build"
-  2. Add the sign-off:
-       new commit:  git commit -s -m "<message>"
-       last commit: git commit --amend -s --no-edit
+  1. In the shared main checkout, pass identity per commit:
+       git \
+         -c user.name="<your-name>" \
+         -c user.email="raft-mobile-<your-name>@mail.build" \
+         commit -s -m "<message>"
+  2. To add the sign-off to the previous commit:
+       git \
+         -c user.name="<your-name>" \
+         -c user.email="raft-mobile-<your-name>@mail.build" \
+         commit --amend -s --no-edit
+
+Do not rely on repo-local user.name/user.email when multiple agents share the
+same checkout. In an isolated private clone or worktree, local Git identity is
+also fine.
 
 Agents should use the raft-mobile- prefix, for example:
   raft-mobile-cindy@mail.build

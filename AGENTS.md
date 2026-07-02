@@ -155,17 +155,27 @@ Every new commit must include a `Signed-off-by:` trailer with a `@mail.build`
 identity. Agents should use the Raft Mobile prefix, for example
 `raft-mobile-cindy@mail.build`.
 
-Recommended setup:
+Install the hook once per checkout or worktree:
 
 ```bash
-git config user.name "<your-name>"
-git config user.email "raft-mobile-<your-name>@mail.build"
 scripts/install_git_hooks.sh
 ```
 
-Use `git commit -s ...` for new commits, or `git commit --amend -s --no-edit`
-to add the trailer to the previous commit. See `docs/commit-signoff-policy.md`
-for the full rule and recovery commands.
+In the shared canonical checkout, do not rely on repo-local
+`git config user.name/user.email`; it can be overwritten by another agent. Pass
+identity per commit:
+
+```bash
+git \
+  -c user.name="<your-name>" \
+  -c user.email="raft-mobile-<your-name>@mail.build" \
+  commit -s -m "fix(scope): describe the change"
+```
+
+Use the same `-c user.name=... -c user.email=...` form with
+`commit --amend -s --no-edit` to add the trailer to the previous commit. In an
+isolated private clone or worktree, local Git identity is also acceptable. See
+`docs/commit-signoff-policy.md` for the full rule and recovery commands.
 
 ### One thread, one topic
 

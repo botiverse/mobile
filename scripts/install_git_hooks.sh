@@ -8,9 +8,13 @@ chmod +x "$repo_root/.githooks/commit-msg" "$repo_root/scripts/check-commit-sign
 cat <<'EOF'
 Git hooks installed for this repository.
 
-Required commit identity:
-  git config user.name  "<your-name>"
-  git config user.email "raft-mobile-<your-name>@mail.build"
+Required commit identity in a shared checkout:
+  git \
+    -c user.name="<your-name>" \
+    -c user.email="raft-mobile-<your-name>@mail.build" \
+    commit -s -m "<message>"
 
-Use `git commit -s ...` so Git adds the Signed-off-by trailer.
+Do not rely on repo-local user.name/user.email when multiple agents share the
+same checkout. In an isolated private clone or worktree, local Git identity is
+also fine.
 EOF
