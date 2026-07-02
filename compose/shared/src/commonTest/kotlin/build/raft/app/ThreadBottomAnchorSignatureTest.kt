@@ -199,7 +199,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun focusedMessageIndex_usesMessageIdSignatureNotListReference() {
+    fun focusedMessageListItemIndex_usesMessageIdSignatureNotListReference() {
         val sharedContent = listOf(message("m1"), message("m2"), message("m3"))
         val a = payload(messages = sharedContent).copy(focusedMessageId = "m2")
         val b = payload(messages = sharedContent.toList()).copy(
@@ -208,8 +208,9 @@ class ThreadBottomAnchorSignatureTest {
         )
 
         assertEquals(a.timelineSlice().messageIndexSignature(), b.timelineSlice().messageIndexSignature())
-        assertEquals(1, a.timelineSlice().focusedMessageIndex())
-        assertEquals(a.timelineSlice().focusedMessageIndex(), b.timelineSlice().focusedMessageIndex())
+        assertEquals(2, a.timelineSlice().focusedMessageListItemIndex())
+        assertEquals(a.timelineSlice().focusedMessageListItemIndex(), b.timelineSlice().focusedMessageListItemIndex())
+        assertEquals(a.timelineSlice().focusedMessageTargetSignature(), b.timelineSlice().focusedMessageTargetSignature())
     }
 
     @Test

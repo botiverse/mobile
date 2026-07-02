@@ -353,12 +353,6 @@ internal fun ThreadTimelineSlice.threadReactionToggleTarget(
 internal fun ThreadTimelineSlice.messageIndexSignature(): String =
     messages.joinToString(separator = "|") { message -> message.id }
 
-internal fun ThreadTimelineSlice.focusedMessageIndex(): Int =
-    focusedMessageId
-        ?.takeIf { it.isNotBlank() }
-        ?.let { targetMessageId -> messages.indexOfFirst { it.id == targetMessageId } }
-        ?: -1
-
 internal fun ThreadTimelineSlice.focusedMessageListItemIndex(): Int =
     focusedMessageId
         ?.takeIf { it.isNotBlank() }
