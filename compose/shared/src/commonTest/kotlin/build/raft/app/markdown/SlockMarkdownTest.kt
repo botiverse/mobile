@@ -552,8 +552,8 @@ class SlockMarkdownTest {
         assertTrue(mentionWidth in 160f..170f)
         assertTrue(longAgentMentionWidth in 172f..182f)
         assertTrue(qaMentionWidth in 110f..120f)
-        assertTrue(selfMentionWidth < 70f)
-        assertTrue(taskWidth < 54f)
+        assertTrue(selfMentionWidth in 52f..62f)
+        assertTrue(taskWidth < 48f)
     }
 
     @Test

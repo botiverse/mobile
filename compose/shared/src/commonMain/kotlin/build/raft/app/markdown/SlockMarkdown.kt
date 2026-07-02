@@ -1300,7 +1300,7 @@ internal fun slockMarkdownInlineChipWidthSp(label: String) =
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withSlockFontWeight(FontWeight.Normal).withResolvedSlockFontFamily()
 
-private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
+private const val SlockMarkdownInlineChipHorizontalChromeSp = 12f
 private val SlockMarkdownInlineChipTextHeight = 22.dp
 private val SlockMarkdownMentionUnderlineInset = 3.dp
 
@@ -1355,7 +1355,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color, onClick: () -> 
                 .background(color, RectangleShape)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                 .clickable { onClick() }
-                .padding(start = 5.dp, end = 5.dp, top = 0.dp, bottom = 0.dp),
+                .padding(start = 3.dp, end = 3.dp, top = 0.dp, bottom = 0.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
