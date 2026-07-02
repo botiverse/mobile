@@ -1,20 +1,30 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalTextarea
+import build.raft.app.components.SlockCheckboxLabelRow
 import build.raft.app.components.SlockRaftUiAvatar
 import build.raft.app.components.SlockRaftUiAvatarGroup
 import build.raft.app.components.SlockRaftUiAvatarType
+import build.raft.app.components.SlockRaftUiBadge
+import build.raft.app.components.SlockRaftUiBadgeVariant
 import build.raft.app.components.SlockRaftUiBanner
 import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.SlockRaftUiButton
+import build.raft.app.components.SlockRaftUiButtonVariant
 import build.raft.app.components.SlockRaftUiEmptyState
 import build.raft.app.components.SlockRaftUiField
 import build.raft.app.components.SlockRaftUiInlineCode
 import build.raft.app.components.SlockRaftUiInputGroup
 import build.raft.app.components.SlockRaftUiKbd
+import build.raft.app.components.SlockRaftUiTabItem
+import build.raft.app.components.SlockRaftUiTabs
 import build.raft.app.components.SlockRaftUiTextHeading
 import build.raft.app.components.SlockRaftUiTextMono
 import build.raft.app.components.SlockRaftUiTextSans
+import build.raft.app.components.SlockSpinner
+import build.raft.app.components.SlockStatusDot
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -186,5 +196,124 @@ internal fun RaftUiAvatarVisualContent() {
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun RaftUiButtonBadgeVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(142.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockRaftUiButton(label = "Publish", variant = SlockRaftUiButtonVariant.Primary)
+                SlockRaftUiButton(label = "Preview", variant = SlockRaftUiButtonVariant.Default)
+                SlockRaftUiButton(label = "Delete", variant = SlockRaftUiButtonVariant.Danger)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockRaftUiButton(label = "More", variant = SlockRaftUiButtonVariant.Outline)
+                SlockRaftUiButton(label = "Disabled", variant = SlockRaftUiButtonVariant.Muted, enabled = false)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockRaftUiBadge(label = "ready", variant = SlockRaftUiBadgeVariant.Success, uppercase = true)
+                SlockRaftUiBadge(label = "3 updates", variant = SlockRaftUiBadgeVariant.Information)
+                SlockRaftUiBadge(label = "queued", variant = SlockRaftUiBadgeVariant.Warning)
+                SlockRaftUiBadge(label = "blocked", variant = SlockRaftUiBadgeVariant.Danger)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiCheckboxStatusVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(122.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                SlockCheckboxLabelRow(label = "Enabled", checked = true)
+                SlockCheckboxLabelRow(label = "Partial", checked = true)
+                SlockCheckboxLabelRow(label = "Disabled", checked = false, enabled = false)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockStatusDot(color = SlockColor.AccentLime, size = 11.dp)
+                    SlockRaftUiTextSans("Online")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockStatusDot(color = SlockColor.AccentOrange, size = 10.dp, pulsing = true)
+                    SlockRaftUiTextSans("Pending")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockStatusDot(color = SlockColor.AccentRed, size = 8.dp)
+                    SlockRaftUiTextSans("Failed")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockSpinner(size = 20.dp)
+                    SlockRaftUiTextSans("Syncing")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiTextareaVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(178.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiField(
+            label = "Release note",
+            required = true,
+            error = "Keep this note under the publish limit."
+        ) {
+            SlockBrutalTextarea(
+                value = "Add library-level visual fixtures for the remaining stable Raft UI exports.",
+                onValueChange = {},
+                error = "",
+                showCounter = true,
+                limit = 72,
+                fieldHeight = 92.dp,
+                maxLines = 4
+            )
+        }
+    }
+}
+
+@Composable
+internal fun RaftUiTabsVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(144.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        SlockRaftUiTabs(
+            items =
+                listOf(
+                    SlockRaftUiTabItem("product", "Product"),
+                    SlockRaftUiTabItem("library", "Library"),
+                    SlockRaftUiTabItem("components", "Components")
+                ),
+            selectedValue = "library",
+            panelText = "25 active raft-ui library cases · no missing Android capture."
+        )
     }
 }

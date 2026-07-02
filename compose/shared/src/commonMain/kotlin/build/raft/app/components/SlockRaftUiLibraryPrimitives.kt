@@ -49,6 +49,54 @@ internal enum class SlockRaftUiBannerSize(val padding: Dp, val gap: Dp, val titl
     Medium(12.dp, 12.dp, 14, 14)
 }
 
+internal enum class SlockRaftUiButtonVariant(val background: Color) {
+    Primary(SlockColor.BrandYellow),
+    Default(SlockColor.SurfaceWhite),
+    Danger(SlockColor.AccentRed),
+    Muted(SlockColor.SurfaceCream),
+    Outline(SlockColor.SurfaceWhite)
+}
+
+internal enum class SlockRaftUiBadgeVariant(val tone: SlockBrutalTone) {
+    Success(SlockBrutalTone.Lime),
+    Information(SlockBrutalTone.Cyan),
+    Warning(SlockBrutalTone.Orange),
+    Danger(SlockBrutalTone.Red)
+}
+
+internal data class SlockRaftUiTabItem(val value: String, val label: String)
+
+@Composable
+internal fun SlockRaftUiButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    variant: SlockRaftUiButtonVariant = SlockRaftUiButtonVariant.Default,
+    enabled: Boolean = true,
+    size: SlockRaftUiBannerSize = SlockRaftUiBannerSize.Small
+) {
+    SlockBrutalActionButton(
+        label = label,
+        onClick = {},
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = variant.background,
+        minHeight = if (size == SlockRaftUiBannerSize.Small) 28.dp else 32.dp,
+        minWidth = 0.dp,
+        shadowOffset = if (variant == SlockRaftUiButtonVariant.Outline) 2.dp else 3.dp,
+        textStyle = SlockType.ButtonBold.copy(fontSize = if (size == SlockRaftUiBannerSize.Small) 12.sp else 14.sp, lineHeight = 14.sp)
+    )
+}
+
+@Composable
+internal fun SlockRaftUiBadge(
+    label: String,
+    modifier: Modifier = Modifier,
+    variant: SlockRaftUiBadgeVariant = SlockRaftUiBadgeVariant.Information,
+    uppercase: Boolean = false
+) {
+    SlockBrutalBadge(label = label, modifier = modifier, tone = variant.tone, uppercase = uppercase)
+}
+
 @Composable
 internal fun SlockRaftUiBanner(
     status: SlockRaftUiBannerStatus,
@@ -316,5 +364,53 @@ internal enum class SlockRaftUiAvatarType {
 internal fun SlockRaftUiAvatarGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-6).dp), verticalAlignment = Alignment.CenterVertically) {
         content()
+    }
+}
+
+@Composable
+internal fun SlockRaftUiTabs(
+    items: List<SlockRaftUiTabItem>,
+    selectedValue: String,
+    modifier: Modifier = Modifier,
+    panelText: String
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier =
+                Modifier
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEachIndexed { index, item ->
+                val selected = item.value == selectedValue
+                Box(
+                    modifier =
+                        Modifier
+                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                            .border(if (index == 0) 0.dp else SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = item.label,
+                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp)
+        ) {
+            SlockRaftUiTextSans(panelText)
+        }
     }
 }

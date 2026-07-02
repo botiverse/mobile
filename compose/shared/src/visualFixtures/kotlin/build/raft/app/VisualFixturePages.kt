@@ -388,6 +388,38 @@ internal class ComposeRaftUiAvatarVisualPage : BasePager() {
     }
 }
 
+@Page("compose_raft_ui_button_badge_visual", supportInLocal = true)
+internal class ComposeRaftUiButtonBadgeVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiButtonBadgeVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_checkbox_status_visual", supportInLocal = true)
+internal class ComposeRaftUiCheckboxStatusVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiCheckboxStatusVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_textarea_visual", supportInLocal = true)
+internal class ComposeRaftUiTextareaVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiTextareaVisualContent() }
+    }
+}
+
+@Page("compose_raft_ui_tabs_visual", supportInLocal = true)
+internal class ComposeRaftUiTabsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftUiTabsVisualContent() }
+    }
+}
+
 @Page("compose_members_agent_detail_visual", supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     override fun willInit() {

@@ -307,6 +307,42 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureRaftUiButtonBadgeStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.button-badge.states",
+            pageName = "compose_raft_ui_button_badge_visual",
+            crop = RAFT_UI_BUTTON_BADGE_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiCheckboxStatusStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.checkbox-status.states",
+            pageName = "compose_raft_ui_checkbox_status_visual",
+            crop = RAFT_UI_CHECKBOX_STATUS_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiTextareaStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.textarea.states",
+            pageName = "compose_raft_ui_textarea_visual",
+            crop = RAFT_UI_TEXTAREA_CROP
+        )
+    }
+
+    @Test
+    fun captureRaftUiTabsStates() {
+        captureKmpComponentCase(
+            caseId = "library.raft-ui.tabs.states",
+            pageName = "compose_raft_ui_tabs_visual",
+            crop = RAFT_UI_TABS_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -1709,6 +1745,34 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 116
+            )
+        private val RAFT_UI_BUTTON_BADGE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 142
+            )
+        private val RAFT_UI_CHECKBOX_STATUS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 122
+            )
+        private val RAFT_UI_TEXTAREA_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 178
+            )
+        private val RAFT_UI_TABS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 144
             )
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(
