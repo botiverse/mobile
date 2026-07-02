@@ -115,20 +115,20 @@ class MainActivity : ComponentActivity() {
         val pending = pendingStore.read()
         if (pending == null) {
             pendingStore.clear()
-            Toast.makeText(this, "Sign-in request expired. Try again.", Toast.LENGTH_SHORT).show()
+            openLoginAfterMobileOAuthError("Sign-in request expired. Try again.")
             return true
         }
         val providerName = pending.provider.socialProviderDisplayName()
         val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
         if (!error.isNullOrBlank()) {
             pendingStore.clear()
-            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+            openLoginAfterMobileOAuthError(error)
             return true
         }
         val handoffCode = uri.getQueryParameter("code")
         if (handoffCode.isNullOrBlank()) {
             pendingStore.clear()
-            Toast.makeText(this, "$providerName sign-in did not return a handoff code", Toast.LENGTH_SHORT).show()
+            openLoginAfterMobileOAuthError("$providerName sign-in did not return a handoff code")
             return true
         }
         lifecycleScope.launch {
@@ -177,33 +177,55 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openPostLoginDestination(session: StoredAuthSession) {
-        if (postLoginDestination(session.selectedServerId) == PostLoginDestination.AuthChooseServer) {
-            SlockKuiklyActivity.startAuthChooseServer(
-                this,
-                pageData = postLoginAuthChooseServerPageData(),
-                clearTask = true
-            )
-            finish()
-        } else {
-            openSharedShell()
+        when (postLoginDestination(session.selectedServerId)) {
+            PostLoginDestination.AppShell ->
+                SlockKuiklyActivity.startAppShell(
+                    this,
+                    pageData = postLoginAppShellPageData(),
+                    clearTask = true
+                )
+            PostLoginDestination.ChooseServer ->
+                SlockKuiklyActivity.startAuthChooseServer(
+                    this,
+                    clearTask = true
+                )
         }
+        finish()
+    }
+
+    private fun openLoginAfterMobileOAuthError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        SlockKuiklyActivity.start(
+            this,
+            SlockKuiklyActivity.PAGE_LOGIN,
+            pageData = mobileOAuthLoginErrorPageData(message),
+            clearTask = true
+        )
+        finish()
     }
 }
 
 internal enum class PostLoginDestination {
     AppShell,
-    AuthChooseServer
+    ChooseServer
 }
 
 internal fun postLoginDestination(selectedServerId: String?): PostLoginDestination =
     if (selectedServerId.isNullOrBlank()) {
-        PostLoginDestination.AuthChooseServer
+        PostLoginDestination.ChooseServer
     } else {
         PostLoginDestination.AppShell
     }
 
-internal fun postLoginAuthChooseServerPageData(): JSONObject =
-    JSONObject().put(SlockKuiklyRouteKeys.AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, true)
+internal fun postLoginAppShellPageData(): JSONObject =
+    JSONObject()
+        .put("slockSuppressRestoreLanding", true)
+        .put("slockAuthGateInstanceId", System.nanoTime().toString())
+
+internal fun mobileOAuthLoginErrorPageData(message: String): JSONObject =
+    JSONObject()
+        .put("slockAuthMessage", message)
+        .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 internal fun mobileOAuthLegalAcceptancePageData(
     provider: String,

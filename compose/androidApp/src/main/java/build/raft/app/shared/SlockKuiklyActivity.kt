@@ -983,7 +983,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     putAndroidTimeContextIfMissing()
                     putKuiklyVerificationFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
-                        put("slockSocialAuthProviders", "google")
+                        put("slockSocialAuthProviders", "google,github")
                     }
                 }
 

@@ -31,6 +31,9 @@ import kotlin.coroutines.EmptyCoroutineContext
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
+    private val authKeyValueStore: RebindableKuiklyMMKVKeyValueStore,
+    private val sharedPreferenceStore: RebindableKuiklyMMKVKeyValueStore,
+    private val apiEnvironmentKeyValueStore: RebindableKuiklyMMKVKeyValueStore,
     val authStore: KuiklyMMKVAuthSessionStore,
     val authSessionEvents: KuiklyAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
@@ -54,6 +57,13 @@ internal class SlockSharedStoreProvider private constructor(
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = homeStore
+
+    fun updatePager(pager: Pager) {
+        authKeyValueStore.updatePager(pager)
+        sharedPreferenceStore.updatePager(pager)
+        apiEnvironmentKeyValueStore.updatePager(pager)
+        authSessionEvents.updatePager(pager)
+    }
 
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -195,25 +205,29 @@ internal class SlockSharedStoreProvider private constructor(
                     pager = pager,
                     source = "pager:${pager.pagerId}"
                 )
+            val authKeyValueStore =
+                RebindableKuiklyMMKVKeyValueStore(
+                    pager = pager,
+                    namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+                )
             val authStore =
                 KuiklyMMKVAuthSessionStore(
-                    store = KuiklyMMKVKeyValueStore(
-                        pager = pager,
-                        namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                    ),
+                    store = authKeyValueStore,
                     sessionClearEvents = authSessionEvents
                 )
             val sharedPreferenceStore =
-                KuiklyMMKVKeyValueStore(
+                RebindableKuiklyMMKVKeyValueStore(
                     pager = pager,
                     namespace = SlockLocalPreferenceStore.KuiklyNamespace
                 )
+            val apiEnvironmentKeyValueStore =
+                RebindableKuiklyMMKVKeyValueStore(
+                    pager = pager,
+                    namespace = SharedApiEnvironmentStore.Namespace
+                )
             val apiEnvironmentStore =
                 SharedApiEnvironmentStore(
-                    KuiklyMMKVKeyValueStore(
-                        pager = pager,
-                        namespace = SharedApiEnvironmentStore.Namespace
-                    )
+                    apiEnvironmentKeyValueStore
                 )
             val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
             val networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
@@ -241,6 +255,9 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
+                authKeyValueStore = authKeyValueStore,
+                sharedPreferenceStore = sharedPreferenceStore,
+                apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,
                 authDataSource = authDataSource,
@@ -436,7 +453,10 @@ internal object SlockSharedStoreRegistry {
     internal var homeActivityStore: SharedActivityStore? = null
 
     fun get(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
-        provider?.let { return it }
+        provider?.let {
+            it.updatePager(pager)
+            return it
+        }
         return SlockSharedStoreProvider.create(pager, bridge).also {
             provider = it
         }

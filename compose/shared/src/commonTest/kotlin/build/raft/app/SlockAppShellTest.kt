@@ -153,6 +153,14 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellAuthGateViewModelKeyIsPageScoped() {
+        assertEquals("shared-auth-gate-page-a", appShellAuthGateViewModelKey("page-a"))
+        assertEquals("shared-auth-gate-page-b", appShellAuthGateViewModelKey("page-b"))
+        assertEquals("shared-auth-gate-post-login-1", appShellAuthGateViewModelKey("page-a", "post-login-1"))
+        assertEquals("shared-auth-gate-default", appShellAuthGateViewModelKey(""))
+    }
+
+    @Test
     fun appShellLaunchSelectionCanStartOnDiagnostics() {
         val params =
             JSONObject()
