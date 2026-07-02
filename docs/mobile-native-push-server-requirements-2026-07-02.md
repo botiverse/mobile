@@ -509,8 +509,8 @@ Server-side design is ready to implement when reviewers agree on:
    and do not rollback message creation.
 6. Invalid token, retry, muted/disabled/self, and provider outage behaviors are
    specified and observable.
-7. Raw provider tokens are never printed in logs, traces, task comments, or
-   public channels.
+7. Raw device tokens and provider credentials are never printed in logs,
+   traces, task comments, or public channels.
 8. Provider credentials are selected only from server-side secret configuration,
    not client-supplied fields, and have owner-approved provisioning, rotation,
    and scrub policies.
