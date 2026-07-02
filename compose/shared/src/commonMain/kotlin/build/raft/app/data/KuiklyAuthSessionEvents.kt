@@ -21,11 +21,22 @@ internal data class AuthSessionClearedSignal(
 )
 
 internal class KuiklyAuthSessionEvents(
-    private val pager: Pager,
-    private val source: String
+    pager: Pager,
+    source: String
 ) : SlockAuthSessionClearEventSink {
+    @Volatile
+    private var currentPager: Pager = pager
+
+    @Volatile
+    private var currentSource: String = source
+
     private val module: NotifyModule
-        get() = pager.acquireModule(NotifyModule.MODULE_NAME)
+        get() = currentPager.acquireModule(NotifyModule.MODULE_NAME)
+
+    fun updatePager(pager: Pager) {
+        currentPager = pager
+        currentSource = "pager:${pager.pagerId}"
+    }
 
     fun addSessionClearedListener(onCleared: (AuthSessionClearedSignal) -> Unit): CallbackRef =
         module.addNotify(AUTH_SESSION_CLEARED_EVENT, crossProcess = true) { data ->
@@ -37,13 +48,13 @@ internal class KuiklyAuthSessionEvents(
     }
 
     fun isLocalSource(signal: AuthSessionClearedSignal): Boolean =
-        signal.source == source
+        signal.source == currentSource
 
     override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
         module.postNotify(
             AUTH_SESSION_CLEARED_EVENT,
             JSONObject()
-                .put(KEY_SOURCE, source)
+                .put(KEY_SOURCE, currentSource)
                 .put(KEY_REASON, reason)
                 .put(KEY_PREVIOUS_SESSION_FINGERPRINT, previousSessionFingerprint)
         )

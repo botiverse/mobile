@@ -91,17 +91,25 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun postLoginWithoutSelectedServerRoutesToServerCreationFlow() {
-        assertEquals(PostLoginDestination.AuthChooseServer, postLoginDestination(null))
-        assertEquals(PostLoginDestination.AuthChooseServer, postLoginDestination(""))
+    fun postLoginWithoutSelectedServerReturnsToChooserForSessionRestore() {
+        assertEquals(PostLoginDestination.ChooseServer, postLoginDestination(null))
+        assertEquals(PostLoginDestination.ChooseServer, postLoginDestination(""))
         assertEquals(PostLoginDestination.AppShell, postLoginDestination("server-1"))
     }
 
     @Test
-    fun postLoginAuthChooseServerPageDataSkipsInitialServerReload() {
-        assertTrue(
-            postLoginAuthChooseServerPageData()
-                .optBoolean("slockAuthChooseServerSkipInitialLoad", false)
-        )
+    fun postLoginAppShellPageDataSuppressesRestoreLanding() {
+        val pageData = postLoginAppShellPageData()
+
+        assertTrue(pageData.optBoolean("slockSuppressRestoreLanding", false))
+        assertTrue(pageData.optString("slockAuthGateInstanceId").isNotBlank())
+    }
+
+    @Test
+    fun mobileOAuthLoginErrorPageDataReturnsToSocialLogin() {
+        val pageData = mobileOAuthLoginErrorPageData("account_conflict")
+
+        assertEquals("account_conflict", pageData.getString("slockAuthMessage"))
+        assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
     }
 }

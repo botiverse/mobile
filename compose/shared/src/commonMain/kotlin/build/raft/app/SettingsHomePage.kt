@@ -413,6 +413,7 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
 private const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
+private const val APP_SHELL_AUTH_GATE_INSTANCE_ID = "slockAuthGateInstanceId"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
@@ -1516,6 +1517,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val suppressRestoreLanding = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(APP_SHELL_SUPPRESS_RESTORE_LANDING, false)
     }
+    val authGateInstanceId = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
+    }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
@@ -1761,7 +1765,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var consumedNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
     var switchingNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
     val authGateViewModel: SharedAuthGateViewModel =
-        viewModel(key = "shared-auth-gate") {
+        viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
         }
     var authGateState by remember { mutableStateOf(authGateViewModel.state.value) }
@@ -2996,6 +3000,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         key("route-main") { mainRouteContent() }
     }
 }
+
+internal fun appShellAuthGateViewModelKey(pagerId: String, instanceId: String = ""): String =
+    "shared-auth-gate-${instanceId.ifBlank { pagerId }.ifBlank { "default" }}"
 
 @Composable
 private fun SettingsAppShellContent(

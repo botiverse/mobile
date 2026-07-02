@@ -139,6 +139,34 @@ internal class KuiklyMMKVKeyValueBackend(
     }
 }
 
+internal class RebindableKuiklyMMKVKeyValueBackend(
+    pager: Pager
+) : SlockMMKVKeyValueBackend {
+    @Volatile
+    private var currentPager: Pager = pager
+
+    fun updatePager(pager: Pager) {
+        currentPager = pager
+    }
+
+    private val module: KuiklyMMKVModule
+        get() = currentPager.acquireModule(KuiklyMMKVModule.MODULE_NAME)
+
+    override fun containsKey(key: String, mmapID: String): Boolean =
+        module.containsKey(key, mmapID)
+
+    override fun getString(key: String, mmapID: String): String? =
+        module.decodeString(key, mmapID = mmapID).takeIf { it.isNotEmpty() }
+
+    override fun putString(key: String, value: String, mmapID: String) {
+        module.encodeString(key, value, mmapID)
+    }
+
+    override fun removeString(key: String, mmapID: String) {
+        module.removeValueForKey(key, mmapID)
+    }
+}
+
 class KuiklyMMKVKeyValueStore(
     pager: Pager,
     namespace: String
@@ -146,6 +174,29 @@ class KuiklyMMKVKeyValueStore(
     backend = KuiklyMMKVKeyValueBackend(pager),
     namespace = namespace
 )
+
+class RebindableKuiklyMMKVKeyValueStore(
+    pager: Pager,
+    namespace: String
+) : SlockKeyValueStore {
+    private val backend = RebindableKuiklyMMKVKeyValueBackend(pager)
+    private val delegate =
+        KuiklyMMKVKeyValueStoreDelegate(
+            backend = backend,
+            namespace = namespace
+        )
+
+    fun updatePager(pager: Pager) {
+        backend.updatePager(pager)
+    }
+
+    override fun getString(key: String): String? =
+        delegate.getString(key)
+
+    override fun putString(key: String, value: String?) {
+        delegate.putString(key, value)
+    }
+}
 
 internal class KuiklyMMKVKeyValueStoreDelegate(
     private val backend: SlockMMKVKeyValueBackend,
