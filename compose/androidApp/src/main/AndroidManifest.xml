@@ -18,6 +18,18 @@
                 android:resource="@xml/slock_file_paths" />
         </provider>
 
+        <meta-data
+            android:name="firebase_messaging_installation_id_enabled"
+            android:value="true" />
+
+        <service
+            android:name=".push.SlockFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".shared.SlockKuiklyActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
