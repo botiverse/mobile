@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -20,7 +21,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -28,6 +28,7 @@ import com.tencent.kuikly.compose.ui.graphics.Outline
 import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.graphics.Shape
 import com.tencent.kuikly.compose.ui.graphics.StrokeJoin
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -208,34 +209,36 @@ private fun ShapeTiltedPathBadge(text: String) {
 @Composable
 private fun DrawPathTiltedBadge(text: String) {
     Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
-        HomeBadgeFixtureContent(
-            text = text,
-            modifier =
-                Modifier.drawBehind {
-                    val strokeWidth = SlockStroke.Default.toPx()
-                    val shadowOffset = HomeBadgeFixtureShadowOffset.toPx()
-                    val shadowPath = tiltedBadgePath(
-                        width = size.width,
-                        height = size.height,
-                        inset = strokeWidth / 2f,
-                        offsetX = shadowOffset,
-                        offsetY = shadowOffset
-                    )
-                    val bodyPath = tiltedBadgePath(
-                        width = size.width,
-                        height = size.height,
-                        inset = strokeWidth / 2f
-                    )
-                    drawPath(shadowPath, SlockColor.ShadowBlack)
-                    drawPath(bodyPath, SlockColor.TextBlack)
-                    drawPath(
-                        bodyPath,
-                        SlockColor.BorderBlack,
-                        style = Stroke(width = strokeWidth, join = StrokeJoin.Miter)
-                    )
-                },
-            chevronModifier = Modifier
-        )
+        Box(modifier = Modifier.width(HomeBadgeFixtureBadgeWidth).height(HomeBadgeFixtureBadgeHeight)) {
+            Canvas(modifier = Modifier.width(HomeBadgeFixtureBadgeWidth).height(HomeBadgeFixtureBadgeHeight)) {
+                val strokeWidth = SlockStroke.Default.toPx()
+                val shadowOffset = HomeBadgeFixtureShadowOffset.toPx()
+                val shadowPath = tiltedBadgePath(
+                    width = size.width,
+                    height = size.height,
+                    inset = strokeWidth / 2f,
+                    offsetX = shadowOffset,
+                    offsetY = shadowOffset
+                )
+                val bodyPath = tiltedBadgePath(
+                    width = size.width,
+                    height = size.height,
+                    inset = strokeWidth / 2f
+                )
+                drawPath(shadowPath, SlockColor.ShadowBlack, style = Fill)
+                drawPath(bodyPath, SlockColor.TextBlack, style = Fill)
+                drawPath(
+                    bodyPath,
+                    SlockColor.BorderBlack,
+                    style = Stroke(width = strokeWidth, join = StrokeJoin.Miter)
+                )
+            }
+            HomeBadgeFixtureForeground(
+                text = text,
+                modifier = Modifier.matchParentSize().padding(horizontal = 12.dp),
+                chevronModifier = Modifier
+            )
+        }
     }
 }
 
@@ -251,6 +254,33 @@ private fun HomeBadgeFixtureContent(
                 .width(HomeBadgeFixtureBadgeWidth)
                 .height(HomeBadgeFixtureBadgeHeight)
                 .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            color = SlockColor.BrandYellow,
+            style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.Bold),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 128.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        SlockLucideIcon(
+            SlockLucideIconName.ChevronDown,
+            Modifier.size(15.dp).then(chevronModifier),
+            color = SlockColor.BrandYellowArgb
+        )
+    }
+}
+
+@Composable
+private fun HomeBadgeFixtureForeground(
+    text: String,
+    modifier: Modifier,
+    chevronModifier: Modifier
+) {
+    Row(
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
