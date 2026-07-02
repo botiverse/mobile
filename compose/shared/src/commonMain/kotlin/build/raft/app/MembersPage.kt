@@ -2631,8 +2631,11 @@ private fun MembersDetailContent(
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
-    var selectedTab by remember(member.id.value, initialAgentTab) {
-        mutableStateOf(initialAgentTab ?: MembersAgentDetailTab.Profile)
+    // Mirrors React AgentDetailPanel: the active tab is derived — an explicit
+    // selection (deep link or user tap) wins only while visible; otherwise the
+    // first server-ordered tab is the default.
+    var selectedTabOverride by remember(member.id.value, initialAgentTab) {
+        mutableStateOf(initialAgentTab)
     }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) {
         mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
@@ -2689,11 +2692,9 @@ private fun MembersDetailContent(
             listOf(MembersAgentDetailTab.Profile)
         }
     }
-    LaunchedEffect(visibleTabs, selectedTab) {
-        if (selectedTab !in visibleTabs) {
-            selectedTab = MembersAgentDetailTab.Profile
-        }
-    }
+    val selectedTab = selectedTabOverride?.takeIf { it in visibleTabs }
+        ?: visibleTabs.firstOrNull()
+        ?: MembersAgentDetailTab.Profile
     fun loadWorkspaceRoot() {
         val callback = agentWorkspaceTreeLoader
         if (callback == null) {
@@ -2930,7 +2931,7 @@ private fun MembersDetailContent(
                 MembersAgentRuntimeErrorBanner(
                     errorText = runtimeErrorText,
                     canViewPrivate = canViewPrivate,
-                    onViewLogs = { selectedTab = MembersAgentDetailTab.Activity },
+                    onViewLogs = { selectedTabOverride = MembersAgentDetailTab.Activity },
                     onCopyInfo = { copyDiagnostics() },
                     modifier = Modifier.padding(
                         start = MembersPageInset,
@@ -2943,34 +2944,32 @@ private fun MembersDetailContent(
                 MembersAgentTabBar(
                     tabs = visibleTabs,
                     selectedTab = selectedTab,
-                    onSelectedTabChange = { selectedTab = it },
+                    onSelectedTabChange = { selectedTabOverride = it },
                     onReorderTabs = onAgentPanelTabOrderChange
                 )
             }
             if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
-                Column(
+                MembersAgentActivityTab(
+                    detail = detail,
+                    diagnosticActionState = effectiveDiagnosticActionState,
+                    onCopyDiagnostics = { copyDiagnostics() },
+                    timeContext = timeContext,
+                    onOpenUrl = onOpenUrl,
+                    stateNotice = {
+                        MembersAgentDetailStateNotice(
+                            state = agentDetailState,
+                            canViewPrivate = canViewPrivate,
+                            modifier = Modifier.padding(
+                                start = MembersPageInset,
+                                top = SlockSpacing.Xs,
+                                end = MembersPageInset
+                            )
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
-                    MembersAgentDetailStateNotice(
-                        state = agentDetailState,
-                        canViewPrivate = canViewPrivate,
-                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                    )
-                    MembersAgentActivityTab(
-                        detail = detail,
-                        diagnosticActionState = effectiveDiagnosticActionState,
-                        onCopyDiagnostics = { copyDiagnostics() },
-                        timeContext = timeContext,
-                        onOpenUrl = onOpenUrl,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    )
-                }
+                        .weight(1f)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -6600,15 +6599,17 @@ private fun MembersAgentActivityTab(
     onCopyDiagnostics: () -> Unit,
     timeContext: SlockTimeContext,
     onOpenUrl: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    stateNotice: (@Composable () -> Unit)? = null
 ) {
+    val copySucceeded =
+        diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        MembersDetailSectionDivider()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -6621,17 +6622,18 @@ private fun MembersAgentActivityTab(
         ) {
             MembersDetailSectionTitle("ACTIVITY DIAGNOSTICS", modifier = Modifier.weight(1f))
             SlockBrutalActionButton(
-                label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy info",
-                leadingIcon = SlockLucideIconName.Clipboard,
+                label = if (copySucceeded) "Copied" else "Copy",
+                leadingIcon = if (copySucceeded) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
                 minHeight = 32.dp,
+                minWidth = 72.dp,
                 shadowOffset = 2.dp,
                 textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                modifier = Modifier.width(116.dp),
                 onClick = onCopyDiagnostics
             )
         }
         MembersDetailSectionDivider()
+        stateNotice?.invoke()
         val rows =
             remember(detail?.agentId, detail?.activity) {
                 detail?.activity.orEmpty()
