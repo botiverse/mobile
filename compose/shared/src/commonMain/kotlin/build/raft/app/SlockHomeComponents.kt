@@ -6,6 +6,7 @@ import build.raft.app.components.SlockBrutalPanel
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
+import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
@@ -1836,7 +1837,12 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
             }
             com.tencent.kuikly.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                 if (notification.actionLabel.isNotBlank()) {
-                    HomeNotificationActionButton(notification.actionLabel, SlockColor.AccentPink, onView)
+                    HomeNotificationActionButton(
+                        notification.actionLabel,
+                        SlockColor.AccentPink,
+                        onView,
+                        shadowOffset = notification.primaryActionShadowOffset()
+                    )
                 }
                 HomeNotificationActionButton("Dismiss", SlockColor.SurfaceWhite, onDismiss)
             }
@@ -1845,6 +1851,8 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
 }
 
 private val HomeNotificationTextWidth = 260.dp
+private val HomeNotificationActionShadowOffset = 2.dp
+private val HomeNotificationActionActiveShadowOffset = HomeNotificationActionShadowOffset * 2
 
 internal fun SlockHomeNotificationIcon.notificationIconName(kind: SlockHomeNotificationKind): SlockLucideIconName =
     when (this) {
@@ -1859,15 +1867,26 @@ internal fun SlockHomeNotificationIcon.notificationIconName(kind: SlockHomeNotif
             }
     }
 
+internal fun SlockHomeNotificationItem.primaryActionShadowOffset(): Dp =
+    if (isAppUpdateActionActive()) {
+        HomeNotificationActionActiveShadowOffset
+    } else {
+        HomeNotificationActionShadowOffset
+    }
+
+private fun SlockHomeNotificationItem.isAppUpdateActionActive(): Boolean =
+    id == APP_UPDATE_HOME_NOTIFICATION_ID &&
+        actionLabel.trim().lowercase() in setOf("downloading", "install")
+
 @Composable
-private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit) {
+private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit, shadowOffset: Dp = HomeNotificationActionShadowOffset) {
     SlockBrutalActionButton(
         label = text,
         onClick = onClick,
         backgroundColor = color,
         minWidth = 72.dp,
         minHeight = 32.dp,
-        shadowOffset = 2.dp,
+        shadowOffset = shadowOffset,
         textStyle = HomeNotificationActionButtonTextStyle
     )
 }

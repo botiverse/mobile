@@ -6,6 +6,7 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.model.AgentStatus
@@ -691,6 +692,38 @@ class SlockHomeComponentsTest {
     fun notificationActionButtonsUseBoldFontFamily() {
         assertEquals(slockFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
         assertEquals(FontWeight.Normal, HomeNotificationActionButtonTextStyle.fontWeight)
+    }
+
+    @Test
+    fun appUpdateNotificationActionUsesActiveShadowAfterDownloadStarts() {
+        assertEquals(
+            2.dp,
+            SlockHomeNotificationItem(
+                id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                actionLabel = "Download"
+            ).primaryActionShadowOffset()
+        )
+        assertEquals(
+            4.dp,
+            SlockHomeNotificationItem(
+                id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                actionLabel = "Downloading"
+            ).primaryActionShadowOffset()
+        )
+        assertEquals(
+            4.dp,
+            SlockHomeNotificationItem(
+                id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                actionLabel = "Install"
+            ).primaryActionShadowOffset()
+        )
+        assertEquals(
+            2.dp,
+            SlockHomeNotificationItem(
+                id = "machine-offline:1",
+                actionLabel = "Install"
+            ).primaryActionShadowOffset()
+        )
     }
 
     @Test

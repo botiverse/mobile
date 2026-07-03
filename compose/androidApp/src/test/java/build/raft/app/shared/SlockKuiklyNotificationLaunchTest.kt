@@ -10,6 +10,27 @@ import org.junit.Test
 class SlockKuiklyNotificationLaunchTest {
 
     @Test
+    fun quiverUpdateDownloadKeyUsesReleaseIdentityOnly() {
+        val firstKey =
+            quiverUpdateDownloadKey(
+                slug = "raft-android",
+                channel = "preview",
+                versionCode = 1_000_100L,
+                arch = "arm64-v8a"
+            )
+        val secondKey =
+            quiverUpdateDownloadKey(
+                slug = "raft-android",
+                channel = "preview",
+                versionCode = 1_000_100L,
+                arch = "arm64-v8a"
+            )
+
+        assertEquals("raft-android|preview|1000100|arm64-v8a", firstKey)
+        assertEquals(firstKey, secondKey)
+    }
+
+    @Test
     fun androidHostNavigationExclusionFollowsNavigationMode() {
         assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(2))
         assertTrue(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(1))

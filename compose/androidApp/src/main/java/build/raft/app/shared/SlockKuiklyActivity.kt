@@ -1552,6 +1552,7 @@ internal class SlockKuiklyBridgeModule(
 ) : KuiklyRenderBaseModule() {
     private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
     private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
+    private val quiverUpdateDownloadLock = Any()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -2472,35 +2473,37 @@ internal class SlockKuiklyBridgeModule(
             )
         }
         return runCatching {
-                    val tracked = currentQuiverDownload(response, arch)
-                    if (tracked != null) {
-                        val status = tracked.status()
-                        when (status) {
-                            DownloadManager.STATUS_SUCCESSFUL -> {
-                                tracked.completed = true
-                                openDownloadedQuiverApk(tracked.downloadManager, tracked.downloadId, tracked.fileName)
-                                QuiverInstallResult(
-                                        statusLabel = "Install",
-                                        detail = "Android installer opened for the downloaded Raft update.",
-                                        actionLabel = "Install"
-                                )
+                    synchronized(quiverUpdateDownloadLock) {
+                        val tracked = currentQuiverDownload(response, arch)
+                        if (tracked != null) {
+                            val status = tracked.status()
+                            when (status) {
+                                DownloadManager.STATUS_SUCCESSFUL -> {
+                                    tracked.completed = true
+                                    openDownloadedQuiverApk(tracked.downloadManager, tracked.downloadId, tracked.fileName)
+                                    QuiverInstallResult(
+                                            statusLabel = "Install",
+                                            detail = "Android installer opened for the downloaded Raft update.",
+                                            actionLabel = "Install"
+                                    )
+                                }
+                                DownloadManager.STATUS_PENDING,
+                                DownloadManager.STATUS_RUNNING,
+                                DownloadManager.STATUS_PAUSED -> {
+                                    QuiverInstallResult(
+                                            statusLabel = "Downloading",
+                                            detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                                            actionLabel = "Downloading"
+                                    )
+                                }
+                                else -> {
+                                    quiverUpdateDownloads.remove(tracked.key)
+                                    enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
+                                }
                             }
-                            DownloadManager.STATUS_PENDING,
-                            DownloadManager.STATUS_RUNNING,
-                            DownloadManager.STATUS_PAUSED -> {
-                                QuiverInstallResult(
-                                        statusLabel = "Downloading",
-                                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
-                                        actionLabel = "Downloading"
-                                )
-                            }
-                            else -> {
-                                quiverUpdateDownloads.remove(tracked.key)
-                                enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
-                            }
+                        } else {
+                            enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
                         }
-                    } else {
-                        enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
                     }
                 }
                 .getOrElse { error ->
@@ -2620,7 +2623,17 @@ internal class SlockKuiklyBridgeModule(
 
     private fun currentQuiverDownload(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload? {
         val key = response.quiverDownloadKey(arch)
-        val tracked = quiverUpdateDownloads[key] ?: return null
+        val tracked =
+                quiverUpdateDownloads[key]
+                        ?: run {
+                            if (quiverUpdateDownloads.isNotEmpty()) {
+                                SlockDiagnosticsLogger.record(
+                                        "SlockQuiverUpdate",
+                                        "download_state_miss key=$key tracked=${quiverUpdateDownloads.size}"
+                                )
+                            }
+                            return null
+                        }
         if (tracked.failed) {
             quiverUpdateDownloads.remove(key)
             return null
@@ -2642,13 +2655,12 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun UpdateCheckResponse.quiverDownloadKey(arch: String?): String =
-            listOf(
-                    BuildConfig.QUIVER_APP_SLUG,
-                    channel,
-                    latest?.version_code ?: latest_version_code ?: 0L,
-                    asset?.download_url.orEmpty(),
-                    arch.orEmpty()
-            ).joinToString("|")
+            quiverUpdateDownloadKey(
+                    slug = BuildConfig.QUIVER_APP_SLUG,
+                    channel = channel,
+                    versionCode = latest?.version_code ?: latest_version_code ?: 0L,
+                    arch = arch
+            )
 
     private fun emitQuiverUpdateStatusEvent() {
         appContext.sendKuiklyEvent(
@@ -3733,6 +3745,19 @@ private data class QuiverUpdateDownload(
         }
     }
 }
+
+internal fun quiverUpdateDownloadKey(
+        slug: String,
+        channel: String?,
+        versionCode: Long,
+        arch: String?
+): String =
+        listOf(
+                slug,
+                channel.orEmpty(),
+                versionCode,
+                arch.orEmpty()
+        ).joinToString("|")
 
 private fun String.socialProviderDisplayName(): String =
         when (lowercase(Locale.US)) {
