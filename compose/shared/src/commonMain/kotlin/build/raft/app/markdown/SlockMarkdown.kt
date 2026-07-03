@@ -659,6 +659,13 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
         tag = SlockMarkdownTagAnnotationTag,
         annotation = token.id
     )
+    val chromeKind = slockMarkdownTagChromeKind(tag.kind, highlighted = token.highlighted)
+    if (chromeKind != null) {
+        pushStringAnnotation(
+            tag = SlockMarkdownTagChromeAnnotationTag,
+            annotation = chromeKind.wireValue
+        )
+    }
     withLink(
         LinkAnnotation.Clickable(
             tag = token.id,
@@ -667,6 +674,9 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
         )
     ) {
         append(label)
+    }
+    if (chromeKind != null) {
+        pop()
     }
     pop()
 }
@@ -848,6 +858,7 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
+internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this
@@ -1263,6 +1274,13 @@ private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alph
 private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
 private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
 
+internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
+    Channel("channel"),
+    Thread("thread"),
+    Task("task"),
+    SelfMention("selfMention")
+}
+
 internal fun slockMarkdownInlineTagWidthSp(
     label: String,
     kind: ThreadMarkdownTagKind,
@@ -1367,17 +1385,39 @@ internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boo
         ThreadMarkdownTagKind.UserMention -> if (highlighted) SlockColor.BrandYellow else SlockMarkdownTaskChipBackground
     }
 
+internal fun slockMarkdownTagChromeKind(
+    kind: ThreadMarkdownTagKind,
+    highlighted: Boolean = false
+): SlockMarkdownTagChromeKind? =
+    when (kind) {
+        ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownTagChromeKind.Thread
+        ThreadMarkdownTagKind.Channel -> SlockMarkdownTagChromeKind.Channel
+        ThreadMarkdownTagKind.Task -> SlockMarkdownTagChromeKind.Task
+        ThreadMarkdownTagKind.UserMention ->
+            if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
+    }
+
 internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): SpanStyle =
     when (kind) {
         ThreadMarkdownTagKind.UserMention ->
-            SlockType.Body
-                .withSlockFontWeight(FontWeight.SemiBold)
-                .toSpanStyle()
-                .copy(
-                    color = SlockColor.TextBlack,
-                    textDecoration = TextDecoration.Underline,
-                    background = if (highlighted) SlockColor.BrandYellow else Color.Unspecified
-                )
+            if (highlighted) {
+                SlockType.ButtonBold
+                    .withSlockFontWeight(FontWeight.SemiBold)
+                    .toSpanStyle()
+                    .copy(
+                        color = SlockColor.TextBlack,
+                        background = SlockColor.BrandYellow
+                    )
+            } else {
+                SlockType.Body
+                    .withSlockFontWeight(FontWeight.SemiBold)
+                    .toSpanStyle()
+                    .copy(
+                        color = SlockColor.TextBlack,
+                        textDecoration = TextDecoration.Underline,
+                        background = Color.Unspecified
+                    )
+            }
         ThreadMarkdownTagKind.Task ->
             SlockType.ButtonBold
                 .withSlockFontWeight(FontWeight.SemiBold)

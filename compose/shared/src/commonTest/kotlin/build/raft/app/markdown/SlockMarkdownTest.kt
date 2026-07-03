@@ -326,6 +326,16 @@ class SlockMarkdownTest {
         assertEquals(listOf(true, false, false, false, false), plan.tagTokens().map { it.highlighted })
         val expectedTokenIds = plan.tagTokens().mapTo(mutableSetOf()) { it.id }
         assertEquals(expectedTokenIds, annotated.slockMarkdownClickableTags())
+        assertEquals(
+            listOf(
+                SlockMarkdownTagChromeKind.SelfMention.wireValue,
+                SlockMarkdownTagChromeKind.Channel.wireValue,
+                SlockMarkdownTagChromeKind.Thread.wireValue,
+                SlockMarkdownTagChromeKind.Task.wireValue,
+                SlockMarkdownTagChromeKind.Task.wireValue
+            ),
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
@@ -346,6 +356,8 @@ class SlockMarkdownTest {
     fun taskReferenceUsesReactChipStyleFallback() {
         val taskStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Task)
         val channelStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
+        val selfMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = true)
+        val ordinaryMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = false)
 
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), taskStyle.background)
         assertEquals(null, taskStyle.textDecoration)
@@ -354,6 +366,50 @@ class SlockMarkdownTest {
 
         assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), channelStyle.background)
         assertEquals(SlockType.ButtonBold.fontSize, channelStyle.fontSize)
+
+        assertEquals(SlockColor.BrandYellow, selfMentionStyle.background)
+        assertEquals(null, selfMentionStyle.textDecoration)
+        assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
+        assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
+    }
+
+    @Test
+    fun markdownReferenceTagsDeclareChromeKindSeparatelyFromClicks() {
+        val body = "Ping @artin and @Android-App-Integrator in #markdown专修 #markdown专修:692d9e88 for #42"
+        val validator =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownMentions = setOf("artin", "Android-App-Integrator")
+            )
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        highlightedMentions = setOf("artin"),
+                        isTagValid = validator
+                    )
+            )
+
+        assertEquals(
+            setOf("slock:5", "slock:16", "slock:43", "slock:55", "slock:80"),
+            annotated.slockMarkdownClickableTags()
+        )
+        assertEquals(
+            listOf(
+                SlockMarkdownTagChromeKind.SelfMention.wireValue,
+                SlockMarkdownTagChromeKind.Channel.wireValue,
+                SlockMarkdownTagChromeKind.Thread.wireValue,
+                SlockMarkdownTagChromeKind.Task.wireValue
+            ),
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
+        assertFalse(
+            annotated.slockMarkdownTagChromeAnnotations()
+                .contains(SlockMarkdownTagChromeKind.SelfMention.wireValue + ":ordinary")
+        )
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
     @Test
@@ -1013,6 +1069,11 @@ class SlockMarkdownTest {
         getStringAnnotations(SlockMarkdownTagAnnotationTag, 0, length)
             .map { it.item }
             .toSet()
+
+    private fun AnnotatedString.slockMarkdownTagChromeAnnotations(): List<String> =
+        getStringAnnotations(SlockMarkdownTagChromeAnnotationTag, 0, length)
+            .sortedBy { it.start }
+            .map { it.item }
 
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),
