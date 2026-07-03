@@ -155,6 +155,11 @@ internal class SlockKuiklyChildPageAttr : Attr() {
         }
         return this
     }
+
+    fun active(value: Boolean): SlockKuiklyChildPageAttr {
+        "active" with value
+        return this
+    }
 }
 
 internal class SlockKuiklyChildPageEvent : Event() {
@@ -192,6 +197,7 @@ internal fun SlockKuiklyChildPage(
         modifier = modifier,
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
+            getViewAttr().active(active)
             updateActive(active)
             event {
                 loadSuccess(onLoadSuccess)
@@ -200,6 +206,7 @@ internal fun SlockKuiklyChildPage(
         },
         viewUpdate = { view ->
             view.applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle)
+            view.getViewAttr().active(active)
             view.updateActive(active)
             view.event {
                 loadSuccess(onLoadSuccess)

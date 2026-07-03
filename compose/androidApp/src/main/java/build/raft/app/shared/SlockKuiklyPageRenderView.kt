@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import android.util.Size
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
@@ -28,6 +29,7 @@ internal class SlockKuiklyPageRenderView(
     private var loadFailureCallback: KuiklyRenderCallback? = null
     private var viewDidAppear = false
     private var pageDidAppear = false
+    private var active = true
     private var childDidAttach = false
     private var childVisible = false
     private var childInitPosted = false
@@ -125,6 +127,10 @@ internal class SlockKuiklyPageRenderView(
                 true
             }
             PROP_GLASS_STYLE -> true
+            PROP_ACTIVE -> {
+                updateActive(propValue.toString().toBooleanStrictOrNull() ?: (propValue as? Boolean) ?: true)
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -147,6 +153,10 @@ internal class SlockKuiklyPageRenderView(
                 true
             }
             PROP_GLASS_STYLE -> true
+            PROP_ACTIVE -> {
+                updateActive(true)
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -175,6 +185,11 @@ internal class SlockKuiklyPageRenderView(
         super.onDestroy()
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (!active) return false
+        return super.dispatchTouchEvent(ev)
+    }
+
     private fun updatePageName(next: String) {
         if (pageName == next) return
         pageName = next
@@ -185,6 +200,13 @@ internal class SlockKuiklyPageRenderView(
         if (pageDataText == next) return
         pageDataText = next
         resetChildIfAttached()
+    }
+
+    private fun updateActive(next: Boolean) {
+        if (active == next) return
+        active = next
+        isEnabled = next
+        childRenderView?.isEnabled = next
     }
 
     private fun resetChildIfAttached() {
@@ -308,6 +330,7 @@ internal class SlockKuiklyPageRenderView(
         private const val PROP_PAGE_NAME = "pageName"
         private const val PROP_PAGE_DATA = "pageData"
         private const val PROP_GLASS_STYLE = "glassStyle"
+        private const val PROP_ACTIVE = "active"
         private const val METHOD_SEND_EVENT = "sendEvent"
         private const val EVENT_DID_APPEAR = "didAppear"
         private const val EVENT_DID_DISAPPEAR = "didDisappear"
