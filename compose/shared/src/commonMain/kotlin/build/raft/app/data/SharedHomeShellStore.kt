@@ -49,6 +49,7 @@ class SharedHomeShellStore(
     private val dispatchActivity: (SharedActivityIntent) -> Unit,
     private val dispatchSearchSaved: (SharedHomeSearchSavedIntent) -> Unit,
     private val resetActivity: () -> Unit = {},
+    private val diagnosticsLogger: (String) -> Unit = {},
     private val scope: CoroutineScope
 ) {
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
@@ -111,8 +112,17 @@ class SharedHomeShellStore(
         )
 
     fun dispatch(intent: SharedHomeShellIntent) {
+        diagnosticsLogger(
+            "home_shell_dispatch intent=${intent.toSharedHomeShellIntentDiagnosticsLabel()} " +
+                "destination=${_state.value.destination ?: "_"} surfaceVisible=${_state.value.primarySurfaceVisible} " +
+                "selectedConversation=${_state.value.selectedConversationId ?: "_"} " +
+                "home=${_state.value.home.toSharedHomeShellHomeSummary()}"
+        )
         when (intent) {
-            SharedHomeShellIntent.Start -> dispatchHome(SharedHomeIntent.Start)
+            SharedHomeShellIntent.Start -> {
+                diagnosticsLogger("home_shell_forward_home intent=Start source=shell_start")
+                dispatchHome(SharedHomeIntent.Start)
+            }
             SharedHomeShellIntent.ForegroundRefresh -> refreshVisibleHomeDestination()
             is SharedHomeShellIntent.SetSurfaceVisible -> setSurfaceVisible(intent.visible)
             SharedHomeShellIntent.OpenActivity -> openDestination(SharedHomeShellDestinationActivity)
@@ -149,6 +159,7 @@ class SharedHomeShellStore(
 
     private fun setSurfaceVisible(visible: Boolean) {
         _state.value = _state.value.copy(primarySurfaceVisible = visible)
+        diagnosticsLogger("home_shell_forward_home intent=SetSurfaceVisible:$visible source=surface_visible")
         dispatchHome(SharedHomeIntent.SetSurfaceVisible(visible))
     }
 
@@ -211,12 +222,68 @@ class SharedHomeShellStore(
     }
 
     private fun dispatchHomeIntent(intent: SharedHomeIntent) {
+        diagnosticsLogger(
+            "home_shell_forward_home intent=${intent.toSharedHomeShellHomeIntentDiagnosticsLabel()} " +
+                "source=home_wrapper"
+        )
         dispatchHome(intent)
         if (intent == SharedHomeIntent.Refresh) {
             refreshBadgeSummaries()
         }
     }
 }
+
+private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): String =
+    when (this) {
+        SharedHomeShellIntent.Start -> "Start"
+        SharedHomeShellIntent.ForegroundRefresh -> "ForegroundRefresh"
+        is SharedHomeShellIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
+        SharedHomeShellIntent.OpenActivity -> "OpenActivity"
+        SharedHomeShellIntent.OpenSaved -> "OpenSaved"
+        SharedHomeShellIntent.OpenSearch -> "OpenSearch"
+        SharedHomeShellIntent.CloseSecondaryDestination -> "CloseSecondaryDestination"
+        is SharedHomeShellIntent.SetSelectedConversation -> "SetSelectedConversation:${conversationId ?: "_"}"
+        is SharedHomeShellIntent.SelectTopAction -> "SelectTopAction:$action"
+        is SharedHomeShellIntent.DismissNotification -> "DismissNotification:$id"
+        is SharedHomeShellIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId"
+        is SharedHomeShellIntent.Home -> "Home:${intent.toSharedHomeShellHomeIntentDiagnosticsLabel()}"
+        is SharedHomeShellIntent.Activity -> "Activity"
+        is SharedHomeShellIntent.SearchSaved -> "SearchSaved"
+    }
+
+private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): String =
+    when (this) {
+        SharedHomeIntent.Start -> "Start"
+        SharedHomeIntent.Refresh -> "Refresh"
+        SharedHomeIntent.ForegroundRefresh -> "ForegroundRefresh"
+        SharedHomeIntent.ToggleServerSwitcher -> "ToggleServerSwitcher"
+        SharedHomeIntent.DismissServerSwitcher -> "DismissServerSwitcher"
+        is SharedHomeIntent.SelectConversation -> "SelectConversation:$threadId"
+        is SharedHomeIntent.SelectTopAction -> "SelectTopAction:$action"
+        is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
+        is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId"
+        SharedHomeIntent.RefreshNotifications -> "RefreshNotifications"
+        is SharedHomeIntent.UpsertNotification -> "UpsertNotification:${notification.id}"
+        is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
+        is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
+        is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
+        is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
+        is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
+        is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
+        is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
+        is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
+        is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
+    }
+
+private fun SharedHomeState.toSharedHomeShellHomeSummary(): String =
+    when (val current = content) {
+        is SharedHomeContentState.Loading -> "Loading(session=${current.session?.currentServerId ?: "_"})"
+        is SharedHomeContentState.Empty -> "Empty(session=${current.session.currentServerId ?: "_"})"
+        is SharedHomeContentState.Error -> "Error(${current.code})"
+        is SharedHomeContentState.Content ->
+            "Content(server=${current.snapshot.server.id.value},refreshing=${current.contentRefreshing}," +
+                "channels=${current.snapshot.channels.size},dms=${current.snapshot.directMessages.size})"
+    } + ":dirty=$homeRealtimeDirty"
 
 private fun SharedHomeState.activeHomeServerId(): String? =
     when (val current = content) {

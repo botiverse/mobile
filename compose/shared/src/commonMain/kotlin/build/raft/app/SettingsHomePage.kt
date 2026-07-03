@@ -1884,6 +1884,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 dispatchActivity = homeActivityStore::dispatch,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
                 resetActivity = homeActivityStore::reset,
+                diagnosticsLogger = { message -> bridge.log("shared_home_shell $message") },
                 scope = appShellCoroutineScope
             )
         }
@@ -1960,6 +1961,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
         )
         if (parentShouldStartHome) {
+            bridge.log(
+                "app_shell_parent_home_start_dispatch readyServerId=${readyServerId.orEmpty()} " +
+                    "state=${sharedHomeContentRenderSummary(homeState.content)}"
+            )
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
         }
     }
@@ -9957,6 +9962,10 @@ private fun SharedHomeScreen(
                 "homeRealtimeDirty=${state.homeRealtimeDirty}"
         )
         if (effectShouldStart) {
+            bridge.log(
+                "shared_home_start_effect_dispatch active=$active sessionReady=$sessionReady " +
+                    "state=${sharedHomeContentRenderSummary(state.content)}"
+            )
             onIntent(SharedHomeIntent.Start)
         }
     }

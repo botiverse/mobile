@@ -104,17 +104,36 @@ internal class SharedHomeStore(
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
+            diagnosticsLogger(
+                "home_dispatch_receive intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                    "loadsHome=true debounceable=${intent.debouncesInFlightHomeLoad} " +
+                    "activeLoad=${loadJob?.isActive == true} state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
+            )
             if (debounceInFlightHomeLoad(intent)) {
                 return
             }
+            diagnosticsLogger(
+                "home_dispatch_launch_load intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                    "cancelPrevious=${loadJob != null} state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
+            )
             loadJob?.cancel()
             agentDirectMessageStatusJob?.cancel()
             agentDirectMessageStatusJob = null
             loadJob =
                 scope.launch {
+                    diagnosticsLogger(
+                        "home_dispatch_coroutine_enter intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                            "state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
+                    )
                     accept(intent)
                 }
         } else {
+            if (intent is SharedHomeIntent.SetSurfaceVisible) {
+                diagnosticsLogger(
+                    "home_dispatch_receive intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                        "loadsHome=false state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
+                )
+            }
             scope.launch {
                 accept(intent)
             }
@@ -170,6 +189,10 @@ internal class SharedHomeStore(
 
     suspend fun accept(intent: SharedHomeIntent) {
         withStateDiagnosticsContext(intent) {
+            diagnosticsLogger(
+                "home_accept_enter intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+                    "state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
+            )
             when (intent) {
             SharedHomeIntent.Start ->
                 load(
