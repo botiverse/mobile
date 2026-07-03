@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -43,7 +44,13 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     override fun setProp(propKey: String, propValue: Any): Boolean {
         if (destroyed && !propKey.isEventProp()) {
+            Log.w(
+                LOG_TAG,
+                "post_destroy_prop prop=$propKey action=recreate previousSrc=${src.take(LOG_URL_LIMIT)}"
+            )
             recreateWebViewAfterDestroy()
+        } else if (destroyed) {
+            Log.w(LOG_TAG, "post_destroy_event_prop prop=$propKey action=register_callback")
         }
         return when (propKey) {
             PROP_SRC -> {
@@ -95,7 +102,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     override fun resetProp(propKey: String): Boolean {
-        if (destroyed) return true
+        if (destroyed) {
+            Log.w(LOG_TAG, "post_destroy_reset_prop prop=$propKey action=ignored")
+            return true
+        }
         return when (propKey) {
             PROP_SRC -> {
                 updateSrc("")
@@ -217,6 +227,13 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     if (destroyed) return false
                     notifyNavigationBlocked("")
                     return false
+                }
+
+                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                    if (!destroyed && consoleMessage != null) {
+                        logConsoleMessage(consoleMessage)
+                    }
+                    return super.onConsoleMessage(consoleMessage)
                 }
             }
         webView.webViewClient =
@@ -404,6 +421,23 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         }
     }
 
+    private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
+        val source = consoleMessage.sourceId().orEmpty().take(LOG_URL_LIMIT)
+        val message = consoleMessage.message().orEmpty().take(LOG_MESSAGE_LIMIT)
+        val line = consoleMessage.lineNumber()
+        when (consoleMessage.messageLevel()) {
+            ConsoleMessage.MessageLevel.ERROR ->
+                Log.e(LOG_TAG, "console_error line=$line source=$source message=$message")
+            ConsoleMessage.MessageLevel.WARNING ->
+                Log.w(LOG_TAG, "console_warning line=$line source=$source message=$message")
+            else ->
+                Log.i(
+                    LOG_TAG,
+                    "console_${consoleMessage.messageLevel().name.lowercase()} line=$line source=$source message=$message"
+                )
+        }
+    }
+
     private fun shouldBootstrapInjectedJavaScript(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT &&
             allowScripts &&
@@ -422,7 +456,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                   (function() {
                     try {
                       $safeScript
-                    } catch (error) {}
+                    } catch (error) {
+                      console.error("slock_webview_bootstrap_injected_js_error", error && (error.stack || error.message || error));
+                    }
                     window.location.replace($safeTargetUrl);
                   })();
                 </script>
@@ -444,6 +480,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         const val VIEW_NAME = "SlockSandboxWebView"
         private const val LOG_TAG = "SlockWebView"
         private const val LOG_URL_LIMIT = 160
+        private const val LOG_MESSAGE_LIMIT = 500
         private const val PROP_SRC = "src"
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
         private const val PROP_ALLOW_NAVIGATION = "allowNavigation"

@@ -368,7 +368,9 @@ private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?
           try {
             $writes;
             ${settingsBillingMobileWebViewChromeScript()}
-          } catch (error) {}
+          } catch (error) {
+            console.error("slock_mobile_billing_injected_js_error", error && (error.stack || error.message || error));
+          }
         })();
     """.trimIndent()
 }
