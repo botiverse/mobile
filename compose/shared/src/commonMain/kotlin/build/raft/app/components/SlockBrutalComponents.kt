@@ -116,7 +116,8 @@ internal fun SlockAnchoredMetaChip(
     trailingIconSize: Dp = iconSize,
     borderWidth: Dp = SlockStroke.Thin,
     pressFeedback: Boolean = onClick != null,
-    anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap
+    anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
+    clickIdentity: Any? = null
 ) {
     val geometryAnchor = remember { SlockMutableOffsetRef() }
     val chipModifier =
@@ -154,6 +155,7 @@ internal fun SlockAnchoredMetaChip(
         },
         enabled = onClick != null,
         pressFeedback = pressFeedback,
+        clickIdentity = clickIdentity,
         modifier = chipModifier
     ) {
         Row(

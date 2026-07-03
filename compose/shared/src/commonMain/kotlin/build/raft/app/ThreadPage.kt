@@ -10187,6 +10187,7 @@ private fun ThreadMessageCard(
                                     taskOpenEnabled = taskOpenEnabled,
                                     taskStatusActionsEnabled = taskStatusActionsEnabled,
                                     resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                    diagnosticsLogger = diagnosticsLogger,
                                     alignEnd = alignOwnMessageRight,
                                     onOpenThread = { onOpenThread(message.id) },
                                     onOpenTask = onOpenTask,
@@ -10938,6 +10939,7 @@ private fun ThreadMessageFooterMeta(
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
     resolvedTaskAssigneeName: String? = null,
+    diagnosticsLogger: (String) -> Unit = {},
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -10977,6 +10979,9 @@ private fun ThreadMessageFooterMeta(
         }
         if (hasReplies) {
             val replyLabel = threadMessageRepliesMetaLabel(replyMetadata)
+            val replyClickIdentity =
+                "thread-reply:${message.id}:${replyMetadata.threadChannelId.orEmpty()}:" +
+                    "${replyMetadata.replyCount}:${replyMetadata.unreadReplyCount}:$hasReplyDraft"
             SlockAnchoredMetaChip(
                 label = replyLabel,
                 iconName = SlockLucideIconName.MessageSquare,
@@ -10986,7 +10991,19 @@ private fun ThreadMessageFooterMeta(
                 color = SlockColor.SurfaceWhite,
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
-                onClick = if (showReplyAction) { _ -> onOpenThread() } else null
+                clickIdentity = replyClickIdentity,
+                onClick = if (showReplyAction) {
+                    { _ ->
+                        diagnosticsLogger(
+                            "thread_reply_chip_click parentMessageId=${message.id} " +
+                                "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
+                                "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
+                        )
+                        onOpenThread()
+                    }
+                } else {
+                    null
+                }
             )
         }
         if (hasReactions) {

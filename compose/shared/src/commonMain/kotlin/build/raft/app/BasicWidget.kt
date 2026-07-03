@@ -522,6 +522,7 @@ internal fun Button(
     enabled: Boolean = true,
     pressFeedback: Boolean = true,
     pressOffset: Dp = SlockPressTokens.ButtonOffset,
+    clickIdentity: Any? = null,
     content: (@Composable () -> Unit) = {}
 ) {
     val rootPosition = remember { SlockMutableOffsetRef() }
@@ -540,7 +541,7 @@ internal fun Button(
                     Modifier
                 }
             )
-            .pointerInput(enabled, pressFeedback) {
+            .pointerInput(enabled, pressFeedback, clickIdentity) {
                 detectTapGestures(
                     onPress = {
                         if (enabledUpdate.value && pressFeedback) {
