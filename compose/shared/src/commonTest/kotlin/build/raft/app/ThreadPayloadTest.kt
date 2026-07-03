@@ -1001,9 +1001,9 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun focusedMessageScrollOffsetCentersShortItemsAndTopAlignsTallItems() {
+    fun focusedMessageScrollOffsetTopAlignsFocusedItems() {
         assertEquals(
-            -260,
+            0,
             threadFocusedItemScrollOffset(
                 itemSize = 120,
                 viewportHeight = 640

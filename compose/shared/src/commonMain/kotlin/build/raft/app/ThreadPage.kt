@@ -8378,7 +8378,7 @@ private fun ThreadMessagesList(
         lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (targetMessageId == consumedFocusedMessageId && activeFocusedMessageId == null) {
+        if (targetMessageId == consumedFocusedMessageId) {
             return@LaunchedEffect
         }
         val targetIndex = renderPayload.focusedMessageListItemIndex()
@@ -8409,8 +8409,11 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         consumedFocusedMessageId = targetMessageId
+    }
+    LaunchedEffect(threadInstanceKey, activeFocusedMessageId) {
+        val highlightedMessageId = activeFocusedMessageId ?: return@LaunchedEffect
         delay(ThreadFocusedMessageHighlightDurationMs)
-        if (activeFocusedMessageId == targetMessageId) {
+        if (activeFocusedMessageId == highlightedMessageId) {
             activeFocusedMessageId = null
         }
     }
@@ -9544,9 +9547,7 @@ internal fun threadFocusedItemScrollOffset(
     itemSize: Int,
     viewportHeight: Int
 ): Int {
-    if (itemSize <= 0 || viewportHeight <= 0) return 0
-    if (itemSize >= viewportHeight) return 0
-    return (itemSize - viewportHeight) / 2
+    return 0
 }
 
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
