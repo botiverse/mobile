@@ -42,10 +42,8 @@ import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
-import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.Markdown
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
@@ -63,8 +61,6 @@ import kotlinx.coroutines.coroutineScope
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
-import org.intellij.markdown.parser.MarkdownParser
 import kotlin.time.TimeSource
 
 data class ThreadMarkdownTag(
@@ -370,14 +366,6 @@ internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
         ?.takeIf { it.isNotEmpty() }
         ?.let { scope -> "slock-$scope" }
         ?: "slock"
-
-internal fun String.shouldUseSlockMarkdownPlainTextFastPath(): Boolean {
-    if (isEmpty() || contains("://")) return false
-    return none { it in SlockMarkdownPlainTextFastPathBlockers }
-}
-
-private val SlockMarkdownPlainTextFastPathBlockers =
-    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '#', '@', '|')
 
 private fun String.hasSlockMarkdownBlockShape(): Boolean {
     val trimmed = trimStart()
@@ -957,37 +945,10 @@ internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): MarkdownPa
             normalizeThreadMarkdownBody()
         }
     if (content.isBlank()) return null
-    if (content.shouldUseSlockMarkdownPlainTextFastPath()) return null
     return MarkdownParserContent.from(content)
 }
 
 private const val SlockMarkdownDefaultPreparseLimit = 20
-
-internal fun buildSlockMarkdownInlineTextAnnotatedString(
-    content: String,
-    style: TextStyle,
-    annotator: MarkdownAnnotator
-): AnnotatedString {
-    val parserContent = MarkdownParserContent.from(content).parserContent
-    val parsedTree = traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PARSE) {
-        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
-    }
-    val textNode =
-        parsedTree.children.firstOrNull { node ->
-            node.type == MarkdownTokenTypes.TEXT || node.type == MarkdownElementTypes.PARAGRAPH
-        } ?: return AnnotatedString(content)
-    val settings =
-        DefaultAnnotatorSettings(
-            linkTextSpanStyle = TextLinkStyles(style = slockMarkdownLinkSpanStyle(style)),
-            codeSpanStyle = slockMarkdownInlineCodeTextStyle(style).toSpanStyle(),
-            annotator = annotator
-        )
-    return buildAnnotatedString {
-        pushStyle(style.toSpanStyle())
-        buildMarkdownAnnotatedString(parserContent, textNode, settings)
-        pop()
-    }
-}
 
 private val SlockMarkdownBodyFontSize = 14.sp
 private val SlockMarkdownBodyLineHeight = 22.sp
@@ -1050,30 +1011,6 @@ fun SlockMarkdownBody(
         }
     val markdownTextStyle = remember(textStyle) {
         slockMarkdownTextStyleWithInlineLineHeight(textStyle)
-    }
-    if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
-        val resolvedStyle = markdownTextStyle
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
-            KuiklyText(
-                text = content,
-                modifier = markdownModifier,
-                color = resolvedStyle.color,
-                fontSize = resolvedStyle.fontSize,
-                fontStyle = resolvedStyle.fontStyle,
-                fontWeight = resolvedStyle.fontWeight,
-                fontFamily = resolvedStyle.fontFamily,
-                letterSpacing = resolvedStyle.letterSpacing,
-                textDecoration = resolvedStyle.textDecoration,
-                textAlign = resolvedStyle.textAlign,
-                lineHeight = resolvedStyle.lineHeight,
-                overflow = TextOverflow.Clip,
-                softWrap = true,
-                maxLines = Int.MAX_VALUE,
-                minLines = 1,
-                style = resolvedStyle
-            )
-        }
-        return
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
     val currentOnOpenUrl = rememberUpdatedState(onOpenUrl)

@@ -43,10 +43,10 @@ internal expect fun slockNanoTimeNanos(): Long
 
 /**
  * Non-Composable variant of [traceMarkdownSection] for call sites that are NOT
- * inside a `@Composable` function (e.g., the `MarkdownParser.buildMarkdownTreeFromString`
- * call inside `buildSlockMarkdownInlineTextAnnotatedString`). Same threshold + log
- * behavior, but the block lambda is `() -> T` (not `@Composable () -> T`) and the
- * function is not annotated `@Composable` so it can be invoked from regular code.
+ * inside a `@Composable` function, such as content normalization and parser preparation.
+ * Same threshold + log behavior, but the block lambda is `() -> T` (not
+ * `@Composable () -> T`) and the function is not annotated `@Composable` so it can be
+ * invoked from regular code.
  */
 internal inline fun <T> traceMarkdownSectionNonComposable(
     name: String,

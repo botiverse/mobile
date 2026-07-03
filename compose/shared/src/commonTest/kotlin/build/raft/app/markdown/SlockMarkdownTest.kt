@@ -44,7 +44,10 @@ class SlockMarkdownTest {
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
         val fullRendererBody = "Open https://raft.build/task36-preparse"
 
-        assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
+        assertEquals(
+            "Plain text only",
+            "Plain text only".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
+        )
         assertEquals(
             "Ping @artin in #markdown专修",
             "Ping @artin in #markdown专修".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
@@ -58,8 +61,8 @@ class SlockMarkdownTest {
             prepareSlockMarkdownFullRendererBodies(
                 listOf("Plain text only", "Ping @artin", fullRendererBody, fullRendererBody)
             )
-        assertEquals(2, first.requestedCount)
-        assertEquals(2, first.parsedCount)
+        assertEquals(3, first.requestedCount)
+        assertEquals(3, first.parsedCount)
         assertEquals(0, first.cacheHitCount)
 
         val second = prepareSlockMarkdownFullRendererBodies(listOf(fullRendererBody))
@@ -236,7 +239,11 @@ class SlockMarkdownTest {
         assertEquals(2, plan.inlineCodeMatchCount())
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
-        val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = annotator
+            )
 
         assertTrue(annotated.text.contains(shortCode))
         assertTrue(annotated.text.contains(longCode))
@@ -520,21 +527,6 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun plainTextFastPathOnlyAcceptsBodiesWithoutMarkdownWork() {
-        assertTrue("Short plain reply.".shouldUseSlockMarkdownPlainTextFastPath())
-        assertTrue("中文普通消息 123".shouldUseSlockMarkdownPlainTextFastPath())
-        assertTrue("<b>literal</b>".shouldUseSlockMarkdownPlainTextFastPath())
-        assertTrue("<!-- hidden --> literal".shouldUseSlockMarkdownPlainTextFastPath())
-
-        assertFalse("Ping @artin".shouldUseSlockMarkdownPlainTextFastPath())
-        assertFalse("See #KMP".shouldUseSlockMarkdownPlainTextFastPath())
-        assertFalse("Use `code`".shouldUseSlockMarkdownPlainTextFastPath())
-        assertFalse("Open https://raft.build".shouldUseSlockMarkdownPlainTextFastPath())
-        assertFalse("first line\nsecond line".shouldUseSlockMarkdownPlainTextFastPath())
-        assertFalse("**bold**".shouldUseSlockMarkdownPlainTextFastPath())
-    }
-
-    @Test
     fun markdownPerformanceLogsOnlySlowSamplesByDefault() {
         assertFalse(shouldLogSlockMarkdownPerformance(0))
         assertFalse(shouldLogSlockMarkdownPerformance(7))
@@ -551,7 +543,10 @@ class SlockMarkdownTest {
             "#KMP is a channel reference, not a heading",
             "#KMP is a channel reference, not a heading".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
         )
-        assertEquals(null, "Plain text only".preparedSlockMarkdownFullRendererContentOrNull())
+        assertEquals(
+            "Plain text only",
+            "Plain text only".preparedSlockMarkdownFullRendererContentOrNull()?.sourceContent
+        )
     }
 
     @Test
@@ -573,10 +568,9 @@ class SlockMarkdownTest {
     fun markdownLinksRenderBlueUnderline() {
         val body = "Open [Raft](https://raft.build) now"
         val annotated =
-            buildSlockMarkdownInlineTextAnnotatedString(
-                body,
-                SlockType.Body,
-                slockMarkdownAnnotator(body)
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(body)
             )
         val link = annotated.getLinkAnnotations(0, annotated.length).single().item as LinkAnnotation.Url
         val linkStyle = link.styles?.style
@@ -1145,7 +1139,7 @@ class SlockMarkdownTest {
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
         val settings =
             DefaultAnnotatorSettings(
-                linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
+                linkTextSpanStyle = TextLinkStyles(style = slockMarkdownLinkSpanStyle(SlockType.Body)),
                 codeSpanStyle = SpanStyle(),
                 annotator = annotator,
                 linkInteractionListener = linkInteractionListener
