@@ -311,6 +311,7 @@ jobs:
           quiver --version
 
       - name: Build metadata + publish APK + (optional) mapping/symbols
+        id: publish-quiver-release
         shell: bash
         run: |
           set -euo pipefail
@@ -329,7 +330,13 @@ jobs:
           # Helper does the rest (build-metadata, build, asset, release, sign
           # skipped because APK is already on disk; depends on KMP follow-up
           # to integrate sign step into the helper itself).
-          ./scripts/publish_android_quiver_release.sh
+          ./scripts/publish_android_quiver_release.sh | tee quiver-publish.log
+          RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' quiver-publish.log | tail -n 1)"
+          if [ -z "${RELEASE_ID}" ]; then
+            echo "Could not parse release id from Quiver publish output" >&2
+            exit 1
+          fi
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Create share page
         id: create-share-page
@@ -340,14 +347,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Look up the just-created release id by querying the latest active
-          # release on the channel we just published to.
-          RELEASE_ID=$(quiver releases list --app "${{ env.QUIVER_APP_SLUG }}" --json \
-            | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(r['id'] for r in d.get('releases',[]) if r['status']=='active' and r['channel']=='${{ inputs.quiver_channel }}'))")
+          RELEASE_ID="${{ steps.publish-quiver-release.outputs.release_id }}"
           echo "release_id=$RELEASE_ID"
-          SHARE_OUT=$(quiver releases share "${{ env.QUIVER_APP_SLUG }}" "$RELEASE_ID" --ttl-seconds "${{ inputs.share_ttl_seconds }}")
-          echo "$SHARE_OUT"
-          SHARE_URL=$(echo "$SHARE_OUT" | grep -oE 'https?://[^ ]+' | head -1)
+          APP_ID="$(curl -fsS \
+            -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+            "${QUIVER_API:-https://quiver.oranix.io}/api/apps" \
+            | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.QUIVER_APP_SLUG }}'))")"
+          SHARE_JSON="$(curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"ttl_seconds\":${{ inputs.share_ttl_seconds }}}" \
+            "${QUIVER_API:-https://quiver.oranix.io}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
+          echo "$SHARE_JSON"
+          SHARE_URL="$(printf '%s' "$SHARE_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['share_url'])")"
           echo "share_url=$SHARE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Step summary
