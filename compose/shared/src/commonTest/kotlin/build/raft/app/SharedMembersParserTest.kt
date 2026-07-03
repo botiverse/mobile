@@ -426,6 +426,26 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentStatusLabelUsesDisplayCaseForWireActivity() {
+        assertEquals(
+            "Working",
+            membersAgentStatusLabel(
+                status = AgentStatus.Working,
+                summaryActivity = "working",
+                fallback = "Agent"
+            )
+        )
+        assertEquals(
+            "Running extension",
+            membersAgentStatusLabel(
+                status = null,
+                summaryActivity = "running_extension",
+                fallback = "Agent"
+            )
+        )
+    }
+
+    @Test
     fun agentStatusDisplayStateUsesOrangeForErrorWithoutPulse() {
         val member =
             MemberProfile(

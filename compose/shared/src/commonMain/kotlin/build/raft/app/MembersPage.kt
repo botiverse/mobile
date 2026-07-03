@@ -4468,9 +4468,11 @@ private fun MembersAgentProfileHeader(
     onUnavailableAction: (String) -> Unit
 ) {
     val statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
-    val statusLabel = summary?.activity?.takeIf { it.isNotBlank() }
-        ?: statusDisplayState.status?.label
-        ?: member.detailStatusLabel
+    val statusLabel = membersAgentStatusLabel(
+        status = statusDisplayState.status,
+        summaryActivity = summary?.activity,
+        fallback = member.detailStatusLabel
+    )
     val scope = rememberCoroutineScope()
     var uploading by remember(member.id.value) { mutableStateOf(false) }
 
@@ -7584,6 +7586,15 @@ private fun MemberProfile.membersResolvedAgentStatus(
     AgentStatus.fromWireValue(summaryActivity)
         ?: AgentStatus.fromWireValue(summaryStatus)
         ?: agentStatus
+
+internal fun membersAgentStatusLabel(
+    status: AgentStatus?,
+    summaryActivity: String?,
+    fallback: String
+): String =
+    status?.label
+        ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
+        ?: fallback
 
 private fun MemberProfile.membersAgentRuntimeErrorText(
     detail: AgentDetailSnapshot?,

@@ -709,7 +709,6 @@ private fun MemberProfile.withSourceServer(
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
     val agentStatus = normalizedAgentActivityStatus(activity, status)
-    val statusValue = agentStatus?.activityWireValue
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,
@@ -723,7 +722,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         avatarLabel = label.take(1).uppercase(),
         presence = agentStatus?.presence ?: Presence.Offline,
         agentStatus = agentStatus,
-        statusLabel = statusValue,
+        statusLabel = agentStatus?.label,
         runtime = runtime,
         model = model,
         reasoning = reasoningEffort,

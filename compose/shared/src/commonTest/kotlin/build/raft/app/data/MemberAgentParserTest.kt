@@ -279,7 +279,8 @@ class MemberAgentParserTest {
                   "name": "builder",
                   "displayName": "Builder",
                   "runtime": "claude",
-                  "status": "online"
+                  "status": "inactive",
+                  "activity": "working"
                 }
               ]
             }
@@ -294,6 +295,8 @@ class MemberAgentParserTest {
         assertEquals("agent-1", agent.id.value)
         assertEquals("Builder", agent.displayName)
         assertEquals("claude", agent.runtime)
+        assertEquals(AgentStatus.Working, agent.agentStatus)
+        assertEquals("Working", agent.statusLabel)
     }
 
     @Test
