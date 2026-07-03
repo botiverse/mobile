@@ -88,12 +88,12 @@ class SlockAppShellTest {
         assertEquals("home", appShellChildPageSelectedTab("home"))
         assertEquals("tasks", appShellChildPageSelectedTab("tasks"))
         assertEquals("members", appShellChildPageSelectedTab("members"))
-        assertEquals("home", appShellChildPageSelectedTab("settings"))
+        assertEquals("settings", appShellChildPageSelectedTab("settings"))
         assertEquals("home", appShellChildPageSelectedTab("unknown"))
         assertEquals(0, appShellChildPageTabIndex("home"))
         assertEquals(1, appShellChildPageTabIndex("tasks"))
         assertEquals(2, appShellChildPageTabIndex("members"))
-        assertEquals(0, appShellChildPageTabIndex("settings"))
+        assertEquals(3, appShellChildPageTabIndex("settings"))
     }
 
     @Test

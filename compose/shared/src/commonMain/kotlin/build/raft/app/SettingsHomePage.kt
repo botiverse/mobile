@@ -485,7 +485,7 @@ private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
-private val AppShellChildPageTabs = listOf("home", "tasks", "members")
+private val AppShellChildPageTabs = listOf("home", "tasks", "members", "settings")
 private val AppShellChildPageTabKeys = AppShellChildPageTabs.toSet()
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -1457,23 +1457,16 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 @Composable
 private fun AppShellTabs(
     selectedTab: String,
-    childHostShellId: String,
-    content: @Composable (tab: String, active: Boolean) -> Unit
+    childHostShellId: String
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        if (activeTab in AppShellChildPageTabKeys) {
-            key("app-shell-child-tabs") {
-                SlockAppShellChildTabHost(
-                    shellId = childHostShellId,
-                    tab = activeTab,
-                    active = true
-                )
-            }
-        } else {
-            key("app-shell-$activeTab") {
-                content(activeTab, true)
-            }
+        key("app-shell-child-tabs") {
+            SlockAppShellChildTabHost(
+                shellId = childHostShellId,
+                tab = activeTab,
+                active = true
+            )
         }
     }
 }
@@ -3012,6 +3005,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
                             "members" -> membersTabContent(active)
+                            "settings" -> settingsTabContent(active)
                             else -> homeTabContent(active)
                         }
                     }
@@ -3028,12 +3022,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     AppShellTabs(
                         selectedTab = selectedTab,
                         childHostShellId = childTabShellId
-                    ) { tab, active ->
-                        when (tab) {
-                            "settings" -> settingsTabContent(active)
-                            else -> childTabRenderer(tab, active)
-                        }
-                    }
+                    )
             Box(modifier = Modifier.fillMaxSize()) {
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
