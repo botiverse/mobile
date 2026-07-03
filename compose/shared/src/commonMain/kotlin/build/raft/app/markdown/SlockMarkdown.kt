@@ -1409,7 +1409,7 @@ internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted:
                         background = SlockColor.BrandYellow
                     )
             } else {
-                SlockType.Body
+                SlockType.ButtonBold
                     .withSlockFontWeight(FontWeight.SemiBold)
                     .toSpanStyle()
                     .copy(

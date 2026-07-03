@@ -6498,6 +6498,7 @@ internal fun threadVisualFixture(
                                     "**粗体 Bold: 中文粗体 markdown bold sample 123.**\n\n" +
                                     "Tag chip coverage: mention @artin, channel #markdown专修, " +
                                     "thread #markdown专修:692d9e88, tasks task #42 and task #43.\n\n" +
+                                    "Ordinary mention regression: @KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, and `git commit -s`.\n\n" +
                                     "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
                                     "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
