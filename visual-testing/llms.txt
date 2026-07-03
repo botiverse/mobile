@@ -1,9 +1,9 @@
 # Slock Visual Testing
 
-Generated: 2026-07-03 07:50:06 UTC
-Latest run: 48631ed3f-20260703075006
-Latest commit: 48631ed3f-20260703075006
-Commit subject: fix(home): refresh update notices periodically
+Generated: 2026-07-03 12:16:43 UTC
+Latest run: 963d46cb1-20260703121500
+Latest commit: 963d46cb1-20260703121500
+Commit subject: Merge branch 'ad3/task293-visual-row-checkbox'
 Providers: react vs android
 Summary: total 82, same 0, pass 0, basic-pass 3, different 78, missing 1
 AI analysis: ready 1 / total 82, pending 81
@@ -104,7 +104,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
-- 48631ed3f-20260703075006: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/48631ed3f-20260703075006/component-matrix.json, report runs/48631ed3f-20260703075006/report.html
+- 963d46cb1-20260703121500: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/963d46cb1-20260703121500/component-matrix.json, report runs/963d46cb1-20260703121500/report.html
 
 ## Baseline Gate
 

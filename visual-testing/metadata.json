@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-03T07:50:06.654Z",
-  "runId": "48631ed3f-20260703075006",
-  "commit": "48631ed3f-20260703075006",
-  "commitSubject": "fix(home): refresh update notices periodically",
+  "generatedAt": "2026-07-03T12:16:43.994Z",
+  "runId": "963d46cb1-20260703121500",
+  "commit": "963d46cb1-20260703121500",
+  "commitSubject": "Merge branch 'ad3/task293-visual-row-checkbox'",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -4302,5 +4302,6 @@
       "comparison": null
     }
   ],
-  "report": "latest/report.html"
+  "report": "latest/report.html",
+  "raftUiReport": "latest/raft-ui/"
 }
