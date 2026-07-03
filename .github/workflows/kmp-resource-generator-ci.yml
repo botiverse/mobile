@@ -8,6 +8,7 @@ on:
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
+      - "third_party/ktor-ohos/**"
       - "third_party/stately"
       - "third_party/sqliter"
       - "third_party/sqldelight"
@@ -21,6 +22,7 @@ on:
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
+      - "third_party/ktor-ohos/**"
       - "third_party/stately"
       - "third_party/sqliter"
       - "third_party/sqldelight"
@@ -123,7 +125,7 @@ jobs:
   ohos:
     name: OHOS shared compile
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
@@ -167,8 +169,46 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --ohos-only
 
+      - name: Publish OHOS shared fork dependencies
+        shell: bash
+        run: |
+          git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
+          git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
+
+          pushd third_party/stately
+          ./gradlew --no-daemon --console=plain \
+            :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-strict:publishOhosArm64PublicationToMavenLocal \
+            :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-concurrency:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqliter
+          ./gradlew --no-daemon --console=plain \
+            :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
+            :sqliter-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqldelight
+          ./gradlew --no-daemon --console=plain \
+            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:publishMavenPublicationToMavenLocal \
+            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
+            :sqldelight-gradle-plugin:publishToMavenLocal \
+            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
+            :runtime:publishOhosArm64PublicationToMavenLocal \
+            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          scripts/prepare_ktor_ohos_fork.sh --publish
+
       - name: Compile shared OHOS target
         working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
         run: |
           ./gradlew \
             -c settings.ohos.gradle.kts \
