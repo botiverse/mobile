@@ -16,7 +16,6 @@ import build.raft.app.components.SlockCheckboxLabelRow
 import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockFormFieldLabelStyle
 import build.raft.app.components.SlockFormFieldSize
-import build.raft.app.components.SlockMenuItemRow
 import build.raft.app.components.SlockProgressBar
 import build.raft.app.components.SlockProgressBarTone
 import build.raft.app.components.SlockBrutalTone
@@ -34,7 +33,6 @@ import build.raft.app.components.SlockStatusDot
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
@@ -225,7 +223,7 @@ internal fun UiCheckMarkerVisualContent() {
                 Text("Square unchecked", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockCheckMarker(checked = true, shape = SlockCheckMarkerShape.Circle, size = 20.dp, tone = SlockCheckMarkerTone.YellowFill)
+                SlockCheckMarker(checked = true, shape = SlockCheckMarkerShape.Circle, size = 18.dp, tone = SlockCheckMarkerTone.YellowFill)
                 Text("Circle yellow", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
             }
         }
@@ -311,11 +309,11 @@ internal fun UiSkeletonVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
-            SlockSkeleton(modifier = Modifier.fillMaxWidth().height(48.dp), variant = SlockSkeletonVariant.Block)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SlockSkeletonRow(avatar = true, avatarSize = 18.dp, lineWidths = listOf(128.dp, 80.dp))
+            SlockSkeleton(modifier = Modifier.width(310.dp).height(46.dp), variant = SlockSkeletonVariant.Block)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockSkeleton(modifier = Modifier.size(32.dp), variant = SlockSkeletonVariant.Circle)
+                SlockSkeleton(modifier = Modifier.size(30.dp), variant = SlockSkeletonVariant.Circle)
                 SlockSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = SlockSkeletonVariant.Line)
             }
         }
@@ -355,8 +353,8 @@ internal fun UiSlugInputVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockSlugInput(value = "design-lab", onValueChange = {})
-            SlockSlugInput(value = "partner-workspace", onValueChange = {}, enabled = false)
+            SlockSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
+            SlockSlugInput(value = "partner-workspace", onValueChange = {}, enabled = false, modifier = Modifier.width(310.dp))
         }
     }
 }
@@ -413,24 +411,25 @@ internal fun UiMenuItemVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
-                .height(154.dp)
+                .height(176.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(bottom = 3.dp),
-            verticalArrangement = Arrangement.Top
-        ) {
-            SlockMenuItemRow(label = "Open Channel", trailing = "⌘K")
-            SlockMenuItemRow(label = "Mark as Read")
-            SlockMenuItemRow(label = "Archive unavailable", enabled = false)
-            SlockMenuItemRow(label = "Delete Message", dividerBefore = true)
-        }
+        SlockBrutalDropdownMenuSurface(
+            items =
+                listOf(
+                    SlockBrutalDropdownMenuItem(id = "open", label = "Open Channel", trailing = "⌘K"),
+                    SlockBrutalDropdownMenuItem(id = "read", label = "Mark as Read"),
+                    SlockBrutalDropdownMenuItem(id = "archive", label = "Archive unavailable", enabled = false),
+                    SlockBrutalDropdownMenuItem(id = "delete", label = "Delete Message")
+                ),
+            onSelect = {},
+            width = 310.dp,
+            rowHeight = 36.dp,
+            shadowOffset = 3.dp,
+            showDividers = false,
+            dividerBeforeIds = setOf("delete")
+        )
     }
 }
 

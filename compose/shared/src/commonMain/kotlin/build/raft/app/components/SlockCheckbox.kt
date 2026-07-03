@@ -39,6 +39,17 @@ internal fun SlockCheckbox(
     enabled: Boolean = true,
     size: Dp = 16.dp
 ) {
+    val disabledAlpha = if (enabled) 1f else 0.50f
+    val checkedFillColor = if (!enabled && checked) {
+        SlockColor.TextBlack.copy(alpha = 0.30f)
+    } else {
+        SlockColor.TextBlack.copy(alpha = disabledAlpha)
+    }
+    val borderColor = if (!enabled && checked) {
+        checkedFillColor
+    } else {
+        SlockColor.BorderBlack.copy(alpha = disabledAlpha)
+    }
     val clickableModifier = if (enabled) {
         modifier.clickable { onCheckedChange(!checked) }
     } else {
@@ -47,11 +58,10 @@ internal fun SlockCheckbox(
     Box(
         modifier = clickableModifier
             .size(size)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .border(SlockStroke.Default, borderColor)
             .background(
                 when {
-                    !enabled -> SlockColor.SurfaceCream
-                    checked -> SlockColor.TextBlack
+                    checked -> checkedFillColor
                     else -> SlockColor.SurfaceWhite
                 }
             ),
@@ -61,7 +71,7 @@ internal fun SlockCheckbox(
             SlockLucideIcon(
                 SlockLucideIconName.Check,
                 modifier = Modifier.size((size.value * 0.7f).dp),
-                color = "#FFFFFFFF",
+                color = if (enabled) "#FFFFFFFF" else "#80FFFFFF",
                 strokeWidth = 4f
             )
         }

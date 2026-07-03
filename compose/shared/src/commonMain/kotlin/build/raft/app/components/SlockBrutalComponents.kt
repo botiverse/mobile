@@ -624,7 +624,7 @@ private fun SlockBrutalActionButtonInnerContent(
         Text(
             text = label,
             style = textStyle,
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.40f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -648,6 +648,7 @@ internal fun SlockBrutalActionButton(
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    val chromeAlpha = if (enabled) 1f else 0.40f
     Box(
         modifier =
             modifier
@@ -659,7 +660,7 @@ internal fun SlockBrutalActionButton(
                 Modifier
                     .matchParentSize()
                     .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack, RectangleShape)
+                    .background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha), RectangleShape)
         )
         Box(
             modifier =
@@ -667,7 +668,7 @@ internal fun SlockBrutalActionButton(
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha), RectangleShape)
                     .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center

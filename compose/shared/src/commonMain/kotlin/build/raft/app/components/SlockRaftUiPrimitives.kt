@@ -50,7 +50,7 @@ internal enum class SlockBrutalTone(val color: Color) {
     Stone(SlockColor.SurfaceCream)
 }
 
-private val SlockSelectedSurfaceCyan = Color(0xFFDDF8FD)
+private val SlockSelectedSurfaceCyan = Color(0xFFDFF7FD)
 
 @Composable
 internal fun SlockBrutalBadge(
@@ -175,9 +175,11 @@ internal fun SlockSurfaceListItem(
     selected: Boolean = false,
     interactive: Boolean = true,
     onClick: (() -> Unit)? = null,
+    horizontalPadding: Dp = 16.dp,
+    verticalPadding: Dp = 12.dp,
     content: @Composable () -> Unit
 ) {
-    val borderColor = if (selected || interactive) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.30f)
+    val borderColor = if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.30f)
     val backgroundColor = if (selected) SlockSelectedSurfaceCyan else SlockColor.SurfaceWhite
     val shadowOffset = if (selected) 2.dp else 0.dp
     Box(modifier = modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
@@ -203,7 +205,7 @@ internal fun SlockSurfaceListItem(
                             base
                         }
                     }
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
             content()
         }
@@ -227,7 +229,9 @@ internal fun SlockAvatarListRow(
         modifier = modifier,
         selected = selected,
         interactive = onClick != null,
-        onClick = onClick
+        onClick = onClick,
+        horizontalPadding = 12.dp,
+        verticalPadding = 8.dp
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
