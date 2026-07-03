@@ -1356,18 +1356,11 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
     }
 }
 
-internal fun childHostAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
-    val activeTab = retainedAppShellSelectedTab(selectedTab)
-    return retainedAppShellTabOrder(activeTab).filter { tab ->
-        tab == activeTab || (tab in AppShellChildPageTabKeys && tab in mountedTabs)
-    }
-}
+internal fun childHostAppShellComposedTabs(selectedTab: String): List<String> =
+    activeOnlyAppShellComposedTabs(selectedTab)
 
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
-
-internal fun retainedAppShellInactivePaneKeepsLayout(tab: String): Boolean =
-    retainedAppShellSelectedTab(tab) == "home"
 
 internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
@@ -1429,29 +1422,23 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
     if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
 
 @Composable
-private fun RetainedAppShellTabs(
+private fun AppShellTabs(
     selectedTab: String,
-    mountedTabs: Set<String>,
     childHostShellId: String,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        childHostAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
-            key("retained-$tab") {
-                RetainedAppShellTabPane(
-                    active = tab == activeTab,
-                    keepLayoutWhenInactive = retainedAppShellInactivePaneKeepsLayout(tab)
-                ) {
-                    if (tab in AppShellChildPageTabKeys) {
-                        SlockAppShellChildTabHost(
-                            shellId = childHostShellId,
-                            tab = tab,
-                            active = tab == activeTab
-                        )
-                    } else {
-                        content(tab, tab == activeTab)
-                    }
+        childHostAppShellComposedTabs(activeTab).forEach { tab ->
+            key("app-shell-$tab") {
+                if (tab in AppShellChildPageTabKeys) {
+                    SlockAppShellChildTabHost(
+                        shellId = childHostShellId,
+                        tab = tab,
+                        active = tab == activeTab
+                    )
+                } else {
+                    content(tab, tab == activeTab)
                 }
             }
         }
@@ -1479,36 +1466,6 @@ private fun SlockAppShellChildTabHost(
         glassStyle = AppShellChildPageGlassStyleLiquid
     )
 }
-
-@Composable
-private fun RetainedAppShellTabPane(
-    active: Boolean,
-    keepLayoutWhenInactive: Boolean,
-    content: @Composable () -> Unit
-) {
-    Box(
-        modifier = retainedAppShellPaneModifier(active, keepLayoutWhenInactive)
-    ) {
-        content()
-    }
-}
-
-private fun retainedAppShellPaneModifier(active: Boolean, keepLayoutWhenInactive: Boolean): Modifier =
-    if (active) {
-        Modifier.fillMaxSize().alpha(1f)
-    } else if (!keepLayoutWhenInactive) {
-        // Keep already-visited secondary tabs composed so their remember state
-        // and first-use class paths survive tab switches, but do not make Home
-        // pay full hidden-tree layout on every frame.
-        Modifier.size(0.dp).graphicsLayer(alpha = 0f)
-    } else {
-        // Keep the retained tab/route composed so remember/LazyListState survive
-        // tab switches, but hide it via a layer transform instead of a layout
-        // offset. Layout offset re-places the full retained tree on every tab
-        // switch; size(0.dp) can starve retained Home sections of normal
-        // LazyColumn measurement after repeated tab switches.
-        Modifier.fillMaxSize().graphicsLayer(alpha = 0f, translationX = -10000f)
-    }
 
 @Composable
 private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTick: Int = 0) {
@@ -2988,9 +2945,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
                         }
                     }
-                    RetainedAppShellTabs(
+                    AppShellTabs(
                         selectedTab = selectedTab,
-                        mountedTabs = retainedAppShellTabs,
                         childHostShellId = childTabShellId
                     ) { tab, active ->
                         when (tab) {

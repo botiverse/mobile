@@ -14,7 +14,6 @@ import globalNativeManager from '../MyNativeManager';
 const kPageName = 'pageName';
 const kPageData = 'pageData';
 const kGlassStyle = 'glassStyle';
-const kActive = 'active';
 const kLoadSuccess = 'loadSuccess';
 const kLoadFailure = 'loadFailure';
 const kSendEvent = 'sendEvent';
@@ -26,7 +25,6 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
 
   pageName: string = '';
   pageData: string = '{}';
-  active: boolean = true;
   private loadSuccessCallback: KuiklyRenderCallback | null = null;
   private loadFailureCallback: KuiklyRenderCallback | null = null;
   private delegate: IKuiklyViewDelegate = new KuiklyViewDelegate();
@@ -53,9 +51,6 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
         this.updatePageData(normalizePageData(propValue));
         return true;
       case kGlassStyle:
-        return true;
-      case kActive:
-        this.updateActive(propValue);
         return true;
       case kLoadSuccess:
         this.loadSuccessCallback = propValue as KuiklyRenderCallback;
@@ -121,15 +116,6 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
     }
     this.pageData = next;
     this.resetChildForNewPage();
-  }
-
-  private updateActive(next: KRAny | KuiklyRenderCallback): void {
-    const active = normalizeBoolean(next, true);
-    if (this.active === active) {
-      return;
-    }
-    this.active = active;
-    this.updateArkUI();
   }
 
   private resetChildForNewPage(): void {
@@ -234,7 +220,6 @@ export struct SlockKuiklyPageViewComponent {
     }
     .width('100%')
     .height('100%')
-    .enabled(this.renderView.active)
   }
 }
 
@@ -248,19 +233,6 @@ function normalizeText(value: KRAny | KuiklyRenderCallback): string {
 function normalizePageData(value: KRAny | KuiklyRenderCallback): string {
   const text = normalizeText(value);
   return text.length > 0 ? text : '{}';
-}
-
-function normalizeBoolean(value: KRAny | KuiklyRenderCallback, fallback: boolean): boolean {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    return value === 'true';
-  }
-  if (typeof value === 'number') {
-    return value !== 0;
-  }
-  return fallback;
 }
 
 @Builder

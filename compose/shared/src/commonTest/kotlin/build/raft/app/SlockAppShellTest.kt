@@ -84,6 +84,13 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun childHostAppShellComposedTabsUsesOnlyActiveTab() {
+        assertEquals(listOf("tasks"), childHostAppShellComposedTabs("tasks"))
+        assertEquals(listOf("members"), childHostAppShellComposedTabs("members"))
+        assertEquals(listOf("home"), childHostAppShellComposedTabs("unknown"))
+    }
+
+    @Test
     fun homeWarmAppShellComposedTabsKeepsOnlyHomeInactive() {
         assertEquals(
             listOf("home", "tasks"),
@@ -121,13 +128,6 @@ class SlockAppShellTest {
             listOf("tasks", "home"),
             warmPrimaryAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
         )
-    }
-
-    @Test
-    fun retainedAppShellInactivePaneKeepsFullLayoutOnlyForHome() {
-        assertEquals(true, retainedAppShellInactivePaneKeepsLayout("home"))
-        assertEquals(false, retainedAppShellInactivePaneKeepsLayout("tasks"))
-        assertEquals(false, retainedAppShellInactivePaneKeepsLayout("settings"))
     }
 
     @Test
