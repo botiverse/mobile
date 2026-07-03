@@ -213,6 +213,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
         SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
         SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
+        SlockKuiklyBridgeModule.resumePendingQuiverAutoInstall(applicationContext)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -2472,18 +2473,6 @@ internal class SlockKuiklyBridgeModule(
             response: UpdateCheckResponse,
             arch: String?
     ): QuiverInstallResult {
-        if (!canRequestPackageInstalls()) {
-            openUnknownAppSourcesSettings()
-            SlockDiagnosticsLogger.record(
-                    "SlockQuiverUpdate",
-                    "install_permission_required slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0}"
-            )
-            return QuiverInstallResult(
-                    statusLabel = "Permission required",
-                    detail = "Android settings opened. Allow Raft to install unknown apps, then check for the update again.",
-                    errorCode = "install_permission_required"
-            )
-        }
         return runCatching {
                     synchronized(quiverUpdateDownloadLock) {
                         val tracked = currentQuiverDownload(response, arch)
@@ -2492,12 +2481,7 @@ internal class SlockKuiklyBridgeModule(
                             when (status) {
                                 DownloadManager.STATUS_SUCCESSFUL -> {
                                     tracked.completed = true
-                                    openDownloadedQuiverApk(tracked.downloadManager, tracked.downloadId, tracked.fileName)
-                                    QuiverInstallResult(
-                                            statusLabel = "Install",
-                                            detail = "Android installer opened for the downloaded Raft update.",
-                                            actionLabel = "Install"
-                                    )
+                                    tracked.toInstallResult(appContext, source = "button")
                                 }
                                 DownloadManager.STATUS_PENDING,
                                 DownloadManager.STATUS_RUNNING,
@@ -2572,6 +2556,13 @@ internal class SlockKuiklyBridgeModule(
                                     "SlockQuiverUpdate",
                                     "download_ready downloadId=$completedId latest=${latest.version_code}"
                             )
+                            quiverUpdateDownloads[key]?.let { download ->
+                                openQuiverDownloadedApkOrRequestPermission(
+                                        context = appContext,
+                                        download = download,
+                                        source = "download_complete"
+                                )
+                            }
                         } else {
                             quiverUpdateDownloads[key]?.failed = true
                             SlockDiagnosticsLogger.record(
@@ -2681,6 +2672,30 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
+    private fun QuiverUpdateDownload.toInstallResult(context: Context, source: String): QuiverInstallResult =
+            when (openQuiverDownloadedApkOrRequestPermission(context, this, source)) {
+                QUIVER_INSTALL_OPENED ->
+                    QuiverInstallResult(
+                            statusLabel = "Install",
+                            detail = "Android installer opened for the downloaded Raft update.",
+                            actionLabel = "Install"
+                    )
+                QUIVER_INSTALL_PERMISSION_REQUIRED ->
+                    QuiverInstallResult(
+                            statusLabel = "Permission required",
+                            detail = "Raft update is downloaded. Allow Raft to install unknown apps, then return to continue installation.",
+                            actionLabel = "Install",
+                            errorCode = "install_permission_required"
+                    )
+                else ->
+                    QuiverInstallResult(
+                            statusLabel = "Install failed",
+                            detail = "Raft update is downloaded, but Android installer could not be opened.",
+                            actionLabel = "Install",
+                            errorCode = "install_intent_failed"
+                    )
+            }
+
     private fun quiverDownloadStatus(downloadManager: DownloadManager, downloadId: Long): Int {
         val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId)) ?: return DownloadManager.STATUS_FAILED
         cursor.use {
@@ -2688,74 +2703,6 @@ internal class SlockKuiklyBridgeModule(
             val index = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
             return if (index >= 0) it.getInt(index) else DownloadManager.STATUS_FAILED
         }
-    }
-
-    private fun openDownloadedQuiverApk(
-            downloadManager: DownloadManager,
-            downloadId: Long,
-            fileName: String
-    ) {
-        val downloadedUri =
-                downloadManager.getUriForDownloadedFile(downloadId)
-                        ?: queryDownloadedQuiverApkFile(downloadManager, downloadId)?.let { file ->
-                            FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
-                        }
-                        ?: error("Downloaded APK URI unavailable")
-        val installIntent =
-                Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                    setDataAndType(downloadedUri, ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
-                    clipData = ClipData.newUri(appContext.contentResolver, fileName, downloadedUri)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-                    putExtra(Intent.EXTRA_RETURN_RESULT, false)
-                }
-        appContext.startActivity(installIntent)
-        SlockDiagnosticsLogger.record(
-                "SlockQuiverUpdate",
-                "install_intent_opened downloadId=$downloadId uriScheme=${downloadedUri.scheme.orEmpty()}"
-        )
-    }
-
-    private fun queryDownloadedQuiverApkFile(downloadManager: DownloadManager, downloadId: Long): File? {
-        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId)) ?: return null
-        cursor.use {
-            if (!it.moveToFirst()) return null
-            val index = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-            if (index < 0) return null
-            val localUri = it.getString(index)?.takeIf { value -> value.isNotBlank() } ?: return null
-            val uri = Uri.parse(localUri)
-            return if (uri.scheme == "file" && !uri.path.isNullOrBlank()) File(uri.path!!) else null
-        }
-    }
-
-    private fun canRequestPackageInstalls(): Boolean =
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-                    appContext.packageManager.canRequestPackageInstalls()
-
-    private fun openUnknownAppSourcesSettings() {
-        val intent =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${appContext.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                } else {
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", appContext.packageName, null)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                }
-        runCatching { appContext.startActivity(intent) }
-                .onFailure {
-                    runCatching {
-                        appContext.startActivity(
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.fromParts("package", appContext.packageName, null)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                        )
-                    }
-                }
     }
 
     private data class QuiverInstallResult(
@@ -3658,6 +3605,7 @@ internal class SlockKuiklyBridgeModule(
         const val MODULE_NAME = "HRBridgeModule"
         private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
         private val quiverUpdateDownloadLock = Any()
+        @Volatile private var pendingQuiverAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
@@ -3666,6 +3614,124 @@ internal class SlockKuiklyBridgeModule(
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
         private const val ATTACHMENT_DOWNLOAD_EVENT_NAME = "slock.attachmentDownloadProgress"
+        private const val QUIVER_INSTALL_OPENED = "opened"
+        private const val QUIVER_INSTALL_PERMISSION_REQUIRED = "permission_required"
+        private const val QUIVER_INSTALL_FAILED = "failed"
+
+        internal fun resumePendingQuiverAutoInstall(context: Context) {
+            val key = pendingQuiverAutoInstallKey ?: return
+            val download =
+                    quiverUpdateDownloads[key]
+                            ?: run {
+                                pendingQuiverAutoInstallKey = null
+                                return
+                            }
+            if (download.failed || download.status() != DownloadManager.STATUS_SUCCESSFUL) return
+            if (!canRequestPackageInstalls(context)) return
+            openQuiverDownloadedApkOrRequestPermission(
+                    context = context,
+                    download = download,
+                    source = "permission_resume"
+            )
+        }
+
+        private fun openQuiverDownloadedApkOrRequestPermission(
+                context: Context,
+                download: QuiverUpdateDownload,
+                source: String
+        ): String {
+            if (!canRequestPackageInstalls(context)) {
+                pendingQuiverAutoInstallKey = download.key
+                openUnknownAppSourcesSettings(context)
+                SlockDiagnosticsLogger.record(
+                        "SlockQuiverUpdate",
+                        "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
+                )
+                return QUIVER_INSTALL_PERMISSION_REQUIRED
+            }
+            pendingQuiverAutoInstallKey = download.key
+            return runCatching {
+                        openDownloadedQuiverApk(context, download.downloadManager, download.downloadId, download.fileName)
+                        pendingQuiverAutoInstallKey = null
+                        QUIVER_INSTALL_OPENED
+                    }
+                    .getOrElse { error ->
+                        SlockDiagnosticsLogger.record(
+                                "SlockQuiverUpdate",
+                                "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
+                        )
+                        QUIVER_INSTALL_FAILED
+                    }
+        }
+
+        private fun openDownloadedQuiverApk(
+                context: Context,
+                downloadManager: DownloadManager,
+                downloadId: Long,
+                fileName: String
+        ) {
+            val downloadedUri =
+                    downloadManager.getUriForDownloadedFile(downloadId)
+                            ?: queryDownloadedQuiverApkFile(downloadManager, downloadId)?.let { file ->
+                                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                            }
+                            ?: error("Downloaded APK URI unavailable")
+            val installIntent =
+                    Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                        setDataAndType(downloadedUri, ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
+                        clipData = ClipData.newUri(context.contentResolver, fileName, downloadedUri)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                        putExtra(Intent.EXTRA_RETURN_RESULT, false)
+                    }
+            context.startActivity(installIntent)
+            SlockDiagnosticsLogger.record(
+                    "SlockQuiverUpdate",
+                    "install_intent_opened downloadId=$downloadId uriScheme=${downloadedUri.scheme.orEmpty()}"
+            )
+        }
+
+        private fun queryDownloadedQuiverApkFile(downloadManager: DownloadManager, downloadId: Long): File? {
+            val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId)) ?: return null
+            cursor.use {
+                if (!it.moveToFirst()) return null
+                val index = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                if (index < 0) return null
+                val localUri = it.getString(index)?.takeIf { value -> value.isNotBlank() } ?: return null
+                val uri = Uri.parse(localUri)
+                return if (uri.scheme == "file" && !uri.path.isNullOrBlank()) File(uri.path!!) else null
+            }
+        }
+
+        private fun canRequestPackageInstalls(context: Context): Boolean =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                        context.packageManager.canRequestPackageInstalls()
+
+        private fun openUnknownAppSourcesSettings(context: Context) {
+            val intent =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    } else {
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    }
+            runCatching { context.startActivity(intent) }
+                    .onFailure {
+                        runCatching {
+                            context.startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                            )
+                        }
+                    }
+        }
     }
 }
 
