@@ -1,0 +1,14 @@
+{
+  "baselineWidth": 342,
+  "baselineHeight": 132,
+  "currentWidth": 342,
+  "currentHeight": 132,
+  "comparisonWidth": 342,
+  "comparisonHeight": 132,
+  "rgbSimilarity": 0.9547364772596971,
+  "pixelPerfectSimilarity": 0.912856636540847,
+  "pixelMismatchRatio": 0.08714336345915294,
+  "compositor": "node-direct-rgba",
+  "displayMode": "preserve-provider-raw-size",
+  "metricMode": "rgb-min-overlap-direct-threshold-8"
+}
