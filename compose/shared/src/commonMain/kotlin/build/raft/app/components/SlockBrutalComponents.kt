@@ -53,7 +53,6 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -662,16 +661,17 @@ internal fun SlockBrutalActionButton(
                     .offset(x = shadowOffset, y = shadowOffset)
                     .background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha), RectangleShape)
         )
-        Box(
+        SlockAnchorButton(
+            onClick = onClick,
+            enabled = enabled,
+            pressFeedback = enabled,
             modifier =
                 Modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha), RectangleShape)
-                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             SlockBrutalActionButtonInnerContent(
                 label = label,
