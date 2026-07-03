@@ -8,6 +8,9 @@ on:
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
+      - "third_party/stately"
+      - "third_party/sqliter"
+      - "third_party/sqldelight"
       - "third_party/kuikly-compose-markdown/**"
   push:
     branches:
@@ -18,6 +21,9 @@ on:
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
+      - "third_party/stately"
+      - "third_party/sqliter"
+      - "third_party/sqldelight"
       - "third_party/kuikly-compose-markdown/**"
   workflow_dispatch:
 
@@ -121,7 +127,6 @@ jobs:
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
-      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
