@@ -15,25 +15,6 @@ interface SlockAuthSessionClearEventSink {
     fun postSessionCleared(reason: String, previousSessionFingerprint: String)
 }
 
-internal class SlockAuthSessionClearEventDispatcher : SlockAuthSessionClearEventSink {
-    @Volatile
-    private var sink: SlockAuthSessionClearEventSink? = null
-
-    fun bindSink(sink: SlockAuthSessionClearEventSink) {
-        this.sink = sink
-    }
-
-    fun unbindSink(sink: SlockAuthSessionClearEventSink) {
-        if (this.sink === sink) {
-            this.sink = null
-        }
-    }
-
-    override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
-        sink?.postSessionCleared(reason, previousSessionFingerprint)
-    }
-}
-
 internal data class AuthSessionClearedSignal(
     val source: String,
     val reason: String,

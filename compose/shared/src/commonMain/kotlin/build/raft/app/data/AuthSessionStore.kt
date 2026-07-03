@@ -246,7 +246,6 @@ class InMemorySlockAuthSessionStore(
 
 class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
-    private val sessionClearEvents: SlockAuthSessionClearEventSink? = null,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
@@ -322,7 +321,14 @@ class KeyValueAuthSessionStore(
     }
 
     override suspend fun clearSession() {
-        clearSession(notifyPeers = true, reason = "local")
+        val previousSession =
+            mutex.withLock {
+                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                current
+            }
+        diagnosticsLogger("auth_session_clear reason=local hadSession=${previousSession != null}")
+        invalidations.emit(Unit)
     }
 
     suspend fun clearSessionFromSessionClearedNotify(
@@ -358,25 +364,6 @@ class KeyValueAuthSessionStore(
             invalidations.emit(Unit)
         }
         return shouldInvalidate
-    }
-
-    private suspend fun clearSession(notifyPeers: Boolean, reason: String) {
-        val previousSession =
-            mutex.withLock {
-                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
-                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
-                current
-            }
-        diagnosticsLogger(
-            "auth_session_clear reason=$reason notifyPeers=$notifyPeers hadSession=${previousSession != null}"
-        )
-        invalidations.emit(Unit)
-        if (notifyPeers && previousSession != null) {
-            val previousSessionFingerprint = previousSession.authSessionClearFingerprint()
-            runCatching {
-                sessionClearEvents?.postSessionCleared(reason, previousSessionFingerprint)
-            }
-        }
     }
 
     override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =

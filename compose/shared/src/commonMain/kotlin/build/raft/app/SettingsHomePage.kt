@@ -167,6 +167,7 @@ import build.raft.app.data.serverConfirmationItemId
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.authSessionClearFingerprint
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.parseSlockHome
 import build.raft.app.data.CreateChannelRequest
@@ -1722,8 +1723,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     val notificationPreferenceScope = rememberCoroutineScope()
     val appShellCoroutineScope = rememberCoroutineScope()
-    DisposableEffect(authSessionEvents, sharedStores.authSessionClearEvents, authStore) {
-        sharedStores.authSessionClearEvents.bindSink(authSessionEvents)
+    DisposableEffect(authSessionEvents, authStore) {
         val callbackRef =
             authSessionEvents.addSessionClearedListener { signal ->
                 if (authSessionEvents.isLocalSource(signal)) {
@@ -1751,7 +1751,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             }
         onDispose {
             authSessionEvents.removeSessionClearedListener(callbackRef)
-            sharedStores.authSessionClearEvents.unbindSink(authSessionEvents)
         }
     }
     val homeActivityRepository =
@@ -3129,6 +3128,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             },
                             bottomContentPadding = appShellBottomContentInset,
                             timeContext = threadTimeContext,
+                            onSessionCleared = { clearedSession ->
+                                authSessionEvents.postSessionCleared(
+                                    reason = "local",
+                                    previousSessionFingerprint = clearedSession.authSessionClearFingerprint()
+                                )
+                            },
                             onLogout = {
                                 authGateMessage = null
                                 bridge.realtimeDisconnect("logout")
@@ -3251,6 +3256,7 @@ private fun SettingsAppShellContent(
     onDiagnosticsFeedbackChannelSelected: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
+    onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
     LaunchedEffect(selectedDestination) {
@@ -3268,7 +3274,11 @@ private fun SettingsAppShellContent(
         val effect = settingsState.effect ?: return@LaunchedEffect
         when (effect) {
             SharedSettingsEffect.Logout -> {
+                val clearedSession = session
                 runCatchingPreservingCancellation { authDataSource.logout() }
+                if (clearedSession != null) {
+                    onSessionCleared(clearedSession)
+                }
                 onLogout()
             }
             is SharedSettingsEffect.OpenUrl -> {
@@ -9121,6 +9131,7 @@ private fun AppShellServerGateContent(
     skipInitialLoad: Boolean = false,
     onReady: (StoredAuthSession) -> Unit,
     onSignOut: () -> Unit,
+    onSessionCleared: (StoredAuthSession) -> Unit = {},
     onBack: (() -> Unit)? = null
 ) {
     var latestSession by remember(session) { mutableStateOf(session) }
@@ -9294,10 +9305,17 @@ private fun AppShellServerGateContent(
     LaunchedEffect(pendingServerId) {
         val target = pendingServerId ?: return@LaunchedEffect
         if (target == "__logout__") {
+            val clearedSession = latestSession
             when (val result = authDataSource.logout()) {
-                is SharedAuthResult.Success -> onSignOut()
+                is SharedAuthResult.Success -> {
+                    onSessionCleared(clearedSession)
+                    onSignOut()
+                }
                 is SharedAuthResult.Failure -> errorMessage = result.message
-                SharedAuthResult.Unauthenticated -> onSignOut()
+                SharedAuthResult.Unauthenticated -> {
+                    onSessionCleared(clearedSession)
+                    onSignOut()
+                }
             }
             pendingServerId = null
             loading = false
