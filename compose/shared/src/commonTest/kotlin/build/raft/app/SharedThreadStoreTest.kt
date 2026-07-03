@@ -3970,7 +3970,7 @@ class SharedThreadStoreTest {
                 latestActivityMessageId = MessageId("reply-1")
             ).toHomeMessageOpenRequest()
         val initialPayload =
-            buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+            buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
                 .copy(
                     title = "stale launch title",
                     subtitle = "#stale",

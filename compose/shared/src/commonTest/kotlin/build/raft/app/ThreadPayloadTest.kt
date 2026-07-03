@@ -2676,7 +2676,7 @@ class ThreadPayloadTest {
                 latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequest()
-        val conversation = request.conversation
+        val conversation = request.conversationIdentity
 
         val payload =
             buildAppShellThreadPayload(
@@ -2726,7 +2726,7 @@ class ThreadPayloadTest {
 
         val payload =
             buildAppShellThreadPayload(
-                conversation = request.conversation,
+                conversation = request.conversationIdentity,
                 anchorMessageId = request.anchorMessageId,
                 originFallback = request.originFallback
             )
@@ -2734,7 +2734,7 @@ class ThreadPayloadTest {
         assertEquals("Parent message preview", request.originFallback?.preview)
         assertEquals("user-1", request.originFallback?.senderId)
         assertEquals(MemberKind.Human, request.originFallback?.senderKind)
-        assertEquals("channel-1:message-1", request.conversation.resolveThreadRouteIdentity().parentKey)
+        assertEquals("channel-1:message-1", request.conversationIdentity.resolveThreadRouteIdentity().parentKey)
         assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals("Parent message preview", payload.originPreview)
@@ -2765,7 +2765,7 @@ class ThreadPayloadTest {
 
         val payload =
             buildAppShellThreadPayload(
-                conversation = request.conversation,
+                conversation = request.conversationIdentity,
                 anchorMessageId = request.anchorMessageId,
                 originFallback = wrongFallback
             )
@@ -3123,7 +3123,7 @@ class ThreadPayloadTest {
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequest()
 
-        val payload = buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+        val payload = buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("message-1", payload.originParentMessageId)
@@ -3147,7 +3147,7 @@ class ThreadPayloadTest {
                 parentMessagePreview = "Parent message preview",
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequest()
-        val conversation = request.conversation
+        val conversation = request.conversationIdentity
 
         val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
@@ -3179,7 +3179,7 @@ class ThreadPayloadTest {
                 lastMessageId = MessageId("latest-channel-message"),
                 unreadCount = 2
             ).toHomeMessageOpenRequest()
-        val conversation = request.conversation
+        val conversation = request.conversationIdentity
 
         val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
@@ -3455,7 +3455,7 @@ class ThreadPayloadTest {
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
-                conversation = request.conversation,
+                conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId
             )
@@ -3503,7 +3503,7 @@ class ThreadPayloadTest {
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
-                conversation = request.conversation,
+                conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId
             )
@@ -3518,7 +3518,7 @@ class ThreadPayloadTest {
         assertEquals("thread-dm-parent-1", launch.threadId)
         assertEquals("dm-agent-1", launch.parentChannelId)
         assertEquals("dm-parent-1", launch.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversation.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, initialPayload.parentSurfaceKind)
         assertEquals(true, initialPayload.showOpenInChannelAction)
@@ -3856,7 +3856,7 @@ class ThreadPayloadTest {
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
-                conversation = request.conversation,
+                conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId
             )
@@ -3868,7 +3868,7 @@ class ThreadPayloadTest {
         val parentPayload = initialPayload.parentMessageContextLoadingPayload("joint-parent-1")
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
-        assertEquals("joint", request.conversation.thread?.parentChannelKind)
+        assertEquals("joint", request.conversationIdentity.thread?.parentChannelKind)
         assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
         assertEquals("joint", launch.parentChannelKind)
         assertEquals("joint", initialPayload.parentChannelKind)

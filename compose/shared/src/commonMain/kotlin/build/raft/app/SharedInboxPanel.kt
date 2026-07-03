@@ -1309,7 +1309,7 @@ internal data class ThreadLaunchOriginFallback(
 )
 
 internal data class HomeMessageOpenRequest(
-    val conversation: ThreadLaunchConversationIdentity,
+    val conversationIdentity: ThreadLaunchConversationIdentity,
     val anchorMessageId: String?,
     val originFallback: ThreadLaunchOriginFallback? = null
 )
@@ -1347,10 +1347,46 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
 
 internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
-        conversation = toConversationSummary().toThreadLaunchConversationIdentity(),
+        conversationIdentity = toThreadLaunchConversationIdentity(),
         anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
         originFallback = toThreadLaunchOriginFallback()
     )
+
+internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
+    val streamChannelId = resolveInboxStreamChannelId()
+    val parentId = parentMessageId
+    val parentChannel = parentChannelId
+    val stableThreadIdentity =
+        if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
+            threadIdentity(parentChannel, parentId)
+        } else {
+            null
+        }
+    return ThreadLaunchConversationIdentity(
+        threadId = stableThreadIdentity ?: topLevelThreadId(channelId),
+        channelId = if (kind == InboxItemKind.Thread) parentChannel else channelId,
+        thread =
+            if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
+                ThreadConversation(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentId,
+                    streamChannelId = streamChannelId,
+                    parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull(),
+                    parentChannelKind = parentChannelKind.threadChannelKindWireValue()
+                )
+            } else {
+                null
+            },
+        kind =
+            when (kind) {
+                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+                InboxItemKind.Thread -> ConversationKind.Thread
+                InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
+                InboxItemKind.System -> ConversationKind.System
+                InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
+            }
+    )
+}
 
 private fun InboxItem.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
     if (kind != InboxItemKind.Thread) return null

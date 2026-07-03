@@ -427,7 +427,7 @@ class SharedInboxPanelTest {
 
         val request = item.toHomeMessageOpenRequest()
         assertEquals("message-1", request.anchorMessageId)
-        assertEquals(ConversationKind.Channel, request.conversation.kind)
+        assertEquals(ConversationKind.Channel, request.conversationIdentity.kind)
         val rowSummary = item.toConversationSummary()
         assertEquals("android-dev", rowSummary.name)
         assertEquals(0, rowSummary.unreadCount)
@@ -508,7 +508,7 @@ class SharedInboxPanelTest {
             )
 
         assertNotEquals(base.toConversationSummary(), updated.toConversationSummary())
-        assertEquals(base.toHomeMessageOpenRequest().conversation, updated.toHomeMessageOpenRequest().conversation)
+        assertEquals(base.toHomeMessageOpenRequest().conversationIdentity, updated.toHomeMessageOpenRequest().conversationIdentity)
         assertEquals("first-unread-1", base.toHomeMessageOpenRequest().anchorMessageId)
         assertEquals("first-unread-2", updated.toHomeMessageOpenRequest().anchorMessageId)
     }
@@ -593,8 +593,8 @@ class SharedInboxPanelTest {
                 parentMessagePreview = "Parent message preview"
             ).toHomeMessageOpenRequest()
 
-        assertEquals(ConversationKind.Thread, request.conversation.kind)
-        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversation.threadId)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversationIdentity.threadId)
         assertEquals(null, request.anchorMessageId)
     }
 

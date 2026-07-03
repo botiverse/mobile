@@ -13231,7 +13231,7 @@ private fun Pager.openStandaloneHomeMessageRequest(
 ) {
     openStandaloneHomeConversation(
         bridge = bridge,
-        conversation = request.conversation,
+        conversation = request.conversationIdentity,
         source = source,
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
