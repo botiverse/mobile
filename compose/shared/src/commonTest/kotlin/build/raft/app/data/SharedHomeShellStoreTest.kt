@@ -156,13 +156,16 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun homeServerChangeDefersHomeBadgeSummaryRefreshUntilHomeSettles() {
+    fun homeServerChangeRefreshesActivitySummaryBeforeSavedSummarySettles() {
         val fixture = fixture(homeState = homeStateForServer("server-1"))
 
         fixture.homeState.value = loadingHomeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf(
+                SharedActivityIntent.ClearSummary,
+                SharedActivityIntent.Refresh
+            ),
             fixture.activityIntents
         )
         assertEquals(
@@ -173,7 +176,10 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = true)
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf(
+                SharedActivityIntent.ClearSummary,
+                SharedActivityIntent.Refresh
+            ),
             fixture.activityIntents
         )
         assertEquals(

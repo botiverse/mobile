@@ -52,7 +52,7 @@ class SharedHomeShellStore(
     private val scope: CoroutineScope
 ) {
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
-    private var pendingBadgeSummaryRefreshServerId: String? = null
+    private var pendingSavedSummaryRefreshServerId: String? = null
 
     private val _state =
         MutableStateFlow(
@@ -76,20 +76,25 @@ class SharedHomeShellStore(
                     if (nextServerId != null && previousServerId != nextServerId) {
                         if (previousServerId != null) {
                             clearBadgeSummaries()
+                            refreshActivitySummary()
                         }
                         if (summariesCanRefresh) {
-                            pendingBadgeSummaryRefreshServerId = null
-                            refreshBadgeSummaries()
+                            pendingSavedSummaryRefreshServerId = null
+                            if (previousServerId == null) {
+                                refreshBadgeSummaries()
+                            } else {
+                                refreshSavedSummary()
+                            }
                         } else {
-                            pendingBadgeSummaryRefreshServerId = nextServerId
+                            pendingSavedSummaryRefreshServerId = nextServerId
                         }
                     } else if (
                         nextServerId != null &&
-                            pendingBadgeSummaryRefreshServerId == nextServerId &&
+                            pendingSavedSummaryRefreshServerId == nextServerId &&
                             summariesCanRefresh
                     ) {
-                        pendingBadgeSummaryRefreshServerId = null
-                        refreshBadgeSummaries()
+                        pendingSavedSummaryRefreshServerId = null
+                        refreshSavedSummary()
                     }
                 }
             },
@@ -192,9 +197,17 @@ class SharedHomeShellStore(
         dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
     }
 
-    private fun refreshBadgeSummaries() {
+    private fun refreshActivitySummary() {
         dispatchActivity(SharedActivityIntent.Refresh)
+    }
+
+    private fun refreshSavedSummary() {
         dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
+    }
+
+    private fun refreshBadgeSummaries() {
+        refreshActivitySummary()
+        refreshSavedSummary()
     }
 
     private fun dispatchHomeIntent(intent: SharedHomeIntent) {
