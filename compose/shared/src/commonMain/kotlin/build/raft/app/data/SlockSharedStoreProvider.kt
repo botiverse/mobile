@@ -30,7 +30,6 @@ internal class SlockSharedStoreProvider private constructor(
     private val sharedPreferenceStore: SlockKeyValueStore,
     private val apiEnvironmentKeyValueStore: SlockKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
-    val authSessionClearEvents: SlockAuthSessionClearEventDispatcher,
     val authDataSource: SharedAuthDataSource,
     val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
@@ -168,14 +167,12 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = { message -> bridge.log("local_cache $message") }
                 )
             val tasksDataStore = SharedTasksDataStore()
-            val authSessionClearEvents = SlockAuthSessionClearEventDispatcher()
             val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
             bridge.log("shared_auth_session auth_storage_scope scope=${authKeyValueStoreBinding.scope}")
             val authStore =
                 KeyValueAuthSessionStore(
                     store = authKeyValueStore,
-                    sessionClearEvents = authSessionClearEvents,
                     diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
                 )
             val sharedPreferenceStoreBinding =
@@ -230,7 +227,6 @@ internal class SlockSharedStoreProvider private constructor(
                 sharedPreferenceStore = sharedPreferenceStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
-                authSessionClearEvents = authSessionClearEvents,
                 authDataSource = authDataSource,
                 networkClient = networkClient,
                 localDataStore = localDataStore,
