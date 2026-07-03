@@ -280,12 +280,20 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
         id = APP_UPDATE_HOME_NOTIFICATION_ID,
         title = "App update available",
         body = "Current version $currentVersion. Latest version $latestVersion.",
-        actionLabel = "Download",
+        actionLabel = appUpdateNotificationActionLabel(),
         targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
         kind = SharedHomeNotificationKind.Info,
         icon = SharedHomeNotificationIcon.CircleArrowUp
     )
 }
+
+private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel(): String =
+    actionLabel.takeIf { it.isNotBlank() }
+        ?: when (statusLabel.lowercase()) {
+            "downloading" -> "Downloading"
+            "install" -> "Install"
+            else -> "Download"
+        }
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()

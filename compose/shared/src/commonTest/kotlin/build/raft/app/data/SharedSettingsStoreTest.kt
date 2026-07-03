@@ -1623,6 +1623,31 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun aboutLoadsUpdateStatusThroughPlatformCapabilities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+
+        val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals(true, developer.updateCheck.supported)
+        assertEquals("Current", developer.updateCheck.statusLabel)
+        assertEquals("Check", developer.updateCheck.actionLabel)
+        assertEquals(listOf("about", "quiverUpdateStatus"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun defaultDeveloperEnvironmentPresetsIncludeProductionAndStaging() {
         val options = sharedSettingsDefaultApiEnvironmentOptions()
 
@@ -2669,6 +2694,18 @@ class SharedSettingsStoreTest {
                     feedback = "Update available: 1.0.1."
                 )
             return DataResult.Content(developerSnapshot)
+        }
+
+        override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
+            calls += "quiverUpdateStatus"
+            return DataResult.Content(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    statusLabel = "Current",
+                    detail = "No Quiver update is available on main.",
+                    actionLabel = "Check"
+                )
+            )
         }
 
         override suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> {

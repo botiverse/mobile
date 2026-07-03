@@ -1777,13 +1777,13 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
                     .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
                     .background(SlockColor.ShadowBlack)
             )
-            Box(
-                modifier = Modifier
-                    .size(HomeNotificationTriggerSize)
-                    .background(activeKind.notificationColor())
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable { onToggle() },
-                contentAlignment = Alignment.Center
+            Button(
+                onClick = onToggle,
+                modifier =
+                    Modifier
+                        .size(HomeNotificationTriggerSize)
+                        .background(activeKind.notificationColor())
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
             ) {
                 SlockLucideIcon(visibleNotifications.homeNotificationTriggerIconName(), Modifier.size(16.dp))
             }

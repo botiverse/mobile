@@ -83,6 +83,7 @@ import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
@@ -1550,6 +1551,7 @@ internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
     private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
+    private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -2422,15 +2424,15 @@ internal class SlockKuiklyBridgeModule(
                 "check status=ok slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
                         "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
         )
+        val updateAvailable = response.requireUpdate() != null
         val installResult =
-                if (install && response.requireUpdate() != null) {
-                    installQuiverUpdate(response, arch)
-                } else {
-                    QuiverInstallResult()
+                when {
+                    install && updateAvailable -> installQuiverUpdate(response, arch)
+                    updateAvailable -> currentQuiverDownloadResult(response, arch)
+                    else -> QuiverInstallResult()
                 }
         val updateStatusLabel = installResult.statusLabel.ifBlank { response.quiverStatusLabel() }
         val updateDetail = installResult.detail.ifBlank { response.quiverDetail() }
-        val updateAvailable = response.requireUpdate() != null
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
@@ -2441,6 +2443,7 @@ internal class SlockKuiklyBridgeModule(
                         "updateCheckSupported" to true,
                         "updateCheckStatusLabel" to updateStatusLabel,
                         "updateCheckDetail" to updateDetail,
+                        "updateCheckActionLabel" to installResult.actionLabel,
                         "updateAvailable" to updateAvailable,
                         "currentVersionLabel" to (BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() }),
                         "currentVersionCode" to BuildConfig.VERSION_CODE.toLong(),
@@ -2469,15 +2472,36 @@ internal class SlockKuiklyBridgeModule(
             )
         }
         return runCatching {
-                    val downloadId = enqueueQuiverApkInstall(response)
-                    SlockDiagnosticsLogger.record(
-                            "SlockQuiverUpdate",
-                            "install_queued slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
-                    )
-                    QuiverInstallResult(
-                            statusLabel = "Installing",
-                            detail = "Quiver update download was queued. Android will open the installer when the APK download completes."
-                    )
+                    val tracked = currentQuiverDownload(response, arch)
+                    if (tracked != null) {
+                        val status = tracked.status()
+                        when (status) {
+                            DownloadManager.STATUS_SUCCESSFUL -> {
+                                tracked.completed = true
+                                openDownloadedQuiverApk(tracked.downloadManager, tracked.downloadId, tracked.fileName)
+                                QuiverInstallResult(
+                                        statusLabel = "Install",
+                                        detail = "Android installer opened for the downloaded Raft update.",
+                                        actionLabel = "Install"
+                                )
+                            }
+                            DownloadManager.STATUS_PENDING,
+                            DownloadManager.STATUS_RUNNING,
+                            DownloadManager.STATUS_PAUSED -> {
+                                QuiverInstallResult(
+                                        statusLabel = "Downloading",
+                                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                                        actionLabel = "Downloading"
+                                )
+                            }
+                            else -> {
+                                quiverUpdateDownloads.remove(tracked.key)
+                                enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
+                            }
+                        }
+                    } else {
+                        enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
+                    }
                 }
                 .getOrElse { error ->
                     SlockDiagnosticsLogger.record(
@@ -2487,12 +2511,13 @@ internal class SlockKuiklyBridgeModule(
                     QuiverInstallResult(
                             statusLabel = "Install failed",
                             detail = error.message ?: "Unable to download or install the Quiver APK.",
+                            actionLabel = "Download",
                             errorCode = error.javaClass.simpleName
                     )
                 }
     }
 
-    private fun enqueueQuiverApkInstall(response: UpdateCheckResponse): Long {
+    private fun enqueueQuiverApkInstall(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload {
         val latest = response.latest ?: error("Quiver response did not include a latest release.")
         val asset = response.asset ?: error("Quiver response did not include an APK asset.")
         val downloadUrl = asset.download_url
@@ -2503,6 +2528,7 @@ internal class SlockKuiklyBridgeModule(
                 ContextCompat.getSystemService(appContext, DownloadManager::class.java)
                         ?: error("DownloadManager not available")
         val fileName = "raft-quiver-${latest.version_code}.apk"
+        val key = response.quiverDownloadKey(arch)
         val title =
                 buildString {
                     append("Raft")
@@ -2526,19 +2552,19 @@ internal class SlockKuiklyBridgeModule(
                         runCatching { appContext.unregisterReceiver(this) }
                         val status = quiverDownloadStatus(downloadManager, completedId)
                         if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                            runCatching { openDownloadedQuiverApk(downloadManager, completedId, fileName) }
-                                    .onFailure { error ->
-                                        SlockDiagnosticsLogger.record(
-                                                "SlockQuiverUpdate",
-                                                "install_open_failed downloadId=$completedId error=${error.javaClass.simpleName}"
-                                        )
-                                    }
+                            quiverUpdateDownloads[key]?.completed = true
+                            SlockDiagnosticsLogger.record(
+                                    "SlockQuiverUpdate",
+                                    "download_ready downloadId=$completedId latest=${latest.version_code}"
+                            )
                         } else {
+                            quiverUpdateDownloads[key]?.failed = true
                             SlockDiagnosticsLogger.record(
                                     "SlockQuiverUpdate",
                                     "download_failed downloadId=$completedId status=$status"
                             )
                         }
+                        emitQuiverUpdateStatusEvent()
                     }
                 }
         ContextCompat.registerReceiver(
@@ -2549,11 +2575,86 @@ internal class SlockKuiklyBridgeModule(
         )
         try {
             downloadId = downloadManager.enqueue(request)
-            return downloadId
+            return QuiverUpdateDownload(
+                    key = key,
+                    versionCode = latest.version_code,
+                    downloadId = downloadId,
+                    fileName = fileName,
+                    downloadUrl = downloadUrl,
+                    arch = arch.orEmpty(),
+                    downloadManager = downloadManager
+            ).also { download ->
+                quiverUpdateDownloads[key] = download
+            }
         } catch (error: Throwable) {
             runCatching { appContext.unregisterReceiver(receiver) }
             throw error
         }
+    }
+
+    private fun currentQuiverDownloadResult(response: UpdateCheckResponse, arch: String?): QuiverInstallResult {
+        val tracked = currentQuiverDownload(response, arch) ?: return QuiverInstallResult()
+        return when (tracked.status()) {
+            DownloadManager.STATUS_SUCCESSFUL -> {
+                tracked.completed = true
+                QuiverInstallResult(
+                        statusLabel = "Install",
+                        detail = "Raft update downloaded. Tap Install to open Android installer.",
+                        actionLabel = "Install"
+                )
+            }
+            DownloadManager.STATUS_PENDING,
+            DownloadManager.STATUS_RUNNING,
+            DownloadManager.STATUS_PAUSED ->
+                QuiverInstallResult(
+                        statusLabel = "Downloading",
+                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                        actionLabel = "Downloading"
+                )
+            else -> {
+                quiverUpdateDownloads.remove(tracked.key)
+                QuiverInstallResult()
+            }
+        }
+    }
+
+    private fun currentQuiverDownload(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload? {
+        val key = response.quiverDownloadKey(arch)
+        val tracked = quiverUpdateDownloads[key] ?: return null
+        if (tracked.failed) {
+            quiverUpdateDownloads.remove(key)
+            return null
+        }
+        return tracked
+    }
+
+    private fun QuiverUpdateDownload.toDownloadingInstallResult(response: UpdateCheckResponse): QuiverInstallResult {
+        SlockDiagnosticsLogger.record(
+                "SlockQuiverUpdate",
+                "download_queued slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
+        )
+        emitQuiverUpdateStatusEvent()
+        return QuiverInstallResult(
+                statusLabel = "Downloading",
+                detail = "Raft update download started. The button will change to Install when the APK is ready.",
+                actionLabel = "Downloading"
+        )
+    }
+
+    private fun UpdateCheckResponse.quiverDownloadKey(arch: String?): String =
+            listOf(
+                    BuildConfig.QUIVER_APP_SLUG,
+                    channel,
+                    latest?.version_code ?: latest_version_code ?: 0L,
+                    asset?.download_url.orEmpty(),
+                    arch.orEmpty()
+            ).joinToString("|")
+
+    private fun emitQuiverUpdateStatusEvent() {
+        appContext.sendKuiklyEvent(
+                SLOCK_APP_UPDATE_EVENT,
+                JSONObject().put("source", "android")
+        )
     }
 
     private fun quiverDownloadStatus(downloadManager: DownloadManager, downloadId: Long): Int {
@@ -2636,6 +2737,7 @@ internal class SlockKuiklyBridgeModule(
     private data class QuiverInstallResult(
             val statusLabel: String = "",
             val detail: String = "",
+            val actionLabel: String = "",
             val errorCode: String? = null
     )
 
@@ -3602,6 +3704,35 @@ private class AttachmentDownloadControl(
 }
 
 private class AttachmentDownloadStoppedException : RuntimeException()
+
+private data class QuiverUpdateDownload(
+        val key: String,
+        val versionCode: Long,
+        val downloadId: Long,
+        val fileName: String,
+        val downloadUrl: String,
+        val arch: String,
+        val downloadManager: DownloadManager,
+        @Volatile var completed: Boolean = false,
+        @Volatile var failed: Boolean = false
+) {
+    fun status(): Int =
+            if (completed) {
+                DownloadManager.STATUS_SUCCESSFUL
+            } else {
+                queryStatus()
+            }
+
+    private fun queryStatus(): Int {
+        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+                ?: return DownloadManager.STATUS_FAILED
+        cursor.use {
+            if (!it.moveToFirst()) return DownloadManager.STATUS_FAILED
+            val index = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            return if (index >= 0) it.getInt(index) else DownloadManager.STATUS_FAILED
+        }
+    }
+}
 
 private fun String.socialProviderDisplayName(): String =
         when (lowercase(Locale.US)) {

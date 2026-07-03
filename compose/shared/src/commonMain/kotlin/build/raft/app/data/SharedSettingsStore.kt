@@ -159,6 +159,7 @@ data class SharedSettingsUpdateCheckSnapshot(
     val supported: Boolean = false,
     val statusLabel: String = "Unavailable",
     val detail: String = "App update checks are unavailable on this host.",
+    val actionLabel: String = "",
     val updateAvailable: Boolean = false,
     val currentVersionLabel: String = "",
     val currentVersionCode: Long = 0L,
@@ -911,6 +912,12 @@ class SharedSettingsDataSource(
 
     suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         platformCapabilities.checkQuiverUpdate()
+
+    suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        platformCapabilities.checkQuiverUpdateStatus()
+
+    suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        platformCapabilities.installQuiverUpdate()
 
     private suspend fun applyApiEnvironmentChange(
         store: SharedApiEnvironmentStore,
@@ -1847,12 +1854,19 @@ class SharedSettingsStore(
 
     private suspend fun loadAboutWithUpdateStatus() {
         dataSource.loadAbout().applyToState(SharedSettingsDestination.About) { copy(about = it) }
+        val updateResult = dataSource.checkQuiverUpdateStatus()
         when (val developerResult = dataSource.loadDeveloper()) {
-            is DataResult.Content ->
-                _state.value =
-                    _state.value.copy(
-                        developer = ScreenLoadState.Content(developerResult.data)
-                    )
+            is DataResult.Content -> {
+                val developer =
+                    when (updateResult) {
+                        is DataResult.Content ->
+                            developerResult.data.copy(updateCheck = updateResult.data)
+                        is DataResult.Empty,
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> developerResult.data
+                    }
+                _state.value = _state.value.copy(developer = ScreenLoadState.Content(developer))
+            }
             is DataResult.Empty,
             is DataResult.Error,
             is DataResult.NoPermission -> Unit

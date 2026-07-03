@@ -26,6 +26,7 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
+import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.isAppUpdateHomeNotificationId
@@ -1650,6 +1651,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
         }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
+    val appUpdateEvents = remember(pager) { KuiklyAppUpdateEvents(pager) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
     val notificationPreferenceRepository =
@@ -1895,6 +1897,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         while (true) {
             delay(AppUpdateNotificationRefreshIntervalMs)
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+        }
+    }
+    DisposableEffect(appUpdateEvents) {
+        val callbackRef =
+            appUpdateEvents.addStatusListener {
+                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+            }
+        onDispose {
+            appUpdateEvents.removeStatusListener(callbackRef)
         }
     }
     val loadedSettingsTimeFormat =
@@ -2834,6 +2845,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                                 val update = result.data
                                                 bridge.toast(update.statusLabel.ifBlank { "Update download started" })
                                                 update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
+                                                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
                                             }
                                             is DataResult.Empty ->
                                                 bridge.toast("App update is unavailable")

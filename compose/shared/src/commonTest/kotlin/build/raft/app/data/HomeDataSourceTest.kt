@@ -132,6 +132,35 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun appUpdateNotificationUsesNativeActionLabel() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                appUpdateStatusProvider = {
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            statusLabel = "Install",
+                            actionLabel = "Install",
+                            updateAvailable = true,
+                            currentVersionCode = 1_000_000L,
+                            latestVersionCode = 1_000_100L
+                        )
+                    )
+                },
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val result = source.loadNotifications()
+
+        val notification = (result as DataResult.Content).data.single()
+        assertEquals("Install", notification.actionLabel)
+    }
+
+    @Test
     fun loadNotificationsSkipsAppUpdateWhenLatestCodeDoesNotBeatCurrentCode() = runBlocking {
         val source =
             SharedHomeDataSource(
