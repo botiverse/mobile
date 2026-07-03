@@ -3315,7 +3315,6 @@ private fun SettingsAppShellContent(
         SettingsHomeContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
             bottomContentPadding = bottomContentPadding,
-            headerHeight = SlockSize.PageHeaderCompactHeight,
             onHeaderClick = onSettingsHeaderClick,
             onSelect = { key ->
                 if (key == SettingsDestinationRouter) {
@@ -3332,7 +3331,6 @@ private fun SettingsAppShellContent(
         title = settingsDestinationTitle(selectedDestination),
         subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
-        headerHeight = SlockSize.PageHeaderCompactHeight,
         onBack = {
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
@@ -15004,7 +15002,6 @@ internal fun SettingsHomeContent(
     payload: KuiklySettingsHomePayload,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     applyTopSafeArea: Boolean = true,
-    headerHeight: Dp = SlockSize.PageHeaderHeight,
     onHeaderClick: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
@@ -15020,8 +15017,7 @@ internal fun SettingsHomeContent(
             subtitle = null,
             iconName = SlockLucideIconName.Settings,
             modifier = headerModifier,
-            applyTopSafeArea = applyTopSafeArea,
-            headerHeight = headerHeight
+            applyTopSafeArea = applyTopSafeArea
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
