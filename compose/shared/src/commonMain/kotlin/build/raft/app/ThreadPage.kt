@@ -43,7 +43,7 @@ import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeRoutePolicy
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
@@ -2522,7 +2522,7 @@ internal fun SharedThreadRouteContent(
     var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
     val chatLayoutPreferenceStore =
         remember(pager) {
-            KeyValueChatLayoutPreferenceStore(kuiklySharedPreferenceStore(pager))
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
         }
     fun imageAnnotationEnabled(): Boolean =
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()

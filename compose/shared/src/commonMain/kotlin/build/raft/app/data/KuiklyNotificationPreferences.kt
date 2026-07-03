@@ -52,7 +52,7 @@ fun kuiklyNotificationPreferenceRepository(
         delegate =
             PersistentNotificationPreferenceRepository(
                 KeyValueNotificationPreferenceStore(
-                    kuiklySharedPreferenceStore(pager)
+                    slockSharedPreferenceStore()
                 )
             ),
         events = events

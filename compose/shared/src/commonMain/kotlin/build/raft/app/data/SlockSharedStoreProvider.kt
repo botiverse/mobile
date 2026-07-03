@@ -33,7 +33,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val authKeyValueStore: SlockKeyValueStore,
     private val sharedPreferenceStore: SlockKeyValueStore,
     private val apiEnvironmentKeyValueStore: SlockKeyValueStore,
-    val authStore: KuiklyMMKVAuthSessionStore,
+    val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: KuiklyAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
     val networkClient: SlockNetworkClient,
@@ -58,9 +58,6 @@ internal class SlockSharedStoreProvider private constructor(
         get() = homeStore
 
     fun updatePager(pager: Pager) {
-        (authKeyValueStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
-        (sharedPreferenceStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
-        (apiEnvironmentKeyValueStore as? RebindableSlockKeyValueStore)?.updatePager(pager)
         authSessionEvents.updatePager(pager)
     }
 
@@ -204,18 +201,17 @@ internal class SlockSharedStoreProvider private constructor(
                     pager = pager,
                     source = "pager:${pager.pagerId}"
                 )
-            val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create(pager)
+            val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
             bridge.log("shared_auth_session auth_storage_scope scope=${authKeyValueStoreBinding.scope}")
             val authStore =
-                KuiklyMMKVAuthSessionStore(
+                KeyValueAuthSessionStore(
                     store = authKeyValueStore,
                     sessionClearEvents = authSessionEvents,
                     diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
                 )
             val sharedPreferenceStoreBinding =
                 SlockSharedKeyValueStoreProvider.create(
-                    pager = pager,
                     namespace = SlockLocalPreferenceStore.KuiklyNamespace,
                     storageName = "shared preference"
                 )
@@ -226,7 +222,6 @@ internal class SlockSharedStoreProvider private constructor(
             )
             val apiEnvironmentKeyValueStoreBinding =
                 SlockSharedKeyValueStoreProvider.create(
-                    pager = pager,
                     namespace = SharedApiEnvironmentStore.Namespace,
                     storageName = "API environment"
                 )

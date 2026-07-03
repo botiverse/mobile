@@ -223,7 +223,7 @@ import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.kuiklyNotificationPreferenceRepository
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.savedMessageIdOrNull
 import build.raft.app.data.SettingsAppearanceSnapshot
 import build.raft.app.data.SettingsAppearanceUpdateRequest
@@ -691,7 +691,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
                 logger = { message -> bridge.logDebug("home_secondary_cache $message") }
             )
         }
-    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
@@ -1597,7 +1597,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }
-    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val localePreferenceStore =
         remember(sharedPreferenceStore) {

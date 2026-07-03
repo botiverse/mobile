@@ -7,7 +7,7 @@ import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.InMemorySlockAuthSessionStore
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.model.AgentStatus
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -109,7 +109,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             appWidgetId: Int,
             previous: SlockAgentWidgetState
         ): SlockAgentWidgetState {
-            val storedSessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context))
+            val storedSessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context))
             val session = storedSessionStore.readSession()
                 ?: return SlockAgentWidgetState(statusLabel = "Sign in to see agent activity")
             val selectedServer = SlockWidgetServerConfigStore(context).resolveServer(appWidgetId, session)

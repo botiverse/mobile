@@ -10,7 +10,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InMemorySlockAuthSessionStore
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
@@ -119,7 +119,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             appWidgetId: Int,
             previous: SlockWidgetState
         ): SlockWidgetState {
-            val storedSessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context))
+            val storedSessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context))
             val session = storedSessionStore.readSession()
                 ?: return SlockWidgetState.SignedOut
             val selectedServer = SlockWidgetServerConfigStore(context).resolveServer(appWidgetId, session)

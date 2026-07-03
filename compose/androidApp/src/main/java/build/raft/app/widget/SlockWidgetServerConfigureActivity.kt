@@ -3,7 +3,7 @@ package build.raft.app.widget
 import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import android.app.Activity
@@ -47,7 +47,7 @@ class SlockWidgetServerConfigureActivity : Activity() {
         showLoading()
         scope.launch {
             val session = withContext(Dispatchers.IO) {
-                KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(this@SlockWidgetServerConfigureActivity))
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@SlockWidgetServerConfigureActivity))
                     .readSession()
             }
             showServerPicker(session)

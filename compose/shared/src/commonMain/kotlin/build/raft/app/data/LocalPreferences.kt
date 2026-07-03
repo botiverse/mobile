@@ -479,9 +479,8 @@ class KeyValueRouterPreferenceRepository(
     }
 }
 
-fun kuiklySharedPreferenceStore(pager: com.tencent.kuikly.core.pager.Pager): SharedPreferenceStore =
+fun slockSharedPreferenceStore(): SharedPreferenceStore =
     SlockSharedKeyValueStoreProvider.create(
-        pager = pager,
         namespace = SlockLocalPreferenceStore.KuiklyNamespace,
         storageName = "shared preference"
     ).store

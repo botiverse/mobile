@@ -244,7 +244,7 @@ class InMemorySlockAuthSessionStore(
     }
 }
 
-class KuiklyMMKVAuthSessionStore(
+class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
     private val sessionClearEvents: SlockAuthSessionClearEventSink? = null,
     private val diagnosticsLogger: (String) -> Unit = {}

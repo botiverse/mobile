@@ -46,7 +46,7 @@ class AuthSessionStoreTest {
     @Test
     fun mmkvAuthSessionStorePersistsThroughAuthNamespaceOnly() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
-        val store = KuiklyMMKVAuthSessionStore(keyValueStore)
+        val store = KeyValueAuthSessionStore(keyValueStore)
 
         store.saveSession(sampleSession())
         assertEquals("server-1", store.readSession()?.currentServerId)
@@ -69,7 +69,7 @@ class AuthSessionStoreTest {
     @Test
     fun mmkvAuthSessionStoreBroadcastsChangedSessionFingerprint() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
-        val store = KuiklyMMKVAuthSessionStore(keyValueStore)
+        val store = KeyValueAuthSessionStore(keyValueStore)
         val firstChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
 
         store.saveSession(sampleSession())
@@ -105,7 +105,7 @@ class AuthSessionStoreTest {
     fun mmkvAuthSessionStoreBroadcastsLocalClearOnly() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val events = RecordingAuthSessionClearEventSink()
-        val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
+        val store = KeyValueAuthSessionStore(keyValueStore, sessionClearEvents = events)
         val staleSession = sampleSession()
         val staleFingerprint = staleSession.authSessionClearFingerprint()
 
@@ -137,7 +137,7 @@ class AuthSessionStoreTest {
     fun mmkvAuthSessionStoreSkipsStaleRemoteClearAfterNewLogin() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val events = RecordingAuthSessionClearEventSink()
-        val store = KuiklyMMKVAuthSessionStore(keyValueStore, sessionClearEvents = events)
+        val store = KeyValueAuthSessionStore(keyValueStore, sessionClearEvents = events)
         val staleSession = sampleSession()
         val freshSession = sampleSession().copy(accessToken = "token-new", refreshToken = "token-new-r")
 

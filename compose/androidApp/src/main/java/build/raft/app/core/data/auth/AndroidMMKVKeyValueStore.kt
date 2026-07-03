@@ -1,12 +1,18 @@
 package build.raft.app.core.data.auth
 
-import build.raft.app.shared.SlockKuiklyMMKVModule
+import android.content.Context
+import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SlockKeyValueStore
 import build.raft.app.data.SlockLocalPreferenceStore
 import build.raft.app.data.SlockSharedKeyValueStoreProvider
-import android.content.Context
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.shared.AndroidRealtimeKeepAliveController
+import com.google.gson.Gson
+import com.tencent.mmkv.MMKV
 
 class AndroidMMKVKeyValueStore(
     context: Context,
@@ -17,8 +23,8 @@ class AndroidMMKVKeyValueStore(
 
     override fun getString(key: String): String? {
         val namespacedKey = namespaced(key)
-        return if (SlockKuiklyMMKVModule.containsKey(appContext, namespacedKey, mmapID)) {
-            SlockKuiklyMMKVModule.decodeString(appContext, namespacedKey, mmapID)
+        return if (AndroidAppScopeMMKV.containsKey(appContext, namespacedKey, mmapID)) {
+            AndroidAppScopeMMKV.decodeString(appContext, namespacedKey, mmapID)
         } else {
             null
         }
@@ -27,13 +33,147 @@ class AndroidMMKVKeyValueStore(
     override fun putString(key: String, value: String?) {
         val namespacedKey = namespaced(key)
         if (value == null) {
-            SlockKuiklyMMKVModule.removeValueForKey(appContext, namespacedKey, mmapID)
+            AndroidAppScopeMMKV.removeValueForKey(appContext, namespacedKey, mmapID)
         } else {
-            SlockKuiklyMMKVModule.encodeString(appContext, namespacedKey, value, mmapID)
+            AndroidAppScopeMMKV.encodeString(appContext, namespacedKey, value, mmapID)
         }
     }
 
     private fun namespaced(key: String): String = "$namespace:$key"
+}
+
+internal object AndroidAppScopeMMKV {
+    private val gson = Gson()
+
+    @Volatile
+    private var initialized = false
+
+    internal fun ensureInitialized(context: Context) {
+        if (initialized) return
+        synchronized(this) {
+            if (!initialized) {
+                MMKV.initialize(context.applicationContext)
+                initialized = true
+            }
+        }
+    }
+
+    internal fun containsKey(context: Context, key: String, mmapID: String): Boolean {
+        ensureInitialized(context)
+        val result = MMKV.mmkvWithID(mmapID).containsKey(key)
+        recordAuthKeyOperation(
+            operation = "contains",
+            mmapID = mmapID,
+            key = key,
+            result = result.toString()
+        )
+        return result
+    }
+
+    internal fun decodeString(context: Context, key: String, mmapID: String): String? {
+        ensureInitialized(context)
+        val result = MMKV.mmkvWithID(mmapID).decodeString(key, null)
+        recordAuthKeyOperation(
+            operation = "decode",
+            mmapID = mmapID,
+            key = key,
+            result = if (result.isNullOrEmpty()) "empty" else "value",
+            valueLength = result?.length
+        )
+        return result
+    }
+
+    internal fun encodeString(context: Context, key: String, value: String, mmapID: String) {
+        val appContext = context.applicationContext
+        ensureInitialized(appContext)
+        MMKV.mmkvWithID(mmapID).encode(key, value)
+        recordAuthKeyOperation(
+            operation = "encode",
+            mmapID = mmapID,
+            key = key,
+            result = "success",
+            valueLength = value.length
+        )
+        maybeUpdateAuthSessionContext(appContext, mmapID, key, value)
+        maybeUpdateForegroundKeepAlive(appContext, mmapID, key, value)
+    }
+
+    internal fun removeValueForKey(context: Context, key: String, mmapID: String) {
+        val appContext = context.applicationContext
+        ensureInitialized(appContext)
+        MMKV.mmkvWithID(mmapID).removeValueForKey(key)
+        recordAuthKeyOperation(
+            operation = "remove",
+            mmapID = mmapID,
+            key = key,
+            result = "success"
+        )
+        maybeUpdateAuthSessionContext(appContext, mmapID, key, null)
+    }
+
+    private fun recordAuthKeyOperation(
+        operation: String,
+        mmapID: String?,
+        key: String,
+        result: String,
+        valueLength: Int? = null
+    ) {
+        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        SlockAndroidBuglyDiagnostics.recordLog(
+            "info",
+            "SlockKuikly",
+            buildString {
+                append("shared_auth_session_native mmkv_auth_key operation=")
+                append(operation)
+                append(" result=")
+                append(result)
+                append(" mmapID=")
+                append(mmapID)
+                append(" key=")
+                append(key)
+                if (valueLength != null) {
+                    append(" valueLen=")
+                    append(valueLength)
+                }
+                append(" scope=app")
+            }
+        )
+    }
+
+    private fun maybeUpdateAuthSessionContext(
+        context: Context,
+        mmapID: String?,
+        key: String,
+        encodedSession: String?
+    ) {
+        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        val session =
+            encodedSession
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { gson.fromJson(it, StoredAuthSession::class.java) }.getOrNull() }
+        SlockAndroidBuglyDiagnostics.updateUserContext(
+            context = context.applicationContext,
+            userId = session?.user?.id,
+            selectedServerId = session?.currentServerId,
+            selectedServerSlug = session?.selectedServerSlug
+        )
+    }
+
+    private fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
+        if (mmapID != SlockLocalPreferenceStore.KuiklyNamespace ||
+            key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY &&
+            key != AndroidRealtimeKeepAliveController.localPreferenceKey(
+                NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+            )
+        ) {
+            return
+        }
+        if (value == "true") {
+            AndroidRealtimeKeepAliveController.start(context.applicationContext, source = "preference_enabled")
+        } else {
+            AndroidRealtimeKeepAliveController.stop(context.applicationContext, reason = "preference_disabled")
+        }
+    }
 }
 
 fun androidMMKVAuthKeyValueStore(context: Context): SlockKeyValueStore =

@@ -3,13 +3,14 @@ package build.raft.app.shared
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
+import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.core.data.realtime.SocketIoSocketTransport
 import build.raft.app.data.DataResult
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
@@ -125,7 +126,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             scope: CoroutineScope
         ): AndroidAppScopeRealtimeHostContext {
             val appContext = context.applicationContext
-            val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+            val sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
             val sharedTransportEnabled =
@@ -270,7 +271,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
             runCatching {
-                SlockKuiklyMMKVModule.ensureInitialized(context.applicationContext)
+                AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
                 val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
                 val value =
                     store.decodeString(

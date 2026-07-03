@@ -16,7 +16,7 @@ import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.boardColumns
 import build.raft.app.data.reduce
 import build.raft.app.data.tasksAssigneeDisplayName
@@ -346,7 +346,7 @@ private fun SharedTasksLoadedBodyContent(
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
         remember(pager) {
-            KeyValueTasksViewPreferenceRepository(kuiklySharedPreferenceStore(pager))
+            KeyValueTasksViewPreferenceRepository(slockSharedPreferenceStore())
         }
     val initialPresentationState =
         remember(viewModeRepository, defaultViewMode) {

@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.kmmResourceLocaleTag
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -30,7 +30,7 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 @Composable
 internal fun rememberKmmResourceLocaleSeed(pager: Pager) {
     remember(pager) {
-        val store = KeyValueLocalePreferenceStore(kuiklySharedPreferenceStore(pager))
+        val store = KeyValueLocalePreferenceStore(slockSharedPreferenceStore())
         val persisted: AppLocale =
             try {
                 store.readLocaleSync()

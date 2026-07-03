@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Context
+import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.SlockLocalPreferenceStore
@@ -41,7 +42,7 @@ internal object AndroidRealtimeKeepAliveController {
     fun isForegroundKeepAliveEnabled(context: Context): Boolean =
         runCatching {
             val appContext = context.applicationContext
-            SlockKuiklyMMKVModule.ensureInitialized(appContext)
+            AndroidAppScopeMMKV.ensureInitialized(appContext)
             val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
             val value =
                 store.decodeString(

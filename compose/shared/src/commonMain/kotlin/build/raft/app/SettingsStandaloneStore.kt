@@ -20,7 +20,7 @@ import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +59,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             )
         }
     val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
-    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
     val dataSource =
         remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {
             SharedSettingsDataSource(

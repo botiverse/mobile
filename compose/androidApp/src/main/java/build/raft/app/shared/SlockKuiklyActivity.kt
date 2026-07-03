@@ -82,7 +82,7 @@ import build.raft.app.core.data.storage.StorageManagementRepository
 import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
@@ -308,9 +308,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderExport.moduleExport(SlockKuiklyNetworkModule.MODULE_NAME) {
             SlockKuiklyNetworkModule()
         }
-        kuiklyRenderExport.moduleExport(SlockKuiklyMMKVModule.MODULE_NAME) {
-            SlockKuiklyMMKVModule(applicationContext)
-        }
     }
 
     override fun performanceMonitorTypes(): List<KRMonitorType> =
@@ -417,7 +414,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                 SharedAuthDataSource(
                                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
                                         sessionStore =
-                                                KuiklyMMKVAuthSessionStore(
+                                                KeyValueAuthSessionStore(
                                                         androidMMKVAuthKeyValueStore(applicationContext)
                                                 ),
                                         diagnosticsLogger = ::logSharedAuthDiagnostics
@@ -2354,7 +2351,7 @@ internal class SlockKuiklyBridgeModule(
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
         val session =
                 runBlocking {
-                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
+                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
                 }
         val selectedServer =
                 session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
@@ -2685,7 +2682,7 @@ internal class SlockKuiklyBridgeModule(
         val changed = before != after
         if (changed) {
             runBlocking {
-                KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()
             }
             AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
             SlockDiagnosticsLogger.record(
@@ -3457,7 +3454,7 @@ internal class SlockKuiklyBridgeModule(
                     SharedAuthDataSource(
                             api = AndroidAuthApiFactory.createAuthApi(appContext),
                             sessionStore =
-                                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
+                                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
                             diagnosticsLogger = ::logSharedAuthDiagnostics
                     )
             val startResult =

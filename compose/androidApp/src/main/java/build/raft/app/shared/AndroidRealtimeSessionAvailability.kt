@@ -2,7 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -11,7 +11,7 @@ internal object AndroidRealtimeSessionAvailability {
         runCatching {
             val appContext = context.applicationContext
             runBlocking(Dispatchers.IO) {
-                KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
                     .readSession()
                     ?.let { session ->
                         !session.accessToken.isNullOrBlank() && !session.currentServerId.isNullOrBlank()

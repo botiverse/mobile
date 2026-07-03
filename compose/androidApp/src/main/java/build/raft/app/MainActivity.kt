@@ -7,7 +7,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
-import build.raft.app.data.KuiklyMMKVAuthSessionStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                        sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
                         diagnosticsLogger = ::logSharedAuthDiagnostics
                     ).completeSocialLogin(provider = provider, code = code)
                 }
@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                        sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
                         diagnosticsLogger = ::logSharedAuthDiagnostics
                     ).completeMobileOAuthLogin(
                         code = handoffCode,

@@ -8,7 +8,7 @@ import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
 import build.raft.app.components.SlockBrutalPanelShell
 import build.raft.app.data.KeyValueRouterPreferenceRepository
-import build.raft.app.data.kuiklySharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -149,7 +149,7 @@ private val DeveloperRouteGroups =
 internal fun ComposeRouteImpl() {
     val localPager = LocalActivity.current.getPager() as Pager
     val routePreferenceRepository = remember(localPager) {
-        KeyValueRouterPreferenceRepository(kuiklySharedPreferenceStore(localPager))
+        KeyValueRouterPreferenceRepository(slockSharedPreferenceStore())
     }
     var textFieldValue by remember(routePreferenceRepository) {
         mutableStateOf(routePreferenceRepository.readLastRouteInput().orEmpty())
