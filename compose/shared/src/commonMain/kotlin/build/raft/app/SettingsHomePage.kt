@@ -1127,9 +1127,13 @@ private fun SlockAppShellChildTabPageContent() {
     ) { page ->
         val pageTab = AppShellChildPageTabs[page]
         val active = selectedTab == pageTab
-        LaunchedEffect(pageTab, active, selectedTab) {
+        LaunchedEffect(pageTab, active, selectedTab, pagerState.currentPage, selectedIndex) {
             if (active) {
-                bridge.log("app_shell_child_tab_render tab=$pageTab selectedTab=$selectedTab")
+                bridge.log(
+                    "app_shell_child_tab_render shellId=$shellId pageDataTab=$initialTab " +
+                        "pageTab=$pageTab selectedTab=$selectedTab active=$active " +
+                        "currentPage=${pagerState.currentPage} targetIndex=$selectedIndex"
+                )
             }
         }
         entry.renderer(pageTab, active)
@@ -1470,6 +1474,31 @@ internal fun appShellBottomTabsVisible(
 
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
     active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
+
+private fun sharedHomeContentRenderSummary(content: SharedHomeContentState): String =
+    when (content) {
+        is SharedHomeContentState.Loading ->
+            "Loading(session=${content.session?.currentServerId ?: "_"})"
+        is SharedHomeContentState.Empty ->
+            "Empty(session=${content.session.currentServerId ?: "_"})"
+        is SharedHomeContentState.Error ->
+            "Error(${content.code})"
+        is SharedHomeContentState.Content -> {
+            val snapshot = content.snapshot
+            "Content(server=${snapshot.server.id.value},channels=${snapshot.channels.size}," +
+                "dms=${snapshot.directMessages.size},unread=${snapshot.unreadTotal}:${snapshot.unreadSource}," +
+                "refreshing=${content.contentRefreshing})"
+        }
+    }
+
+private fun sharedHomeRenderBranch(content: SharedHomeContentState): String =
+    when (content) {
+        is SharedHomeContentState.Loading ->
+            if (content.session != null) "loading_session_shell" else "loading_centered"
+        is SharedHomeContentState.Empty -> "empty_session_shell"
+        is SharedHomeContentState.Error -> "error_${content.code}"
+        is SharedHomeContentState.Content -> "content"
+    }
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
@@ -3028,7 +3057,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             }
                         )
                     }
+                    val currentChildTab = retainedAppShellSelectedTab(selectedTab)
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
+                        val homeSummary = sharedHomeContentRenderSummary(homeState.content)
+                        LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
+                            bridge.log(
+                                "app_shell_child_tab_dispatch tab=$tab active=$active selectedTab=$currentChildTab " +
+                                    "readyServerId=${readyServerId.orEmpty()} homeState=$homeSummary " +
+                                    "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
+                            )
+                        }
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
                             "members" -> membersTabContent(active)
@@ -3036,7 +3074,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             else -> homeTabContent(active)
                         }
                     }
-                    val currentChildTab = retainedAppShellSelectedTab(selectedTab)
                     val childTabEntry =
                         remember(childTabShellId) {
                             AppShellChildTabEntry(
@@ -9835,14 +9872,35 @@ private fun SharedHomeScreen(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
+    val homeContentSummary = sharedHomeContentRenderSummary(state.content)
+    val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
+    LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
+        bridge.log(
+            "shared_home_screen_enter active=$active sessionReady=$sessionReady " +
+                "shouldStart=$shouldStartHome state=$homeContentSummary homeRealtimeDirty=${state.homeRealtimeDirty}"
+        )
+    }
     LaunchedEffect(active, sessionReady, state.content, state.homeRealtimeDirty) {
-        if (sharedHomeShouldStartOnActive(active, sessionReady, state)) {
+        val effectShouldStart = sharedHomeShouldStartOnActive(active, sessionReady, state)
+        bridge.log(
+            "shared_home_start_effect active=$active sessionReady=$sessionReady " +
+                "shouldStart=$effectShouldStart state=${sharedHomeContentRenderSummary(state.content)} " +
+                "homeRealtimeDirty=${state.homeRealtimeDirty}"
+        )
+        if (effectShouldStart) {
             onIntent(SharedHomeIntent.Start)
         }
     }
 
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
+    val renderBranch = sharedHomeRenderBranch(state.content)
+    LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadCount, savedCount) {
+        bridge.log(
+            "shared_home_render_branch active=$active branch=$renderBranch state=$homeContentSummary " +
+                "activityUnread=$activityUnreadCount saved=$savedCount selectedConversation=${selectedConversationId.orEmpty()}"
+        )
+    }
     when (val current = state.content) {
         is SharedHomeContentState.Loading -> {
             val session = current.session

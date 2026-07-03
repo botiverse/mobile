@@ -109,6 +109,22 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPageDataTracksSelectedTabForSameShell() {
+        val shellId = "shell-1"
+
+        val homeData = appShellChildPageData(shellId = shellId, tab = "home")
+        val tasksData = appShellChildPageData(shellId = shellId, tab = "tasks")
+        val settingsData = appShellChildPageData(shellId = shellId, tab = "settings")
+
+        assertEquals(shellId, homeData.optString("shellId"))
+        assertEquals(shellId, tasksData.optString("shellId"))
+        assertEquals(shellId, settingsData.optString("shellId"))
+        assertEquals("home", homeData.optString("tab"))
+        assertEquals("tasks", tasksData.optString("tab"))
+        assertEquals("settings", settingsData.optString("tab"))
+    }
+
+    @Test
     fun homeWarmAppShellComposedTabsKeepsOnlyHomeInactive() {
         assertEquals(
             listOf("home", "tasks"),
