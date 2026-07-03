@@ -292,6 +292,39 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun markdownPreparsePriority_usesFocusedMessageNeighborhood() {
+        val messages = (0 until 10).map { index -> message("m$index") }
+        val slice = payload(messages = messages).copy(focusedMessageId = "m5").timelineSlice()
+
+        assertEquals(
+            listOf("m5", "m4", "m6", "m3"),
+            slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun markdownPreparsePriority_usesLatestMessagesWhenFocusMissing() {
+        val messages = (0 until 10).map { index -> message("m$index") }
+        val slice = payload(messages = messages).copy(focusedMessageId = "missing").timelineSlice()
+
+        assertEquals(
+            listOf("m9", "m8", "m7", "m6"),
+            slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun markdownPreparseOrder_keepsFocusedWindowBeforeLatestRemainder() {
+        val messages = (0 until 8).map { index -> message("m$index") }
+        val slice = payload(messages = messages).copy(focusedMessageId = "m3").timelineSlice()
+
+        assertEquals(
+            listOf("m3", "m2", "m4", "m1", "m5", "m0", "m6", "m7"),
+            slice.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
     fun latestMessageListItemIndex_originMessageParticipatesInScrollableItemsAgain() {
         val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
             .latestMessageListItemIndexPublic()
