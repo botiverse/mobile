@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
@@ -19,7 +20,7 @@ import java.io.ByteArrayInputStream
 import org.json.JSONObject
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
-    private val webView = WebView(context)
+    private var webView = WebView(context)
     private var destroyed: Boolean = false
     private var src: String = ""
     private var loadedSrc: String = ""
@@ -41,7 +42,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean {
-        if (destroyed) return true
+        if (destroyed && !propKey.isEventProp()) {
+            recreateWebViewAfterDestroy()
+        }
         return when (propKey) {
             PROP_SRC -> {
                 updateSrc(propValue.toString())
@@ -144,7 +147,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
         super.setLayoutParams(params)
-        if (destroyed) return
+        if (destroyed) {
+            recreateWebViewAfterDestroy()
+        }
         webView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     }
 
@@ -158,12 +163,26 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadFailureCallback = null
         navigationBlockedCallback = null
         urlChangeCallback = null
+        Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.take(LOG_URL_LIMIT)}")
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.webChromeClient = null
         webView.webViewClient = WebViewClient()
+        removeView(webView)
         webView.destroy()
         super.onDestroy()
+    }
+
+    private fun recreateWebViewAfterDestroy() {
+        Log.i(LOG_TAG, "recreate_after_destroy previousSrc=${src.take(LOG_URL_LIMIT)}")
+        destroyed = false
+        src = ""
+        loadedSrc = ""
+        allowedUri = null
+        webView = WebView(context)
+        removeAllViews()
+        addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        configureWebView()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -205,6 +224,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed) return
                     super.onPageStarted(view, url, favicon)
+                    Log.i(LOG_TAG, "page_started url=${url.orEmpty().take(LOG_URL_LIMIT)}")
                     url?.let { notifyUrlChange(it) }
                     if (url != null && !allowNavigation && !isAllowedMainDocumentUrl(url)) {
                         view?.stopLoading()
@@ -215,6 +235,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageFinished(view, url)
+                    Log.i(LOG_TAG, "page_finished url=${url.orEmpty().take(LOG_URL_LIMIT)}")
                     url?.let { notifyUrlChange(it) }
                     if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
                         evaluateInjectedJavaScript()
@@ -252,6 +273,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                             } else {
                                 null
                             } ?: "webview_load_failed"
+                        Log.w(LOG_TAG, "page_error reason=$reason url=${request.url?.toString().orEmpty().take(LOG_URL_LIMIT)}")
                         notifyLoadFailure(reason)
                     }
                 }
@@ -260,6 +282,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                     if (destroyed) return
                     super.onReceivedError(view, errorCode, description, failingUrl)
+                    Log.w(LOG_TAG, "page_error reason=${description.orEmpty()} url=${failingUrl.orEmpty().take(LOG_URL_LIMIT)}")
                     notifyLoadFailure(description ?: "webview_load_failed")
                 }
             }
@@ -322,6 +345,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         }
         loadedSrc = normalized
         if (shouldBootstrapInjectedJavaScript()) {
+            Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.take(LOG_URL_LIMIT)}")
             webView.loadDataWithBaseURL(
                 normalized,
                 injectedJavaScriptBootstrapHtml(normalized),
@@ -330,6 +354,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 normalized
             )
         } else {
+            Log.i(LOG_TAG, "load_src bootstrap=false url=${normalized.take(LOG_URL_LIMIT)}")
             webView.loadUrl(normalized)
         }
     }
@@ -417,6 +442,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     companion object {
         const val VIEW_NAME = "SlockSandboxWebView"
+        private const val LOG_TAG = "SlockWebView"
+        private const val LOG_URL_LIMIT = 160
         private const val PROP_SRC = "src"
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
         private const val PROP_ALLOW_NAVIGATION = "allowNavigation"
@@ -428,5 +455,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         private const val EVENT_URL_CHANGE = "urlChange"
+
+        private fun String.isEventProp(): Boolean =
+            this == EVENT_LOAD_SUCCESS ||
+                this == EVENT_LOAD_FAILURE ||
+                this == EVENT_NAVIGATION_BLOCKED ||
+                this == EVENT_URL_CHANGE
     }
 }
