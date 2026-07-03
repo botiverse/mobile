@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -14,6 +15,60 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class SharedConversationDirectoryStoreTest {
+    @Test
+    fun homeRowDirectoryProjectionMatchesSummaryBasedProjection() {
+        val serverId = ServerId("server-1")
+        val rows =
+            listOf(
+                HomeChannelRow(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    channelType = "private",
+                    kind = ConversationKind.Channel,
+                    name = "general",
+                    subtitle = "General discussion",
+                    joined = true,
+                    archived = false,
+                    permissions = ConversationPermissions(canRead = true)
+                ),
+                HomeDirectMessageRow(
+                    threadId = ThreadId("dm-1"),
+                    channelId = ChannelId("dm-1"),
+                    kind = ConversationKind.DirectMessage,
+                    name = "artin",
+                    presenceMemberId = MemberId("member-1")
+                ),
+                HomeChannelRow(
+                    threadId = ThreadId("joint-1"),
+                    channelId = ChannelId("joint-1"),
+                    channelType = "channel",
+                    kind = ConversationKind.Joint,
+                    name = "partner",
+                    joined = false,
+                    permissions = ConversationPermissions(canRead = false)
+                ),
+                HomeChannelRow(
+                    threadId = ThreadId("reply-thread-1"),
+                    channelId = ChannelId("reply-stream-1"),
+                    kind = ConversationKind.Thread,
+                    name = "Parent discussion",
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("parent-msg-1"),
+                            streamChannelId = ChannelId("reply-stream-1")
+                        )
+                )
+            )
+
+        rows.forEach { row ->
+            assertEquals(
+                row.toConversationSummary().toSharedConversationDirectoryProjection(serverId),
+                row.toSharedConversationDirectoryProjection(serverId)
+            )
+        }
+    }
+
     @Test
     fun homeSnapshotResolvesConversationByDirectoryAliases() {
         val snapshot =

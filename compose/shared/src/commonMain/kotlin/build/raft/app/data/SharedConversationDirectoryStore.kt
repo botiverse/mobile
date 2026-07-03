@@ -6,6 +6,9 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ServerId
+import build.raft.app.model.conversationDisplayTitleCandidate
+import build.raft.app.model.conversationIdentityLikeTitle
+import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.isGenericDisplayName
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.safeDisplayNameOrNull
@@ -102,7 +105,7 @@ private fun sharedConversationDirectoryState(
 ): SharedConversationDirectoryState {
     val projections =
         conversations
-            .mapNotNull { conversation -> conversation.toConversationSummary().toSharedConversationDirectoryProjection(serverId) }
+            .mapNotNull { conversation -> conversation.toSharedConversationDirectoryProjection(serverId) }
             .associateBy { it.canonicalChannelId }
     val aliasesById =
         buildMap<String, MutableSet<String>> {
@@ -127,13 +130,45 @@ private fun MutableMap<String, MutableSet<String>>.putAlias(aliasId: String, can
     getOrPut(aliasId) { linkedSetOf() }.add(canonicalChannelId)
 }
 
-private fun ConversationSummary.toSharedConversationDirectoryProjection(
+internal fun ConversationSummary.toSharedConversationDirectoryProjection(
     serverId: ServerId
 ): SharedConversationDirectoryProjection? {
     val canonicalChannelId = directoryCanonicalChannelId().value.takeIf { it.isNotBlank() } ?: return null
     val title =
         safeDisplayNameOrNull()
             ?.takeUnless { isGenericDisplayName(it, additionalIdentityIds = setOf(canonicalChannelId)) }
+            ?: canonicalChannelId
+    val kind = toDirectoryConversationKind()
+    val surfaceKind =
+        when (kind) {
+            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+            else -> KuiklyThreadSurfaceKind.Channel
+        }
+    return SharedConversationDirectoryProjection(
+        serverId = serverId.value,
+        canonicalChannelId = canonicalChannelId,
+        aliases = aliases(canonicalChannelId).map { it.id }.filter { it.isNotBlank() }.toSet() + canonicalChannelId,
+        surfaceKind = surfaceKind,
+        channelKind = toDirectoryChannelType(),
+        title = title,
+        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        avatarWireValue = null,
+        avatarLabel = title.take(2).uppercase(),
+        peerMemberId = presenceMemberId?.value?.takeIf { it.isNotBlank() },
+        parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
+        parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
+        joined = joined && permissions.canRead,
+        archived = archived
+    )
+}
+
+internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
+    serverId: ServerId
+): SharedConversationDirectoryProjection? {
+    val canonicalChannelId = directoryCanonicalChannelId().value.takeIf { it.isNotBlank() } ?: return null
+    val title =
+        safeDisplayNameOrNull(additionalIdentityIds = setOf(canonicalChannelId))
             ?: canonicalChannelId
     val kind = toDirectoryConversationKind()
     val surfaceKind =
@@ -184,6 +219,38 @@ private fun ConversationSummary.aliases(canonicalChannelId: String): Set<Convers
         presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.PresenceMember)) }
     }
 
+private fun HomeConversationRow.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
+    buildSet {
+        val routeIdentity = resolveThreadRouteIdentity(
+            surfaceKind =
+                when (toDirectoryConversationKind()) {
+                    ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                    ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+                    else -> KuiklyThreadSurfaceKind.Channel
+                },
+            channelKind = toDirectoryChannelType(),
+            instanceId = null,
+            sourceThreadId = threadId.value,
+            streamChannelId = directoryCanonicalChannelId().value,
+            parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
+            parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null
+        )
+        val isReplyThread = kind == ConversationKind.Thread
+        add(ConversationDirectoryAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
+        channelId
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { kind != ConversationKind.Thread || it == routeIdentity.timelineChannelId }
+            ?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Channel)) }
+        threadId.value.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Thread)) }
+        if (isReplyThread) {
+            thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Stream)) }
+            thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentChannel)) }
+            thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentMessage)) }
+        }
+        presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.PresenceMember)) }
+    }
+
 private fun ConversationSummary.directoryCanonicalChannelId(): ChannelId =
     if (kind == ConversationKind.Thread) {
         messageStreamChannelId()
@@ -191,7 +258,24 @@ private fun ConversationSummary.directoryCanonicalChannelId(): ChannelId =
         channelId ?: ChannelId(threadId.value)
     }
 
+private fun HomeConversationRow.directoryCanonicalChannelId(): ChannelId =
+    if (kind == ConversationKind.Thread) {
+        thread?.streamChannelId ?: ChannelId(threadId.value)
+    } else {
+        channelId ?: ChannelId(threadId.value)
+    }
+
 private fun ConversationSummary.toDirectoryChannelType(): String =
+    when (kind) {
+        ConversationKind.Thread -> "thread"
+        ConversationKind.Joint -> "joint"
+        ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: "channel"
+        ConversationKind.DirectMessage -> "dm"
+        ConversationKind.Inbox,
+        ConversationKind.System -> "channel"
+    }
+
+private fun HomeConversationRow.toDirectoryChannelType(): String =
     when (kind) {
         ConversationKind.Thread -> "thread"
         ConversationKind.Joint -> "joint"
@@ -210,3 +294,45 @@ private fun ConversationSummary.toDirectoryConversationKind(): ConversationKind 
         ConversationKind.Inbox,
         ConversationKind.System -> ConversationKind.Channel
     }
+
+private fun HomeConversationRow.toDirectoryConversationKind(): ConversationKind =
+    when (kind) {
+        ConversationKind.Thread -> ConversationKind.Thread
+        ConversationKind.Joint -> ConversationKind.Joint
+        ConversationKind.DirectMessage -> ConversationKind.DirectMessage
+        ConversationKind.Channel,
+        ConversationKind.Inbox,
+        ConversationKind.System -> ConversationKind.Channel
+    }
+
+private fun HomeConversationRow.safeDisplayNameOrNull(
+    additionalIdentityIds: Set<String> = emptySet()
+): String? =
+    conversationSafeDisplayTitleOrNull(name, headerIdentityIds() + additionalIdentityIds)
+        ?.takeUnless { isGenericDisplayName(it, additionalIdentityIds) }
+
+private fun HomeConversationRow.isGenericDisplayName(
+    rawName: String = name,
+    additionalIdentityIds: Set<String> = emptySet()
+): Boolean {
+    val candidate = conversationDisplayTitleCandidate(rawName) ?: return true
+    if (conversationIdentityLikeTitle(candidate, headerIdentityIds() + additionalIdentityIds)) return true
+    return candidate.equals(genericDisplayTitleFallback(), ignoreCase = true)
+}
+
+private fun HomeConversationRow.genericDisplayTitleFallback(): String =
+    when (kind) {
+        ConversationKind.DirectMessage -> "Direct Message"
+        ConversationKind.Thread -> "Thread"
+        ConversationKind.Channel,
+        ConversationKind.Joint,
+        ConversationKind.Inbox,
+        ConversationKind.System -> "Channel"
+    }
+
+private fun HomeConversationRow.headerIdentityIds(): Set<String> =
+    listOfNotNull(
+        threadId.value,
+        channelId?.value,
+        thread?.streamChannelId?.value
+    ).filter { it.isNotBlank() }.toSet()
