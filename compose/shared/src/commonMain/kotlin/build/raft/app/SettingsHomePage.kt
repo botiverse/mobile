@@ -490,6 +490,7 @@ private val AppShellChildPageTabKeys = setOf("home", "tasks", "members")
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
 private class AppShellChildTabEntry(
+    val debugId: Int,
     initialSelectedTab: String = "home",
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
@@ -499,16 +500,29 @@ private class AppShellChildTabEntry(
     var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
 }
 
+private data class AppShellChildTabRegistration(
+    val entry: AppShellChildTabEntry,
+    val replacedEntryId: Int
+)
+
 private object AppShellChildTabRegistry {
     private val entries = mutableMapOf<String, AppShellChildTabEntry>()
+    private var nextDebugId = 0
 
-    fun register(shellId: String, entry: AppShellChildTabEntry) {
-        entries[shellId] = entry
+    fun createEntryId(): Int {
+        nextDebugId += 1
+        return nextDebugId
     }
 
-    fun unregister(shellId: String, entry: AppShellChildTabEntry) {
-        if (entries[shellId] === entry) {
+    fun register(shellId: String, entry: AppShellChildTabEntry): AppShellChildTabEntry? =
+        entries.put(shellId, entry)
+
+    fun unregister(shellId: String, entry: AppShellChildTabEntry): Boolean {
+        return if (entries[shellId] === entry) {
             entries.remove(shellId)
+            true
+        } else {
+            false
         }
     }
 
@@ -1095,6 +1109,9 @@ private fun SlockAppShellChildTabPageContent() {
     val tab = retainedAppShellSelectedTab(pager.pageData.params.optString("tab"))
     val entry = AppShellChildTabRegistry.entry(shellId)
     if (entry == null) {
+        LaunchedEffect(shellId, tab) {
+            bridge.log("app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab result=missing")
+        }
         PageErrorContent(
             title = "App Shell",
             subtitle = "Child tab host",
@@ -1105,11 +1122,17 @@ private fun SlockAppShellChildTabPageContent() {
         return
     }
     val active = entry.selectedTab == tab
+    LaunchedEffect(shellId, tab, entry.debugId) {
+        bridge.log(
+            "app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab " +
+                "result=hit entryId=${entry.debugId} selectedTab=${entry.selectedTab}"
+        )
+    }
     LaunchedEffect(tab, active, entry.selectedTab) {
         if (active) {
             bridge.log(
                 "app_shell_child_tab_render shellId=$shellId pageDataTab=$tab " +
-                    "pageTab=$tab selectedTab=${entry.selectedTab} active=$active"
+                    "pageTab=$tab selectedTab=${entry.selectedTab} active=$active entryId=${entry.debugId}"
             )
         }
     }
@@ -1900,6 +1923,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
+    LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
+        bridge.log(
+            "app_shell_auth_gate_state state=${authGateState.authGateDiagnosticsName()} " +
+                "selectedServer=${!readyServerId.isNullOrBlank()} selectedTab=$selectedTab " +
+                "suppressRestoreLanding=$suppressRestoreLanding pagerId=${pager.pagerId} " +
+                "childShellId=$childTabShellId"
+        )
+    }
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
@@ -3050,22 +3081,35 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             else -> homeTabContent(active)
                         }
                     }
-                    val childTabEntry =
+                    val childTabRegistration =
                         remember(childTabShellId) {
-                            AppShellChildTabEntry(
+                            val entry = AppShellChildTabEntry(
+                                debugId = AppShellChildTabRegistry.createEntryId(),
                                 initialSelectedTab = currentChildTab,
                                 initialRenderer = childTabRenderer
-                            ).also { entry ->
-                                AppShellChildTabRegistry.register(childTabShellId, entry)
-                            }
+                            )
+                            val replaced = AppShellChildTabRegistry.register(childTabShellId, entry)
+                            AppShellChildTabRegistration(entry = entry, replacedEntryId = replaced?.debugId ?: 0)
                         }
+                    val childTabEntry = childTabRegistration.entry
                     SideEffect {
                         childTabEntry.selectedTab = currentChildTab
                         childTabEntry.renderer = childTabRenderer
                     }
+                    LaunchedEffect(childTabShellId, childTabEntry.debugId) {
+                        bridge.log(
+                            "app_shell_child_tab_registry_register shellId=$childTabShellId " +
+                                "entryId=${childTabEntry.debugId} replacedEntryId=${childTabRegistration.replacedEntryId} " +
+                                "selectedTab=${childTabEntry.selectedTab}"
+                        )
+                    }
                     DisposableEffect(childTabShellId, childTabEntry) {
                         onDispose {
-                            AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
+                            val removed = AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
+                            bridge.log(
+                                "app_shell_child_tab_registry_unregister shellId=$childTabShellId " +
+                                    "entryId=${childTabEntry.debugId} removed=$removed"
+                            )
                         }
                     }
                     AppShellTabs(
@@ -8753,10 +8797,22 @@ private fun AuthChooseServerPageContent() {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var restoreAttempt by remember { mutableStateOf(0) }
 
+    LaunchedEffect(fromShell, skipInitialLoad) {
+        authDataSource.logDiagnostics(
+            "auth_choose_server_page_enter fromShell=$fromShell skipInitialLoad=$skipInitialLoad"
+        )
+    }
+
     LaunchedEffect(sharedStores.authStore, restoreAttempt) {
         runCatchingPreservingCancellation { sharedStores.authStore.readSession() }
             .onSuccess { restored ->
                 session = restored
+                authDataSource.logDiagnostics(
+                    "auth_choose_server_page_session result=${if (restored == null) "missing" else "success"} " +
+                        "serversCount=${restored?.servers?.size ?: 0} " +
+                        "selectedServer=${!restored?.selectedServerId.isNullOrBlank()} " +
+                        "restoreAttempt=$restoreAttempt"
+                )
                 errorMessage =
                     if (restored == null) {
                         "Sign in before choosing a server."
@@ -8766,6 +8822,9 @@ private fun AuthChooseServerPageContent() {
             }
             .onFailure {
                 session = null
+                authDataSource.logDiagnostics(
+                    "auth_choose_server_page_session result=failure restoreAttempt=$restoreAttempt"
+                )
                 errorMessage = "Could not restore your session."
             }
     }

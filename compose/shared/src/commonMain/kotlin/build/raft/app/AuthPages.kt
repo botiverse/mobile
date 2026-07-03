@@ -172,6 +172,11 @@ private fun LoginScreen() {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        authDataSource.logDiagnostics(
+                            "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=login " +
+                                "serversCount=${result.data.servers.size} " +
+                                "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
+                        )
                         pager.openPostAuthRoute()
                     }
                     PostAuthSessionReadback.Missing ->
@@ -351,17 +356,12 @@ private fun AuthLegalAcceptanceScreen() {
             is SharedAuthResult.Success -> {
                 submitting = false
                 errorMessage = null
-                if (result.data.selectedServerId.isNullOrBlank()) {
-                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-                        AUTH_CHOOSE_SERVER_PAGE,
-                        authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
-                    )
-                } else {
-                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-                        SLOCK_APP_SHELL_PAGE,
-                        appShellPageData(replaceCurrent = true)
-                    )
-                }
+                authDataSource.logDiagnostics(
+                    "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=mobile_oauth_legal " +
+                        "serversCount=${result.data.servers.size} " +
+                        "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
+                )
+                pager.openPostAuthRoute()
             }
             is SharedAuthResult.Failure -> {
                 submitting = false
@@ -437,6 +437,11 @@ private fun RegisterScreen() {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        authDataSource.logDiagnostics(
+                            "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=register " +
+                                "serversCount=${result.data.servers.size} " +
+                                "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
+                        )
                         pager.openPostAuthRoute()
                     }
                     PostAuthSessionReadback.Missing ->
@@ -1418,8 +1423,8 @@ private fun Pager.openPostAuthRoute() {
 
 internal fun postAuthRouteDestination(): AuthRouteDestination =
     AuthRouteDestination(
-        pageName = SLOCK_APP_SHELL_PAGE,
-        pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
+        pageName = AUTH_CHOOSE_SERVER_PAGE,
+        pageData = authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
     )
 
 internal data class AuthRouteDestination(
