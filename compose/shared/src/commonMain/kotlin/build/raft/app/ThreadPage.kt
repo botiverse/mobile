@@ -7,6 +7,8 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
@@ -5871,11 +5873,12 @@ private fun ThreadImagePreviewOverlay(
             }
         }
         if (menuOpen) {
-            SlockBrutalDropdownMenu(
+            SlockRaftUiControlledMenu(
+                expanded = menuOpen,
                 anchor = menuAnchor,
                 items =
                     listOf(
-                        SlockBrutalDropdownMenuItem(
+                        SlockRaftUiMenuItem(
                             id = ThreadAttachmentPreviewOpenWithActionId,
                             label = "Open with...",
                             icon = SlockLucideIconName.ExternalLink
@@ -5888,7 +5891,7 @@ private fun ThreadImagePreviewOverlay(
                     }
                 },
                 onDismiss = { menuOpen = false },
-                widthDp = 180f
+                width = 180.dp
             )
         }
     }

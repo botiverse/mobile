@@ -1,6 +1,9 @@
 package build.raft.app.components
 
+import build.raft.app.SlockAnchoredPopover
 import build.raft.app.SlockColor
+import build.raft.app.SlockFloatingDefaultViewportGap
+import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockStroke
@@ -25,8 +28,11 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -233,6 +239,57 @@ internal fun SlockSelectTrigger(
                 rotationDegrees = if (expanded) 180f else 0f
             )
         }
+    }
+}
+
+@Composable
+internal fun SlockRaftUiControlledMenu(
+    expanded: Boolean,
+    anchor: Offset,
+    items: List<SlockRaftUiMenuItem>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp = 200.dp,
+    rowHeight: Dp = 40.dp,
+    shadowOffset: Dp = 4.dp,
+    horizontalOffset: Dp = 0.dp,
+    verticalOffset: Dp = 16.dp,
+    horizontalAutoFlip: Boolean = true,
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto,
+    showDividers: Boolean = true
+) {
+    if (!expanded) return
+    val density = LocalDensity.current
+    val effectiveRowCount = items.size.coerceAtLeast(1)
+    val contentSize =
+        with(density) {
+            Size(
+                width = (width + shadowOffset).toPx(),
+                height = rowHeight.toPx() * effectiveRowCount + shadowOffset.toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = contentSize,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
+        horizontalOffset = with(density) { horizontalOffset.toPx() },
+        verticalOffset = with(density) { verticalOffset.toPx() },
+        horizontalAutoFlip = horizontalAutoFlip,
+        verticalPlacement = verticalPlacement
+    ) { popoverModifier, _ ->
+        SlockRaftUiMenuSurface(
+            items = items,
+            onSelect = onSelect,
+            onDismiss = onDismiss,
+            modifier = popoverModifier,
+            width = width,
+            rowHeight = rowHeight,
+            shadowOffset = shadowOffset,
+            showDividers = showDividers
+        )
     }
 }
 

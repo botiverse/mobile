@@ -75,6 +75,7 @@ internal data class SlockRaftUiMenuItem(
     val label: String,
     val icon: SlockLucideIconName? = null,
     val trailing: String? = null,
+    val selected: Boolean = false,
     val destructive: Boolean = false,
     val enabled: Boolean = true,
     val dividerBefore: Boolean = false
@@ -602,7 +603,8 @@ internal fun SlockRaftUiMenuSurface(
     rowHeight: Dp = 36.dp,
     shadowOffset: Dp = 3.dp,
     showDividers: Boolean = false,
-    onSelect: (String) -> Unit = {}
+    onSelect: (String) -> Unit = {},
+    onDismiss: () -> Unit = {}
 ) {
     SlockBrutalDropdownMenuSurface(
         items =
@@ -611,7 +613,7 @@ internal fun SlockRaftUiMenuSurface(
                     id = item.id,
                     label = item.label,
                     icon = item.icon,
-                    trailing = item.trailing,
+                    trailing = item.trailing ?: if (item.selected) "✓" else null,
                     destructive = item.destructive,
                     enabled = item.enabled
                 )
@@ -622,7 +624,8 @@ internal fun SlockRaftUiMenuSurface(
         rowHeight = rowHeight,
         shadowOffset = shadowOffset,
         showDividers = showDividers,
-        dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet()
+        dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet(),
+        onDismiss = onDismiss
     )
 }
 
