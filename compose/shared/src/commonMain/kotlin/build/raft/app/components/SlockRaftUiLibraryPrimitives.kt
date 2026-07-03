@@ -1,6 +1,8 @@
 package build.raft.app.components
 
 import build.raft.app.SlockAvatar
+import build.raft.app.SlockBrutalDropdownMenuItem
+import build.raft.app.SlockBrutalDropdownMenuSurface
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
@@ -67,6 +69,16 @@ internal enum class SlockRaftUiBadgeVariant(val tone: SlockBrutalTone) {
 internal data class SlockRaftUiTabItem(val value: String, val label: String)
 
 internal data class SlockRaftUiSegmentedItem(val value: String, val label: String, val count: Int? = null)
+
+internal data class SlockRaftUiMenuItem(
+    val id: String,
+    val label: String,
+    val icon: SlockLucideIconName? = null,
+    val trailing: String? = null,
+    val destructive: Boolean = false,
+    val enabled: Boolean = true,
+    val dividerBefore: Boolean = false
+)
 
 @Composable
 internal fun SlockRaftUiButton(
@@ -502,6 +514,38 @@ internal fun SlockRaftUiTabs(
             SlockRaftUiTextSans(panelText)
         }
     }
+}
+
+@Composable
+internal fun SlockRaftUiMenuSurface(
+    items: List<SlockRaftUiMenuItem>,
+    modifier: Modifier = Modifier,
+    width: Dp? = 310.dp,
+    rowHeight: Dp = 36.dp,
+    shadowOffset: Dp = 3.dp,
+    showDividers: Boolean = false,
+    onSelect: (String) -> Unit = {}
+) {
+    SlockBrutalDropdownMenuSurface(
+        items =
+            items.map { item ->
+                SlockBrutalDropdownMenuItem(
+                    id = item.id,
+                    label = item.label,
+                    icon = item.icon,
+                    trailing = item.trailing,
+                    destructive = item.destructive,
+                    enabled = item.enabled
+                )
+            },
+        onSelect = onSelect,
+        modifier = modifier,
+        width = width,
+        rowHeight = rowHeight,
+        shadowOffset = shadowOffset,
+        showDividers = showDividers,
+        dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet()
+    )
 }
 
 @Composable

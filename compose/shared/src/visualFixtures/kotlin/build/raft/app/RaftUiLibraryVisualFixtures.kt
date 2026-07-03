@@ -19,10 +19,12 @@ import build.raft.app.components.SlockRaftUiInlineCode
 import build.raft.app.components.SlockRaftUiInputGroup
 import build.raft.app.components.SlockRaftUiKbd
 import build.raft.app.components.SlockRaftUiLabel
+import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiRadioRow
 import build.raft.app.components.SlockRaftUiSegmentedControl
 import build.raft.app.components.SlockRaftUiSegmentedItem
 import build.raft.app.components.SlockRaftUiMenuRow
+import build.raft.app.components.SlockRaftUiMenuSurface
 import build.raft.app.components.SlockRaftUiNotificationItem
 import build.raft.app.components.SlockRaftUiPopupSurface
 import build.raft.app.components.SlockRaftUiTabItem
@@ -402,20 +404,18 @@ internal fun RaftUiMenuSurfacesVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        SlockBrutalDropdownMenuSurface(
+        SlockRaftUiMenuSurface(
             items =
                 listOf(
-                    SlockBrutalDropdownMenuItem(id = "publish", label = "Publish report", trailing = "⌘ P"),
-                    SlockBrutalDropdownMenuItem(id = "review", label = "Review differences", trailing = "32"),
-                    SlockBrutalDropdownMenuItem(id = "archive", label = "Archive run", trailing = "⇧ A", enabled = false),
-                    SlockBrutalDropdownMenuItem(id = "move", label = "Move to components", trailing = "›")
+                    SlockRaftUiMenuItem(id = "publish", label = "Publish report", trailing = "⌘ P"),
+                    SlockRaftUiMenuItem(id = "review", label = "Review differences", trailing = "32"),
+                    SlockRaftUiMenuItem(id = "archive", label = "Archive run", trailing = "⇧ A", enabled = false),
+                    SlockRaftUiMenuItem(id = "move", label = "Move to components", trailing = "›", dividerBefore = true)
                 ),
-            onSelect = {},
             width = 310.dp,
             rowHeight = 36.dp,
             shadowOffset = 3.dp,
-            showDividers = false,
-            dividerBeforeIds = setOf("move")
+            showDividers = false
         )
     }
 }
