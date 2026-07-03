@@ -1,37 +1,37 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-03T04:27:31.027Z",
-  "latestRunId": "c153932a6-20260703042704",
+  "generatedAt": "2026-07-03T07:50:06.654Z",
+  "latestRunId": "48631ed3f-20260703075006",
   "latest": {
-    "runId": "c153932a6-20260703042704",
-    "commit": "c153932a6-20260703042704",
-    "commitSubject": "test(visual): add raft ui controlled open coverage",
-    "generatedAt": "2026-07-03T04:27:31.027Z",
+    "runId": "48631ed3f-20260703075006",
+    "commit": "48631ed3f-20260703075006",
+    "commitSubject": "fix(home): refresh update notices periodically",
+    "generatedAt": "2026-07-03T07:50:06.654Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 104,
+      "total": 82,
       "same": 0,
       "pass": 0,
       "basic-pass": 3,
-      "different": 100,
+      "different": 78,
       "missing": 1
     },
     "analysisSummary": {
-      "total": 104,
-      "ready": 0,
-      "pending": 104
+      "total": 82,
+      "ready": 1,
+      "pending": 81
     },
     "componentMatrixSummary": {
-      "total": 123,
-      "active": 105,
+      "total": 81,
+      "active": 63,
       "pending": 16,
       "skipped": 2,
       "captureTypes": {
         "component-fixture": {
-          "total": 97,
-          "active": 94,
+          "total": 55,
+          "active": 52,
           "pending": 2,
           "skipped": 1
         },
@@ -44,16 +44,16 @@
       },
       "providers": {
         "react": {
-          "active": 106,
+          "active": 64,
           "pending": 13,
           "unsupported": 0,
-          "total": 119
+          "total": 77
         },
         "android": {
-          "active": 104,
+          "active": 62,
           "pending": 15,
           "unsupported": 0,
-          "total": 119
+          "total": 77
         },
         "harmony": {
           "active": 0,
@@ -63,122 +63,20 @@
         }
       }
     },
-    "raftUiSummary": {
-      "total": 42,
-      "same": 0,
-      "pass": 0,
-      "basic-pass": 0,
-      "different": 42,
-      "missing": 0
-    },
-    "raftUiAnalysisSummary": {
-      "total": 42,
-      "ready": 0,
-      "pending": 42
-    },
-    "raftUiComponentMatrixSummary": {
-      "total": 42,
-      "active": 42,
-      "pending": 0,
-      "skipped": 0,
-      "captureTypes": {
-        "component-fixture": {
-          "total": 42,
-          "active": 42,
-          "pending": 0,
-          "skipped": 0
-        },
-        "real-screen": {
-          "total": 0,
-          "active": 0,
-          "pending": 0,
-          "skipped": 0
-        }
-      },
-      "providers": {
-        "react": {
-          "active": 42,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 42
-        },
-        "android": {
-          "active": 42,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 42
-        }
-      }
-    },
-    "raftUiReport": "runs/c153932a6-20260703042704/raft-ui/",
-    "componentsUiSummary": {
-      "total": 71,
-      "same": 0,
-      "pass": 0,
-      "basic-pass": 3,
-      "different": 67,
-      "missing": 1
-    },
-    "componentsUiAnalysisSummary": {
-      "total": 71,
-      "ready": 0,
-      "pending": 71
-    },
-    "componentsUiComponentMatrixSummary": {
-      "total": 74,
-      "active": 72,
-      "pending": 1,
-      "skipped": 1,
-      "captureTypes": {
-        "component-fixture": {
-          "total": 74,
-          "active": 72,
-          "pending": 1,
-          "skipped": 1
-        },
-        "real-screen": {
-          "total": 0,
-          "active": 0,
-          "pending": 0,
-          "skipped": 0
-        }
-      },
-      "providers": {
-        "react": {
-          "active": 72,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 72
-        },
-        "android": {
-          "active": 71,
-          "pending": 1,
-          "unsupported": 0,
-          "total": 72
-        },
-        "harmony": {
-          "active": 0,
-          "pending": 52,
-          "unsupported": 0,
-          "total": 52
-        }
-      }
-    },
-    "componentsUiReport": "runs/c153932a6-20260703042704/components/",
-    "href": "runs/c153932a6-20260703042704/",
-    "report": "runs/c153932a6-20260703042704/report.html",
-    "componentMatrix": "runs/c153932a6-20260703042704/component-matrix.json",
-    "llms": "runs/c153932a6-20260703042704/metadata.json"
+    "href": "runs/48631ed3f-20260703075006/",
+    "report": "runs/48631ed3f-20260703075006/report.html",
+    "componentMatrix": "runs/48631ed3f-20260703075006/component-matrix.json",
+    "llms": "runs/48631ed3f-20260703075006/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 123,
-    "active": 105,
+    "total": 81,
+    "active": 63,
     "pending": 16,
     "skipped": 2,
     "captureTypes": {
       "component-fixture": {
-        "total": 97,
-        "active": 94,
+        "total": 55,
+        "active": 52,
         "pending": 2,
         "skipped": 1
       },
@@ -191,16 +89,16 @@
     },
     "providers": {
       "react": {
-        "active": 106,
+        "active": 64,
         "pending": 13,
         "unsupported": 0,
-        "total": 119
+        "total": 77
       },
       "android": {
-        "active": 104,
+        "active": 62,
         "pending": 15,
         "unsupported": 0,
-        "total": 119
+        "total": 77
       },
       "harmony": {
         "active": 0,
@@ -210,111 +108,72 @@
       }
     }
   },
-  "raftUi": {
-    "summary": {
-      "total": 42,
-      "same": 0,
-      "pass": 0,
-      "basic-pass": 0,
-      "different": 42,
-      "missing": 0
-    },
-    "analysisSummary": {
-      "total": 42,
-      "ready": 0,
-      "pending": 42
-    },
-    "componentMatrixSummary": {
-      "total": 42,
-      "active": 42,
-      "pending": 0,
-      "skipped": 0,
-      "captureTypes": {
-        "component-fixture": {
-          "total": 42,
-          "active": 42,
-          "pending": 0,
-          "skipped": 0
-        },
-        "real-screen": {
-          "total": 0,
-          "active": 0,
-          "pending": 0,
-          "skipped": 0
-        }
-      },
-      "providers": {
-        "react": {
-          "active": 42,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 42
-        },
-        "android": {
-          "active": 42,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 42
-        }
-      }
-    }
-  },
-  "componentsUi": {
-    "summary": {
-      "total": 71,
-      "same": 0,
-      "pass": 0,
-      "basic-pass": 3,
-      "different": 67,
-      "missing": 1
-    },
-    "analysisSummary": {
-      "total": 71,
-      "ready": 0,
-      "pending": 71
-    },
-    "componentMatrixSummary": {
-      "total": 74,
-      "active": 72,
-      "pending": 1,
-      "skipped": 1,
-      "captureTypes": {
-        "component-fixture": {
-          "total": 74,
-          "active": 72,
-          "pending": 1,
-          "skipped": 1
-        },
-        "real-screen": {
-          "total": 0,
-          "active": 0,
-          "pending": 0,
-          "skipped": 0
-        }
-      },
-      "providers": {
-        "react": {
-          "active": 72,
-          "pending": 0,
-          "unsupported": 0,
-          "total": 72
-        },
-        "android": {
-          "active": 71,
-          "pending": 1,
-          "unsupported": 0,
-          "total": 72
-        },
-        "harmony": {
-          "active": 0,
-          "pending": 52,
-          "unsupported": 0,
-          "total": 52
-        }
-      }
-    }
-  },
   "runs": [
+    {
+      "runId": "48631ed3f-20260703075006",
+      "commit": "48631ed3f-20260703075006",
+      "commitSubject": "fix(home): refresh update notices periodically",
+      "generatedAt": "2026-07-03T07:50:06.654Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 82,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 78,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 82,
+        "ready": 1,
+        "pending": 81
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "href": "runs/48631ed3f-20260703075006/",
+      "report": "runs/48631ed3f-20260703075006/report.html",
+      "componentMatrix": "runs/48631ed3f-20260703075006/component-matrix.json",
+      "llms": "runs/48631ed3f-20260703075006/metadata.json"
+    },
     {
       "runId": "c153932a6-20260703042704",
       "commit": "c153932a6-20260703042704",
