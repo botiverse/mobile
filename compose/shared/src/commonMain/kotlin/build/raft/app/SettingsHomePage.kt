@@ -694,7 +694,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
                 logger = { message -> bridge.logDebug("home_secondary_cache $message") }
             )
         }
-    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
@@ -1601,7 +1601,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }
-    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val localePreferenceStore =
         remember(sharedPreferenceStore) {

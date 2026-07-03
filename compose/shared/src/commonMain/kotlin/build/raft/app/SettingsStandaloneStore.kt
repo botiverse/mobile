@@ -59,7 +59,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             )
         }
     val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
-    val sharedPreferenceStore = remember(pager) { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val dataSource =
         remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {
             SharedSettingsDataSource(
