@@ -106,7 +106,7 @@ internal fun SharedHomeActivityScreen(
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val networkClient = sharedStores.networkClient
     val repository =
         remember(authStore, networkClient) {

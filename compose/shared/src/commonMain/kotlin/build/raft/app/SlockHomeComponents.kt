@@ -318,7 +318,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     LaunchedEffect(payload.instanceId, payload.channels.size, payload.directMessages.size) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val standaloneHomeStore =
         remember(sharedStores) {
             val homeDataSource =

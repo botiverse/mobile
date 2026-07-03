@@ -41,7 +41,7 @@ internal fun rememberStandaloneSettingsEnvironment(
     pager: Pager,
     bridge: BridgeModule
 ): StandaloneSettingsEnvironment {
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
     val authDataSource = sharedStores.authDataSource

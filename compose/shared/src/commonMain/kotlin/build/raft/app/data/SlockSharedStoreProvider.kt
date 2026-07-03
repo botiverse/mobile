@@ -21,12 +21,8 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
-import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlin.coroutines.EmptyCoroutineContext
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
@@ -34,7 +30,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val sharedPreferenceStore: SlockKeyValueStore,
     private val apiEnvironmentKeyValueStore: SlockKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
-    val authSessionEvents: KuiklyAuthSessionEvents,
+    val authSessionClearEvents: SlockAuthSessionClearEventDispatcher,
     val authDataSource: SharedAuthDataSource,
     val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
@@ -54,14 +50,9 @@ internal class SlockSharedStoreProvider private constructor(
 ) {
     private var homeStore: SharedHomeStore? = null
     private var homeActivityStore: SharedActivityStore? = null
-    private var authSessionClearedCallbackRef: CallbackRef? = null
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = homeStore
-
-    fun updatePager(pager: Pager) {
-        authSessionEvents.updatePager(pager)
-    }
 
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -167,38 +158,8 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 
-    fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
-        authSessionClearedCallbackRef?.let(authSessionEvents::removeSessionClearedListener)
-        val scope = CoroutineScope(EmptyCoroutineContext)
-        authSessionClearedCallbackRef =
-            authSessionEvents.addSessionClearedListener { signal ->
-                if (authSessionEvents.isLocalSource(signal)) {
-                    return@addSessionClearedListener
-                }
-                logger("auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
-                scope.launch {
-                    runCatchingPreservingCancellation {
-                        authStore.clearSessionFromSessionClearedNotify(
-                            reason = signal.reason,
-                            previousSessionFingerprint = signal.previousSessionFingerprint
-                        )
-                    }.onSuccess { applied ->
-                        logger(
-                            "auth_session_clear_notify_result result=success applied=$applied " +
-                                "source=${signal.source} reason=${signal.reason}"
-                        )
-                    }.onFailure { throwable ->
-                        logger(
-                            "auth_session_clear_notify_result result=failure source=${signal.source} " +
-                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
-                        )
-                    }
-                }
-            }
-    }
-
     companion object {
-        fun create(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
+        fun create(bridge: BridgeModule): SlockSharedStoreProvider {
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore =
@@ -207,18 +168,14 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = { message -> bridge.log("local_cache $message") }
                 )
             val tasksDataStore = SharedTasksDataStore()
-            val authSessionEvents =
-                KuiklyAuthSessionEvents(
-                    pager = pager,
-                    source = "pager:${pager.pagerId}"
-                )
+            val authSessionClearEvents = SlockAuthSessionClearEventDispatcher()
             val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
             bridge.log("shared_auth_session auth_storage_scope scope=${authKeyValueStoreBinding.scope}")
             val authStore =
                 KeyValueAuthSessionStore(
                     store = authKeyValueStore,
-                    sessionClearEvents = authSessionEvents,
+                    sessionClearEvents = authSessionClearEvents,
                     diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
                 )
             val sharedPreferenceStoreBinding =
@@ -273,7 +230,7 @@ internal class SlockSharedStoreProvider private constructor(
                 sharedPreferenceStore = sharedPreferenceStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
-                authSessionEvents = authSessionEvents,
+                authSessionClearEvents = authSessionClearEvents,
                 authDataSource = authDataSource,
                 networkClient = networkClient,
                 localDataStore = localDataStore,
@@ -316,11 +273,7 @@ internal class SlockSharedStoreProvider private constructor(
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
                 threadSendScope = CoroutineScope(SupervisorJob())
-            ).also { provider ->
-                provider.installAuthSessionClearNotifyBridge { message ->
-                    bridge.log("shared_auth_session $message")
-                }
-            }
+            )
         }
     }
 }
@@ -468,12 +421,9 @@ internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
     internal var homeActivityStore: SharedActivityStore? = null
 
-    fun get(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
-        provider?.let {
-            it.updatePager(pager)
-            return it
-        }
-        return SlockSharedStoreProvider.create(pager, bridge).also {
+    fun get(bridge: BridgeModule): SlockSharedStoreProvider {
+        provider?.let { return it }
+        return SlockSharedStoreProvider.create(bridge).also {
             provider = it
         }
     }

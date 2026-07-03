@@ -134,6 +134,20 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun authSessionClearDispatcherForwardsOnlyWhileBound() {
+        val dispatcher = SlockAuthSessionClearEventDispatcher()
+        val events = RecordingAuthSessionClearEventSink()
+
+        dispatcher.postSessionCleared("before", "fingerprint-before")
+        dispatcher.bindSink(events)
+        dispatcher.postSessionCleared("bound", "fingerprint-bound")
+        dispatcher.unbindSink(events)
+        dispatcher.postSessionCleared("after", "fingerprint-after")
+
+        assertEquals(listOf(RecordedClearEvent("bound", "fingerprint-bound")), events.events)
+    }
+
+    @Test
     fun mmkvAuthSessionStoreSkipsStaleRemoteClearAfterNewLogin() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val events = RecordingAuthSessionClearEventSink()

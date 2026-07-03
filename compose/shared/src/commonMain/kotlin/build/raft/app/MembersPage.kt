@@ -797,7 +797,7 @@ internal fun MembersPageContent() {
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Use the shared provider network client so request scheduling and transport swaps
     // stay centralized instead of being recreated per page.
-    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
@@ -1441,7 +1441,7 @@ private fun rememberMemberDetailRouteProvider(
     pager: Pager,
     bridge: BridgeModule
 ): MemberDetailRouteProvider {
-    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
     val memberRepository: MemberRepository =
