@@ -32,9 +32,9 @@ import kotlinx.coroutines.sync.withLock
 
 internal class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
-    private val dataSource: SharedHomeDataSource,
-    private val scope: CoroutineScope,
-    private val diagnosticsLogger: (String) -> Unit = {},
+    private var dataSource: SharedHomeDataSource,
+    private var scope: CoroutineScope,
+    private var diagnosticsLogger: (String) -> Unit = {},
     private val presenceFlushDelayMillis: Long = 250L,
     /**
      * #211: load the current server's sidebar-order snapshot. The store
@@ -44,7 +44,7 @@ internal class SharedHomeStore(
      * test fixtures and callers that don't pass a real provider keep
      * compiling.
      */
-    private val loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+    private var loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
     /**
@@ -53,16 +53,16 @@ internal class SharedHomeStore(
      * update + rollback. Default is a no-op (returns `Empty`) so existing
      * tests keep compiling.
      */
-    private val updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+    private var updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
-    private val markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+    private var markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
-    private val markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+    private var markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
-    private val archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
+    private var archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
         DataResult.Empty(EmptyReason.NoChannels)
     },
     /**
@@ -72,7 +72,7 @@ internal class SharedHomeStore(
      * optimistic update is rolled back. Default is a no-op so existing
      * tests keep compiling.
      */
-    private val pinUpdateFailureCallback: (String) -> Unit = {},
+    private var pinUpdateFailureCallback: (String) -> Unit = {},
     private val persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList(),
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
@@ -101,6 +101,43 @@ internal class SharedHomeStore(
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
     private var stateDiagnosticsReason: String = "unknown"
     private var stateDiagnosticsIntent: SharedHomeIntent? = null
+
+    fun updateRuntimeIntegrations(
+        dataSource: SharedHomeDataSource,
+        scope: CoroutineScope,
+        diagnosticsLogger: (String) -> Unit = {},
+        loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
+        markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
+        archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
+        pinUpdateFailureCallback: (String) -> Unit = {}
+    ) {
+        loadJob?.cancel()
+        agentDirectMessageStatusJob?.cancel()
+        loadJob = null
+        agentDirectMessageStatusJob = null
+        this.dataSource = dataSource
+        this.scope = scope
+        this.diagnosticsLogger = diagnosticsLogger
+        this.loadSidebarOrder = loadSidebarOrder
+        this.updateSidebarOrder = updateSidebarOrder
+        this.markChannelReadAll = markChannelReadAll
+        this.markChannelUnread = markChannelUnread
+        this.archiveChannel = archiveChannel
+        this.pinUpdateFailureCallback = pinUpdateFailureCallback
+        diagnosticsLogger("home_runtime_integrations_updated")
+    }
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {

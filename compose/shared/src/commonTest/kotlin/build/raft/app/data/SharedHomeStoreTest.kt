@@ -57,6 +57,41 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun cachedStoreRefreshesRuntimeScopeBeforeDispatch() = runBlocking {
+        val originalScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val originalLogs = mutableListOf<String>()
+        val refreshedLogs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
+            scope = originalScope,
+            diagnosticsLogger = originalLogs::add
+        )
+
+        val freshScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        store.updateRuntimeIntegrations(
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-new"))),
+            scope = freshScope,
+            diagnosticsLogger = refreshedLogs::add
+        )
+        store.dispatch(SharedHomeIntent.Start)
+        withTimeout(1_000) {
+            while (store.state.value.content !is SharedHomeContentState.Content) {
+                yield()
+            }
+        }
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals("server-new", content.snapshot.server.id.value)
+        assertContains(refreshedLogs, "home_runtime_integrations_updated")
+        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_receive intent=Start") })
+        assertEquals(emptyList(), originalLogs)
+        originalScope.cancel()
+        freshScope.cancel()
+    }
+
+    @Test
     fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(

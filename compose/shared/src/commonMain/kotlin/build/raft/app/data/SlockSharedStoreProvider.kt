@@ -89,7 +89,20 @@ internal class SlockSharedStoreProvider private constructor(
         scope: CoroutineScope,
         diagnosticsLogger: (String) -> Unit = {}
     ): SharedHomeStore {
-        homeStore?.let { return it }
+        homeStore?.let { store ->
+            store.updateRuntimeIntegrations(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnosticsLogger,
+                loadSidebarOrder = loadSidebarOrder,
+                updateSidebarOrder = updateSidebarOrder,
+                markChannelReadAll = markChannelReadAll,
+                markChannelUnread = markChannelUnread,
+                archiveChannel = archiveChannel,
+                pinUpdateFailureCallback = pinUpdateFailureCallback
+            )
+            return store
+        }
         return SharedHomeStore(
             authStore = authStore,
             dataSource = dataSource,
