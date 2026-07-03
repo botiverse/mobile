@@ -131,6 +131,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
@@ -236,7 +237,6 @@ private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 80
-private const val ThreadMarkdownPreparseBatchDelayMs = 16L
 private const val ThreadMarkdownPreparseDebugEntryLimit = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -8043,6 +8043,10 @@ private data class ThreadMarkdownPreparseCandidate(
     val body: String
 )
 
+private suspend fun awaitThreadMarkdownPreparseFrameSlot() {
+    withFrameNanos { }
+}
+
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     contentExtrasVisible: Boolean
 ): ThreadMarkdownPreparsePlan {
@@ -8296,7 +8300,7 @@ private fun ThreadMessagesList(
             val batches = initialMarkdownPreparsePlan.candidates.chunked(ThreadInitialMarkdownPreparseMessageCount)
             batches.forEachIndexed { index, batch ->
                 if (index > 0) {
-                    delay(ThreadMarkdownPreparseBatchDelayMs)
+                    awaitThreadMarkdownPreparseFrameSlot()
                 }
                 val batchStartedAt = TimeSource.Monotonic.markNow()
                 val result =
