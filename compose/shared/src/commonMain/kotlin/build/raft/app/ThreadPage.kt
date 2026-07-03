@@ -226,7 +226,6 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadLifecycleAction = "appLifecycle"
 private const val ThreadLifecycleResume = "resume"
 private const val ThreadLifecycleShow = "show"
-private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
@@ -9181,8 +9180,9 @@ internal fun threadMessagesLazyItemCount(
         (if (showBottomScrollPadding) 1 else 0)
 
 internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceAtLeast(0)
-        .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
+    // Kuikly RichText native views are reusable; building them offscreen can
+    // leave upper Thread rows with stale blank render state when they scroll in.
+    0
 
 private data class ThreadLazyWindowStats(
     val totalItems: Int,
