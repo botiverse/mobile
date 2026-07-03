@@ -10,7 +10,6 @@ import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -157,29 +156,45 @@ internal fun SlockProgressBar(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(19.dp).padding(end = 3.dp, bottom = 3.dp)) {
+        val shadowOffset = 2.dp
+        Box(modifier = Modifier.fillMaxWidth().height(16.dp + shadowOffset).padding(end = shadowOffset, bottom = shadowOffset)) {
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .offset(x = 3.dp, y = 3.dp)
+                        .offset(x = shadowOffset, y = shadowOffset)
                         .background(SlockColor.ShadowBlack)
             )
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(16.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(SlockStroke.Default)
-            ) {
-                val fillWeight = (percent ?: 40).coerceIn(0, 100).toFloat().coerceAtLeast(0.01f)
-                val emptyWeight = (100f - fillWeight).coerceAtLeast(0.01f)
-                Row(modifier = Modifier.fillMaxWidth().height(12.dp)) {
-                    Box(modifier = Modifier.weight(fillWeight).height(12.dp).background(tone.color))
-                    Box(modifier = Modifier.weight(emptyWeight).height(12.dp))
+            Canvas(modifier = Modifier.fillMaxWidth().height(16.dp)) {
+                val stroke = SlockStroke.Default.toPx()
+                val halfStroke = stroke / 2f
+                val trackSize = Size(
+                    width = (size.width - stroke).coerceAtLeast(0f),
+                    height = (size.height - stroke).coerceAtLeast(0f)
+                )
+                val innerWidth = (size.width - stroke * 2f).coerceAtLeast(0f)
+                val innerHeight = (size.height - stroke * 2f).coerceAtLeast(0f)
+                val fillFraction = ((percent ?: 40).coerceIn(0, 100).toFloat() / 100f).coerceIn(0f, 1f)
+                drawRect(
+                    color = SlockColor.SurfaceWhite,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = trackSize,
+                    style = Fill
+                )
+                if (fillFraction > 0f) {
+                    drawRect(
+                        color = tone.color,
+                        topLeft = Offset(stroke, stroke),
+                        size = Size(width = innerWidth * fillFraction, height = innerHeight),
+                        style = Fill
+                    )
                 }
+                drawRect(
+                    color = SlockColor.BorderBlack,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = trackSize,
+                    style = Stroke(width = stroke)
+                )
             }
         }
     }
