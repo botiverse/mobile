@@ -7,6 +7,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.bridgeModule
@@ -9067,6 +9068,7 @@ private fun ThreadInlineSearchBar(
                 onSubmit = {},
                 onClear = onClear,
                 autoFocus = true,
+                placeholder = "Search this thread…",
                 modifier = Modifier.weight(1f),
             )
             Box(

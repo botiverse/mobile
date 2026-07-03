@@ -14,6 +14,7 @@ import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SlockToolbarChip
@@ -11041,59 +11042,6 @@ private fun SharedHomeSearchIconButton(
         onClick = onClick
     ) {
         SlockLucideIcon(iconName, color = "#FF000000", modifier = Modifier.size(iconSize))
-    }
-}
-
-@Composable
-internal fun SharedHomeSearchInput(
-    query: String,
-    loading: Boolean,
-    interactive: Boolean,
-    onQueryChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-    onClear: () -> Unit,
-    autoFocus: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    if (interactive) {
-        SlockBrutalInputField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = "Search channels, DMs, messages…",
-            maxLines = 1,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
-            showClearWhenNotEmpty = true,
-            onClear = onClear,
-            autoFocus = autoFocus,
-            modifier = modifier
-        )
-    } else {
-        SharedHomeSearchShadowSurface(
-            modifier = modifier.height(38.dp),
-            background = SlockColor.SurfaceWhite,
-            borderWidth = SlockStroke.Default,
-            contentPaddingHorizontal = 0.dp,
-            contentPaddingVertical = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = query.ifBlank { "Search channels, DMs, messages…" },
-                    style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
     }
 }
 
