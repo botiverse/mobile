@@ -1785,39 +1785,108 @@ private fun SlockFilePreviewVideoPanel(
                     detail = meta
                 )
             }
+            SlockFilePreviewVideoControls(
+                isPlaying = isPlaying,
+                canPlay = canPlay,
+                currentTimeMs = currentTimeMs,
+                totalTimeMs = totalTimeMs,
+                playState = playState,
+                onTogglePlay = {
+                    playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
-        Box(modifier = Modifier.height(SlockSpacing.Md))
+    }
+}
+
+@Composable
+private fun SlockFilePreviewVideoControls(
+    isPlaying: Boolean,
+    canPlay: Boolean,
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    playState: PlayState,
+    onTogglePlay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(Color(0xDD000000))
+                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
+                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockBrutalActionButton(
-                label = if (isPlaying) "Pause" else "Play",
-                onClick = {
-                    if (!canPlay) return@SlockBrutalActionButton
-                    playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
-                },
+            SlockBrutalIconButton(
+                iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+                onClick = { if (canPlay) onTogglePlay() },
                 enabled = canPlay,
-                leadingIcon = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
-                minWidth = 94.dp,
-                minHeight = 34.dp,
+                size = 30.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                iconSize = 16.dp,
+                backgroundColor = SlockColor.SurfaceWhite
             )
             Text(
                 text = slockFilePreviewVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                color = SlockColor.SurfaceWhite,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+        }
+        SlockFilePreviewVideoProgressBar(
+            progressPercent = slockFilePreviewVideoProgressPercent(currentTimeMs, totalTimeMs)
+        )
+    }
+}
+
+@Composable
+private fun SlockFilePreviewVideoProgressBar(progressPercent: Int?) {
+    val percent = progressPercent?.coerceIn(0, 100)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .background(Color(0x66000000))
+                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
+    ) {
+        when (percent) {
+            null -> {
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                )
+            }
+            else -> {
+                if (percent > 0) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(percent.toFloat())
+                                .fillMaxSize()
+                                .background(SlockColor.AccentCyan)
+                    )
+                }
+                if (percent < 100) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight((100 - percent).toFloat())
+                                .fillMaxSize()
+                    )
+                }
+            }
         }
     }
 }
@@ -1905,6 +1974,13 @@ internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int
     } else {
         "$stateLabel · $current / $total"
     }
+}
+
+internal fun slockFilePreviewVideoProgressPercent(currentTimeMs: Int, totalTimeMs: Int): Int? {
+    if (totalTimeMs <= 0) return null
+    return ((currentTimeMs.coerceAtLeast(0).toFloat() / totalTimeMs.toFloat()) * 100f)
+        .roundToInt()
+        .coerceIn(0, 100)
 }
 
 private fun Int.slockFilePreviewVideoDurationLabel(): String {

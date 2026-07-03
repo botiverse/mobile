@@ -366,6 +366,14 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun videoProgressPercentTracksDurationBounds() {
+        assertEquals(25, slockFilePreviewVideoProgressPercent(currentTimeMs = 15_000, totalTimeMs = 60_000))
+        assertEquals(0, slockFilePreviewVideoProgressPercent(currentTimeMs = -1_000, totalTimeMs = 60_000))
+        assertEquals(100, slockFilePreviewVideoProgressPercent(currentTimeMs = 75_000, totalTimeMs = 60_000))
+        assertEquals(null, slockFilePreviewVideoProgressPercent(currentTimeMs = 15_000, totalTimeMs = 0))
+    }
+
+    @Test
     fun fileIconUsesSpreadsheetForWorkbookFiles() {
         val icon =
             slockFilePreviewFileIconName(
