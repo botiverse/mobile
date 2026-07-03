@@ -326,8 +326,7 @@ class SlockMarkdownTest {
         assertEquals(listOf(true, false, false, false, false), plan.tagTokens().map { it.highlighted })
         val expectedTokenIds = plan.tagTokens().mapTo(mutableSetOf()) { it.id }
         assertEquals(expectedTokenIds, annotated.slockMarkdownClickableTags())
-        assertEquals(expectedTokenIds, annotated.slockMarkdownClickableLinkTags())
-        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+        assertEquals(expectedTokenIds, annotated.slockMarkdownInlineContentIds())
     }
 
     @Test
@@ -344,14 +343,14 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun taskReferenceSpanAvoidsTightBackgroundHighlight() {
+    fun taskReferenceUsesReactChipStyleFallback() {
         val taskStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Task)
         val channelStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
 
-        assertEquals(Color.Unspecified, taskStyle.background)
-        assertEquals(TextDecoration.Underline, taskStyle.textDecoration)
+        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), taskStyle.background)
+        assertEquals(null, taskStyle.textDecoration)
         assertEquals(SlockColor.TextBlack, taskStyle.color)
-        assertEquals(14.sp, taskStyle.fontSize)
+        assertEquals(SlockType.ButtonBold.fontSize, taskStyle.fontSize)
 
         assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), channelStyle.background)
         assertEquals(SlockType.ButtonBold.fontSize, channelStyle.fontSize)
@@ -562,9 +561,8 @@ class SlockMarkdownTest {
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.slockMarkdownClickableTags()
         )
-        assertEquals(expectedTagIds, annotated.slockMarkdownClickableLinkTags())
-        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
-        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
+        assertEquals(expectedTagIds, annotated.slockMarkdownInlineContentIds())
+        assertEquals(expectedTagIds, annotator.inlineContent?.invoke().orEmpty().keys)
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
@@ -652,13 +650,15 @@ class SlockMarkdownTest {
                 isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
             )
 
-        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
+        assertEquals(
+            setOf("slock:5", "slock:16"),
+            annotator.inlineContent?.invoke().orEmpty().keys
+        )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
         assertEquals("Ping @artin for #405 and  mimo ", annotated.text)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableLinkTags())
-        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownInlineContentIds())
         assertEquals(listOf(" mimo "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
@@ -675,14 +675,16 @@ class SlockMarkdownTest {
                     )
             )
 
-        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
+        assertEquals(
+            setOf("slock:18", "slock:28"),
+            annotator.inlineContent?.invoke().orEmpty().keys
+        )
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
         assertEquals("Bold text for @artin in #markdown专修 with  code ", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableLinkTags())
-        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+        assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownInlineContentIds())
         assertEquals(listOf(" code "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
@@ -1016,11 +1018,6 @@ class SlockMarkdownTest {
     private fun AnnotatedString.slockMarkdownClickableTags(): Set<String> =
         getStringAnnotations(SlockMarkdownTagAnnotationTag, 0, length)
             .map { it.item }
-            .toSet()
-
-    private fun AnnotatedString.slockMarkdownClickableLinkTags(): Set<String> =
-        getLinkAnnotations(0, length)
-            .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
             .toSet()
 
     private fun validThreadMarkdownTags(
