@@ -6159,6 +6159,7 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "task524_markdown_visible"
 
 internal fun threadVisualFixture(
     fixture: String,
@@ -6551,6 +6552,66 @@ internal fun threadVisualFixture(
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#首页专修",
+                subtitle = "Task #524 markdown visibility fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                streamChannelId = "thread-task524-visible",
+                sourceThreadId = "thread-task524-visible",
+                parentChannelId = "channel-home",
+                parentMessageId = "parent-task524-visible",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("首页专修"),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_task524_markdown_visible",
+                            authorId = "agent-cc-wow",
+                            authorName = "CC-Wow",
+                            authorKind = "agent",
+                            avatarLabel = "CW",
+                            timestampLabel = "07/03 13:24",
+                            messageType = "Chat",
+                            body =
+                                "Review summary before the list must remain visible.\n\n" +
+                                    "- Bullet item text must render after the marker.\n" +
+                                    "- Second bullet keeps enough remaining row width for rich text.\n\n" +
+                                    "Numbered section:\n\n" +
+                                    "1. First numbered item text must not disappear.\n" +
+                                    "2. Second numbered item with `inline code` must still render.\n" +
+                                    "3. Third numbered item keeps Chinese text visible: 这里的正文不能只剩编号。\n" +
+                                    "4. Fourth numbered item wraps to the next line without leaving marker-only rows.\n" +
+                                    "5. Fifth numbered item closes the task #524 regression shape.",
+                            threadChannelId = "thread-msg-task524-markdown-visible"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cc-wow",
+                            displayName = "CC-Wow",
+                            handle = "CC-Wow",
+                            kind = "agent",
+                            avatarLabel = "CW"
                         )
                     ),
                 showComposer = false,

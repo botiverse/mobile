@@ -752,6 +752,26 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun task524MarkdownVisibleFixtureKeepsParagraphAndListText() {
+        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE, "visual-thread-task524-markdown-visible")
+        val message = payload.messages.single()
+
+        assertEquals("visual-thread-task524-markdown-visible", payload.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-home", payload.parentChannelId)
+        assertEquals("parent-task524-visible", payload.parentMessageId)
+        assertFalse(payload.showReplyActions)
+        assertFalse(payload.showTaskOpenActions)
+        assertEquals("CC-Wow", message.authorName)
+        assertTrue(message.body.contains("Review summary before the list must remain visible."))
+        assertTrue(message.body.contains("- Bullet item text must render after the marker."))
+        assertTrue(message.body.contains("1. First numbered item text must not disappear."))
+        assertTrue(message.body.contains("2. Second numbered item with `inline code` must still render."))
+        assertTrue(message.body.contains("这里的正文不能只剩编号"))
+        assertTrue(message.body.contains("task #524"))
+    }
+
+    @Test
     fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
         val attachment =
             KuiklyThreadAttachmentItem(

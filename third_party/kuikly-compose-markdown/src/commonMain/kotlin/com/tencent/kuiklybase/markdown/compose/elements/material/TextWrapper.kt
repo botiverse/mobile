@@ -5,6 +5,7 @@ import androidx.compose.runtime.Stable
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.isUnspecified
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -43,7 +44,10 @@ fun MarkdownBasicText(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     // Note: This component is ported over from Material2 Text - to remove the dependency on Material
-    val overrideColorOrUnspecified: Color = color ?: style.color ?: LocalMarkdownColors.current.text
+    val overrideColorOrUnspecified: Color =
+        color.markdownSpecifiedOrNull()
+            ?: style.color.markdownSpecifiedOrNull()
+            ?: LocalMarkdownColors.current.text
     val styleMergeStartMark = TimeSource.Monotonic.markNow()
     val mergedStyle = style.merge(
         fontSize = fontSize,
@@ -112,7 +116,10 @@ fun MarkdownBasicText(
     onTextLayout: (TextLayoutResult) -> Unit = {},
 ) {
     // Note: This component is ported over from Material2 Text - to remove the dependency on Material
-    val overrideColorOrUnspecified: Color = color ?: style.color ?: LocalMarkdownColors.current.text
+    val overrideColorOrUnspecified: Color =
+        color.markdownSpecifiedOrNull()
+            ?: style.color.markdownSpecifiedOrNull()
+            ?: LocalMarkdownColors.current.text
 
     val styleMergeStartMark = TimeSource.Monotonic.markNow()
     val mergedStyle = style.merge(
@@ -164,6 +171,9 @@ fun MarkdownBasicText(
         )
     }
 }
+
+private fun Color?.markdownSpecifiedOrNull(): Color? =
+    if (this == null || isUnspecified) null else this
 
 
 /**
