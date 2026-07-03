@@ -11,6 +11,10 @@ import build.raft.app.SlockType
 import build.raft.app.TextField
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -32,6 +36,8 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -47,6 +53,16 @@ internal data class SlockSelectionPopoverOption(
     val enabled: Boolean = true,
     val italic: Boolean = false,
     val reserveLeadingSlot: Boolean = false,
+    val leadingIconName: SlockLucideIconName? = null
+)
+
+internal data class SlockRaftUiSelectionOption(
+    val id: String,
+    val label: String,
+    val selected: Boolean = false,
+    val enabled: Boolean = true,
+    val italic: Boolean = false,
+    val reserveLeadingSlot: Boolean = true,
     val leadingIconName: SlockLucideIconName? = null
 )
 
@@ -141,6 +157,47 @@ internal fun SlockSelectionPopover(
             }
         }
     }
+}
+
+@Composable
+internal fun SlockRaftUiSelectionPopover(
+    title: String,
+    options: List<SlockRaftUiSelectionOption>,
+    modifier: Modifier = Modifier,
+    selectedId: String? = null,
+    showHeader: Boolean = true,
+    showClear: Boolean = false,
+    search: String? = null,
+    searchPlaceholder: String = "Search...",
+    emptyLabel: String = "No matches",
+    onClear: () -> Unit = {},
+    onSelect: (SlockRaftUiSelectionOption) -> Unit = {}
+) {
+    SlockSelectionPopover(
+        title = title,
+        options =
+            options.map { option ->
+                SlockSelectionPopoverOption(
+                    id = option.id,
+                    label = option.label,
+                    checked = option.selected || option.id == selectedId,
+                    enabled = option.enabled,
+                    italic = option.italic,
+                    reserveLeadingSlot = option.reserveLeadingSlot,
+                    leadingIconName = option.leadingIconName
+                )
+            },
+        modifier = modifier,
+        showHeader = showHeader,
+        showClear = showClear,
+        search = search,
+        searchPlaceholder = searchPlaceholder,
+        emptyLabel = emptyLabel,
+        onClear = onClear,
+        onSelect = { selected ->
+            options.firstOrNull { it.id == selected.id }?.let(onSelect)
+        }
+    )
 }
 
 @Composable
@@ -240,6 +297,182 @@ internal fun SlockSelectTrigger(
             )
         }
     }
+}
+
+@Composable
+internal fun SlockRaftUiControlledSelectionPopover(
+    expanded: Boolean,
+    anchor: Offset,
+    title: String,
+    options: List<SlockRaftUiSelectionOption>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    selectedId: String? = null,
+    width: Dp = 220.dp,
+    rowHeight: Dp = 36.dp,
+    emptyHeight: Dp = 44.dp,
+    shadowOffset: Dp = 3.dp,
+    horizontalOffset: Dp = 0.dp,
+    verticalOffset: Dp = 8.dp,
+    horizontalAutoFlip: Boolean = true,
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto,
+    showHeader: Boolean = true,
+    showClear: Boolean = false,
+    search: String? = null,
+    searchPlaceholder: String = "Search...",
+    emptyLabel: String = "No matches",
+    onClear: () -> Unit = {}
+) {
+    if (!expanded) return
+    val density = LocalDensity.current
+    val headerHeight = if (showHeader) 35.dp else 0.dp
+    val searchHeight = if (search != null) 47.dp else 0.dp
+    val optionHeight =
+        if (options.isEmpty()) {
+            emptyHeight
+        } else {
+            ((rowHeight.value * options.size) + (SlockStroke.Thin.value * (options.size - 1).coerceAtLeast(0))).dp
+        }
+    val contentSize =
+        with(density) {
+            Size(
+                width = (width + shadowOffset).toPx(),
+                height = (headerHeight + searchHeight + optionHeight + shadowOffset).toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = contentSize,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
+        horizontalOffset = with(density) { horizontalOffset.toPx() },
+        verticalOffset = with(density) { verticalOffset.toPx() },
+        horizontalAutoFlip = horizontalAutoFlip,
+        verticalPlacement = verticalPlacement
+    ) { popoverModifier, _ ->
+        SlockRaftUiSelectionPopover(
+            title = title,
+            options = options,
+            selectedId = selectedId,
+            modifier = popoverModifier.width(width),
+            showHeader = showHeader,
+            showClear = showClear,
+            search = search,
+            searchPlaceholder = searchPlaceholder,
+            emptyLabel = emptyLabel,
+            onClear = onClear,
+            onSelect = { option ->
+                onSelect(option.id)
+                onDismiss()
+            }
+        )
+    }
+}
+
+@Composable
+internal fun SlockRaftUiControlledSelect(
+    expanded: Boolean,
+    anchor: Offset,
+    options: List<SlockRaftUiSelectionOption>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    title: String = "Options",
+    selectedLabel: String = "",
+    placeholder: String = "Select...",
+    enabled: Boolean = true,
+    triggerHeight: Dp = 40.dp,
+    menuWidth: Dp = 220.dp,
+    rowHeight: Dp = 36.dp,
+    search: String? = null,
+    searchPlaceholder: String = "Search...",
+    emptyLabel: String = "No matches",
+    showClear: Boolean = false,
+    onClear: () -> Unit = {},
+    onTriggerClick: () -> Unit = {}
+) {
+    val shadowOffset = if (enabled) 3.dp else 0.dp
+    val selectedOption = options.firstOrNull { it.id == selectedId }
+    val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
+    SlockSelectTrigger(
+        label = displayLabel,
+        modifier = modifier,
+        enabled = enabled,
+        expanded = expanded,
+        height = triggerHeight,
+        onClick = onTriggerClick
+    )
+    SlockRaftUiControlledSelectionPopover(
+        expanded = expanded && enabled,
+        anchor = anchor,
+        title = title,
+        options = options,
+        selectedId = selectedId,
+        onSelect = onSelect,
+        onDismiss = onDismiss,
+        width = menuWidth,
+        rowHeight = rowHeight,
+        verticalOffset = triggerHeight + shadowOffset + 3.dp,
+        showClear = showClear,
+        search = search,
+        searchPlaceholder = searchPlaceholder,
+        emptyLabel = emptyLabel,
+        onClear = onClear
+    )
+}
+
+@Composable
+internal fun SlockRaftUiSelectField(
+    options: List<SlockRaftUiSelectionOption>,
+    selectedId: String,
+    onSelect: (SlockRaftUiSelectionOption) -> Unit,
+    modifier: Modifier = Modifier,
+    title: String = "Options",
+    placeholder: String = "Select...",
+    selectedLabel: String = "",
+    enabled: Boolean = true,
+    triggerHeight: Dp = 40.dp,
+    rowHeight: Dp = 36.dp,
+    search: String? = null,
+    searchPlaceholder: String = "Search...",
+    emptyLabel: String = "No matches"
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
+    var triggerRootWidthPx by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val menuWidth = if (triggerRootWidthPx > 0f) with(density) { triggerRootWidthPx.toDp() } else 220.dp
+    SlockRaftUiControlledSelect(
+        expanded = expanded,
+        anchor = triggerRootOffset,
+        options = options,
+        selectedId = selectedId,
+        selectedLabel = selectedLabel,
+        placeholder = placeholder,
+        enabled = enabled,
+        title = title,
+        triggerHeight = triggerHeight,
+        menuWidth = menuWidth,
+        rowHeight = rowHeight,
+        search = search,
+        searchPlaceholder = searchPlaceholder,
+        emptyLabel = emptyLabel,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    triggerRootOffset = coordinates.positionInRoot()
+                    triggerRootWidthPx = coordinates.size.width.toFloat()
+                },
+        onTriggerClick = { expanded = !expanded },
+        onDismiss = { expanded = false },
+        onSelect = { id ->
+            options.firstOrNull { it.id == id }?.let(onSelect)
+        }
+    )
 }
 
 @Composable

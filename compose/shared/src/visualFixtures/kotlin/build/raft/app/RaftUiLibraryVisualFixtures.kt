@@ -12,6 +12,8 @@ import build.raft.app.components.SlockRaftUiButton
 import build.raft.app.components.SlockRaftUiButtonVariant
 import build.raft.app.components.SlockRaftUiCheckboxLabelRow
 import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockRaftUiControlledSelect
+import build.raft.app.components.SlockRaftUiControlledSelectionPopover
 import build.raft.app.components.SlockRaftUiEmptyState
 import build.raft.app.components.SlockRaftUiField
 import build.raft.app.components.SlockRaftUiInlineCode
@@ -23,6 +25,7 @@ import build.raft.app.components.SlockRaftUiRadioRow
 import build.raft.app.components.SlockRaftUiSegmentedControl
 import build.raft.app.components.SlockRaftUiSegmentedItem
 import build.raft.app.components.SlockRaftUiSelectTrigger
+import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.SlockRaftUiSpinner
 import build.raft.app.components.SlockRaftUiStatusDot
 import build.raft.app.components.SlockRaftUiTextarea
@@ -607,12 +610,25 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             modifier = Modifier.offset(x = 204.dp, y = 16.dp).width(170.dp),
             variant = SlockRaftUiButtonVariant.Outline
         )
-        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 204.dp, y = 82.dp).width(170.dp)) {
-            SlockRaftUiSurfaceLabel("Review gate")
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                SlockRaftUiTextSans("Fixed portal capture.")
-            }
-        }
+        SlockRaftUiControlledSelectionPopover(
+            expanded = true,
+            anchor = Offset(204f, 66f),
+            title = "Review gate",
+            options =
+                listOf(
+                    SlockRaftUiSelectionOption(id = "ready", label = "Ready for review", selected = true),
+                    SlockRaftUiSelectionOption(id = "blocked", label = "Blocked", enabled = false),
+                    SlockRaftUiSelectionOption(id = "draft", label = "Draft")
+                ),
+            selectedId = "ready",
+            search = "review",
+            showClear = true,
+            onClear = {},
+            onSelect = {},
+            onDismiss = {},
+            width = 170.dp,
+            verticalOffset = 16.dp
+        )
 
         SlockRaftUiButton(
             label = "Tooltip trigger",
@@ -650,40 +666,43 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             SlockRaftUiMenuRow("Archive", disabled = true)
         }
 
-        SlockRaftUiSelectTrigger(
-            label = "Raft UI Library",
-            modifier = Modifier.offset(x = 204.dp, y = 456.dp).width(170.dp),
+        SlockRaftUiControlledSelect(
             expanded = true,
-            height = 32.dp
+            anchor = Offset(204f, 456f),
+            options =
+                listOf(
+                    SlockRaftUiSelectionOption(id = "library", label = "Raft UI Library", selected = true),
+                    SlockRaftUiSelectionOption(id = "components", label = "Components Real Diff"),
+                    SlockRaftUiSelectionOption(id = "product", label = "Product Visual Diff", enabled = false)
+                ),
+            selectedId = "library",
+            title = "Report scope",
+            modifier = Modifier.offset(x = 204.dp, y = 456.dp).width(170.dp),
+            triggerHeight = 32.dp,
+            menuWidth = 170.dp,
+            onSelect = {},
+            onDismiss = {},
+            onTriggerClick = {}
         )
-        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 204.dp, y = 494.dp).width(170.dp)) {
-            SlockRaftUiSurfaceLabel("Report scope")
-            SlockRaftUiMenuRow("Raft UI Library", trailing = "✓", highlighted = true)
-            SlockRaftUiMenuRow("Components Real Diff")
-            SlockRaftUiMenuRow("Product Visual Diff")
-        }
 
-        SlockRaftUiSelectTrigger(
-            label = "Android capture",
+        SlockRaftUiControlledSelect(
+            expanded = true,
+            anchor = Offset(16f, 590f),
+            options = emptyList(),
+            selectedId = "",
+            selectedLabel = "Android capture",
+            title = "Matching reports",
             modifier = Modifier.offset(x = 16.dp, y = 590.dp).width(170.dp),
-            height = 32.dp
+            triggerHeight = 32.dp,
+            menuWidth = 220.dp,
+            search = "and",
+            emptyLabel = "No reports match",
+            showClear = true,
+            onClear = {},
+            onSelect = {},
+            onDismiss = {},
+            onTriggerClick = {}
         )
-        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 16.dp, y = 628.dp).width(220.dp)) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                SlockRaftUiTextMono("and")
-            }
-            SlockRaftUiSurfaceLabel("Matching reports")
-            SlockRaftUiMenuRow("Android capture", trailing = "✓")
-        }
     }
 }
 

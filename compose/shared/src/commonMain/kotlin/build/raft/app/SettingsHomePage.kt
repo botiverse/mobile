@@ -14,6 +14,8 @@ import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockRaftUiSelectField
+import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockSwitchButton
@@ -5445,10 +5447,11 @@ private fun SettingsConnectedAppsMarketplaceCard(
             placeholder = "Search apps",
             onValueChange = onSearchChange
         )
-        SlockBrutalSelectField(
+        SlockRaftUiSelectField(
             options = categoryOptions,
             selectedId = resolvedCategory,
             onSelect = { onCategoryChange(it.id) },
+            title = "Category",
             placeholder = "All categories"
         )
         if (marketplace.isEmpty()) {
@@ -8346,12 +8349,12 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsErrorFor
             it.errorCode != null
     }?.errorCode
 
-private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(): List<SlockBrutalSelectOption> =
-    listOf(SlockBrutalSelectOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, "All categories")) +
+private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(): List<SlockRaftUiSelectionOption> =
+    listOf(SlockRaftUiSelectionOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, "All categories")) +
         map { it.category.trim().ifBlank { "Other" } }
             .distinct()
             .sorted()
-            .map { SlockBrutalSelectOption(it, it.settingsConnectedAppCategoryLabel()) }
+            .map { SlockRaftUiSelectionOption(it, it.settingsConnectedAppCategoryLabel()) }
 
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppFilteredMarketplace(
     search: String,
