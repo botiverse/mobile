@@ -20,6 +20,7 @@ import org.json.JSONObject
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
     private val webView = WebView(context)
+    private var destroyed: Boolean = false
     private var src: String = ""
     private var loadedSrc: String = ""
     private var allowedUri: Uri? = null
@@ -39,8 +40,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         configureWebView()
     }
 
-    override fun setProp(propKey: String, propValue: Any): Boolean =
-        when (propKey) {
+    override fun setProp(propKey: String, propValue: Any): Boolean {
+        if (destroyed) return true
+        return when (propKey) {
             PROP_SRC -> {
                 updateSrc(propValue.toString())
                 true
@@ -87,9 +89,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             else -> super.setProp(propKey, propValue)
         }
+    }
 
-    override fun resetProp(propKey: String): Boolean =
-        when (propKey) {
+    override fun resetProp(propKey: String): Boolean {
+        if (destroyed) return true
+        return when (propKey) {
             PROP_SRC -> {
                 updateSrc("")
                 true
@@ -136,13 +140,24 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             else -> super.resetProp(propKey)
         }
+    }
 
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
         super.setLayoutParams(params)
+        if (destroyed) return
         webView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     }
 
     override fun onDestroy() {
+        if (destroyed) {
+            super.onDestroy()
+            return
+        }
+        destroyed = true
+        loadSuccessCallback = null
+        loadFailureCallback = null
+        navigationBlockedCallback = null
+        urlChangeCallback = null
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.webChromeClient = null
@@ -180,6 +195,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     isUserGesture: Boolean,
                     resultMsg: android.os.Message?
                 ): Boolean {
+                    if (destroyed) return false
                     notifyNavigationBlocked("")
                     return false
                 }
@@ -187,6 +203,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         webView.webViewClient =
             object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    if (destroyed) return
                     super.onPageStarted(view, url, favicon)
                     url?.let { notifyUrlChange(it) }
                     if (url != null && !allowNavigation && !isAllowedMainDocumentUrl(url)) {
@@ -196,6 +213,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
+                    if (destroyed) return
                     super.onPageFinished(view, url)
                     url?.let { notifyUrlChange(it) }
                     if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
@@ -206,12 +224,13 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
                 @Suppress("OVERRIDE_DEPRECATION")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                    shouldBlockNavigation(url)
+                    if (destroyed) true else shouldBlockNavigation(url)
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
-                    shouldBlockNavigation(request?.url?.toString())
+                    if (destroyed) true else shouldBlockNavigation(request?.url?.toString())
 
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    if (destroyed) return null
                     val url = request?.url?.toString()
                     if (request?.isForMainFrame == true && !allowNavigation && shouldBlockNavigation(url)) {
                         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
@@ -224,6 +243,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     request: WebResourceRequest?,
                     error: android.webkit.WebResourceError?
                 ) {
+                    if (destroyed) return
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
                         val reason =
@@ -238,47 +258,59 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
                 @Suppress("OVERRIDE_DEPRECATION")
                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                    if (destroyed) return
                     super.onReceivedError(view, errorCode, description, failingUrl)
                     notifyLoadFailure(description ?: "webview_load_failed")
                 }
             }
         webView.setDownloadListener(
-            DownloadListener { url, _, _, _, _ -> notifyNavigationBlocked(url.orEmpty()) }
+            DownloadListener { url, _, _, _, _ ->
+                if (!destroyed) {
+                    notifyNavigationBlocked(url.orEmpty())
+                }
+            }
         )
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun updateAllowScripts(next: Boolean) {
+        if (destroyed) return
         if (allowScripts == next) return
         allowScripts = next
         webView.settings.javaScriptEnabled = next
     }
 
     private fun updateAllowNavigation(next: Boolean) {
+        if (destroyed) return
         allowNavigation = next
     }
 
     private fun updateDomStorageEnabled(next: Boolean) {
+        if (destroyed) return
         if (domStorageEnabled == next) return
         domStorageEnabled = next
         webView.settings.domStorageEnabled = next
     }
 
     private fun updateCacheEnabled(next: Boolean) {
+        if (destroyed) return
         if (cacheEnabled == next) return
         cacheEnabled = next
         webView.settings.cacheMode = if (next) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
     }
 
     private fun updateEphemeral(next: Boolean) {
+        if (destroyed) return
         ephemeral = next
     }
 
     private fun updateInjectedJavaScript(next: String) {
+        if (destroyed) return
         injectedJavaScript = next
     }
 
     private fun updateSrc(next: String) {
+        if (destroyed) return
         val normalized = next.trim()
         if (src == normalized) return
         src = normalized
@@ -322,18 +354,22 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     private fun notifyLoadFailure(reason: String) {
+        if (destroyed) return
         loadFailureCallback?.invoke(mapOf("reason" to reason))
     }
 
     private fun notifyNavigationBlocked(url: String) {
+        if (destroyed) return
         navigationBlockedCallback?.invoke(mapOf("url" to url))
     }
 
     private fun notifyUrlChange(url: String) {
+        if (destroyed) return
         urlChangeCallback?.invoke(mapOf("url" to url))
     }
 
     private fun evaluateInjectedJavaScript() {
+        if (destroyed) return
         val script = injectedJavaScript.takeIf { allowScripts && it.isNotBlank() } ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             webView.evaluateJavascript(script, null)

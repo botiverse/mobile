@@ -367,10 +367,47 @@ private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?
         (function() {
           try {
             $writes;
+            ${settingsBillingMobileWebViewChromeScript()}
           } catch (error) {}
         })();
     """.trimIndent()
 }
+
+private fun settingsBillingMobileWebViewChromeScript(): String =
+    """
+        var mobileBillingStyleId = "slock-mobile-billing-webview-style";
+        var mobileBillingStyle = document.getElementById(mobileBillingStyleId);
+        if (!mobileBillingStyle) {
+          mobileBillingStyle = document.createElement("style");
+          mobileBillingStyle.id = mobileBillingStyleId;
+          mobileBillingStyle.textContent = [
+            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-hidden-header=\"true\"] { display: none !important; }",
+            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] { padding-top: 0 !important; }"
+          ].join("\n");
+          document.head.appendChild(mobileBillingStyle);
+        }
+        document.documentElement.setAttribute("data-slock-mobile-billing-webview", "true");
+        var applyMobileBillingChrome = function() {
+          var headers = Array.prototype.slice.call(document.querySelectorAll(".h-panel-header"));
+          for (var index = 0; index < headers.length; index += 1) {
+            var header = headers[index];
+            var text = (header.textContent || "").replace(/\s+/g, " ").trim();
+            if (text.indexOf("Plan & Billing") === -1) {
+              continue;
+            }
+            header.setAttribute("data-slock-mobile-billing-hidden-header", "true");
+            var content = header.nextElementSibling;
+            if (content && content.classList && content.classList.contains("overflow-y-auto")) {
+              content.setAttribute("data-slock-mobile-billing-content", "true");
+            }
+          }
+        };
+        applyMobileBillingChrome();
+        if (typeof MutationObserver !== "undefined" && !window.__slockMobileBillingChromeObserver) {
+          window.__slockMobileBillingChromeObserver = new MutationObserver(applyMobileBillingChrome);
+          window.__slockMobileBillingChromeObserver.observe(document.documentElement, { childList: true, subtree: true });
+        }
+    """.trimIndent()
 
 private fun settingsBillingLocalStorageWrite(key: String, value: String): String =
     "window.localStorage.setItem(${settingsBillingWebViewJson.encodeToString(key)}, ${settingsBillingWebViewJson.encodeToString(value)})"
