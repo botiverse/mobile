@@ -346,6 +346,31 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityFooterSlotsHideTaskWhenTaskStatusBadgesDisabled() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                replyCount = 12,
+                taskNumber = 177,
+                taskStatus = TaskStatus.InProgress,
+                hasMention = true,
+                unreadCount = 3
+            )
+
+        assertEquals(
+            listOf(
+                SharedActivityFooterSlot.Replies,
+                SharedActivityFooterSlot.Mention,
+                SharedActivityFooterSlot.New
+            ),
+            item.activityFooterSlots(activityTaskStatusBadgesEnabled = false)
+        )
+    }
+
+    @Test
     fun activityThreadTaskBadgeUsesSingleLineReactLabel() {
         val item =
             InboxItem(

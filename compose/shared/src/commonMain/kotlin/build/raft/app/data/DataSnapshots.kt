@@ -1095,6 +1095,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
         ),
+    val activityTaskStatusBadges: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
+        ),
     val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
         SettingsMobileMultiSelectionSnapshot(
             selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),

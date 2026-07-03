@@ -702,6 +702,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
+        store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("saved", true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
@@ -711,6 +712,7 @@ class SharedSettingsStoreTest {
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
+        assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
@@ -719,6 +721,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
+        assertEquals(true, mobile.activityTaskStatusBadges.enabled)
+        assertEquals("Enabled", mobile.activityTaskStatusBadges.statusLabel)
         assertEquals(setOf("saved"), mobile.threadRowAffordances.selectedKeys)
         assertEquals("Saved", mobile.threadRowAffordances.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
@@ -2796,6 +2800,7 @@ class SharedSettingsStoreTest {
         var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
         var compactConsecutiveMessages: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
+        var activityTaskStatusBadgesEnabled: Boolean = false,
         var threadRowAffordances: Set<ThreadRowAffordancePreference> =
             ThreadRowAffordancePreference.Default
     ) : ChatLayoutPreferenceRepository {
@@ -2804,6 +2809,7 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
 
@@ -2815,6 +2821,7 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = this.alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2827,6 +2834,7 @@ class SharedSettingsStoreTest {
                 largeScreenNavigation = navigation,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
 
@@ -2836,6 +2844,7 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2846,6 +2855,18 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                threadRowAffordances = threadRowAffordances
+            )
+        }
+
+        override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            activityTaskStatusBadgesEnabled = enabled
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2864,6 +2885,7 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 threadRowAffordances = threadRowAffordances
             )
         }

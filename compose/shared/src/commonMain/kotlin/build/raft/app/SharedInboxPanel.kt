@@ -101,6 +101,7 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    activityTaskStatusBadgesEnabled: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -178,6 +179,7 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         listState = listState,
+        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         onTitleClick = onTitleClick,
         modifier = modifier
     )
@@ -197,6 +199,7 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    activityTaskStatusBadgesEnabled: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -209,6 +212,7 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         listState = listState,
+        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         onTitleClick = onTitleClick,
         modifier = modifier
     )
@@ -225,6 +229,7 @@ internal fun SharedHomeActivityPanel(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
+    activityTaskStatusBadgesEnabled: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -242,6 +247,7 @@ internal fun SharedHomeActivityPanel(
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
             listState = listState,
+            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             onTitleClick = onTitleClick,
             modifier = modifier
         )
@@ -258,6 +264,7 @@ private fun SharedActivityPanelContent(
     topSafeAreaPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState,
+    activityTaskStatusBadgesEnabled: Boolean,
     onTitleClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
@@ -285,6 +292,7 @@ private fun SharedActivityPanelContent(
             bottomContentPadding = bottomContentPadding,
             timeContext = timeContext,
             listState = listState,
+            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -298,6 +306,7 @@ private fun SharedActivityBodyContent(
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState,
+    activityTaskStatusBadgesEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -359,7 +368,8 @@ private fun SharedActivityBodyContent(
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
-                    listState = listState
+                    listState = listState,
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
                 )
         }
     }
@@ -475,7 +485,8 @@ private fun SharedActivityList(
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    activityTaskStatusBadgesEnabled: Boolean
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -559,6 +570,7 @@ private fun SharedActivityList(
                     selected = selectedItemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
                     onOpen = {
                         selectedItemKey = item.key
@@ -675,6 +687,7 @@ private fun SharedActivityRow(
     selected: Boolean,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
+    activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
     onOpen: () -> Unit,
     onDone: () -> Unit,
@@ -739,7 +752,10 @@ private fun SharedActivityRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                SharedActivityFooter(item)
+                SharedActivityFooter(
+                    item = item,
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
@@ -777,13 +793,16 @@ private fun Modifier.activityRowGestures(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun SharedActivityFooter(item: InboxItem) {
+private fun SharedActivityFooter(
+    item: InboxItem,
+    activityTaskStatusBadgesEnabled: Boolean
+) {
     FlowRow(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        item.activityFooterSlots().forEach { slot ->
+        item.activityFooterSlots(activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled).forEach { slot ->
             when (slot) {
                 SharedActivityFooterSlot.Replies ->
                     Text(
@@ -1144,12 +1163,14 @@ internal enum class SharedActivityFooterSlot {
     New
 }
 
-internal fun InboxItem.activityFooterSlots(): List<SharedActivityFooterSlot> {
+internal fun InboxItem.activityFooterSlots(
+    activityTaskStatusBadgesEnabled: Boolean = true
+): List<SharedActivityFooterSlot> {
     val slots = mutableListOf<SharedActivityFooterSlot>()
     if (kind == InboxItemKind.Thread) {
         slots += SharedActivityFooterSlot.Replies
     }
-    if (taskNumber != null && taskStatus != null) {
+    if (activityTaskStatusBadgesEnabled && taskNumber != null && taskStatus != null) {
         slots += SharedActivityFooterSlot.Task
     }
     if (hasMention && unreadCount > 0) {

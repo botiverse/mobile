@@ -340,6 +340,7 @@ sealed interface SharedSettingsIntent {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -817,6 +818,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setActivityTaskStatusBadges(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_activity_task_status_badges_unavailable", retryable = false))
+        repository.setActivityTaskStatusBadgesEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setThreadRowAffordance(
         affordanceKey: String,
         enabled: Boolean
@@ -1047,6 +1056,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Image annotation preference is not available on this platform."
+                    ),
+            activityTaskStatusBadges =
+                chatLayout?.toSettingsMobileActivityTaskStatusBadgesSnapshot()
+                    ?: activityTaskStatusBadges.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Activity task status badge preference is not available on this platform."
                     ),
             threadRowAffordances =
                 chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
@@ -1652,6 +1668,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setImageAnnotationEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
+            }
+            is SharedSettingsIntent.SetActivityTaskStatusBadges -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES, inProgress = true)
+                    )
+                dataSource.setActivityTaskStatusBadges(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES)
             }
             is SharedSettingsIntent.SetThreadRowAffordance -> {
                 _state.value =
@@ -2443,6 +2467,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
+            is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -2605,6 +2630,7 @@ internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
+internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -2717,6 +2743,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot
         available = true,
         statusLabel = if (imageAnnotationEnabled) "Enabled" else "Off",
         detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileActivityTaskStatusBadgesSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = activityTaskStatusBadgesEnabled,
+        available = true,
+        statusLabel = if (activityTaskStatusBadgesEnabled) "Enabled" else "Off",
+        detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =

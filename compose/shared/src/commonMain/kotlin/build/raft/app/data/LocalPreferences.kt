@@ -141,6 +141,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = false,
     val imageAnnotationEnabled: Boolean = false,
+    val activityTaskStatusBadgesEnabled: Boolean = false,
     val threadRowAffordances: Set<ThreadRowAffordancePreference> =
         ThreadRowAffordancePreference.Default,
     val supportedThreadRowAffordances: List<ThreadRowAffordancePreference> =
@@ -160,6 +161,9 @@ interface ChatLayoutPreferenceStore {
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
+    fun readActivityTaskStatusBadgesEnabledSync(): Boolean
+    suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
+    suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
     fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference>
     suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference>
     suspend fun saveThreadRowAffordances(affordances: Set<ThreadRowAffordancePreference>)
@@ -212,6 +216,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_IMAGE_ANNOTATION_ENABLED, enabled)
     }
 
+    override fun readActivityTaskStatusBadgesEnabledSync(): Boolean =
+        store.getBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false)
+
+    override suspend fun readActivityTaskStatusBadgesEnabled(): Boolean =
+        readActivityTaskStatusBadgesEnabledSync()
+
+    override suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, enabled)
+    }
+
     override fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference> {
         val stored = store.getString(KEY_THREAD_ROW_AFFORDANCES)
         return if (stored == null) {
@@ -242,6 +256,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
+        const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
 }
@@ -256,6 +271,7 @@ interface ChatLayoutPreferenceRepository {
     ): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
         affordance: ThreadRowAffordancePreference,
         enabled: Boolean
@@ -271,6 +287,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
 
@@ -283,6 +300,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -296,6 +314,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = navigation,
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -307,6 +326,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = enabled,
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -318,6 +338,19 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = enabled,
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            threadRowAffordances = store.readThreadRowAffordances()
+        )
+    }
+
+    override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveActivityTaskStatusBadgesEnabled(enabled)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = enabled,
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -339,6 +372,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             threadRowAffordances = next
         )
     }

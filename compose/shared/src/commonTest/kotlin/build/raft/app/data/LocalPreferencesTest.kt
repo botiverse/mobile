@@ -42,6 +42,7 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(false, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
+        assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
@@ -64,19 +65,23 @@ class LocalPreferencesTest {
             repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
         val compact = repository.setCompactConsecutiveMessages(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
+        val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
         val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
         val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
         val restored = repository.getChatLayoutPreference()
         val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
+        val disabledActivityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(false)
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, navigation.largeScreenNavigation)
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
+        assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.imageAnnotationEnabled)
+        assertEquals(true, restored.activityTaskStatusBadgesEnabled)
         assertEquals(
             setOf(ThreadRowAffordancePreference.Reactions, ThreadRowAffordancePreference.Saved),
             savedAction.threadRowAffordances
@@ -84,6 +89,7 @@ class LocalPreferencesTest {
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), reactionAction.threadRowAffordances)
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), restored.threadRowAffordances)
         assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
+        assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
     }
 
     @Test

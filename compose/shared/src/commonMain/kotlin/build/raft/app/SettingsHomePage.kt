@@ -29,6 +29,7 @@ import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
+import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
@@ -668,6 +669,7 @@ private data class HomeSecondaryRouteEnvironment(
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
+    val activityTaskStatusBadgesEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val shellScope: SlockAppShellScope
 )
@@ -695,11 +697,13 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
     val timeContext =
@@ -719,6 +723,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         timeContext,
         myMessageAlignment,
         compactConsecutiveMessages,
+        activityTaskStatusBadgesEnabled,
         threadRowAffordances,
         shellScope
     ) {
@@ -734,6 +739,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
+            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             threadRowAffordances = threadRowAffordances,
             shellScope = shellScope
         )
@@ -795,6 +801,7 @@ private fun HomeActivityRouterContent(
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
         listState = listState,
+        activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
         onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
     )
 }
@@ -1760,6 +1767,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
@@ -2015,6 +2023,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
     DisposableEffect(notificationPreferenceEvents) {
@@ -2901,6 +2910,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onCompactConsecutiveMessagesSelected = {
                                 compactConsecutiveMessages = it
                             },
+                            onActivityTaskStatusBadgesSelected = {
+                                activityTaskStatusBadgesEnabled = it
+                            },
                             onThreadRowAffordanceSelected = { affordance, enabled ->
                                 threadRowAffordances =
                                     if (enabled) {
@@ -3031,6 +3043,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
+    onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
     onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
@@ -3752,6 +3765,10 @@ private fun SettingsAppShellContent(
                     },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
+                    },
+                    onActivityTaskStatusBadgesChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
+                        onActivityTaskStatusBadgesSelected(enabled)
                     },
                     onThreadRowAffordanceChange = { affordance, enabled ->
                         onSettingsIntent(
@@ -4545,6 +4562,7 @@ private fun SettingsMobileContent(
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
+    onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
@@ -4569,6 +4587,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+                )
+            }
+            item {
+                SettingsActivityTaskStatusBadgesCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
                 )
             }
             item {
@@ -4659,6 +4684,54 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsActivityTaskStatusBadgesCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onActivityTaskStatusBadgesChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
+    val preference = snapshot.activityTaskStatusBadges
+    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = "Activity task status badges") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onActivityTaskStatusBadgesChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Show task status chips in Activity rows" else "Keep Activity rows visually quiet",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
