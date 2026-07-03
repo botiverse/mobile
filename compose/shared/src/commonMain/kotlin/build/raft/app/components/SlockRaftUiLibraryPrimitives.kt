@@ -179,6 +179,36 @@ internal fun SlockRaftUiRadioRow(
 }
 
 @Composable
+internal fun SlockRaftUiCheckboxLabelRow(
+    label: String,
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    size: Dp = 16.dp
+) {
+    SlockCheckboxLabelRow(label = label, checked = checked, modifier = modifier, enabled = enabled, size = size)
+}
+
+@Composable
+internal fun SlockRaftUiStatusDot(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 10.dp,
+    pulsing: Boolean = false
+) {
+    SlockStatusDot(modifier = modifier, size = size, color = color, pulsing = pulsing)
+}
+
+@Composable
+internal fun SlockRaftUiSpinner(
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp,
+    inverse: Boolean = false
+) {
+    SlockSpinner(modifier = modifier, size = size, inverse = inverse)
+}
+
+@Composable
 internal fun SlockRaftUiSegmentedControl(
     items: List<SlockRaftUiSegmentedItem>,
     selectedValue: String,
@@ -366,6 +396,35 @@ internal fun SlockRaftUiField(
 }
 
 @Composable
+internal fun SlockRaftUiTextarea(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    hint: String? = null,
+    error: String? = null,
+    showCounter: Boolean = false,
+    limit: Int? = null,
+    enabled: Boolean = true,
+    fieldHeight: Dp = 76.dp,
+    maxLines: Int = 3
+) {
+    SlockBrutalTextarea(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        placeholder = placeholder,
+        hint = hint,
+        error = error,
+        showCounter = showCounter,
+        limit = limit,
+        enabled = enabled,
+        fieldHeight = fieldHeight,
+        maxLines = maxLines
+    )
+}
+
+@Composable
 internal fun SlockRaftUiInputGroup(
     value: String,
     modifier: Modifier = Modifier,
@@ -514,6 +573,25 @@ internal fun SlockRaftUiTabs(
             SlockRaftUiTextSans(panelText)
         }
     }
+}
+
+@Composable
+internal fun SlockRaftUiSelectTrigger(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    expanded: Boolean = false,
+    height: Dp = 42.dp,
+    onClick: () -> Unit = {}
+) {
+    SlockSelectTrigger(
+        label = label,
+        modifier = modifier,
+        enabled = enabled,
+        expanded = expanded,
+        height = height,
+        onClick = onClick
+    )
 }
 
 @Composable

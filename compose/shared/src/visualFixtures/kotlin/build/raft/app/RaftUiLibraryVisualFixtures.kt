@@ -1,8 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalTextarea
-import build.raft.app.components.SlockCheckboxLabelRow
 import build.raft.app.components.SlockRaftUiAvatar
 import build.raft.app.components.SlockRaftUiAvatarGroup
 import build.raft.app.components.SlockRaftUiAvatarType
@@ -13,6 +10,7 @@ import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.components.SlockRaftUiButton
 import build.raft.app.components.SlockRaftUiButtonVariant
+import build.raft.app.components.SlockRaftUiCheckboxLabelRow
 import build.raft.app.components.SlockRaftUiEmptyState
 import build.raft.app.components.SlockRaftUiField
 import build.raft.app.components.SlockRaftUiInlineCode
@@ -23,6 +21,10 @@ import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiRadioRow
 import build.raft.app.components.SlockRaftUiSegmentedControl
 import build.raft.app.components.SlockRaftUiSegmentedItem
+import build.raft.app.components.SlockRaftUiSelectTrigger
+import build.raft.app.components.SlockRaftUiSpinner
+import build.raft.app.components.SlockRaftUiStatusDot
+import build.raft.app.components.SlockRaftUiTextarea
 import build.raft.app.components.SlockRaftUiMenuRow
 import build.raft.app.components.SlockRaftUiMenuSurface
 import build.raft.app.components.SlockRaftUiNotificationItem
@@ -34,9 +36,6 @@ import build.raft.app.components.SlockRaftUiTextMono
 import build.raft.app.components.SlockRaftUiTextSans
 import build.raft.app.components.SlockRaftUiSurfaceLabel
 import build.raft.app.components.SlockRaftUiSurfaceStatus
-import build.raft.app.components.SlockSelectTrigger
-import build.raft.app.components.SlockSpinner
-import build.raft.app.components.SlockStatusDot
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -73,7 +72,7 @@ internal fun RaftUiBannerVisualContent() {
                 description = "Review the latest visual library diff before publishing.",
                 iconName = SlockLucideIconName.Info,
                 action = {
-                    SlockBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
+                    SlockRaftUiButton(label = "Open")
                 }
             )
             SlockRaftUiBanner(
@@ -112,7 +111,7 @@ internal fun RaftUiEmptyStateVisualContent() {
                 title = "No visual changes",
                 description = "Library fixtures are ready, but no reviewer has opened this run yet.",
                 action = {
-                    SlockBrutalActionButton(label = "Create fixture", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                    SlockRaftUiButton(label = "Create fixture", variant = SlockRaftUiButtonVariant.Primary)
                 }
             )
         }
@@ -254,25 +253,25 @@ internal fun RaftUiCheckboxStatusVisualContent() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockCheckboxLabelRow(label = "Enabled", checked = true)
-                SlockCheckboxLabelRow(label = "Partial", checked = true)
-                SlockCheckboxLabelRow(label = "Disabled", checked = false, enabled = false)
+                SlockRaftUiCheckboxLabelRow(label = "Enabled", checked = true)
+                SlockRaftUiCheckboxLabelRow(label = "Partial", checked = true)
+                SlockRaftUiCheckboxLabelRow(label = "Disabled", checked = false, enabled = false)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockStatusDot(color = SlockColor.AccentLime, size = 11.dp)
+                    SlockRaftUiStatusDot(color = SlockColor.AccentLime, size = 11.dp)
                     SlockRaftUiTextSans("Online")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockStatusDot(color = SlockColor.AccentOrange, size = 10.dp, pulsing = true)
+                    SlockRaftUiStatusDot(color = SlockColor.AccentOrange, size = 10.dp, pulsing = true)
                     SlockRaftUiTextSans("Pending")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockStatusDot(color = SlockColor.AccentRed, size = 8.dp)
+                    SlockRaftUiStatusDot(color = SlockColor.AccentRed, size = 8.dp)
                     SlockRaftUiTextSans("Failed")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockSpinner(size = 20.dp)
+                    SlockRaftUiSpinner(size = 20.dp)
                     SlockRaftUiTextSans("Syncing")
                 }
             }
@@ -295,7 +294,7 @@ internal fun RaftUiTextareaVisualContent() {
             required = true,
             error = "Keep this note under the publish limit."
         ) {
-            SlockBrutalTextarea(
+            SlockRaftUiTextarea(
                 value = "Add library-level visual fixtures for the remaining stable Raft UI exports.",
                 onValueChange = {},
                 error = "",
@@ -388,8 +387,8 @@ internal fun RaftUiSelectVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockSelectTrigger(label = "Raft UI Library")
-            SlockSelectTrigger(label = "Components Real Diff", enabled = false)
+            SlockRaftUiSelectTrigger(label = "Raft UI Library")
+            SlockRaftUiSelectTrigger(label = "Components Real Diff", enabled = false)
         }
     }
 }
@@ -531,43 +530,15 @@ internal fun RaftUiInteractionStatesVisualContent() {
                 SlockRaftUiButton(label = "Disabled", modifier = Modifier.weight(1f), variant = SlockRaftUiButtonVariant.Muted, enabled = false)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockSelectTrigger(label = "Library", modifier = Modifier.width(150.dp), expanded = true)
+                SlockRaftUiSelectTrigger(label = "Library", modifier = Modifier.width(150.dp), expanded = true)
                 SlockRaftUiButton(label = "Actions", variant = SlockRaftUiButtonVariant.Outline)
             }
             SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
                 SlockRaftUiSurfaceLabel("Menu states", modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(27.dp).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Default row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
-                    Text(text = "⌘ K", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(27.dp).background(SlockColor.BrandYellow.copy(alpha = 0.30f)).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Highlighted row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
-                    Text(text = "4", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(27.dp).background(SlockColor.BrandYellow.copy(alpha = 0.20f)).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Selected row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack)
-                    Text(text = "✓", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.60f))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(27.dp).border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f)).padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Disabled row", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp), color = SlockColor.TextBlack.copy(alpha = 0.30f))
-                    Text(text = "⇧ D", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.30f))
-                }
+                SlockRaftUiMenuRow(label = "Default row", trailing = "⌘ K")
+                SlockRaftUiMenuRow(label = "Highlighted row", trailing = "4", highlighted = true)
+                SlockRaftUiMenuRow(label = "Selected row", trailing = "✓", highlighted = true)
+                SlockRaftUiMenuRow(label = "Disabled row", trailing = "⇧ D", disabled = true)
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Box(
@@ -670,7 +641,7 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             SlockRaftUiMenuRow("Archive", disabled = true)
         }
 
-        SlockSelectTrigger(
+        SlockRaftUiSelectTrigger(
             label = "Raft UI Library",
             modifier = Modifier.offset(x = 204.dp, y = 456.dp).width(170.dp),
             expanded = true,
@@ -683,7 +654,7 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             SlockRaftUiMenuRow("Product Visual Diff")
         }
 
-        SlockSelectTrigger(
+        SlockRaftUiSelectTrigger(
             label = "Android capture",
             modifier = Modifier.offset(x = 16.dp, y = 590.dp).width(170.dp),
             height = 32.dp
