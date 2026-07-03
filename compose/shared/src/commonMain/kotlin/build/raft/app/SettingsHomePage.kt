@@ -450,6 +450,7 @@ private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-f
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
+private const val SettingsDeveloperUnlockTapCount = 7
 private const val AppShellInitialTabKey = "slockInitialTab"
 private const val AppShellInitialSettingsDestinationKey = "slockInitialSettingsDestination"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
@@ -1183,7 +1184,7 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             key = "about",
             title = "About",
             subtitle = "Version, diagnostics, feedback",
-            iconName = SlockLucideIconName.Bug
+            iconName = SlockLucideIconName.BadgeInfo
         ),
         SlockTabItemPayload(
             key = "router",
@@ -1495,6 +1496,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var selectedSettingsDestination by remember {
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
+    var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPosition by remember { mutableStateOf(AppShellServerScopedLazyListPosition()) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
@@ -2874,7 +2876,17 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onSettingsIntent = settingsViewModel::dispatch,
                             selectedDestination = selectedSettingsDestination,
                             onDestinationChange = {
+                                settingsHeaderTapCount = 0
                                 selectedSettingsDestination = it
+                            },
+                            onSettingsHeaderClick = {
+                                val nextTapCount = settingsHeaderTapCount + 1
+                                if (nextTapCount >= SettingsDeveloperUnlockTapCount) {
+                                    settingsHeaderTapCount = 0
+                                    selectedSettingsDestination = SettingsDestinationDeveloper
+                                } else {
+                                    settingsHeaderTapCount = nextTapCount
+                                }
                             },
                             onOpenComputer = { computerId ->
                                 pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
@@ -3014,6 +3026,7 @@ private fun SettingsAppShellContent(
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
     selectedDestination: String,
     onDestinationChange: (String) -> Unit,
+    onSettingsHeaderClick: () -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
@@ -3265,6 +3278,7 @@ private fun SettingsAppShellContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
             bottomContentPadding = bottomContentPadding,
             headerHeight = SlockSize.PageHeaderCompactHeight,
+            onHeaderClick = onSettingsHeaderClick,
             onSelect = { key ->
                 if (key == SettingsDestinationRouter) {
                     onOpenRouter()
@@ -7213,16 +7227,8 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationAbout,
                     title = "About",
                     subtitle = "Version, diagnostics, feedback",
-                    iconName = SlockLucideIconName.Bug,
+                    iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
-                    section = "About"
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationDeveloper,
-                    title = "Developer",
-                    subtitle = "API server, diagnostics, route launcher",
-                    iconName = SlockLucideIconName.Terminal,
-                    selected = selectedDestination == SettingsDestinationDeveloper,
                     section = "About"
                 )
             )
@@ -8602,7 +8608,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationNotifications -> SlockLucideIconName.Bell
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
-        SettingsDestinationAbout -> SlockLucideIconName.Info
+        SettingsDestinationAbout -> SlockLucideIconName.BadgeInfo
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
@@ -14954,13 +14960,21 @@ internal fun SettingsHomeContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     applyTopSafeArea: Boolean = true,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
+    onHeaderClick: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
+    val headerModifier =
+        if (onHeaderClick != null) {
+            Modifier.clickable(role = Role.Button, onClick = onHeaderClick)
+        } else {
+            Modifier
+        }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = payload.title,
             subtitle = null,
             iconName = SlockLucideIconName.Settings,
+            modifier = headerModifier,
             applyTopSafeArea = applyTopSafeArea,
             headerHeight = headerHeight
         )

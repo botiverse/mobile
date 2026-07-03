@@ -2868,8 +2868,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination),
                 nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination),
                 nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
-                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination),
-                nav(SharedSettingsDestination.Developer, "Developer", "API server, diagnostics, route launcher", SlockLucideIconName.Terminal, null, selectedDestination)
+                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.BadgeInfo, null, selectedDestination)
             )
     )
 }
