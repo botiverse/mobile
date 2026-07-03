@@ -402,14 +402,21 @@ internal fun RaftUiMenuSurfacesVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        SlockRaftUiPopupSurface(modifier = Modifier.width(310.dp)) {
-            SlockRaftUiSurfaceLabel("Visual actions")
-            SlockRaftUiMenuRow(label = "Publish report", trailing = "⌘ P")
-            SlockRaftUiMenuRow(label = "Review differences", trailing = "32", highlighted = true)
-            SlockRaftUiMenuRow(label = "Archive run", trailing = "⇧ A", disabled = true)
-            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
-            SlockRaftUiMenuRow(label = "Move to components", trailing = "›")
-        }
+        SlockBrutalDropdownMenuSurface(
+            items =
+                listOf(
+                    SlockBrutalDropdownMenuItem(id = "publish", label = "Publish report", trailing = "⌘ P"),
+                    SlockBrutalDropdownMenuItem(id = "review", label = "Review differences", trailing = "32"),
+                    SlockBrutalDropdownMenuItem(id = "archive", label = "Archive run", trailing = "⇧ A", enabled = false),
+                    SlockBrutalDropdownMenuItem(id = "move", label = "Move to components", trailing = "›")
+                ),
+            onSelect = {},
+            width = 310.dp,
+            rowHeight = 36.dp,
+            shadowOffset = 3.dp,
+            showDividers = false,
+            dividerBeforeIds = setOf("move")
+        )
     }
 }
 
