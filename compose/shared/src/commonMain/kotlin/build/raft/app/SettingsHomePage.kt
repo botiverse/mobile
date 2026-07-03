@@ -415,6 +415,7 @@ private const val HOME_SAVED_PAGE = "compose_home_saved"
 private const val HOME_ACTIVITY_PAGE = "compose_home_activity"
 const val HOME_SEARCH_SELECTED_CHANNEL_ID = "selectedChannelId"
 const val HOME_SEARCH_INITIAL_OPEN_FILTER_ID = "initialOpenFilterId"
+const val HOME_SEARCH_FOCUS_INPUT = "focusSearchInput"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
@@ -643,7 +644,8 @@ internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
                 HomeDestinationSearch,
                 slockPageVisibleResumeTick,
                 initialSearchChannelId = pageData.params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).trim().takeIf { it.isNotBlank() },
-                initialSearchOpenFilterId = pageData.params.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID).trim().takeIf { it.isNotBlank() }
+                initialSearchOpenFilterId = pageData.params.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID).trim().takeIf { it.isNotBlank() },
+                initialSearchFocusInput = pageData.params.optBoolean(HOME_SEARCH_FOCUS_INPUT, false)
             )
         }
     }
@@ -759,7 +761,8 @@ private fun HomeSecondaryRouterContent(
     destination: String,
     routeVisibleTick: Int = 0,
     initialSearchChannelId: String? = null,
-    initialSearchOpenFilterId: String? = null
+    initialSearchOpenFilterId: String? = null,
+    initialSearchFocusInput: Boolean = false
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment()
     val retainedDestination = retainedHomeSecondaryDestination(destination)
@@ -775,7 +778,8 @@ private fun HomeSecondaryRouterContent(
                 environment,
                 routeVisibleTick,
                 initialChannelId = initialSearchChannelId,
-                initialOpenFilterId = initialSearchOpenFilterId
+                initialOpenFilterId = initialSearchOpenFilterId,
+                initialFocusInput = initialSearchFocusInput
             )
         HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
         else -> SlockCenteredLoading(message = "Opening...")
@@ -819,7 +823,8 @@ private fun HomeSearchRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0,
     initialChannelId: String? = null,
-    initialOpenFilterId: String? = null
+    initialOpenFilterId: String? = null,
+    initialFocusInput: Boolean = false
 ) {
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
@@ -920,6 +925,7 @@ private fun HomeSearchRouterContent(
             )
         },
         initialOpenFilterId = initialOpenFilterId,
+        initialFocusInput = initialFocusInput,
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
@@ -10661,6 +10667,7 @@ private fun SharedHomeSearchPanel(
     includeTopSafeArea: Boolean = true,
     showSenderFilter: Boolean = true,
     initialOpenFilterId: String? = null,
+    initialFocusInput: Boolean = false,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     bottomContentPadding: Dp,
@@ -10711,6 +10718,7 @@ private fun SharedHomeSearchPanel(
                 onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                 onClose = onClose,
                 interactive = interactiveSearchField,
+                autoFocus = initialFocusInput,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
@@ -10962,6 +10970,7 @@ private fun SharedHomeSearchToolbar(
     onClear: () -> Unit,
     onClose: (() -> Unit)?,
     interactive: Boolean = true,
+    autoFocus: Boolean = false,
     topSafeAreaPadding: Dp = 0.dp,
     onTitleClick: (() -> Unit)? = null
 ) {
@@ -10986,6 +10995,7 @@ private fun SharedHomeSearchToolbar(
             query = query,
             loading = loading,
             interactive = interactive,
+            autoFocus = autoFocus,
             onQueryChange = onQueryChange,
             onSubmit = onSubmit,
             onClear = onClear,
@@ -11035,13 +11045,14 @@ private fun SharedHomeSearchIconButton(
 }
 
 @Composable
-private fun SharedHomeSearchInput(
+internal fun SharedHomeSearchInput(
     query: String,
     loading: Boolean,
     interactive: Boolean,
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
+    autoFocus: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (interactive) {
@@ -11058,6 +11069,7 @@ private fun SharedHomeSearchInput(
             keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
             showClearWhenNotEmpty = true,
             onClear = onClear,
+            autoFocus = autoFocus,
             modifier = modifier
         )
     } else {

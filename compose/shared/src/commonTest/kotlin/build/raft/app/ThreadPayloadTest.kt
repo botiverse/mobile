@@ -5245,6 +5245,7 @@ class ThreadPayloadTest {
         assertEquals("search", pageData.optString("destination"))
         assertEquals("channel-1", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
         assertEquals("", pageData.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID))
+        assertEquals(true, pageData.optBoolean(HOME_SEARCH_FOCUS_INPUT, false))
         assertEquals("", pageData.optString("title"))
         assertEquals("", pageData.optString("messages"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))

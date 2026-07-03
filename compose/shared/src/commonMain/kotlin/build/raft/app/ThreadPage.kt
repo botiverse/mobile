@@ -188,6 +188,7 @@ import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
@@ -661,6 +662,7 @@ internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObje
         put("pageName", HOME_SEARCH_PAGE)
         put("destination", SharedHomeShellDestinationSearch)
         put(HOME_SEARCH_SELECTED_CHANNEL_ID, channelId)
+        put(HOME_SEARCH_FOCUS_INPUT, true)
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -8904,6 +8906,7 @@ private fun ThreadMessagesList(
                     inlineSearchCurrentIndex = 0
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
+                    .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
         if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
@@ -9056,22 +9059,22 @@ private fun ThreadInlineSearchBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            SlockBrutalSearchField(
-                value = query,
-                placeholder = "Search this thread",
-                onValueChange = onQueryChange,
-                modifier = Modifier.weight(1f),
-                showClearWhenNotEmpty = true,
+            SharedHomeSearchInput(
+                query = query,
+                loading = false,
+                interactive = true,
+                onQueryChange = onQueryChange,
+                onSubmit = {},
                 onClear = onClear,
-                textStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+                autoFocus = true,
+                modifier = Modifier.weight(1f),
             )
             Box(
                 modifier =
                     Modifier
                         .height(ThreadHeaderActionSize)
-                        .widthIn(min = 48.dp)
+                        .widthIn(min = 40.dp)
                         .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .padding(horizontal = SlockSpacing.Xs),
                 contentAlignment = Alignment.Center
             ) {
@@ -9096,6 +9099,7 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 private val ThreadBottomScrollPaddingHeight = 16.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
+private const val ThreadInlineSearchBarZIndex = 2f
 internal data class ThreadInlineActionSpec(
     val label: String,
     val event: String,
