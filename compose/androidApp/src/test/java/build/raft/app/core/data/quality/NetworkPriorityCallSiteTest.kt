@@ -207,7 +207,7 @@ class NetworkPriorityCallSiteTest {
                 }
 
         assertTrue(
-                "Shared AuthPages/app shell auth gate must use KuiklySlockAuthTransport, not bridge authRequest.\n" +
+                "Shared AuthPages/app shell auth gate must use SharedKtorSlockAuthTransport, not bridge authRequest.\n" +
                         offenders.joinToString("\n"),
                 offenders.isEmpty()
         )
@@ -242,7 +242,7 @@ class NetworkPriorityCallSiteTest {
 
         assertTrue(
                 "Business REST must not go through BridgeAuthenticatedRequestExecutor/authRequest bridge helpers. " +
-                        "Use SlockNetworkClient/KuiklySlockAuthTransport; keep platform capability HTTP separate.\n" +
+                        "Use SlockNetworkClient/SharedKtorSlockAuthTransport; keep platform capability HTTP separate.\n" +
                         offenders.joinToString("\n"),
                 offenders.isEmpty()
         )
@@ -275,7 +275,7 @@ class NetworkPriorityCallSiteTest {
 
         assertTrue(
                 "Platform hosts must not keep the legacy bridge.authRequest business REST handler. " +
-                        "Auth product flows use KuiklySlockAuthTransport and other business REST uses SlockNetworkClient.\n" +
+                        "Auth product flows use SharedKtorSlockAuthTransport and other business REST uses SlockNetworkClient.\n" +
                         offenders.joinToString("\n"),
                 offenders.isEmpty()
         )

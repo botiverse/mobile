@@ -11,7 +11,6 @@ import { SlockKuiklyPageView } from './components/SlockKuiklyPageView';
 import { SlockSandboxWebView } from './components/SlockSandboxWebView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
 import { SlockOhosDiagnostics } from './SlockOhosDiagnostics';
-import { SlockNetworkModule } from './modules/SlockNetworkModule';
 
 export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   private static readonly PERFORMANCE_LOG_TAG: string = 'SlockKuiklyPerf';
@@ -34,7 +33,6 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   getCustomRenderModuleCreatorRegisterMap(): Map<string, KRRenderModuleExportCreator> {
     const map: Map<string, KRRenderModuleExportCreator> = new Map();
     map.set(KRBridgeModule.MODULE_NAME, () => new KRBridgeModule());
-    map.set(SlockNetworkModule.MODULE_NAME, () => new SlockNetworkModule());
     return map;
   }
 

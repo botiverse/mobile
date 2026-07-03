@@ -2,7 +2,6 @@ package build.raft.app.base
 
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
-import build.raft.app.network.SlockNetworkModule
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -23,7 +22,6 @@ internal abstract class BasePager : ComposeContainer() {
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
-        externalModules[SlockNetworkModule.MODULE_NAME] = SlockNetworkModule()
         externalModules[NotifyModule.MODULE_NAME] = NotifyModule()
         return externalModules
     }
@@ -44,9 +42,6 @@ internal abstract class BasePager : ComposeContainer() {
     private fun registerSlockExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = BridgeModule()
-        })
-        registerModule(SlockNetworkModule.MODULE_NAME, object : IModuleCreator {
-            override fun createModule(): Module = SlockNetworkModule()
         })
         registerModule(NotifyModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = NotifyModule()
