@@ -88,14 +88,18 @@
     .active { color: #2f6f1f; }
     .unsupported { color: #6b625f; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } nav.tree { position: static; max-height: none; } }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      .layout main { order: 1; }
+      nav.tree { order: 2; position: static; max-height: none; }
+    }
   </style>
 </head>
 <body>
   <header>
     <h1><a href="../../">Components Real Diff</a></h1>
     <p class="runMeta">Slock app component and KMP component abstraction parity cases. Library-only raft-ui package cases remain in the Raft UI Library report.</p>
-    <p class="runMeta"><code>695c99afb-20260702214109</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-02T21:41:37.377Z" data-timestamp="2026-07-02T21:41:37.377Z" title="2026-07-02T21:41:37.377Z">2026-07-02 21:41:37 UTC</time></p>
+    <p class="runMeta"><code>c153932a6-20260703042704</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-03T04:27:31.027Z" data-timestamp="2026-07-03T04:27:31.027Z" title="2026-07-03T04:27:31.027Z">2026-07-03 04:27:31 UTC</time></p>
     <div class="summary">
       <span class="pill">Total 71</span>
       <span class="pill">Same 0</span>

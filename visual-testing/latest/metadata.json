@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-02T21:41:37.377Z",
-  "runId": "695c99afb-20260702214109",
-  "commit": "695c99afb-20260702214109",
-  "commitSubject": "test(visual): add raft ui interaction states",
+  "generatedAt": "2026-07-03T04:27:31.027Z",
+  "runId": "c153932a6-20260703042704",
+  "commit": "c153932a6-20260703042704",
+  "commitSubject": "test(visual): add raft ui controlled open coverage",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",

@@ -88,7 +88,11 @@
     .active { color: #2f6f1f; }
     .unsupported { color: #6b625f; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } nav.tree { position: static; max-height: none; } }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      .layout main { order: 1; }
+      nav.tree { order: 2; position: static; max-height: none; }
+    }
   </style>
 </head>
 <body>

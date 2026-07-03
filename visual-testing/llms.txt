@@ -1,9 +1,9 @@
 # Slock Visual Testing
 
-Generated: 2026-07-02 21:41:37 UTC
-Latest run: 695c99afb-20260702214109
-Latest commit: 695c99afb-20260702214109
-Commit subject: test(visual): add raft ui interaction states
+Generated: 2026-07-03 04:27:31 UTC
+Latest run: c153932a6-20260703042704
+Latest commit: c153932a6-20260703042704
+Commit subject: test(visual): add raft ui controlled open coverage
 Providers: react vs android
 Summary: total 104, same 0, pass 0, basic-pass 3, different 100, missing 1
 AI analysis: ready 0 / total 104, pending 104
@@ -104,6 +104,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- c153932a6-20260703042704: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/c153932a6-20260703042704/component-matrix.json, report runs/c153932a6-20260703042704/report.html
 - 695c99afb-20260702214109: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/695c99afb-20260702214109/component-matrix.json, report runs/695c99afb-20260702214109/report.html
 - 695c99afb-20260702202831: react vs android, total 103, pass 0, basic-pass 3, different 99, matrix runs/695c99afb-20260702202831/component-matrix.json, report runs/695c99afb-20260702202831/report.html
 - b1d7a3d01-20260702184638: react vs android, total 102, pass 0, basic-pass 3, different 98, matrix runs/b1d7a3d01-20260702184638/component-matrix.json, report runs/b1d7a3d01-20260702184638/report.html
