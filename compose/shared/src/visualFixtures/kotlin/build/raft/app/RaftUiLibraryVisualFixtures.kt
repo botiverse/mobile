@@ -11,6 +11,7 @@ import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.components.SlockRaftUiButton
 import build.raft.app.components.SlockRaftUiButtonVariant
 import build.raft.app.components.SlockRaftUiCheckboxLabelRow
+import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiEmptyState
 import build.raft.app.components.SlockRaftUiField
 import build.raft.app.components.SlockRaftUiInlineCode
@@ -52,6 +53,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -585,13 +587,20 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             modifier = Modifier.offset(x = 16.dp, y = 16.dp).width(170.dp),
             variant = SlockRaftUiButtonVariant.Outline
         )
-        SlockRaftUiPopupSurface(modifier = Modifier.offset(x = 16.dp, y = 82.dp).width(170.dp)) {
-            SlockRaftUiSurfaceLabel("Deploy actions")
-            SlockRaftUiMenuRow("Publish page", trailing = "⌘ P", highlighted = true)
-            SlockRaftUiMenuRow("Keep history", trailing = "✓")
-            SlockRaftUiMenuRow("Mobile report", trailing = "✓")
-            SlockRaftUiMenuRow("Delete run", disabled = true)
-        }
+        SlockRaftUiControlledMenu(
+            expanded = true,
+            anchor = Offset(16f, 66f),
+            items =
+                listOf(
+                    SlockRaftUiMenuItem(id = "publish", label = "Publish page", trailing = "⌘ P"),
+                    SlockRaftUiMenuItem(id = "history", label = "Keep history", selected = true),
+                    SlockRaftUiMenuItem(id = "mobile", label = "Mobile report", selected = true),
+                    SlockRaftUiMenuItem(id = "delete", label = "Delete run", destructive = true, enabled = false)
+                ),
+            onSelect = {},
+            onDismiss = {},
+            width = 170.dp
+        )
 
         SlockRaftUiButton(
             label = "Popover open",

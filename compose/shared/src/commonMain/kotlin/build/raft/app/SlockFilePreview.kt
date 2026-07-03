@@ -6,6 +6,8 @@ import build.raft.app.base.toBridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -477,13 +479,13 @@ private fun SlockFilePreviewStandalonePageContent() {
         overflowMenuItems =
             if (canOpenWith) {
                 listOfNotNull(
-                    SlockBrutalDropdownMenuItem(
+                    SlockRaftUiMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
                         label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState),
                         icon = SlockLucideIconName.ExternalLink
                     ),
                     if (attachmentCacheState) {
-                        SlockBrutalDropdownMenuItem(
+                        SlockRaftUiMenuItem(
                             id = SlockFilePreviewDeleteDownloadActionId,
                             label = "Delete downloaded file",
                             icon = SlockLucideIconName.Trash2
@@ -2453,7 +2455,7 @@ internal fun SlockFilePreviewPageScaffold(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
-    overflowMenuItems: List<SlockBrutalDropdownMenuItem> = emptyList(),
+    overflowMenuItems: List<SlockRaftUiMenuItem> = emptyList(),
     onOverflowMenuSelect: (String) -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -2496,7 +2498,8 @@ internal fun SlockFilePreviewPageScaffold(
             }
         }
         if (menuOpen && overflowMenuItems.isNotEmpty()) {
-            SlockBrutalDropdownMenu(
+            SlockRaftUiControlledMenu(
+                expanded = menuOpen,
                 anchor = menuAnchor,
                 items = overflowMenuItems,
                 onSelect = { id ->
@@ -2504,7 +2507,7 @@ internal fun SlockFilePreviewPageScaffold(
                     onOverflowMenuSelect(id)
                 },
                 onDismiss = { menuOpen = false },
-                widthDp = 180f
+                width = 180.dp
             )
         }
     }

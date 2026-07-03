@@ -15,6 +15,8 @@ import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockSectionEyebrow
+import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
@@ -3131,10 +3133,12 @@ private fun MembersDetailContent(
                 deleted = deleted,
                 inProgress = lifecycleInFlight != null
             )
-            SlockBrutalDropdownMenu(
+            SlockRaftUiControlledMenu(
+                expanded = managementMenuOpen,
                 anchor = dropdownAnchor,
                 items = menuItems,
                 onSelect = { id ->
+                    managementMenuOpen = false
                     handleMembersManagementMenuSelection(
                         id = id,
                         primaryAction = menuPrimary,
@@ -3228,11 +3232,11 @@ internal fun buildMembersManagementMenuItems(
     canManage: Boolean,
     deleted: Boolean,
     inProgress: Boolean
-): List<SlockBrutalDropdownMenuItem> {
+): List<SlockRaftUiMenuItem> {
     if (deleted || !canManage) return emptyList()
-    val items = mutableListOf<SlockBrutalDropdownMenuItem>()
+    val items = mutableListOf<SlockRaftUiMenuItem>()
     if (primaryAction != null) {
-        items += SlockBrutalDropdownMenuItem(
+        items += SlockRaftUiMenuItem(
             id = primaryAction.actionKey,
             label = when (primaryAction) {
                 MembersAgentLifecycleAction.Start -> "Start Agent"
@@ -3243,7 +3247,7 @@ internal fun buildMembersManagementMenuItems(
             enabled = !inProgress
         )
     }
-    items += SlockBrutalDropdownMenuItem(
+    items += SlockRaftUiMenuItem(
         id = MembersAgentLifecycleAction.Restart.actionKey,
         label = "Restart / Reset",
         icon = SlockLucideIconName.RotateCcw,
