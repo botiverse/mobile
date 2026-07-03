@@ -57,6 +57,9 @@ import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
@@ -925,9 +928,9 @@ internal data class SlockMarkdownPreparseResult(
 internal suspend fun prepareSlockMarkdownFullRendererBodies(
     bodies: List<String>,
     maxBodies: Int = SlockMarkdownDefaultPreparseLimit
-): SlockMarkdownPreparseResult {
+): SlockMarkdownPreparseResult = coroutineScope {
     if (bodies.isEmpty() || maxBodies <= 0) {
-        return SlockMarkdownPreparseResult(requestedCount = 0, parsedCount = 0, cacheHitCount = 0)
+        return@coroutineScope SlockMarkdownPreparseResult(requestedCount = 0, parsedCount = 0, cacheHitCount = 0)
     }
     val contents =
         bodies
@@ -936,13 +939,12 @@ internal suspend fun prepareSlockMarkdownFullRendererBodies(
             .distinct()
             .take(maxBodies)
             .toList()
-    var cacheHitCount = 0
-    contents.forEach { content ->
-        if (prepareMarkdownContent(content)) {
-            cacheHitCount += 1
-        }
-    }
-    return SlockMarkdownPreparseResult(
+    val cacheHitCount =
+        contents
+            .map { content -> async { prepareMarkdownContent(content) } }
+            .awaitAll()
+            .count { cacheHit -> cacheHit }
+    SlockMarkdownPreparseResult(
         requestedCount = contents.size,
         parsedCount = contents.size - cacheHitCount,
         cacheHitCount = cacheHitCount

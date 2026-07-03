@@ -11,8 +11,8 @@ private val markdownParseThreadId = AtomicInteger(1)
 
 private val androidMarkdownParseDispatcher: CoroutineDispatcher by lazy {
     ThreadPoolExecutor(
-        2,
-        2,
+        4,
+        4,
         0L,
         TimeUnit.MILLISECONDS,
         LinkedBlockingQueue()
