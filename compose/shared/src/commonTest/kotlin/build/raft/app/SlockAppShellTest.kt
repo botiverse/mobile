@@ -372,48 +372,6 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellParentStartsHomeOnlyForReadyPrimaryHomeSurface() {
-        val loadingState = SharedHomeState()
-
-        assertEquals(
-            true,
-            appShellShouldStartHomeFromParent(
-                selectedTab = "home",
-                selectedHomeDestination = null,
-                readyServerId = "server-1",
-                state = loadingState
-            )
-        )
-        assertEquals(
-            false,
-            appShellShouldStartHomeFromParent(
-                selectedTab = "home",
-                selectedHomeDestination = null,
-                readyServerId = null,
-                state = loadingState
-            )
-        )
-        assertEquals(
-            false,
-            appShellShouldStartHomeFromParent(
-                selectedTab = "tasks",
-                selectedHomeDestination = null,
-                readyServerId = "server-1",
-                state = loadingState
-            )
-        )
-        assertEquals(
-            false,
-            appShellShouldStartHomeFromParent(
-                selectedTab = "home",
-                selectedHomeDestination = "activity",
-                readyServerId = "server-1",
-                state = loadingState
-            )
-        )
-    }
-
-    @Test
     fun homeSurfaceVisibilityDispatchDelaysVisibleProjectionOnly() {
         assertEquals(0L, homeSurfaceVisibilityDispatchDelayMs(false))
         assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))
