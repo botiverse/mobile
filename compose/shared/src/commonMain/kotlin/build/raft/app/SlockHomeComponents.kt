@@ -821,6 +821,11 @@ internal fun SlockStructuralHomeShell(
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClick,
+                        onBlankClick = {
+                            listScope.launch {
+                                listState.animateScrollToTopExpressive()
+                            }
+                        },
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
@@ -1614,6 +1619,7 @@ private fun HomeTitlebar(
     refreshing: Boolean,
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
+    onBlankClick: (() -> Unit)? = null,
     onNotificationToggle: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
@@ -1636,7 +1642,13 @@ private fun HomeTitlebar(
                     textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
                 )
             }
-            Spacer(Modifier.weight(1f))
+            val blankModifier =
+                if (onBlankClick != null) {
+                    Modifier.weight(1f).height(SlockSize.PageHeaderContentHeight).clickable(onClick = onBlankClick)
+                } else {
+                    Modifier.weight(1f)
+                }
+            Spacer(blankModifier)
             if (refreshing) {
                 SlockHeaderRefreshIndicator()
             }
