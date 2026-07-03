@@ -741,15 +741,16 @@ class ThreadPayloadTest {
 
         assertEquals("visual-thread-message-row-long-inline-code", payload.instanceId)
         assertEquals("channel-markdown", payload.streamChannelId)
-        assertFalse(payload.showReplyActions)
-        assertFalse(payload.showTaskOpenActions)
+        assertTrue(payload.showReplyActions)
+        assertTrue(payload.showTaskOpenActions)
         assertEquals("Cindy", message.authorName)
         assertFalse(message.body.contains("```"))
-        assertEquals(6, message.body.count { it == '`' })
+        assertEquals(14, message.body.count { it == '`' })
+        assertTrue(message.body.contains("Ordinary mention regression: @KMP-专家 #520 Phase 5"))
         assertTrue(message.body.contains("reply/channel-markdown/msg-inline-visual"))
         assertTrue(message.body.contains("owner-key-consumes-thread-route-identity-only"))
-        assertTrue(message.body.contains("./gradlew :shared:testDebugUnitTest --tests build.raft.app.data.InboxUiStateTest"))
-        assertTrue(message.body.contains("compose/shared/src/commonTest/kotlin/build/raft/app/data/InboxUiStateTest.kt"))
+        assertTrue(message.body.contains("./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest"))
+        assertTrue(message.body.contains("compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"))
     }
 
     @Test

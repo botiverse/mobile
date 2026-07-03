@@ -371,6 +371,7 @@ class SlockMarkdownTest {
         assertEquals(null, selfMentionStyle.textDecoration)
         assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
         assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
+        assertEquals(SlockType.ButtonBold.fontSize, ordinaryMentionStyle.fontSize)
     }
 
     @Test
@@ -409,6 +410,30 @@ class SlockMarkdownTest {
             annotated.slockMarkdownTagChromeAnnotations()
                 .contains(SlockMarkdownTagChromeKind.SelfMention.wireValue + ":ordinary")
         )
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+    }
+
+    @Test
+    fun ordinaryMentionBeforeTaskReferenceKeepsCompactUnderlineAndVisibleText() {
+        val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
+        val validator =
+            validThreadMarkdownTags(
+                knownMentions = setOf("KMP-专家")
+            )
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        isTagValid = validator
+                    )
+            )
+
+        assertEquals(body, annotated.text)
+        assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
+        assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
+        assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
