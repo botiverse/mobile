@@ -2,7 +2,9 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /**
  * Focused regression coverage for the bottom-anchor keying in ThreadPage.
@@ -224,6 +226,8 @@ class ThreadBottomAnchorSignatureTest {
 
         assertEquals(0, slice.threadMessageListItemIndex("parent-message"))
         assertEquals(2, slice.threadMessageListItemIndex("reply-1"))
+        assertTrue(slice.isFocusedOriginMessage("parent-message"))
+        assertFalse(slice.isFocusedOriginMessage("reply-1"))
     }
 
     @Test

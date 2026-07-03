@@ -8308,7 +8308,8 @@ private fun ThreadMessagesList(
         initialBottomAnchorReady = true
         val didFocus =
             listState.scrollThreadItemToFocusedViewport(
-                itemIndex = targetIndex
+                itemIndex = targetIndex,
+                keepFollowingContextVisible = renderPayload.isFocusedOriginMessage(targetMessageId)
             )
         if (!didFocus) {
             diagnosticsLogger(
@@ -9349,7 +9350,10 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
-private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: Int): Boolean {
+private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
+    itemIndex: Int,
+    keepFollowingContextVisible: Boolean = false
+): Boolean {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
         return false
     }
@@ -9365,7 +9369,8 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
         val offset =
             threadFocusedItemScrollOffset(
                 itemSize = item.size,
-                viewportHeight = viewportHeight
+                viewportHeight = viewportHeight,
+                keepFollowingContextVisible = keepFollowingContextVisible
             )
         scrollToItem(itemIndex, offset)
         didScroll = true
@@ -9455,9 +9460,11 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
 
 internal fun threadFocusedItemScrollOffset(
     itemSize: Int,
-    viewportHeight: Int
+    viewportHeight: Int,
+    keepFollowingContextVisible: Boolean = false
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
+    if (keepFollowingContextVisible) return 0
     if (itemSize >= viewportHeight) return 0
     return (itemSize - viewportHeight) / 2
 }

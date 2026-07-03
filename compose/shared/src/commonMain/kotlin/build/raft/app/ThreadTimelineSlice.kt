@@ -359,6 +359,9 @@ internal fun ThreadTimelineSlice.focusedMessageListItemIndex(): Int =
         ?.let(::threadMessageListItemIndex)
         ?: -1
 
+internal fun ThreadTimelineSlice.isFocusedOriginMessage(messageId: String): Boolean =
+    hasThreadOriginItem() && originMessage?.id == messageId
+
 internal fun ThreadTimelineSlice.focusedMessageTargetSignature(): String =
     buildString {
         append(focusedMessageId.orEmpty())
