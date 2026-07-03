@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-03T07:50:06.654Z",
-  "latestRunId": "48631ed3f-20260703075006",
+  "generatedAt": "2026-07-03T09:58:09.029Z",
+  "latestRunId": "latest",
   "latest": {
-    "runId": "48631ed3f-20260703075006",
-    "commit": "48631ed3f-20260703075006",
-    "commitSubject": "fix(home): refresh update notices periodically",
-    "generatedAt": "2026-07-03T07:50:06.654Z",
+    "runId": "latest",
+    "commit": "2dc6a891c-latest",
+    "commitSubject": "fix(visual): align raft ui primitive parity",
+    "generatedAt": "2026-07-03T09:58:09.029Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -63,10 +63,11 @@
         }
       }
     },
-    "href": "runs/48631ed3f-20260703075006/",
-    "report": "runs/48631ed3f-20260703075006/report.html",
-    "componentMatrix": "runs/48631ed3f-20260703075006/component-matrix.json",
-    "llms": "runs/48631ed3f-20260703075006/metadata.json"
+    "href": "latest/",
+    "report": "latest/report.html",
+    "componentMatrix": "latest/component-matrix.json",
+    "llms": "latest/metadata.json",
+    "raftUiReport": "runs/c153932a6-20260703042704/raft-ui/"
   },
   "componentMatrixSummary": {
     "total": 81,
@@ -173,6 +174,1397 @@
       "report": "runs/48631ed3f-20260703075006/report.html",
       "componentMatrix": "runs/48631ed3f-20260703075006/component-matrix.json",
       "llms": "runs/48631ed3f-20260703075006/metadata.json"
+    },
+    {
+      "runId": "c153932a6-20260703042704",
+      "commit": "c153932a6-20260703042704",
+      "commitSubject": "test(visual): add raft ui controlled open coverage",
+      "generatedAt": "2026-07-03T04:27:31.027Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 104,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 100,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 104,
+        "ready": 0,
+        "pending": 104
+      },
+      "componentMatrixSummary": {
+        "total": 123,
+        "active": 105,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 97,
+            "active": 94,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 106,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 119
+          },
+          "android": {
+            "active": 104,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 119
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {
+        "total": 42,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 42,
+        "missing": 0
+      },
+      "raftUiAnalysisSummary": {
+        "total": 42,
+        "ready": 0,
+        "pending": 42
+      },
+      "raftUiComponentMatrixSummary": {
+        "total": 42,
+        "active": 42,
+        "pending": 0,
+        "skipped": 0,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 42,
+            "active": 42,
+            "pending": 0,
+            "skipped": 0
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          },
+          "android": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          }
+        }
+      },
+      "raftUiReport": "runs/c153932a6-20260703042704/raft-ui/",
+      "componentsUiSummary": {
+        "total": 71,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 67,
+        "missing": 1
+      },
+      "componentsUiAnalysisSummary": {
+        "total": 71,
+        "ready": 0,
+        "pending": 71
+      },
+      "componentsUiComponentMatrixSummary": {
+        "total": 74,
+        "active": 72,
+        "pending": 1,
+        "skipped": 1,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 74,
+            "active": 72,
+            "pending": 1,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 72,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 72
+          },
+          "android": {
+            "active": 71,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 72
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 52,
+            "unsupported": 0,
+            "total": 52
+          }
+        }
+      },
+      "componentsUiReport": "runs/c153932a6-20260703042704/components/",
+      "href": "runs/c153932a6-20260703042704/",
+      "report": "runs/c153932a6-20260703042704/report.html",
+      "componentMatrix": "runs/c153932a6-20260703042704/component-matrix.json",
+      "llms": "runs/c153932a6-20260703042704/metadata.json"
+    },
+    {
+      "runId": "695c99afb-20260702214109",
+      "commit": "695c99afb-20260702214109",
+      "commitSubject": "test(visual): add raft ui interaction states",
+      "generatedAt": "2026-07-02T21:41:37.377Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 104,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 100,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 104,
+        "ready": 0,
+        "pending": 104
+      },
+      "componentMatrixSummary": {
+        "total": 123,
+        "active": 105,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 97,
+            "active": 94,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 106,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 119
+          },
+          "android": {
+            "active": 104,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 119
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {
+        "total": 42,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 42,
+        "missing": 0
+      },
+      "raftUiAnalysisSummary": {
+        "total": 42,
+        "ready": 0,
+        "pending": 42
+      },
+      "raftUiComponentMatrixSummary": {
+        "total": 42,
+        "active": 42,
+        "pending": 0,
+        "skipped": 0,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 42,
+            "active": 42,
+            "pending": 0,
+            "skipped": 0
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          },
+          "android": {
+            "active": 42,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 42
+          }
+        }
+      },
+      "raftUiReport": "runs/695c99afb-20260702214109/raft-ui/",
+      "componentsUiSummary": {
+        "total": 71,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 67,
+        "missing": 1
+      },
+      "componentsUiAnalysisSummary": {
+        "total": 71,
+        "ready": 0,
+        "pending": 71
+      },
+      "componentsUiComponentMatrixSummary": {
+        "total": 74,
+        "active": 72,
+        "pending": 1,
+        "skipped": 1,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 74,
+            "active": 72,
+            "pending": 1,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 72,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 72
+          },
+          "android": {
+            "active": 71,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 72
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 52,
+            "unsupported": 0,
+            "total": 52
+          }
+        }
+      },
+      "componentsUiReport": "runs/695c99afb-20260702214109/components/",
+      "href": "runs/695c99afb-20260702214109/",
+      "report": "runs/695c99afb-20260702214109/report.html",
+      "componentMatrix": "runs/695c99afb-20260702214109/component-matrix.json",
+      "llms": "runs/695c99afb-20260702214109/metadata.json"
+    },
+    {
+      "runId": "695c99afb-20260702202831",
+      "commit": "695c99afb-20260702202831",
+      "commitSubject": "test(visual): add raft ui interaction states",
+      "generatedAt": "2026-07-02T20:28:59.301Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 103,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 99,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 103,
+        "ready": 0,
+        "pending": 103
+      },
+      "componentMatrixSummary": {
+        "total": 122,
+        "active": 104,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 96,
+            "active": 93,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 105,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 118
+          },
+          "android": {
+            "active": 103,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 118
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {
+        "total": 41,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 41,
+        "missing": 0
+      },
+      "raftUiAnalysisSummary": {
+        "total": 41,
+        "ready": 0,
+        "pending": 41
+      },
+      "raftUiComponentMatrixSummary": {
+        "total": 41,
+        "active": 41,
+        "pending": 0,
+        "skipped": 0,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 41,
+            "active": 41,
+            "pending": 0,
+            "skipped": 0
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 41,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 41
+          },
+          "android": {
+            "active": 41,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 41
+          }
+        }
+      },
+      "raftUiReport": "runs/695c99afb-20260702202831/raft-ui/",
+      "componentsUiSummary": {
+        "total": 71,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 67,
+        "missing": 1
+      },
+      "componentsUiAnalysisSummary": {
+        "total": 71,
+        "ready": 0,
+        "pending": 71
+      },
+      "componentsUiComponentMatrixSummary": {
+        "total": 74,
+        "active": 72,
+        "pending": 1,
+        "skipped": 1,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 74,
+            "active": 72,
+            "pending": 1,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 72,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 72
+          },
+          "android": {
+            "active": 71,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 72
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 52,
+            "unsupported": 0,
+            "total": 52
+          }
+        }
+      },
+      "componentsUiReport": "runs/695c99afb-20260702202831/components/",
+      "href": "runs/695c99afb-20260702202831/",
+      "report": "runs/695c99afb-20260702202831/report.html",
+      "componentMatrix": "runs/695c99afb-20260702202831/component-matrix.json",
+      "llms": "runs/695c99afb-20260702202831/metadata.json"
+    },
+    {
+      "runId": "b1d7a3d01-20260702184638",
+      "commit": "b1d7a3d01-20260702184638",
+      "commitSubject": "test(visual): add raft ui wip library cases",
+      "generatedAt": "2026-07-02T18:47:05.118Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 102,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 98,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 102,
+        "ready": 0,
+        "pending": 102
+      },
+      "componentMatrixSummary": {
+        "total": 121,
+        "active": 103,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 92,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 104,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 117
+          },
+          "android": {
+            "active": 102,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 117
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {
+        "total": 40,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 40,
+        "missing": 0
+      },
+      "raftUiAnalysisSummary": {
+        "total": 40,
+        "ready": 0,
+        "pending": 40
+      },
+      "raftUiComponentMatrixSummary": {
+        "total": 40,
+        "active": 40,
+        "pending": 0,
+        "skipped": 0,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 40,
+            "active": 40,
+            "pending": 0,
+            "skipped": 0
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 40,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 40
+          },
+          "android": {
+            "active": 40,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 40
+          }
+        }
+      },
+      "raftUiReport": "runs/b1d7a3d01-20260702184638/raft-ui/",
+      "componentsUiSummary": {
+        "total": 71,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 67,
+        "missing": 1
+      },
+      "componentsUiAnalysisSummary": {
+        "total": 71,
+        "ready": 0,
+        "pending": 71
+      },
+      "componentsUiComponentMatrixSummary": {
+        "total": 74,
+        "active": 72,
+        "pending": 1,
+        "skipped": 1,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 74,
+            "active": 72,
+            "pending": 1,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 0,
+            "active": 0,
+            "pending": 0,
+            "skipped": 0
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 72,
+            "pending": 0,
+            "unsupported": 0,
+            "total": 72
+          },
+          "android": {
+            "active": 71,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 72
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 52,
+            "unsupported": 0,
+            "total": 52
+          }
+        }
+      },
+      "componentsUiReport": "runs/b1d7a3d01-20260702184638/components/",
+      "href": "runs/b1d7a3d01-20260702184638/",
+      "report": "runs/b1d7a3d01-20260702184638/report.html",
+      "componentMatrix": "runs/b1d7a3d01-20260702184638/component-matrix.json",
+      "llms": "runs/b1d7a3d01-20260702184638/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701181253",
+      "commit": "1c6dce5ad-20260701181253",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T18:13:59.047Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "href": "runs/1c6dce5ad-20260701181253/",
+      "report": "runs/1c6dce5ad-20260701181253/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701181253/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701181253/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701181139",
+      "commit": "1c6dce5ad-20260701181139",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T18:12:43.459Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701181139/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701181139/components/",
+      "href": "runs/1c6dce5ad-20260701181139/",
+      "report": "runs/1c6dce5ad-20260701181139/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701181139/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701181139/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad",
+      "commit": "1c6dce5ad",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T18:11:29.039Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad/components/",
+      "href": "runs/1c6dce5ad/",
+      "report": "runs/1c6dce5ad/report.html",
+      "componentMatrix": "runs/1c6dce5ad/component-matrix.json",
+      "llms": "runs/1c6dce5ad/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701173710",
+      "commit": "1c6dce5ad-20260701173710",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:37:32.552Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701173710/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701173710/components/",
+      "href": "runs/1c6dce5ad-20260701173710/",
+      "report": "runs/1c6dce5ad-20260701173710/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701173710/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701173710/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701173638",
+      "commit": "1c6dce5ad-20260701173638",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:37:03.870Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701173638/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701173638/components/",
+      "href": "runs/1c6dce5ad-20260701173638/",
+      "report": "runs/1c6dce5ad-20260701173638/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701173638/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701173638/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701173402",
+      "commit": "1c6dce5ad-20260701173402",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:34:22.633Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701173402/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701173402/components/",
+      "href": "runs/1c6dce5ad-20260701173402/",
+      "report": "runs/1c6dce5ad-20260701173402/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701173402/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701173402/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701173330",
+      "commit": "1c6dce5ad-20260701173330",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:33:55.302Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701173330/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701173330/components/",
+      "href": "runs/1c6dce5ad-20260701173330/",
+      "report": "runs/1c6dce5ad-20260701173330/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701173330/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701173330/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701172140",
+      "commit": "1c6dce5ad-20260701172140",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:22:00.657Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701172140/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701172140/components/",
+      "href": "runs/1c6dce5ad-20260701172140/",
+      "report": "runs/1c6dce5ad-20260701172140/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701172140/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701172140/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701172109",
+      "commit": "1c6dce5ad-20260701172109",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:21:28.669Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701172109/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701172109/components/",
+      "href": "runs/1c6dce5ad-20260701172109/",
+      "report": "runs/1c6dce5ad-20260701172109/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701172109/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701172109/metadata.json"
+    },
+    {
+      "runId": "1c6dce5ad-20260701171619",
+      "commit": "1c6dce5ad-20260701171619",
+      "commitSubject": "Remove CLI agent API compatibility rewrite (#3582)",
+      "generatedAt": "2026-07-01T17:16:39.939Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 62,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 3,
+        "different": 58,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 62,
+        "ready": 0,
+        "pending": 62
+      },
+      "componentMatrixSummary": {
+        "total": 81,
+        "active": 63,
+        "pending": 16,
+        "skipped": 2,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 55,
+            "active": 52,
+            "pending": 2,
+            "skipped": 1
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 64,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 77
+          },
+          "android": {
+            "active": 62,
+            "pending": 15,
+            "unsupported": 0,
+            "total": 77
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 77,
+            "unsupported": 0,
+            "total": 77
+          }
+        }
+      },
+      "raftUiSummary": {},
+      "raftUiAnalysisSummary": {},
+      "raftUiComponentMatrixSummary": {},
+      "raftUiReport": "runs/1c6dce5ad-20260701171619/raft-ui/",
+      "componentsUiSummary": {},
+      "componentsUiAnalysisSummary": {},
+      "componentsUiComponentMatrixSummary": {},
+      "componentsUiReport": "runs/1c6dce5ad-20260701171619/components/",
+      "href": "runs/1c6dce5ad-20260701171619/",
+      "report": "runs/1c6dce5ad-20260701171619/report.html",
+      "componentMatrix": "runs/1c6dce5ad-20260701171619/component-matrix.json",
+      "llms": "runs/1c6dce5ad-20260701171619/metadata.json"
     }
-  ]
+  ],
+  "latestRaftUiReport": "runs/c153932a6-20260703042704/raft-ui/"
 }
