@@ -366,6 +366,7 @@ class SlockMarkdownTest {
         val selfMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = true)
         val ordinaryMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = false)
 
+        assertEquals(14.sp, SlockMarkdownTagFontSize)
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), taskStyle.background)
         assertEquals(null, taskStyle.textDecoration)
         assertEquals(SlockColor.TextBlack, taskStyle.color)
@@ -809,6 +810,7 @@ class SlockMarkdownTest {
         assertEquals("markdown专修", matches[0].tag.channelName)
         assertEquals("7933cf78", matches[0].tag.threadShortId)
         assertEquals(setOf("slock:4", "slock:29"), annotated.slockMarkdownClickableTags())
+        assertEquals(setOf("slock:4", "slock:29"), annotated.slockMarkdownClickableLinkTags())
     }
 
     @Test
@@ -838,6 +840,10 @@ class SlockMarkdownTest {
         assertEquals(
             setOf("slock:6", "slock:27", "slock:34", "slock:46"),
             annotated.slockMarkdownClickableTags()
+        )
+        assertEquals(
+            setOf("slock:6", "slock:27", "slock:34", "slock:46"),
+            annotated.slockMarkdownClickableLinkTags()
         )
     }
 
@@ -1088,6 +1094,11 @@ class SlockMarkdownTest {
     private fun AnnotatedString.slockMarkdownClickableTags(): Set<String> =
         getStringAnnotations(SlockMarkdownTagAnnotationTag, 0, length)
             .map { it.item }
+            .toSet()
+
+    private fun AnnotatedString.slockMarkdownClickableLinkTags(): Set<String> =
+        getLinkAnnotations(0, length)
+            .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
             .toSet()
 
     private fun AnnotatedString.slockMarkdownTagChromeAnnotations(): List<String> =

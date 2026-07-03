@@ -1344,7 +1344,7 @@ internal fun slockMarkdownTagChromeKind(
             if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
     }
 
-internal val SlockMarkdownTagFontSize = 12.sp
+internal val SlockMarkdownTagFontSize = 14.sp
 
 private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
     SlockType.ButtonBold
