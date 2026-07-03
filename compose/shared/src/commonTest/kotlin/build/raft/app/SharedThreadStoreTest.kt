@@ -639,7 +639,7 @@ class SharedThreadStoreTest {
                         channelId = ChannelId("dm-1"),
                         kind = ConversationKind.DirectMessage,
                         name = "artin"
-                    )
+                    ).toConversationHeaderEntry()
                 )
         )
 
@@ -2927,7 +2927,7 @@ class SharedThreadStoreTest {
                         channelId = ChannelId("dm-1"),
                             kind = ConversationKind.DirectMessage,
                             name = "Cindy"
-                        )
+                        ).toConversationHeaderEntry()
                 )
             )
 

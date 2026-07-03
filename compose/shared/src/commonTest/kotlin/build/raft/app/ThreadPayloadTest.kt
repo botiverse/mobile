@@ -1467,7 +1467,7 @@ class ThreadPayloadTest {
         val payload =
             buildAppShellThreadPayload(conversation)
         val headerDisplay =
-            payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+            payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("", payload.title)
@@ -1492,7 +1492,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
-        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals("Product-UX-Designer", headerDisplay.title)
         assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
@@ -1514,7 +1514,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
-        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("", payload.title)
@@ -1915,7 +1915,7 @@ class ThreadPayloadTest {
                 streamChannelId = uuid,
                 surfaceKind = KuiklyThreadSurfaceKind.Channel
             )
-        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals("Channel", headerDisplay.title)
     }
@@ -1978,7 +1978,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
-        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("private", payload.channelKind)
@@ -1998,7 +1998,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload = buildAppShellThreadPayload(conversation)
-        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation))
+        val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("joint", payload.channelKind)
@@ -2215,7 +2215,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = false)
             )
 
-        val result = payload.withConversationAccessFallback(unrelatedAccessFallback)
+        val result = payload.withConversationAccessFallback(unrelatedAccessFallback.toConversationAccessCandidate())
 
         assertEquals(true, result.joined)
         assertEquals(true, result.canSend)
@@ -2427,7 +2427,7 @@ class ThreadPayloadTest {
                         subtitle = "online",
                         joined = true,
                         permissions = ConversationPermissions(canSend = true)
-                    )
+                    ).toConversationHeaderEntry()
                 )
             )
 

@@ -91,7 +91,6 @@ import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
-import build.raft.app.model.withPreviewMembershipFallback
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -211,7 +210,7 @@ internal class SharedThreadDataSource(
 
     suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return basePayload
-        return basePayload.withConversationAccessFallback(resolveConversationHeaderFallback(basePayload, session))
+        return basePayload.withConversationAccessFallback(resolveConversationAccessFallback(basePayload, session))
     }
 
     suspend fun withKnownMarkdownChannelNames(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -1602,7 +1601,7 @@ internal class SharedThreadDataSource(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
-        val headerFallback = resolveConversationHeaderFallback(basePayload, session)
+        val accessFallback = resolveConversationAccessFallback(basePayload, session)
         val focusedContext =
             if (includeFollowedSummaries) {
                 null
@@ -1611,7 +1610,7 @@ internal class SharedThreadDataSource(
                     session = session,
                     basePayload = basePayload,
                     routeThreadId = threadId,
-                    headerFallback = headerFallback
+                    accessFallback = accessFallback
                 )
             }
         if (focusedContext != null) {
@@ -1639,7 +1638,7 @@ internal class SharedThreadDataSource(
                 fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase)
-                        ?.withConversationAccessFallback(headerFallback)
+                        ?.withConversationAccessFallback(accessFallback)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
@@ -1647,7 +1646,7 @@ internal class SharedThreadDataSource(
                 DataResult.Content(
                     initialData.data
                         .withReplyParentMessageFromContext(basePayload)
-                        .withConversationAccessFallback(headerFallback)
+                        .withConversationAccessFallback(accessFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
@@ -1658,7 +1657,7 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
         routeThreadId: ThreadId,
-        headerFallback: ConversationSummary?
+        accessFallback: ConversationAccessCandidate?
     ): DataResult<KuiklyThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
@@ -1672,7 +1671,7 @@ internal class SharedThreadDataSource(
         }
         return DataResult.Content(
             context
-                .withConversationAccessFallback(headerFallback)
+                .withConversationAccessFallback(accessFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
         )
     }
@@ -1737,7 +1736,7 @@ internal class SharedThreadDataSource(
         val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
             ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
-        val headerFallback = resolveConversationHeaderFallback(basePayload, session)
+        val accessFallback = resolveConversationAccessFallback(basePayload, session)
         val routeThreadId =
             basePayload.streamChannelId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
                 ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
@@ -1749,7 +1748,7 @@ internal class SharedThreadDataSource(
                     session = session,
                     basePayload = basePayload,
                     routeThreadId = routeThreadId,
-                    headerFallback = headerFallback
+                    accessFallback = accessFallback
                 )
             }
         if (focusedContext != null) {
@@ -1784,7 +1783,7 @@ internal class SharedThreadDataSource(
                 val payload =
                     initialResult.data
                         .withReplyParentMessageFromContext(resolvedBase)
-                        .withConversationAccessFallback(headerFallback)
+                        .withConversationAccessFallback(accessFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                 DataResult.Content(
                     if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
@@ -1873,16 +1872,17 @@ internal class SharedThreadDataSource(
         return result
     }
 
-    private suspend fun resolveConversationHeaderFallback(
+    private suspend fun resolveConversationAccessFallback(
         basePayload: KuiklyThreadScreenPayload,
         session: StoredAuthSession
-    ): ConversationSummary? {
+    ): ConversationAccessCandidate? {
         val lookupIds = basePayload.conversationHeaderFallbackIds()
         if (lookupIds.isEmpty()) return null
         val home = currentHomeSnapshot(session) ?: return null
         return (home.channels + home.directMessages)
             .map { it.toConversationSummary() }
             .firstOrNull { conversation -> conversation.matchesHeaderFallbackId(lookupIds) }
+            ?.toConversationAccessCandidate()
     }
 
     private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
@@ -4971,12 +4971,17 @@ private fun KuiklyThreadScreenPayload.focusedMessageContextChannelIdOrNull(): Ch
 }
 
 private fun ThreadSnapshot.withConversationAccessFallback(
-    fallback: ConversationSummary?
+    fallback: ConversationAccessCandidate?
 ): ThreadSnapshot {
     fallback ?: return this
     val current = conversation
     if (current.kind == ConversationKind.DirectMessage) return this
-    val nextConversation = current.withPreviewMembershipFallback(fallback)
+    if (fallback.joined || !current.matchesHeaderFallbackId(fallback.ids)) return this
+    val nextConversation =
+        current.copy(
+            joined = false,
+            permissions = fallback.permissions
+        )
     return if (nextConversation == current) this else copy(conversation = nextConversation)
 }
 

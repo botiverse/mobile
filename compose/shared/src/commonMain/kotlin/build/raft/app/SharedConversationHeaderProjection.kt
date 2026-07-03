@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.isGenericDisplayName
 import build.raft.app.model.safeDisplayNameOrNull
@@ -16,6 +17,14 @@ internal data class SharedConversationHeaderEntry(
     val avatarLabel: String = title.take(2).uppercase(),
     val dmPeerMemberId: String? = null,
     val gravatarUrl: String? = null
+)
+
+internal data class ConversationAccessCandidate(
+    val ids: Set<String>,
+    val surfaceKind: String,
+    val joined: Boolean,
+    val archived: Boolean,
+    val permissions: ConversationPermissions
 )
 
 internal data class ThreadHeaderDisplayModel(
@@ -398,20 +407,20 @@ internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): 
     }
 
 internal fun KuiklyThreadScreenPayload.conversationHeaderEntryFrom(
-    conversation: ConversationSummary?
+    entry: SharedConversationHeaderEntry?
 ): SharedConversationHeaderEntry? {
-    val entry = conversation?.toConversationHeaderEntry() ?: return null
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || entry.surfaceKind != surfaceKind) return null
+    val candidate = entry ?: return null
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || candidate.surfaceKind != surfaceKind) return null
     val lookupIds = conversationHeaderLookupIds()
-    return entry.takeIf { lookupIds.any(entry.ids::contains) }
+    return candidate.takeIf { lookupIds.any(candidate.ids::contains) }
 }
 
 internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
-    fallback: ConversationSummary?
+    fallback: ConversationAccessCandidate?
 ): KuiklyThreadScreenPayload {
     fallback ?: return this
     if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return this
-    conversationHeaderEntryFrom(fallback) ?: return this
+    if (!acceptsConversationAccessCandidate(fallback)) return this
     return if (!fallback.joined) {
         copy(
             joined = false,
@@ -421,6 +430,14 @@ internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
     } else {
         this
     }
+}
+
+internal fun KuiklyThreadScreenPayload.acceptsConversationAccessCandidate(
+    candidate: ConversationAccessCandidate
+): Boolean {
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || candidate.surfaceKind != surfaceKind) return false
+    val lookupIds = conversationHeaderLookupIds()
+    return lookupIds.any(candidate.ids::contains)
 }
 
 internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
@@ -442,7 +459,7 @@ private fun SharedConversationDirectoryProjection.toConversationHeaderEntry(): S
         dmPeerMemberId = peerMemberId?.takeIf { it.isNotBlank() }
     )
 
-private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationHeaderEntry? {
+internal fun ConversationSummary.toConversationHeaderEntry(): SharedConversationHeaderEntry? {
     val surfaceKind =
         when (kind) {
             ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
@@ -468,6 +485,17 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
         avatarLabel = displayName.take(2).uppercase(),
         dmPeerMemberId = presenceMemberId?.value,
         gravatarUrl = null
+    )
+}
+
+internal fun ConversationSummary.toConversationAccessCandidate(): ConversationAccessCandidate? {
+    val entry = toConversationHeaderEntry() ?: return null
+    return ConversationAccessCandidate(
+        ids = entry.ids,
+        surfaceKind = entry.surfaceKind,
+        joined = joined,
+        archived = archived,
+        permissions = permissions
     )
 }
 
