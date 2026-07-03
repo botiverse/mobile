@@ -123,6 +123,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1251,6 +1252,7 @@ private class SlockKuiklyImageAdapter(
     private companion object {
         private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
         private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+        private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
                 object : LruCache<String, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
@@ -1291,7 +1293,7 @@ private class SlockKuiklyImageAdapter(
         SlockKuiklyThreadAdapter.executeOnSubThread {
             runCatching {
                         val bytes = imageLoadOption.decodeBase64Payload()
-                        bitmapDrawableFromBytes(bytes)
+                        bitmapDrawableFromBytes(bytes, imageLoadOption)
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
@@ -1349,11 +1351,13 @@ private class SlockKuiklyImageAdapter(
                                     null
                                 }
                         drawableFromBytes(bytes, imageLoadOption, contentType)
+                                ?: throw IllegalStateException("Image decode failed")
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
                     }
-                    .onFailure {
+                    .onFailure { throwable ->
+                        recordImageLoadFailure("local", imageLoadOption, throwable)
                         callback(null)
                     }
         }
@@ -1373,11 +1377,13 @@ private class SlockKuiklyImageAdapter(
                                     SharedKtorBinaryDownloader.fetchBytes(imageLoadOption.src)
                                 }
                         drawableFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
+                                ?: throw IllegalStateException("Image decode failed")
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
                     }
-                    .onFailure {
+                    .onFailure { throwable ->
+                        recordImageLoadFailure("network", imageLoadOption, throwable)
                         callback(null)
                     }
         }
@@ -1406,7 +1412,7 @@ private class SlockKuiklyImageAdapter(
         if (bytes.looksLikeSvg(contentType)) {
             return svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
         }
-        val bitmap = bitmapFromBytes(bytes) ?: return null
+        val bitmap = bitmapFromBytes(bytes, imageLoadOption) ?: return null
         cacheNetworkBitmap(imageLoadOption.src, bitmap)
         return bitmap.toBitmapDrawable()
     }
@@ -1437,19 +1443,67 @@ private class SlockKuiklyImageAdapter(
         return if (bytes.looksLikeSvg(contentType)) {
             svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
         } else {
-            bitmapDrawableFromBytes(bytes)
+            bitmapDrawableFromBytes(bytes, imageLoadOption)
         }
     }
 
-    private fun bitmapDrawableFromBytes(bytes: ByteArray): Drawable? {
-        return bitmapFromBytes(bytes)?.toBitmapDrawable()
+    private fun bitmapDrawableFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Drawable? {
+        return bitmapFromBytes(bytes, imageLoadOption)?.toBitmapDrawable()
     }
 
-    private fun bitmapFromBytes(bytes: ByteArray): Bitmap? =
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    private fun bitmapFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Bitmap? {
+        val boundsOptions =
+                BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        }
+        val decodeOptions =
+                BitmapFactory.Options().apply {
+                    inSampleSize = imageLoadOption.bitmapDecodeSampleSize(boundsOptions.outWidth, boundsOptions.outHeight)
+                }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+    }
+
+    private fun HRImageLoadOption.bitmapDecodeSampleSize(sourceWidth: Int, sourceHeight: Int): Int {
+        val target = targetDecodeEdgePx()
+        var sampleSize = 1
+        var sampledWidth = sourceWidth
+        var sampledHeight = sourceHeight
+        while (max(sampledWidth, sampledHeight) / 2 >= target) {
+            sampleSize *= 2
+            sampledWidth /= 2
+            sampledHeight /= 2
+        }
+        return sampleSize.coerceAtLeast(1)
+    }
+
+    private fun HRImageLoadOption.targetDecodeEdgePx(): Int {
+        val density = context.resources.displayMetrics.density.coerceAtLeast(1f)
+        val requestedEdgePx =
+                max(requestWidth, requestHeight)
+                        .takeIf { it > 0 }
+                        ?.let { (it * density).roundToInt() * 2 }
+        val screenEdgePx =
+                max(context.resources.displayMetrics.widthPixels, context.resources.displayMetrics.heightPixels)
+        return (requestedEdgePx ?: screenEdgePx)
+                .coerceAtLeast(256)
+                .coerceAtMost(MAX_BITMAP_DECODE_EDGE_PX)
+    }
 
     private fun Bitmap.toBitmapDrawable(): BitmapDrawable =
             BitmapDrawable(context.resources, this)
+
+    private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
+        SlockDiagnosticsLogger.record(
+                "SlockImageLoad",
+                "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
+                        "srcHash=${imageLoadOption.src.hashCode().toString(16)} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight}"
+        )
+    }
 
     private fun svgBitmapDrawable(svgText: String, imageLoadOption: HRImageLoadOption): Drawable {
         val preparedSvg = imageLoadOption.svgColorOverride()
