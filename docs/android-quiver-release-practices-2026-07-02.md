@@ -224,6 +224,28 @@ If `quiver` is not installed globally, the helper falls back to
 `npm exec --yes --package @oranix/quiver-cli@0.1.0 -- quiver`; override the
 package pin with `QUIVER_CLI_PACKAGE`.
 
+## GitHub Actions Release Dispatch
+
+Use the dispatch wrapper for production Android releases:
+
+```bash
+scripts/release_android_quiver_github.sh --version 1.0.1 --build 0 --channel main --variant release --wait
+```
+
+The wrapper performs the release preflight that is easy to forget manually:
+
+- verifies the local Slock branch is `main`
+- ensures the checked-out `third_party/kuikly-ui` commit is reachable from its
+  configured remote branch, pushing it if needed
+- pushes Slock `main` to `origin/main`
+- dispatches `.github/workflows/android-release.yml` with the requested
+  version/channel/variant
+- optionally waits for the GitHub Actions run to finish
+
+Defaults match the current production lane: `versionName=1.0.1`,
+`versionCode=1000100`, Quiver channel `main`, Android variant `release`,
+`publish_quiver=true`, and `create_share_page=true`.
+
 ## Validation Scope
 
 Server-side validation already passed for the current `raft-android` release
