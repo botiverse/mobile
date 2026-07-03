@@ -351,6 +351,7 @@ data class SharedThreadComposerFlowState(
         copy(liveDraftText = value, liveDraftAsTask = asTask)
 }
 
+@Serializable
 data class SharedThreadComposerAttachment(
     val id: String,
     val fileName: String,

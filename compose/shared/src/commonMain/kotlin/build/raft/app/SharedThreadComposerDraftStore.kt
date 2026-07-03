@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.coroutines.EmptyCoroutineContext
 
 internal data class SharedThreadComposerDraftState(
@@ -29,7 +32,8 @@ internal data class SharedThreadComposerDraftState(
 
 internal data class SharedThreadComposerPersistedDraft(
     val text: String = "",
-    val asTask: Boolean = false
+    val asTask: Boolean = false,
+    val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
 )
 
 internal data class SharedThreadComposerDraftRecord(
@@ -74,21 +78,35 @@ internal class SharedThreadComposerDraftPersistence(
         val text = store.getString(textKey(key)) ?: return null
         return SharedThreadComposerPersistedDraft(
             text = text,
-            asTask = store.getString(asTaskKey(key)) == "true"
+            asTask = store.getString(asTaskKey(key)) == "true",
+            uploadedAttachments = readUploadedAttachments(key)
         )
     }
 
-    fun save(key: String, text: String, asTask: Boolean) {
+    fun save(
+        key: String,
+        text: String,
+        asTask: Boolean,
+        uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
+    ) {
+        val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
-                "textBlank=${text.isBlank()} asTask=$asTask activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+                "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
+                "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
         )
-        if (text.isBlank() && !asTask) {
+        if (text.isBlank() && !asTask && persistedAttachments.isEmpty()) {
             clear(key)
             return
         }
         store.putString(textKey(key), text)
         store.putString(asTaskKey(key), asTask.toString())
+        store.putString(
+            attachmentsKey(key),
+            persistedAttachments
+                .takeIf { it.isNotEmpty() }
+                ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
+        )
         addActiveKey(key)
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
@@ -101,6 +119,7 @@ internal class SharedThreadComposerDraftPersistence(
         )
         store.putString(textKey(key), null)
         store.putString(asTaskKey(key), null)
+        store.putString(attachmentsKey(key), null)
         removeActiveKey(key)
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_cleared key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
@@ -114,6 +133,17 @@ internal class SharedThreadComposerDraftPersistence(
 
     private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
     private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
+    private fun attachmentsKey(key: String): String = "threadComposerDraft:v1:$key:attachments"
+
+    private fun readUploadedAttachments(key: String): List<SharedThreadComposerAttachment> =
+        store.getString(attachmentsKey(key))
+            ?.let { encoded ->
+                runCatching {
+                    ComposerDraftJson.decodeFromString<List<SharedThreadComposerAttachment>>(encoded)
+                }.getOrNull()
+            }
+            .orEmpty()
+            .persistableThreadComposerDraftAttachments()
 
     private fun activeKeys(): Set<String> =
         readActiveKeysFromStore()
@@ -163,6 +193,7 @@ internal class SharedThreadComposerDraftPersistence(
 
     private companion object {
         const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"
+        val ComposerDraftJson = Json { ignoreUnknownKeys = true }
     }
 }
 
@@ -197,7 +228,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                     } else {
                         reduced.copy(
                             seedText = persistedDraft.text,
-                            seedAsTask = persistedDraft.asTask
+                            seedAsTask = persistedDraft.asTask,
+                            uploadedAttachments = persistedDraft.uploadedAttachments
                         )
                     }
                 if (stagedUploadedAttachments.isEmpty()) {
@@ -223,7 +255,23 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.InsertMention,
             is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
                 next.draftKey?.let { key ->
-                    persistence.save(key, next.seedText, next.seedAsTask)
+                    persistence.save(
+                        key = key,
+                        text = next.seedText,
+                        asTask = next.seedAsTask,
+                        uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
+                    )
+                    refreshActiveDraftRecords(reason = intent.toThreadComposerDraftIntentDiagnosticsLabel())
+                }
+            is SharedThreadComposerDraftIntent.AddUploadedAttachments,
+            is SharedThreadComposerDraftIntent.RemoveAttachment ->
+                next.draftKey?.let { key ->
+                    persistence.save(
+                        key = key,
+                        text = next.seedText,
+                        asTask = next.seedAsTask,
+                        uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
+                    )
                     refreshActiveDraftRecords(reason = intent.toThreadComposerDraftIntentDiagnosticsLabel())
                 }
             is SharedThreadComposerDraftIntent.CompleteSend ->
@@ -540,6 +588,18 @@ internal class SharedThreadComposerDraftStore(
                 )
         }
 }
+
+private fun SharedThreadComposerDraftState.visiblePersistableThreadComposerDraftAttachments(): List<SharedThreadComposerAttachment> =
+    uploadedAttachments
+        .filterNot { attachment -> attachment.id in removedAttachmentIds }
+        .persistableThreadComposerDraftAttachments()
+
+private fun List<SharedThreadComposerAttachment>.persistableThreadComposerDraftAttachments(): List<SharedThreadComposerAttachment> =
+    asSequence()
+        .filter { attachment -> attachment.id.isNotBlank() }
+        .filter { attachment -> attachment.status == "ready" }
+        .distinctBy { attachment -> attachment.id }
+        .toList()
 
 internal fun String.withInsertedThreadMention(handle: String): String {
     val token = handle.toThreadMentionToken() ?: return this
