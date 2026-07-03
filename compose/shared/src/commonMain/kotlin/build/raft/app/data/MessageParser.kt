@@ -139,11 +139,21 @@ private data class MessagesWireChannelResponse(
 private data class MessagesWireContextResponse(
     val channelId: String? = null,
     val targetMessageId: String? = null,
+    val canonicalTarget: MessagesWireCanonicalTarget? = null,
     val hasOlder: Boolean = false,
     val hasNewer: Boolean = false,
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+)
+
+@Serializable
+private data class MessagesWireCanonicalTarget(
+    val kind: String? = null,
+    val channelId: String? = null,
+    val messageId: String? = null,
+    val threadParentMessageId: String? = null,
+    val threadChannelId: String? = null,
 )
 
 @Serializable
@@ -187,10 +197,19 @@ data class SharedMessagesPayload(
     val messages: List<Message>,
     val channelId: ChannelId? = null,
     val targetMessageId: MessageId? = null,
+    val canonicalTarget: SharedMessagesCanonicalTarget? = null,
     val hasOlder: Boolean = false,
     val hasNewer: Boolean = false,
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+)
+
+data class SharedMessagesCanonicalTarget(
+    val kind: String,
+    val channelId: ChannelId?,
+    val messageId: MessageId?,
+    val threadParentMessageId: MessageId?,
+    val threadChannelId: ChannelId?,
 )
 
 data class SharedSentMessagePayload(
@@ -219,10 +238,22 @@ fun parseSharedMessageContext(bodyText: String, fallbackThreadId: ThreadId): Sha
         messages = response.messages.map { it.toDomain(resolvedThreadId) },
         channelId = response.channelId?.let(::ChannelId),
         targetMessageId = response.targetMessageId?.let(::MessageId),
+        canonicalTarget = response.canonicalTarget?.toDomain(),
         hasOlder = response.hasOlder,
         hasNewer = response.hasNewer,
         historyLimited = response.historyLimited,
         channelArchived = response.channelArchived,
+    )
+}
+
+private fun MessagesWireCanonicalTarget.toDomain(): SharedMessagesCanonicalTarget? {
+    val resolvedKind = kind?.takeIf { it.isNotBlank() } ?: return null
+    return SharedMessagesCanonicalTarget(
+        kind = resolvedKind,
+        channelId = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadParentMessageId = threadParentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
     )
 }
 

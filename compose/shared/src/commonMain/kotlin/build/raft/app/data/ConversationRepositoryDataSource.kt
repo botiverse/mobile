@@ -816,7 +816,24 @@ private fun buildSharedThreadSnapshot(
         buildDefaultConversation(threadId, threadId.value)
             .copy(archived = payload.channelArchived)
     val conversation =
-        if (highlighted != null) {
+        if (
+            payload.canonicalTarget?.kind == "thread" &&
+            payload.canonicalTarget.channelId != null &&
+            payload.canonicalTarget.threadParentMessageId != null
+        ) {
+            baseConversation.copy(
+                threadId = threadIdentity(payload.canonicalTarget.channelId, payload.canonicalTarget.threadParentMessageId),
+                channelId = payload.canonicalTarget.channelId,
+                thread =
+                    ThreadConversation(
+                        parentChannelId = payload.canonicalTarget.channelId,
+                        parentMessageId = payload.canonicalTarget.threadParentMessageId,
+                        streamChannelId = payload.canonicalTarget.threadChannelId,
+                        parentChannelKind = baseConversation.channelType.normalizedThreadChannelKind()
+                    ),
+                kind = ConversationKind.Thread
+            )
+        } else if (highlighted != null) {
             baseConversation.withThreadAnchor(
                 parentMessage = highlighted,
                 streamChannelId = ChannelId(threadId.value)
