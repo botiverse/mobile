@@ -33,7 +33,7 @@ import kotlinx.coroutines.sync.withLock
 internal class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private var dataSource: SharedHomeDataSource,
-    private var scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
     private val presenceFlushDelayMillis: Long = 250L,
     /**
@@ -104,7 +104,6 @@ internal class SharedHomeStore(
 
     fun updateRuntimeIntegrations(
         dataSource: SharedHomeDataSource,
-        scope: CoroutineScope,
         diagnosticsLogger: (String) -> Unit = {},
         loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -128,7 +127,6 @@ internal class SharedHomeStore(
         loadJob = null
         agentDirectMessageStatusJob = null
         this.dataSource = dataSource
-        this.scope = scope
         this.diagnosticsLogger = diagnosticsLogger
         this.loadSidebarOrder = loadSidebarOrder
         this.updateSidebarOrder = updateSidebarOrder

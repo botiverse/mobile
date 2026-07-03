@@ -42,7 +42,7 @@ class SharedActivityStore internal constructor(
     localWriteThrough: ComposeLocalWriteThrough? = null,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
@@ -51,7 +51,6 @@ class SharedActivityStore internal constructor(
     private var loadJob: Job? = null
     private var localWriteThrough: ComposeLocalWriteThrough? = localWriteThrough
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
-    private var scope: CoroutineScope = scope
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
 
@@ -66,7 +65,6 @@ class SharedActivityStore internal constructor(
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
-        scope: CoroutineScope? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ) {
         this.authStore = authStore
@@ -82,9 +80,6 @@ class SharedActivityStore internal constructor(
         }
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
-        }
-        if (scope != null) {
-            this.scope = scope
         }
         if (diagnosticsLogger != null) {
             this.diagnosticsLogger = diagnosticsLogger

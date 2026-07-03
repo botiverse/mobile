@@ -48,6 +48,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
+    private val homeStoreScope: CoroutineScope,
+    private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
     private var homeStore: SharedHomeStore? = null
@@ -86,13 +88,11 @@ internal class SlockSharedStoreProvider private constructor(
             DataResult.Empty(EmptyReason.NoChannels)
         },
         pinUpdateFailureCallback: (String) -> Unit = {},
-        scope: CoroutineScope,
         diagnosticsLogger: (String) -> Unit = {}
     ): SharedHomeStore {
         homeStore?.let { store ->
             store.updateRuntimeIntegrations(
                 dataSource = dataSource,
-                scope = scope,
                 diagnosticsLogger = diagnosticsLogger,
                 loadSidebarOrder = loadSidebarOrder,
                 updateSidebarOrder = updateSidebarOrder,
@@ -106,7 +106,7 @@ internal class SlockSharedStoreProvider private constructor(
         return SharedHomeStore(
             authStore = authStore,
             dataSource = dataSource,
-            scope = scope,
+            scope = homeStoreScope,
             diagnosticsLogger = diagnosticsLogger,
             loadSidebarOrder = loadSidebarOrder,
             updateSidebarOrder = updateSidebarOrder,
@@ -125,7 +125,6 @@ internal class SlockSharedStoreProvider private constructor(
         memberRepository: MemberRepository? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
-        scope: CoroutineScope,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
         val existingStore =
@@ -144,7 +143,6 @@ internal class SlockSharedStoreProvider private constructor(
                     persistSlices = listOf(activityPersistSlice),
                     localWriteThrough = localWriteThrough,
                     onUnreadCountsChanged = onUnreadCountsChanged,
-                    scope = scope,
                     diagnosticsLogger = diagnosticsLogger
                 )
                 homeActivityStore = store
@@ -161,7 +159,7 @@ internal class SlockSharedStoreProvider private constructor(
             localWriteThrough = localWriteThrough,
             persistSlices = listOf(activityPersistSlice),
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
-            scope = scope,
+            scope = homeActivityStoreScope,
             diagnosticsLogger = diagnosticsLogger ?: {}
         ).also {
             homeActivityStore = it
@@ -315,6 +313,8 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
+                homeStoreScope = CoroutineScope(SupervisorJob()),
+                homeActivityStoreScope = CoroutineScope(SupervisorJob()),
                 threadSendScope = CoroutineScope(SupervisorJob())
             ).also { provider ->
                 provider.installAuthSessionClearNotifyBridge { message ->

@@ -319,9 +319,8 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
-    val homeRefreshScope = rememberCoroutineScope()
     val standaloneHomeStore =
-        remember(sharedStores, homeRefreshScope) {
+        remember(sharedStores) {
             val homeDataSource =
                 SharedHomeDataSource(
                     sessionStore = sharedStores.authStore,
@@ -336,7 +335,6 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
                 )
             sharedStores.getOrCreateHomeStore(
                 dataSource = homeDataSource,
-                scope = homeRefreshScope,
                 diagnosticsLogger = { message -> bridge.log("standalone_home $message") }
             )
         }

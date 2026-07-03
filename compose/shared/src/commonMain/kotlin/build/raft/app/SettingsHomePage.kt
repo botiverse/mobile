@@ -1748,7 +1748,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
-                scope = appShellCoroutineScope
             )
         }
     val homeActivityStore =
@@ -1759,8 +1758,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             conversationRepository,
             memberRepository,
             sharedStores.serverMembersStore,
-            homeStore,
-            appShellCoroutineScope
+            homeStore
         ) {
             sharedStores.getOrCreateHomeActivityStore(
                 inboxRepository = homeActivityRepository,
@@ -1768,7 +1766,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                scope = appShellCoroutineScope,
                 diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
             )
         }

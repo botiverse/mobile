@@ -58,20 +58,18 @@ class SharedHomeStoreTest {
 
     @Test
     fun cachedStoreRefreshesRuntimeScopeBeforeDispatch() = runBlocking {
-        val originalScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val originalLogs = mutableListOf<String>()
         val refreshedLogs = mutableListOf<String>()
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
-            scope = originalScope,
+            scope = storeScope,
             diagnosticsLogger = originalLogs::add
         )
 
-        val freshScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         store.updateRuntimeIntegrations(
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-new"))),
-            scope = freshScope,
             diagnosticsLogger = refreshedLogs::add
         )
         store.dispatch(SharedHomeIntent.Start)
@@ -87,8 +85,7 @@ class SharedHomeStoreTest {
         assertContains(refreshedLogs, "home_runtime_integrations_updated")
         assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_receive intent=Start") })
         assertEquals(emptyList(), originalLogs)
-        originalScope.cancel()
-        freshScope.cancel()
+        storeScope.cancel()
     }
 
     @Test

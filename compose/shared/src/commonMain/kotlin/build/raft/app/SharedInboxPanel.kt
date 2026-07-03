@@ -143,22 +143,19 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
-    val scope = rememberCoroutineScope()
     val activityStore =
         remember(
             authStore,
             repository,
             readReceiptRepository,
             conversationRepository,
-            memberRepository,
-            scope
+            memberRepository
         ) {
             sharedStores.getOrCreateHomeActivityStore(
                 inboxRepository = repository,
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
-                memberRepository = memberRepository,
-                scope = scope
+                memberRepository = memberRepository
             )
         }
     val state by activityStore.state.collectAsState()

@@ -702,8 +702,7 @@ class SharedActivityStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession(serverId = "server-2")),
             inboxRepository = secondInbox,
             readReceiptRepository = FakeReadReceiptRepository(),
-            conversationRepository = FakeConversationRepository(),
-            scope = scope
+            conversationRepository = FakeConversationRepository()
         )
         store.dispatch(SharedActivityIntent.LoadInitial)
 
