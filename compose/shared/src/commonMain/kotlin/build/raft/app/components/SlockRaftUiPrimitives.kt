@@ -14,7 +14,8 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -181,7 +182,7 @@ internal fun SlockSurfaceListItem(
 ) {
     val borderColor = if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.30f)
     val backgroundColor = if (selected) SlockSelectedSurfaceCyan else SlockColor.SurfaceWhite
-    val shadowOffset = 0.dp
+    val shadowOffset = if (selected) 2.dp else 0.dp
     Box(modifier = modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
         if (shadowOffset > 0.dp) {
             Box(
@@ -212,6 +213,7 @@ internal fun SlockSurfaceListItem(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SlockAvatarListRow(
     avatarWireValue: String?,
@@ -231,7 +233,7 @@ internal fun SlockAvatarListRow(
         interactive = onClick != null,
         onClick = onClick,
         horizontalPadding = 12.dp,
-        verticalPadding = 8.dp
+        verticalPadding = 12.dp
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -244,7 +246,11 @@ internal fun SlockAvatarListRow(
                 avatarSize = avatarSize,
                 borderWidth = SlockStroke.Thin
             )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            FlowRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
                 Text(
                     text = name,
                     style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
