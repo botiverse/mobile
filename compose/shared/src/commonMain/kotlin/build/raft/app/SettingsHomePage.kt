@@ -2119,7 +2119,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         is SharedAuthGateState.Ready -> Unit
     }
 
-    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
+    fun openHomeConversation(conversation: ThreadLaunchConversationIdentity, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -2240,7 +2240,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "threadId=${conversation.threadId.value} focusedMessageId=$anchorMessageId"
         )
         openHomeConversation(
-            conversation = conversation,
+            conversation = conversation.toThreadLaunchConversationIdentity(),
             source = "notification",
             anchorMessageId = anchorMessageId
         )
@@ -2330,7 +2330,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                     val launchPayload =
                         buildStandaloneConversationThreadLaunchPayload(
-                            conversation = conversation,
+                            conversation = conversation.toThreadLaunchConversationIdentity(),
                             timeContext = threadTimeContext,
                             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                             compactConsecutiveMessages = compactConsecutiveMessages,
@@ -2873,7 +2873,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                 onCreateChannel = { openCreateChannelDialog() },
                                 onOpenConversation = { conversation ->
-                                    openHomeConversation(conversation, "home")
+                                    openHomeConversation(conversation.toThreadLaunchConversationIdentity(), "home")
                                 },
                                 serverMembersStore = sharedStores.serverMembersStore,
                                 bottomContentPadding = appShellBottomContentInset,
@@ -13019,26 +13019,6 @@ private fun SharedAuthGateState.authGateDiagnosticsName(): String =
     }
 
 internal fun buildAppShellThreadPayload(
-    conversation: ConversationSummary,
-    timeContext: AppShellThreadTimeContext? = null,
-    alignOwnMessagesRight: Boolean = false,
-    compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
-    anchorMessageId: String? = null,
-    originFallback: ThreadLaunchOriginFallback? = null
-): KuiklyThreadScreenPayload =
-    buildAppShellThreadPayload(
-        conversation = conversation.toThreadLaunchConversationIdentity(),
-        accessState = conversation.toThreadLaunchAccessState(),
-        timeContext = timeContext,
-        alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages,
-        threadRowAffordances = threadRowAffordances,
-        anchorMessageId = anchorMessageId,
-        originFallback = originFallback
-    )
-
-internal fun buildAppShellThreadPayload(
     conversation: ThreadLaunchConversationIdentity,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
@@ -13048,7 +13028,6 @@ internal fun buildAppShellThreadPayload(
     originFallback: ThreadLaunchOriginFallback? = null,
     accessState: ThreadLaunchAccessState = ThreadLaunchAccessState()
 ): KuiklyThreadScreenPayload {
-    val summary = conversation.toConversationSummary()
     val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val streamChannelId =
@@ -13105,9 +13084,9 @@ internal fun buildAppShellThreadPayload(
     val launchHeaderContext =
         SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId)
     val originHeaderContext =
-        SharedThreadHeaderContextStore.conversationContext(
+        SharedThreadHeaderContextStore.launchOriginContext(
             surfaceKind = surfaceKind,
-            conversation = summary,
+            routeIdentity = conversation.resolveThreadRouteIdentity(),
             originMessage = null,
             parentMessageId = parentMessageId,
             originFallback = originFallback
@@ -13166,12 +13145,6 @@ internal data class ThreadLaunchAccessState(
     val joined: Boolean = true,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
-
-private fun ConversationSummary.toThreadLaunchAccessState(): ThreadLaunchAccessState =
-    ThreadLaunchAccessState(
-        joined = joined,
-        permissions = permissions
-    )
 
 private fun Pager.openStandaloneTaskThreadPage(
     task: TaskSummary,
@@ -13243,28 +13216,6 @@ private fun Pager.openStandaloneHomeMessageRequest(
 
 private fun Pager.openStandaloneHomeConversation(
     bridge: build.raft.app.base.BridgeModule,
-    conversation: ConversationSummary,
-    source: String,
-    timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean,
-    compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>,
-    anchorMessageId: String? = null
-) {
-    openStandaloneHomeConversation(
-        bridge = bridge,
-        conversation = conversation.toThreadLaunchConversationIdentity(),
-        source = source,
-        timeContext = timeContext,
-        alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages,
-        threadRowAffordances = threadRowAffordances,
-        anchorMessageId = anchorMessageId
-    )
-}
-
-private fun Pager.openStandaloneHomeConversation(
-    bridge: build.raft.app.base.BridgeModule,
     conversation: ThreadLaunchConversationIdentity,
     source: String,
     timeContext: AppShellThreadTimeContext?,
@@ -13319,7 +13270,7 @@ private fun Pager.openHomeSearchEntity(
     if (conversation != null) {
         openStandaloneHomeConversation(
             bridge = bridge,
-            conversation = conversation,
+            conversation = conversation.toThreadLaunchConversationIdentity(),
             source = "home_search_entity",
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
@@ -13347,23 +13298,6 @@ private fun Pager.openHomeSearchEntity(
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBER_DETAIL_PAGE, pageData)
 }
-
-internal fun buildStandaloneConversationThreadLaunchPayload(
-    conversation: ConversationSummary,
-    timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean = false,
-    compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
-    anchorMessageId: String? = null
-): WireThreadLaunchPayload =
-    buildStandaloneConversationThreadLaunchPayload(
-        conversation = conversation.toThreadLaunchConversationIdentity(),
-        timeContext = timeContext,
-        alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages,
-        threadRowAffordances = threadRowAffordances,
-        anchorMessageId = anchorMessageId
-    )
 
 internal fun buildStandaloneConversationThreadLaunchPayload(
     conversation: ThreadLaunchConversationIdentity,

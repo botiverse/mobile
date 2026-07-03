@@ -101,6 +101,58 @@ internal object SharedThreadHeaderContextStore {
         )
     }
 
+    fun launchOriginContext(
+        surfaceKind: String,
+        routeIdentity: ThreadRouteIdentity,
+        originMessage: KuiklyThreadMessageItem?,
+        parentMessageId: String?,
+        originFallback: ThreadLaunchOriginFallback? = null,
+        dmPeerName: String? = null
+    ): SharedThreadHeaderContext {
+        val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val resolvedOriginParentMessageId =
+            if (isReplyThread) {
+                originMessage?.id
+                    ?: parentMessageId?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+        val validatedOriginFallback =
+            originFallback?.takeIf { fallback ->
+                isReplyThread &&
+                    resolvedOriginParentMessageId != null &&
+                    fallback.matchesOriginParent(
+                        routeIdentity = routeIdentity,
+                        parentMessageId = resolvedOriginParentMessageId
+                    )
+            }
+        val resolvedOriginPreview =
+            if (isReplyThread && originMessage == null) {
+                validatedOriginFallback?.preview?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+        return SharedThreadHeaderContext(
+            title =
+                when (surfaceKind) {
+                    KuiklyThreadSurfaceKind.DirectMessage -> launchTitleFor(surfaceKind, dmPeerName)
+                    else -> ""
+                },
+            subtitle = null,
+            originMessage = if (isReplyThread) originMessage else null,
+            originPreview = resolvedOriginPreview,
+            originParentMessageId = resolvedOriginParentMessageId,
+            originStatus =
+                when {
+                    !isReplyThread -> "none"
+                    originMessage != null -> "loaded"
+                    resolvedOriginPreview != null -> "missing"
+                    resolvedOriginParentMessageId != null || validatedOriginFallback?.expected == true -> "missing"
+                    else -> "none"
+                }
+        )
+    }
+
     private fun launchTitleFor(surfaceKind: String, dmPeerName: String?): String =
         if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
             threadHeaderSafeTitleOrNull(dmPeerName) ?: ""

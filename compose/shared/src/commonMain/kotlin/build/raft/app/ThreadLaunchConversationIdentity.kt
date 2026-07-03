@@ -23,16 +23,6 @@ internal fun ConversationSummary.toThreadLaunchConversationIdentity(): ThreadLau
         kind = kind
     )
 
-internal fun ThreadLaunchConversationIdentity.toConversationSummary(): ConversationSummary =
-    ConversationSummary(
-        threadId = threadId,
-        channelId = channelId,
-        channelType = channelType,
-        thread = thread,
-        kind = kind,
-        name = threadId.value
-    )
-
 internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity =
     resolveThreadRouteIdentity(
         surfaceKind = threadSurfaceKind(),

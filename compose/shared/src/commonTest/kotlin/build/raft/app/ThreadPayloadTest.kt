@@ -39,6 +39,7 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.WireActionCardAction
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireAttachment
@@ -1465,7 +1466,7 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload =
-            buildAppShellThreadPayload(conversation)
+            buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay =
             payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
@@ -1491,7 +1492,7 @@ class ThreadPayloadTest {
                 directMessagePeerType = "agent",
                 permissions = ConversationPermissions(canSend = true)
             )
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals("Product-UX-Designer", headerDisplay.title)
@@ -1513,7 +1514,7 @@ class ThreadPayloadTest {
                 subtitle = "Home repair",
                 permissions = ConversationPermissions(canSend = true)
             )
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
@@ -1977,7 +1978,7 @@ class ThreadPayloadTest {
                 name = "onboarding-slocktest",
                 permissions = ConversationPermissions(canSend = true)
             )
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
@@ -1997,7 +1998,7 @@ class ThreadPayloadTest {
                 name = "partner",
                 permissions = ConversationPermissions(canSend = true)
             )
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModel(payload.conversationHeaderEntryFrom(conversation.toConversationHeaderEntry()))
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
@@ -2009,7 +2010,7 @@ class ThreadPayloadTest {
     @Test
     fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("joint-1"),
                     channelId = ChannelId("joint-1"),
@@ -2225,7 +2226,7 @@ class ThreadPayloadTest {
     @Test
     fun buildsSharedShellThreadRoutePayloadFromConversation() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("channel-1"),
                     channelId = ChannelId("channel-1"),
@@ -2273,7 +2274,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellJointChannelRouteDisablesTaskSurfaces() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("joint-1"),
                     channelId = ChannelId("joint-1"),
@@ -2299,7 +2300,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellReplyThreadWithJointParentDisablesTaskSurfaces() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = threadIdentity(ChannelId("joint-1"), MessageId("message-1")),
                     channelId = ChannelId("joint-1"),
@@ -2404,7 +2405,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellDirectMessageRouteKeepsDmSurfaceForComposerProps() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("dm-agent-1"),
                     channelId = ChannelId("dm-agent-1"),
@@ -2449,7 +2450,7 @@ class ThreadPayloadTest {
     @Test
     fun directMessageReplyThreadLaunchKeepsParentSurfaceKind() {
         val dmPayload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("dm-agent-1"),
                     channelId = ChannelId("dm-agent-1"),
@@ -2569,7 +2570,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellReplyThreadRouteUsesConversationChannelSubtitle() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = threadIdentity(ChannelId("channel-1"), MessageId("message-1")),
                     channelId = ChannelId("channel-1"),
@@ -3198,7 +3199,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellThreadRouteOmitsSubtitleWhenChannelDescriptionIsMissing() {
         val payload =
-            buildAppShellThreadPayload(
+            buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("channel-1"),
                     channelId = ChannelId("channel-1"),
@@ -3219,7 +3220,7 @@ class ThreadPayloadTest {
     @Test
     fun standaloneConversationThreadLaunchCarriesOnlyIdentityAndIntent() {
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("channel-1"),
                     channelId = ChannelId("channel-1"),
@@ -3299,7 +3300,7 @@ class ThreadPayloadTest {
                     )
             )
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
                 conversation,
                 timeContext = null
             )
@@ -3329,7 +3330,7 @@ class ThreadPayloadTest {
         assertEquals(null, initialPayload.parentMessageId)
         assertEquals(null, initialPayload.originParentMessageId)
 
-        val appShellPayload = buildAppShellThreadPayload(conversation)
+        val appShellPayload = buildAppShellThreadPayloadFromSummary(conversation)
         val appShellComposer = appShellPayload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.Channel, appShellPayload.surfaceKind)
         assertEquals("channel-1", appShellPayload.sourceThreadId)
@@ -3346,7 +3347,7 @@ class ThreadPayloadTest {
     @Test
     fun standaloneUnresolvedReplyLaunchCarriesOnlyParentPairUntilResolved() {
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("thread-summary-id"),
                     channelId = null,
@@ -5731,5 +5732,46 @@ class ThreadPayloadTest {
             authorName = "User $id",
             messageType = messageType,
             body = "body $id"
+        )
+
+    private fun buildAppShellThreadPayloadFromSummary(
+        conversation: ConversationSummary,
+        timeContext: AppShellThreadTimeContext? = null,
+        alignOwnMessagesRight: Boolean = false,
+        compactConsecutiveMessages: Boolean = false,
+        threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
+        anchorMessageId: String? = null,
+        originFallback: ThreadLaunchOriginFallback? = null
+    ): KuiklyThreadScreenPayload =
+        buildAppShellThreadPayload(
+            conversation = conversation.toThreadLaunchConversationIdentity(),
+            timeContext = timeContext,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances,
+            anchorMessageId = anchorMessageId,
+            originFallback = originFallback,
+            accessState =
+                ThreadLaunchAccessState(
+                    joined = conversation.joined,
+                    permissions = conversation.permissions
+                )
+        )
+
+    private fun buildStandaloneConversationThreadLaunchPayloadFromSummary(
+        conversation: ConversationSummary,
+        timeContext: AppShellThreadTimeContext?,
+        alignOwnMessagesRight: Boolean = false,
+        compactConsecutiveMessages: Boolean = false,
+        threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
+        anchorMessageId: String? = null
+    ): WireThreadLaunchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = conversation.toThreadLaunchConversationIdentity(),
+            timeContext = timeContext,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances = threadRowAffordances,
+            anchorMessageId = anchorMessageId
         )
 }
