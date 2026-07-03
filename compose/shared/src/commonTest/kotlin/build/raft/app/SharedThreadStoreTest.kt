@@ -5744,7 +5744,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadHydratesReplyOriginFromParentMessageContextWhenRepliesExcludeParent() = runBlocking {
+    fun fetchThreadPayloadDoesNotBlockReplyMessagesOnParentMessageContextWhenRepliesExcludeParent() = runBlocking {
         val parent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
         val repository =
             FakeConversationRepository(
@@ -5796,15 +5796,213 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
-        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(null, payload.originMessage)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        assertEquals(emptyList(), repository.getMessageContextRequests)
+    }
+
+    @Test
+    fun fetchThreadPayloadUsesVerifiedLocalReplyOriginBeforeParentContext() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val localParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "local parent body")
+        localStore.writeThread(
+            threadSnapshot(
+                threadId = "channel-1",
+                messages = listOf(localParent),
+                conversation = conversationSummary("channel-1")
+            )
+        )
+        val networkParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "network parent body")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 11, body = "reply body")),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(networkParent),
+                            conversation = conversationSummary("channel-1")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals("local parent body", payload.originMessage?.body)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("loaded", payload.originStatus)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        assertEquals(emptyList(), repository.getMessageContextRequests)
+    }
+
+    @Test
+    fun fetchThreadPayloadRejectsLocalReplyOriginWhenParentChannelDiffers() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            threadSnapshot(
+                threadId = "channel-1",
+                messages = listOf(message(threadId = "wrong-channel", channelId = "wrong-channel", id = "m1", seq = 1, body = "wrong local body")),
+                conversation = conversationSummary("channel-1")
+            )
+        )
+        val networkParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "network parent body")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = emptyList(),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(networkParent),
+                            conversation = conversationSummary("channel-1")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals("network parent body", payload.originMessage?.body)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
         assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
     }
 
     @Test
-    fun fetchThreadPayloadHydratesReplyOriginWhenSnapshotParentCandidateIsSparse() = runBlocking {
+    fun fetchThreadPayloadHydratesReplyOriginFromParentContextWhenNoReplyMessagesCanRender() = runBlocking {
+        val parent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = emptyList(),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(parent),
+                            conversation = conversationSummary("channel-1")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(emptyList(), payload.messages.map { it.body })
+        assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
+    }
+
+    @Test
+    fun fetchThreadPayloadDoesNotBlockReplyMessagesOnParentContextWhenSnapshotParentCandidateIsSparse() = runBlocking {
         val sparseParent = message(threadId = "thread-m1", id = "m1", seq = 10, body = "")
         val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
         val repository =
@@ -5861,11 +6059,11 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
-        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(null, payload.originMessage)
         assertEquals("m1", payload.originParentMessageId)
-        assertEquals("loaded", payload.originStatus)
+        assertEquals("missing", payload.originStatus)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
-        assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
+        assertEquals(emptyList(), repository.getMessageContextRequests)
     }
 
     @Test

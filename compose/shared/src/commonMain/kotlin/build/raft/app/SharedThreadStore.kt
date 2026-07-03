@@ -91,6 +91,7 @@ import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
+import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -1677,7 +1678,8 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: KuiklyThreadScreenPayload,
+        allowNetworkHydration: Boolean = true
     ): ThreadSnapshot {
         val isReplyThread =
             basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
@@ -1714,6 +1716,17 @@ internal class SharedThreadDataSource(
         if (messageParentCandidate != null && !messageParentCandidate.needsReplyOriginContextHydration()) {
             return this
         }
+        findLocalReplyParentMessage(
+            parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentChannelId?.value
+                ?: parentMessage?.channelId?.value,
+            parentMessageId = parentMessageId
+        )?.let { parent ->
+            return copy(parentMessage = parent)
+        }
+        if (!allowNetworkHydration) {
+            return this
+        }
         val contextResult =
             fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
                 repository.getMessageContext(MessageId(parentMessageId))
@@ -1724,6 +1737,29 @@ internal class SharedThreadDataSource(
                 ?: context.messages.firstOrNull { message -> message.id.value == parentMessageId }
                 ?: return this
         return copy(parentMessage = parent)
+    }
+
+    private suspend fun findLocalReplyParentMessage(
+        parentChannelId: String?,
+        parentMessageId: String
+    ): Message? {
+        val channelId = parentChannelId?.takeIf { it.isNotBlank() } ?: return null
+        val local = localWriteThrough ?: return null
+        val parentChannel = ChannelId(channelId)
+        val parentMessage = MessageId(parentMessageId)
+        val localThreadIds =
+            listOf(
+                threadIdentity(parentChannel, parentMessage),
+                ThreadId(channelId)
+            ).distinctBy { it.value }
+        return localThreadIds.firstNotNullOfOrNull { threadId ->
+            val snapshot = local.readThreadSnapshot(threadId) ?: return@firstNotNullOfOrNull null
+            snapshot.parentMessage?.takeIf { message ->
+                message.matchesReplyOriginParent(parentChannel, parentMessage)
+            } ?: snapshot.messages.firstOrNull { message ->
+                message.matchesReplyOriginParent(parentChannel, parentMessage)
+            }
+        }
     }
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
@@ -1782,7 +1818,10 @@ internal class SharedThreadDataSource(
                     }
                 val payload =
                     initialResult.data
-                        .withReplyParentMessageFromContext(resolvedBase)
+                        .withReplyParentMessageFromContext(
+                            basePayload = resolvedBase,
+                            allowNetworkHydration = !initialResult.data.hasRenderableReplyThreadMessages(resolvedBase)
+                        )
                         .withConversationAccessFallback(accessFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                 DataResult.Content(
@@ -1804,6 +1843,41 @@ internal class SharedThreadDataSource(
 
     private fun KuiklyThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
         body.isBlank() && attachments.isEmpty()
+
+    private fun Message.matchesReplyOriginParent(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId
+    ): Boolean =
+        id == parentMessageId &&
+            !needsReplyOriginContextHydration() &&
+            (channelId == parentChannelId || threadId == ThreadId(parentChannelId.value))
+
+    private fun ThreadSnapshot.hasRenderableReplyThreadMessages(
+        basePayload: KuiklyThreadScreenPayload
+    ): Boolean {
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
+        val replyThreadContentChannelId =
+            basePayload.copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId =
+                    basePayload.sourceThreadId
+                        ?: conversation.thread?.streamChannelId?.value
+                        ?: conversation.channelId?.value
+                        ?: conversation.threadId.value,
+                streamChannelId =
+                    basePayload.streamChannelId
+                        ?: conversation.thread?.streamChannelId?.value
+                        ?: conversation.channelId?.value
+                        ?: conversation.threadId.value
+            ).replyThreadContentChannelId()
+        return messages.any { message ->
+            message.id.value != parentMessageId &&
+                (replyThreadContentChannelId == null || message.belongsToReplyThreadContent(replyThreadContentChannelId))
+        }
+    }
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
         basePayload: KuiklyThreadScreenPayload
@@ -4785,7 +4859,12 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val resolvedParentMessage =
         parentMessage
-            ?: parentId?.let { id -> messages.firstOrNull { message -> message.id.value == id } }
+            ?.takeUnless { it.isSparseReplyOriginParentCandidate() }
+            ?: parentId?.let { id ->
+                messages.firstOrNull { message ->
+                    message.id.value == id && !message.isSparseReplyOriginParentCandidate()
+                }
+            }
     val surfaceKind =
         when {
             conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
@@ -4941,6 +5020,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerGravatarUrl = null
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
+
+private fun Message.isSparseReplyOriginParentCandidate(): Boolean =
+    body.isBlank() && attachments.isEmpty()
 
 private fun String?.withRouteChannelKindFallback(routeKind: String?): String? {
     val normalized = normalizedThreadChannelKind()
