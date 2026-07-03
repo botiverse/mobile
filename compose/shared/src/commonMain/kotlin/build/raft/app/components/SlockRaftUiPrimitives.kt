@@ -181,7 +181,7 @@ internal fun SlockSurfaceListItem(
 ) {
     val borderColor = if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.30f)
     val backgroundColor = if (selected) SlockSelectedSurfaceCyan else SlockColor.SurfaceWhite
-    val shadowOffset = if (selected) 2.dp else 0.dp
+    val shadowOffset = 0.dp
     Box(modifier = modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
         if (shadowOffset > 0.dp) {
             Box(
