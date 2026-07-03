@@ -2,11 +2,16 @@
 
 The canonical visual-testing CLI, case manifest, shared token manifest, React
 provider runner, diff/report/site generator, and package metadata live in the
-React submodule:
+React/source checkout:
 
 ```text
-third_party/slock-source/packages/visual-testing/
+<slock-source>/packages/visual-testing/
 ```
+
+Do not create `third_party/slock-source` inside this Android repo. That path is
+not tracked by the mobile checkout and will show up as untracked local state.
+Point the shim at an external checkout with `SLOCK_SOURCE_REPO` or directly at
+the CLI with `SLOCK_VISUAL_TESTING_CLI`.
 
 The Android repo is the Android/KMP provider consumer. It owns Android connected
 capture code, visual fixture source-set gating, result directories, and
@@ -16,6 +21,7 @@ repo.
 Use the Android compatibility shim from the Android repo root:
 
 ```bash
+export SLOCK_SOURCE_REPO=/path/to/slock-source
 node scripts/slock-visual-testing.mjs scan
 node scripts/slock-visual-testing.mjs validate --manifest shared
 node scripts/slock-visual-testing.mjs token-audit
@@ -52,16 +58,18 @@ The local Android repo's writable `origin` is `botiverse/mobile`. The older
 publishing new reports. Do not publish Android/KMP reports to
 `botiverse/slock`, whose Pages URL is for the React/web repo.
 
-The shim imports:
+The shim resolves the CLI from `SLOCK_VISUAL_TESTING_CLI`, `SLOCK_SOURCE_REPO`,
+or a known external checkout, then sets the React repo root for the upstream CLI:
 
 ```text
-third_party/slock-source/packages/visual-testing/src/cli.mjs
+<slock-source>/packages/visual-testing/src/cli.mjs
 ```
 
-Run this after updating the submodule if the upstream package changes:
+Run this after updating the external source checkout if the upstream package
+changes:
 
 ```bash
-git submodule update --init third_party/slock-source
+SLOCK_SOURCE_REPO=/path/to/slock-source \
 node scripts/slock-visual-testing.mjs validate --manifest shared
 ```
 
