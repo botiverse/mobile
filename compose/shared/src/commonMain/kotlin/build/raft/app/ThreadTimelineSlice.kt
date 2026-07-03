@@ -399,12 +399,15 @@ internal fun ThreadTimelineSlice.focusedMessageTargetSignature(): String =
     }
 
 internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible: Boolean): String {
-    if (!contentExtrasVisible || messages.isEmpty()) return ""
-    return messages
-        .takeLast(ThreadInitialMarkdownPreparseMessageCount)
-        .joinToString(separator = "|") { message ->
-            "${message.id}:${message.body.length}:${message.body.hashCode()}"
+    if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) return ""
+    return buildList {
+        messages.asReversed().forEach { message ->
+            add("${message.id}:${message.body.length}:${message.body.hashCode()}")
         }
+        originMessage?.let { origin ->
+            add("origin:${origin.id}:${origin.body.length}:${origin.body.hashCode()}")
+        }
+    }.joinToString(separator = "|")
 }
 
 internal fun ThreadTimelineSlice.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {

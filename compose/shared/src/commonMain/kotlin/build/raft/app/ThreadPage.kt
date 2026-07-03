@@ -236,6 +236,8 @@ private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 80
+private const val ThreadMarkdownPreparseBatchDelayMs = 16L
+private const val ThreadMarkdownPreparseDebugEntryLimit = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal enum class ThreadPickedAttachmentComposerAction {
@@ -8031,35 +8033,50 @@ private fun ThreadChatTab(
 
 private data class ThreadMarkdownPreparsePlan(
     val key: String,
-    val bodies: List<String>,
+    val candidates: List<ThreadMarkdownPreparseCandidate>,
+    val parserCandidateCount: Int,
     val debugEntries: List<String> = emptyList()
+)
+
+private data class ThreadMarkdownPreparseCandidate(
+    val id: String,
+    val body: String
 )
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     contentExtrasVisible: Boolean
 ): ThreadMarkdownPreparsePlan {
-    if (!contentExtrasVisible || messages.isEmpty()) {
-        return ThreadMarkdownPreparsePlan(key = "", bodies = emptyList())
+    if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) {
+        return ThreadMarkdownPreparsePlan(key = "", candidates = emptyList(), parserCandidateCount = 0)
     }
-    val latestBodies =
-        messages
-            .takeLast(ThreadInitialMarkdownPreparseMessageCount)
-            .map { it.body }
+    val candidates =
+        buildList {
+            messages.asReversed().forEach { message ->
+                add(ThreadMarkdownPreparseCandidate(id = message.id, body = message.body))
+            }
+            originMessage?.let { origin ->
+                add(ThreadMarkdownPreparseCandidate(id = "origin:${origin.id}", body = origin.body))
+            }
+        }
     val fullRendererContents =
-        latestBodies
-            .mapNotNull { body -> body.preparedSlockMarkdownFullRendererContentOrNull() }
+        candidates
+            .mapNotNull { candidate -> candidate.body.preparedSlockMarkdownFullRendererContentOrNull() }
             .distinct()
     if (fullRendererContents.isEmpty()) {
-        return ThreadMarkdownPreparsePlan(key = "", bodies = emptyList())
+        return ThreadMarkdownPreparsePlan(key = "", candidates = emptyList(), parserCandidateCount = 0)
     }
     return ThreadMarkdownPreparsePlan(
-        key = fullRendererContents.joinToString(separator = "\u001f"),
-        bodies = latestBodies,
+        key =
+            candidates.joinToString(separator = "|") { candidate ->
+                "${candidate.id}:${candidate.body.length}:${candidate.body.hashCode()}"
+            },
+        candidates = candidates,
+        parserCandidateCount = fullRendererContents.size,
         debugEntries =
-            messages
-                .takeLast(ThreadInitialMarkdownPreparseMessageCount)
-                .map { message ->
-                    "id=${message.id.take(8)} len=${message.body.length} hash=${message.body.hashCode().toString(16)}"
+            candidates
+                .take(ThreadMarkdownPreparseDebugEntryLimit)
+                .map { candidate ->
+                    "id=${candidate.id.take(15)} len=${candidate.body.length} hash=${candidate.body.hashCode().toString(16)}"
                 }
     )
 }
@@ -8257,34 +8274,62 @@ private fun ThreadMessagesList(
     LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
             diagnosticsLogger(
-                "thread_markdown_preparse_plan window=initial_latest result=empty " +
+                "thread_markdown_preparse_plan scope=loaded_latest_first result=empty " +
                     "messages=${renderPayload.messages.size} extrasVisible=$contentExtrasVisible"
             )
             return@LaunchedEffect
         }
         diagnosticsLogger(
-            "thread_markdown_preparse_plan window=initial_latest candidates=${initialMarkdownPreparsePlan.bodies.size} " +
-                "max=$ThreadInitialMarkdownPreparseMessageCount messages=${renderPayload.messages.size} " +
+            "thread_markdown_preparse_plan scope=loaded_latest_first " +
+                "bodyCandidates=${initialMarkdownPreparsePlan.candidates.size} " +
+                "parserCandidates=${initialMarkdownPreparsePlan.parserCandidateCount} " +
+                "batchSize=$ThreadInitialMarkdownPreparseMessageCount messages=${renderPayload.messages.size} " +
+                "origin=${renderPayload.originMessage != null} " +
+                "entriesShown=${initialMarkdownPreparsePlan.debugEntries.size} " +
                 "entries=${initialMarkdownPreparsePlan.debugEntries.joinToString(separator = ";")}"
         )
         val startedAt = TimeSource.Monotonic.markNow()
         try {
-            val result =
-                prepareSlockMarkdownFullRendererBodies(
-                    bodies = initialMarkdownPreparsePlan.bodies,
-                    maxBodies = ThreadInitialMarkdownPreparseMessageCount
+            var parsedCount = 0
+            var cacheHitCount = 0
+            var requestedCount = 0
+            val batches = initialMarkdownPreparsePlan.candidates.chunked(ThreadInitialMarkdownPreparseMessageCount)
+            batches.forEachIndexed { index, batch ->
+                if (index > 0) {
+                    delay(ThreadMarkdownPreparseBatchDelayMs)
+                }
+                val batchStartedAt = TimeSource.Monotonic.markNow()
+                val result =
+                    prepareSlockMarkdownFullRendererBodies(
+                        bodies = batch.map { candidate -> candidate.body },
+                        maxBodies = batch.size
+                    )
+                requestedCount += result.requestedCount
+                parsedCount += result.parsedCount
+                cacheHitCount += result.cacheHitCount
+                val batchDurationMs = batchStartedAt.elapsedNow().inWholeMilliseconds
+                diagnosticsLogger(
+                    "thread_markdown_preparse_batch scope=loaded_latest_first " +
+                        "batch=${index + 1}/${batches.size} bodyCandidates=${batch.size} " +
+                        "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
+                        "cacheHit=${result.cacheHitCount} messages=${renderPayload.messages.size} " +
+                        "durationMs=$batchDurationMs"
                 )
+            }
             val durationMs = startedAt.elapsedNow().inWholeMilliseconds
             diagnosticsLogger(
-                "thread_markdown_preparse window=initial_latest requested=${result.requestedCount} " +
-                    "parsed=${result.parsedCount} cacheHit=${result.cacheHitCount} " +
+                "thread_markdown_preparse scope=loaded_latest_first " +
+                    "bodyCandidates=${initialMarkdownPreparsePlan.candidates.size} " +
+                    "parserCandidates=${initialMarkdownPreparsePlan.parserCandidateCount} " +
+                    "batchParserRequests=$requestedCount parsed=$parsedCount cacheHit=$cacheHitCount " +
+                    "batches=${batches.size} " +
                     "messages=${renderPayload.messages.size} durationMs=$durationMs"
             )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             diagnosticsLogger(
-                "thread_markdown_preparse window=initial_latest result=failed " +
+                "thread_markdown_preparse scope=loaded_latest_first result=failed " +
                     "messages=${renderPayload.messages.size} error=${error::class.simpleName}"
             )
         }

@@ -275,6 +275,23 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun markdownPreparseSignature_changesWhenOlderLoadedBodyChanges() {
+        val messagesA =
+            (0 until ThreadInitialMarkdownPreparseMessageCount + 2).map { index ->
+                message("m$index", body = "body-$index")
+            }
+        val messagesB =
+            messagesA.mapIndexed { index, item ->
+                if (index == 0) item.copy(body = "body-older-updated") else item
+            }
+
+        assertNotEquals(
+            payload(messages = messagesA).timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true),
+            payload(messages = messagesB).timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
     fun latestMessageListItemIndex_originMessageParticipatesInScrollableItemsAgain() {
         val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
             .latestMessageListItemIndexPublic()
