@@ -1156,9 +1156,12 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             context.resources.displayMetrics.heightPixels > 0 -> context.resources.displayMetrics.heightPixels
             else -> widthPx
         }
-        val designEdgePx = minOf(widthPx, heightPx).takeIf { it > 0 } ?: return
-        val density = (designEdgePx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return
         val sourceMetrics = context.resources.displayMetrics
+        val density = hostDisplayDensity(
+            widthPx = widthPx,
+            heightPx = heightPx,
+            sourceDensity = sourceMetrics.density
+        ) ?: return
         hostDisplayMetrics = DisplayMetrics().apply {
             setTo(sourceMetrics)
             this.widthPixels = widthPx
@@ -1167,6 +1170,17 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             this.scaledDensity = density
             this.densityDpi = (density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
         }
+    }
+
+    internal fun hostDisplayDensity(
+            widthPx: Int,
+            heightPx: Int,
+            sourceDensity: Float
+    ): Float? {
+        val designEdgePx = minOf(widthPx, heightPx).takeIf { it > 0 } ?: return null
+        val designDensity = (designEdgePx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return null
+        val hostDensity = sourceDensity.takeIf { it.isFinite() && it > 0f }
+        return hostDensity?.let { minOf(designDensity, it) } ?: designDensity
     }
 
     fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
