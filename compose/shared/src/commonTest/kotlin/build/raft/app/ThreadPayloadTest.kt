@@ -944,6 +944,49 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadInlineSearchMatchesOriginAndRepliesInListOrder() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                originStatus = "content",
+                originMessage = testThreadMessage("origin").copy(body = "The launch decision"),
+                messages =
+                    listOf(
+                        testThreadMessage("reply-0").copy(body = "unrelated"),
+                        testThreadMessage("reply-1").copy(body = "Launch follow-up"),
+                        testThreadMessage("reply-2").copy(body = "other")
+                    )
+            )
+        val matches = payload.toThreadTimelineSlice().threadInlineSearchMatches("launch")
+
+        assertEquals(
+            listOf(
+                ThreadInlineSearchMatch(messageId = "origin", listItemIndex = 0),
+                ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 3)
+            ),
+            matches
+        )
+    }
+
+    @Test
+    fun threadInlineSearchMatchesAuthorFieldsAndIgnoresBlankQuery() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                messages =
+                    listOf(
+                        testThreadMessage("reply-0").copy(authorName = "Artin", body = "hello"),
+                        testThreadMessage("reply-1").copy(authorHandle = "Android-Developer-2", body = "ship it")
+                    )
+            )
+        val timeline = payload.toThreadTimelineSlice()
+
+        assertEquals(emptyList<ThreadInlineSearchMatch>(), timeline.threadInlineSearchMatches("   "))
+        assertEquals(
+            listOf(ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 2)),
+            timeline.threadInlineSearchMatches("developer-2")
+        )
+    }
+
+    @Test
     fun threadRealOlderBoundaryRendersWithFullMessageList() {
         val fullPayload =
             KuiklyThreadScreenPayload(

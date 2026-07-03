@@ -42,6 +42,11 @@ internal data class ThreadTimelineSlice(
     val beginningReplyCountLabel: String?
 )
 
+internal data class ThreadInlineSearchMatch(
+    val messageId: String,
+    val listItemIndex: Int
+)
+
 internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlice =
     ThreadTimelineSlice(
         status = status,
@@ -151,6 +156,25 @@ internal fun ThreadTimelineSlice.threadMessageListItemIndex(messageId: String): 
     if (messageIndex < 0) return -1
     return firstMessageListItemIndex() + messageIndex
 }
+
+internal fun ThreadTimelineSlice.threadInlineSearchMatches(query: String): List<ThreadInlineSearchMatch> {
+    val normalizedQuery = query.trim().lowercase()
+    if (normalizedQuery.isBlank()) return emptyList()
+    return (listOfNotNull(originMessage) + messages)
+        .distinctBy { it.id }
+        .filter { message -> message.matchesThreadInlineSearch(normalizedQuery) }
+        .mapNotNull { message ->
+            val index = threadMessageListItemIndex(message.id)
+            if (index >= 0) ThreadInlineSearchMatch(message.id, index) else null
+        }
+}
+
+private fun KuiklyThreadMessageItem.matchesThreadInlineSearch(normalizedQuery: String): Boolean =
+    body.contains(normalizedQuery, ignoreCase = true) ||
+        authorName.contains(normalizedQuery, ignoreCase = true) ||
+        authorHandle.contains(normalizedQuery, ignoreCase = true) ||
+        taskId.orEmpty().contains(normalizedQuery, ignoreCase = true) ||
+        taskNumber?.toString().orEmpty().contains(normalizedQuery, ignoreCase = true)
 
 internal fun ThreadTimelineSlice.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1

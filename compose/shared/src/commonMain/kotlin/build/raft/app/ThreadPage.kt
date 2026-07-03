@@ -6881,6 +6881,7 @@ private fun ThreadPageContent(
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
@@ -7051,6 +7052,7 @@ private fun ThreadPageContent(
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
+                        inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         onThreadEvent = onThreadEvent,
@@ -7126,7 +7128,11 @@ private fun ThreadPageContent(
                 },
                 onOpenMemberProfile = onOpenMemberProfile,
                 onOpenSearch = {
-                    onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
+                    if (selectedTab != KuiklyThreadTab.Chat) {
+                        selectedTab = KuiklyThreadTab.Chat
+                        onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+                    }
+                    inlineSearchVisible = !inlineSearchVisible
                 },
                 onShowMembers = {
                     activeModal = "members"
@@ -7422,9 +7428,7 @@ private fun ThreadPageHeader(
                     )
                 }
             }
-            if (payload.threadChannelSearchChannelId() != null) {
-                ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
-            }
+            ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
             if (payload.showSettingsAction) {
                 ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
             }
@@ -7782,6 +7786,7 @@ private fun ThreadChatTab(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -7847,6 +7852,7 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
+                    inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
@@ -7894,6 +7900,7 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
+                    inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
@@ -7935,6 +7942,7 @@ private fun ThreadChatTab(
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
+                inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
@@ -8001,6 +8009,7 @@ private fun ThreadMessagesList(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -8104,6 +8113,39 @@ private fun ThreadMessagesList(
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var consumedFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var inlineSearchQuery by remember(threadInstanceKey) { mutableStateOf("") }
+    var inlineSearchCurrentIndex by remember(threadInstanceKey) { mutableStateOf(0) }
+    val inlineSearchMatches =
+        remember(
+            inlineSearchVisible,
+            inlineSearchQuery,
+            renderPayload.originStatus,
+            renderPayload.originMessage?.id,
+            renderPayload.originMessage?.body,
+            renderPayload.messages
+        ) {
+            if (inlineSearchVisible) {
+                renderPayload.threadInlineSearchMatches(inlineSearchQuery)
+            } else {
+                emptyList()
+            }
+        }
+    LaunchedEffect(inlineSearchVisible) {
+        if (!inlineSearchVisible) {
+            inlineSearchQuery = ""
+            inlineSearchCurrentIndex = 0
+        }
+    }
+    LaunchedEffect(inlineSearchMatches.size, inlineSearchQuery) {
+        inlineSearchCurrentIndex = inlineSearchCurrentIndex.coerceIn(0, (inlineSearchMatches.size - 1).coerceAtLeast(0))
+    }
+    val activeInlineSearchMatch =
+        if (inlineSearchVisible && inlineSearchMatches.isNotEmpty()) {
+            inlineSearchMatches[inlineSearchCurrentIndex.coerceIn(0, inlineSearchMatches.lastIndex)]
+        } else {
+            null
+        }
+    val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
     val latestMessageLayoutKey = remember(
         renderPayload.originStatus,
         renderPayload.canLoadMoreBefore,
@@ -8410,6 +8452,17 @@ private fun ThreadMessagesList(
         }
         consumedFocusedMessageId = targetMessageId
     }
+    LaunchedEffect(threadInstanceKey, inlineSearchVisible, activeInlineSearchMatch) {
+        val match = activeInlineSearchMatch ?: return@LaunchedEffect
+        if (!inlineSearchVisible) return@LaunchedEffect
+        listState.awaitThreadMessagesLayoutFrame()
+        if (!listState.canScrollToThreadItem(match.listItemIndex)) {
+            return@LaunchedEffect
+        }
+        allowBottomAutoAnchor = false
+        initialBottomAnchorReady = true
+        listState.scrollToItem(match.listItemIndex)
+    }
     LaunchedEffect(threadInstanceKey, activeFocusedMessageId) {
         val highlightedMessageId = activeFocusedMessageId ?: return@LaunchedEffect
         delay(ThreadFocusedMessageHighlightDurationMs)
@@ -8526,7 +8579,7 @@ private fun ThreadMessagesList(
                     ThreadOriginCard(
                         renderConfig = renderConfig,
                         timelineSlice = renderPayload,
-                        focusedMessageId = activeFocusedMessageId,
+                        focusedMessageId = activeFocusedMessageId ?: activeInlineSearchMessageId,
                         linkedTasksProjection = linkedTasksProjection,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
@@ -8722,7 +8775,7 @@ private fun ThreadMessagesList(
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
-                            focused = activeFocusedMessageId == message.id,
+                            focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = message.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(message.id) },
@@ -8800,6 +8853,29 @@ private fun ThreadMessagesList(
                         .height(ThreadBottomScrollPaddingHeight)
                 )
             }
+        }
+        if (inlineSearchVisible) {
+            ThreadInlineSearchBar(
+                query = inlineSearchQuery,
+                matchCount = inlineSearchMatches.size,
+                currentIndex = inlineSearchCurrentIndex,
+                onQueryChange = {
+                    inlineSearchQuery = it
+                    inlineSearchCurrentIndex = 0
+                },
+                onPrevious = {
+                    if (inlineSearchMatches.isNotEmpty()) {
+                        inlineSearchCurrentIndex =
+                            if (inlineSearchCurrentIndex <= 0) inlineSearchMatches.lastIndex else inlineSearchCurrentIndex - 1
+                    }
+                },
+                onNext = {
+                    if (inlineSearchMatches.isNotEmpty()) {
+                        inlineSearchCurrentIndex =
+                            if (inlineSearchCurrentIndex >= inlineSearchMatches.lastIndex) 0 else inlineSearchCurrentIndex + 1
+                    }
+                }
+            )
         }
         if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
@@ -8926,7 +9002,58 @@ private fun ThreadMessagesList(
             }
         }
     }
+    }
 }
+
+@Composable
+private fun ThreadInlineSearchBar(
+    query: String,
+    matchCount: Int,
+    currentIndex: Int,
+    onQueryChange: (String) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    val normalizedCurrent = if (matchCount > 0) currentIndex.coerceIn(0, matchCount - 1) + 1 else 0
+    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            SlockBrutalSearchField(
+                value = query,
+                placeholder = "Search this thread",
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                textStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .height(ThreadHeaderActionSize)
+                        .widthIn(min = 48.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = SlockSpacing.Xs),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$normalizedCurrent/$matchCount",
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            ThreadHeaderIconButton(icon = SlockLucideIconName.ChevronUp, onClick = onPrevious)
+            ThreadHeaderIconButton(icon = SlockLucideIconName.ChevronDown, onClick = onNext)
+        }
+    }
 }
 
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
