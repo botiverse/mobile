@@ -10,6 +10,8 @@ This plan maps Slock product surfaces to the reusable KMP Raft UI/component libr
 
 Companion audit: `docs/raft-ui-kmp-component-library-audit-2026-07-03.md`.
 
+Visual-priority follow-up: `docs/raft-ui-kmp-visual-similarity-priority-2026-07-03.md` reorders the implementation sequence by actual React-vs-Android image similarity. The source scan below remains valid, but the visual pass moves selected row/surface tokens, progress bars, and form/input/select chrome ahead of broad segmented-control adoption.
+
 ## Current React Raft UI Usage
 
 From the current `third_party/slock-source` checkout, production React imports `raft-ui` directly in these areas:
@@ -56,7 +58,7 @@ Create implementation work only for gaps where a real product route should adopt
 
 ## Suggested Task Split
 
-The following tasks are concrete enough to implement without re-auditing and have been created in `#visual-testing`:
+The following tasks are concrete enough to implement without re-auditing and have been created in `#visual-testing`. After the visual-similarity pass, execute them in the revised order documented in `docs/raft-ui-kmp-visual-similarity-priority-2026-07-03.md` rather than treating this original split as strict priority order:
 
 - Phase 1: task #277, Settings counted segmented controls KMP wrapper/adoption.
 - Phase 1: task #278, menu/popover/select controlled API polish and docs.
