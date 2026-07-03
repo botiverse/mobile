@@ -322,7 +322,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -492,15 +491,18 @@ private val AppShellChildPageTabKeys = AppShellChildPageTabs.toSet()
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
-private class AppShellChildTabEntry {
-    var selectedTab by mutableStateOf("home")
-    var renderer: AppShellChildTabRenderer by mutableStateOf<AppShellChildTabRenderer>({ _, _ ->
+private class AppShellChildTabEntry(
+    initialSelectedTab: String = "home",
+    initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
-    })
+    }
+) {
+    var selectedTab by mutableStateOf(initialSelectedTab)
+    var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
 }
 
 private object AppShellChildTabRegistry {
-    private val entries = mutableStateMapOf<String, AppShellChildTabEntry>()
+    private val entries = mutableMapOf<String, AppShellChildTabEntry>()
 
     fun register(shellId: String, entry: AppShellChildTabEntry) {
         entries[shellId] = entry
@@ -1533,7 +1535,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
-    val childTabEntry = remember(childTabShellId) { AppShellChildTabEntry() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
@@ -3016,12 +3017,21 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             else -> homeTabContent(active)
                         }
                     }
+                    val currentChildTab = retainedAppShellSelectedTab(selectedTab)
+                    val childTabEntry =
+                        remember(childTabShellId) {
+                            AppShellChildTabEntry(
+                                initialSelectedTab = currentChildTab,
+                                initialRenderer = childTabRenderer
+                            ).also { entry ->
+                                AppShellChildTabRegistry.register(childTabShellId, entry)
+                            }
+                        }
                     SideEffect {
-                        childTabEntry.selectedTab = retainedAppShellSelectedTab(selectedTab)
+                        childTabEntry.selectedTab = currentChildTab
                         childTabEntry.renderer = childTabRenderer
                     }
                     DisposableEffect(childTabShellId, childTabEntry) {
-                        AppShellChildTabRegistry.register(childTabShellId, childTabEntry)
                         onDispose {
                             AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
                         }
