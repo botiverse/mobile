@@ -2359,7 +2359,7 @@ internal class SlockKuiklyBridgeModule(
                 "appName" to "Raft",
                 "versionLabel" to (packageInfo.versionName ?: "unknown"),
                 "buildLabel" to packageInfo.versionCodeCompat(),
-                "sourceLabel" to AUTH_DIAGNOSTICS_SOURCE_MARKER,
+                "sourceLabel" to BuildConfig.GIT_COMMIT.ifBlank { "unknown" },
                 "packageName" to appContext.packageName,
                 "signedInUserLabel" to (session?.user?.bestDisplayName ?: "Signed out"),
                 "selectedServerLabel" to (selectedServer?.name ?: "No selected server"),
@@ -3645,7 +3645,6 @@ internal class SlockKuiklyBridgeModule(
         private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
         private val quiverUpdateDownloadLock = Any()
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
-        private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
