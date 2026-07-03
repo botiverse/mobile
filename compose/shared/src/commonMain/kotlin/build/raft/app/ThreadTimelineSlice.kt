@@ -356,6 +356,7 @@ internal fun ThreadTimelineSlice.messageIndexSignature(): String =
 internal fun ThreadTimelineSlice.focusedMessageListItemIndex(): Int =
     focusedMessageId
         ?.takeIf { it.isNotBlank() }
+        ?.takeUnless(::isFocusedOriginMessage)
         ?.let(::threadMessageListItemIndex)
         ?: -1
 

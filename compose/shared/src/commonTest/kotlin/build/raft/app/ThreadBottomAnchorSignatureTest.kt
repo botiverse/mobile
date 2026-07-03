@@ -216,16 +216,17 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun focusedThreadListItemIndex_canTargetOriginMessage() {
+    fun focusedThreadListItemIndex_mapsOriginButDoesNotScrollToIt() {
         val slice =
             payload(
                 originStatus = "content",
                 originMessage = message("parent-message"),
                 messages = listOf(message("reply-1"), message("reply-2"))
-            ).timelineSlice()
+            ).copy(focusedMessageId = "parent-message").timelineSlice()
 
         assertEquals(0, slice.threadMessageListItemIndex("parent-message"))
         assertEquals(2, slice.threadMessageListItemIndex("reply-1"))
+        assertEquals(-1, slice.focusedMessageListItemIndex())
         assertTrue(slice.isFocusedOriginMessage("parent-message"))
         assertFalse(slice.isFocusedOriginMessage("reply-1"))
     }
@@ -246,7 +247,7 @@ class ThreadBottomAnchorSignatureTest {
             ).copy(focusedMessageId = "parent-message").timelineSlice()
 
         assertEquals(-1, loading.focusedMessageListItemIndex())
-        assertEquals(0, loaded.focusedMessageListItemIndex())
+        assertEquals(-1, loaded.focusedMessageListItemIndex())
         assertNotEquals(loading.focusedMessageTargetSignature(), loaded.focusedMessageTargetSignature())
     }
 

@@ -1010,14 +1010,6 @@ class ThreadPayloadTest {
                 viewportHeight = 640
             )
         )
-        assertEquals(
-            0,
-            threadFocusedItemScrollOffset(
-                itemSize = 120,
-                viewportHeight = 640,
-                keepFollowingContextVisible = true
-            )
-        )
     }
 
     @Test
