@@ -137,7 +137,6 @@ class SettingsHomePageDiagnosticsTest {
         val apiRows = payload.sections.first { it.title == "API Server" }.rows
         val environmentRow = apiRows.first { it.key == DEVELOPER_ACTION_API_ENVIRONMENT }
         val transportRow = apiRows.first { it.key == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT }
-        val updateRow = apiRows.first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
 
         assertEquals("API Environment", environmentRow.title)
         assertEquals("Production", environmentRow.status)
@@ -147,7 +146,31 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals(false, transportRow.toggleValue)
         assertEquals("true", transportRow.value)
         assertTrue(transportRow.detail.contains("Android"))
-        assertEquals("Check for app update", updateRow.title)
+        assertFalse(apiRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+    }
+
+    @Test
+    fun aboutPayloadShowsManualUpdateCheckAction() {
+        val payload =
+            SharedSettingsAboutSnapshot(
+                appName = "Raft",
+                versionLabel = "1.0.0",
+                buildLabel = "1000000"
+            ).toAboutPayload(
+                webUrl = "https://app.raft.build",
+                updateCheck =
+                    SharedSettingsUpdateCheckSnapshot(
+                        supported = true,
+                        statusLabel = "Current",
+                        detail = "No Quiver update is available on main."
+                    ),
+                actionState = null
+            )
+
+        val rows = payload.sections.first { it.title == "Actions" }.rows
+        val updateRow = rows.first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
+
+        assertEquals("Check for update", updateRow.title)
         assertEquals("Current", updateRow.status)
         assertTrue(updateRow.enabled)
         assertTrue(updateRow.detail.contains("Quiver"))

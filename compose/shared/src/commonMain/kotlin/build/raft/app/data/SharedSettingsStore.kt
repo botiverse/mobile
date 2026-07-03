@@ -1822,7 +1822,7 @@ class SharedSettingsStore(
                 dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Storage -> loadStorage()
             SharedSettingsDestination.About ->
-                dataSource.loadAbout().applyToState(destination) { copy(about = it) }
+                loadAboutWithUpdateStatus()
             SharedSettingsDestination.Developer ->
                 dataSource.loadDeveloper().applyToState(destination) { copy(developer = it) }
             SharedSettingsDestination.Diagnostics ->
@@ -1842,6 +1842,20 @@ class SharedSettingsStore(
         }
         dataSource.loadComputerDetail(machineId).applyToState(SharedSettingsDestination.ComputerDetail) {
             copy(computerDetail = it)
+        }
+    }
+
+    private suspend fun loadAboutWithUpdateStatus() {
+        dataSource.loadAbout().applyToState(SharedSettingsDestination.About) { copy(about = it) }
+        when (val developerResult = dataSource.loadDeveloper()) {
+            is DataResult.Content ->
+                _state.value =
+                    _state.value.copy(
+                        developer = ScreenLoadState.Content(developerResult.data)
+                    )
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> Unit
         }
     }
 

@@ -142,6 +142,7 @@ import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot
+import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
@@ -459,6 +460,7 @@ private const val DiagnosticsDeepLinkResetSceneKey = "slockDiagnosticsDeepLinkRe
 private const val DiagnosticsDeepLinkExportReportKey = "slockDiagnosticsDeepLinkExportReport"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
+private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
 private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
@@ -1859,6 +1861,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             delay(delayMs)
         }
         homeShellStore.dispatch(SharedHomeShellIntent.SetSurfaceVisible(homeSurfaceVisible && readyServerId != null))
+    }
+    LaunchedEffect(readyServerId, readySession?.accessToken) {
+        if (readyServerId.isNullOrBlank()) return@LaunchedEffect
+        while (true) {
+            delay(AppUpdateNotificationRefreshIntervalMs)
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+        }
     }
     val loadedSettingsTimeFormat =
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
@@ -3773,12 +3782,17 @@ private fun SettingsAppShellContent(
                 SharedSettingsAboutContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
+                    updateCheck = settingsState.developer.currentContent()?.updateCheck,
+                    actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
                     webUrl = sharedSettingsResolvedWebBaseUrl(settingsState.developer.configuredWebBaseUrlOrNull()),
                     onOpenSlock = { url -> settingsCapabilities.openUrl(url) },
+                    onCheckQuiverUpdate = {
+                        onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
+                    },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsDestinationDeveloper ->
@@ -3789,9 +3803,6 @@ private fun SettingsAppShellContent(
                     onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
                     onSharedSocketIoTransportChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetSharedSocketIoTransport(enabled))
-                    },
-                    onCheckQuiverUpdate = {
-                        onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
@@ -6780,10 +6791,13 @@ private fun SharedSettingsRow(
 private fun SharedSettingsAboutContent(
     state: ScreenLoadState<SharedSettingsAboutSnapshot>,
     fallback: SharedSettingsAboutSnapshot,
+    updateCheck: SharedSettingsUpdateCheckSnapshot?,
+    actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyBuild: (String) -> Unit,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
+    onCheckQuiverUpdate: () -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot =
@@ -6791,11 +6805,12 @@ private fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
-    val payload = snapshot.toAboutPayload(webUrl)
+    val payload = snapshot.toAboutPayload(webUrl, updateCheck, actionState)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
+            DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "feedback" -> onSendFeedback()
         }
     }
@@ -6808,7 +6823,6 @@ internal fun SharedSettingsDeveloperContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenApiEnvironment: () -> Unit,
     onSharedSocketIoTransportChange: (Boolean) -> Unit,
-    onCheckQuiverUpdate: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -6818,7 +6832,6 @@ internal fun SharedSettingsDeveloperContent(
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT -> onSharedSocketIoTransportChange(value?.toBooleanStrictOrNull() ?: true)
-            DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
@@ -8250,8 +8263,14 @@ private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAb
         notificationStatusLabel = "Checking"
     )
 
-private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySharedSettingsPayload {
+internal fun SharedSettingsAboutSnapshot.toAboutPayload(
+    webUrl: String,
+    updateCheck: SharedSettingsUpdateCheckSnapshot? = null,
+    actionState: SharedSettingsActionState? = null
+): KuiklySharedSettingsPayload {
     val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
+    val updateCheckBusy =
+        actionState?.action == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK && actionState.inProgress
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = "About",
@@ -8275,6 +8294,19 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySh
                     title = "Actions",
                     rows =
                         listOf(
+                            KuiklySharedSettingsRow(
+                                key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
+                                iconName = SlockLucideIconName.Download,
+                                title = "Check for update",
+                                detail = updateCheck?.detail.orEmpty().ifBlank { "Checks Quiver for a newer Android APK and opens the installer when available." },
+                                status =
+                                    when {
+                                        updateCheckBusy -> "Checking"
+                                        updateCheck?.statusLabel.orEmpty().isNotBlank() -> updateCheck?.statusLabel.orEmpty()
+                                        else -> "Check"
+                                    },
+                                enabled = updateCheck?.supported == true && !updateCheckBusy
+                            ),
                             KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true)
                         )
                 )
@@ -8303,10 +8335,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
         }
     val sharedTransportBusy =
         actionState?.action == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT && actionState.inProgress
-    val updateCheckBusy =
-        actionState?.action == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK && actionState.inProgress
     val sharedTransportEnabled = this?.sharedSocketIoTransportEnabled == true
-    val updateCheck = this?.updateCheck
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
         title = "Developer",
@@ -8355,19 +8384,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                     },
                                 enabled = state is ScreenLoadState.Content && !sharedTransportBusy,
                                 toggleValue = sharedTransportEnabled
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
-                                iconName = SlockLucideIconName.Download,
-                                title = "Check for app update",
-                                detail = updateCheck?.detail.orEmpty().ifBlank { "Checks Quiver for a newer Android APK and uses the Quiver SDK to download and install it when available." },
-                                status =
-                                    when {
-                                        updateCheckBusy -> "Checking"
-                                        updateCheck?.statusLabel.orEmpty().isNotBlank() -> updateCheck?.statusLabel.orEmpty()
-                                        else -> "Check"
-                                    },
-                                enabled = state is ScreenLoadState.Content && updateCheck?.supported == true && !updateCheckBusy
                             )
                         )
                 ),

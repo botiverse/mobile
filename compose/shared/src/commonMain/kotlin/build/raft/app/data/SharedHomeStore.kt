@@ -209,6 +209,8 @@ internal class SharedHomeStore(
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+            SharedHomeIntent.RefreshNotifications ->
+                loadNotifications()
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
@@ -1221,6 +1223,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SelectTopAction -> "SelectTopAction:$action"
         is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+        SharedHomeIntent.RefreshNotifications -> "RefreshNotifications"
         is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
         is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
         is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
@@ -1558,6 +1561,7 @@ sealed interface SharedHomeIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data object RefreshNotifications : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: HomeChannelRow) : SharedHomeIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
@@ -1591,6 +1595,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
@@ -1614,6 +1619,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
@@ -1637,6 +1643,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,

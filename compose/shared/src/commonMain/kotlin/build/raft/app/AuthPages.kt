@@ -597,7 +597,6 @@ private fun AuthDeveloperScreen() {
             pendingEnvironment = snapshot?.options?.firstOrNull { it.key != snapshot.environmentKey }?.key
         },
         onSharedSocketIoTransportChange = {},
-        onCheckQuiverUpdate = {},
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
         onOpenRouter = { pager.openAuthPage("router") }
     )
