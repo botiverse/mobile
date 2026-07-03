@@ -1,43 +1,36 @@
 # Slock Visual Testing
 
-Generated: 2026-07-03 07:50:06 UTC
-Latest run: 48631ed3f-20260703075006
-Latest commit: 48631ed3f-20260703075006
-Commit subject: fix(home): refresh update notices periodically
+Generated: 2026-07-03 09:20:45 UTC
+Latest run: b120ed975-20260703092044
+Latest commit: b120ed975-20260703092044
+Commit subject: fix(visual): align raft ui primitive parity
 Providers: react vs android
-Summary: total 82, same 0, pass 0, basic-pass 3, different 78, missing 1
-AI analysis: ready 1 / total 82, pending 81
-Visual coverage matrix: active 63 / total 81, pending 16, skipped 2
+Summary: total 52, same 0, pass 0, basic-pass 0, different 0, missing 52
+AI analysis: ready 0 / total 52, pending 52
+Visual coverage matrix: active 53 / total 72, pending 17, skipped 2
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 52, pending 2, total 55
-- Screens Parity (real-screen): active 11, pending 14, total 26
+- Components Parity (component-fixture): active 45, pending 1, total 47
+- Screens Parity (real-screen): active 8, pending 16, total 25
 
 ## Provider Coverage
 
-- react: active 64, pending 13, unsupported 0
-- android: active 62, pending 15, unsupported 0
-- harmony: active 0, pending 77, unsupported 0
+- react: active 53, pending 15, unsupported 0
+- android: active 52, pending 16, unsupported 0
+- harmony: active 0, pending 68, unsupported 0
 
 ## Pending Coverage Rows
 
 - screens.home.choose-server: Missing true Home top-bar choose-server capture after opening the server selector from the app shell; distinct from the post-login auth choose-server gate.
 - screens.auth.choose-server: Missing post-login choose-server gate parity; this is distinct from the Home top-bar server switcher opened inside the app shell.
-- components.members.agent-lifecycle-actions: Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent management dropdown. The Android fixture opens the same lifecycle action menu state so Stop Agent and Restart / Reset are visible.
-- components.members.avatar-management: Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states.
-- components.thread.message-menu.default: Real React MessageItem right-click menu captured through the portal plus Android shared ThreadMessageMenuChrome with default message actions. Protects quick reactions and grouped row separators.
-- components.thread.message-menu.task: Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.
-- components.thread.message-row.deleted-human: Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.
+- components.members.agent-lifecycle-actions: Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent lifecycle confirmation modal. The KMP fixture opens the restart confirmation with the same action in-flight so pending/disabled button states are visible.
+- components.members.avatar-management: Real React AgentDetailPanel avatar picker and KMP MembersAgentAvatarPicker unified dialog, covering current avatar, generated/default choices, upload action, and active selection states.
 - components.thread.message-row.rich-content: Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer.
-- components.thread.message-share.preview: React source of truth uses SelectShareLightbox with a real captureSelectedMessages image. Android app flow now calls a native screenshot/export bridge, but the visual fixture remains pending until it can drive that real export path instead of instantiating the modal directly.
-- components.thread.message-share.selection: Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.
 - components.thread.composer.as-task-selected: Real React MessageInput with As Task checked vs Android connected visual-only rendering of ThreadComposerContent seeded with seedAsTask=true. This is a focused diff for the selected As Task toggle.
 - components.thread.composer.channel-suggestions: Real React MessageInput #channel autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the channel suggestion panel open. Covers the # icon, channel name, and description row layout.
 - components.thread.composer.empty: Real React MessageInput empty state vs Android connected visual-only rendering of ThreadComposerContent with an empty seed. This case specifically protects the disabled send button color/opacity and empty placeholder treatment.
-- components.thread.composer.file-previews: Real React MessageInput pending file chips vs Android connected visual-only rendering of ThreadComposerContent with ready, uploading, and failed generic file attachment states.
-- components.thread.composer.image-preview: Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.
 - components.thread.composer.member-suggestions: Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.
 - components.thread.composer.states: Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.
 - components.thread.message.row: Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.
@@ -74,7 +67,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.settings.notifications.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.page.states: Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.
 - components.settings.server.profile: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
-- components.thread.files.list: Real React ChannelFilesPanel vs Android connected visual-only rendering of ThreadFilesContent with image, PDF, archive, download/open state, and load-more affordance.
 - components.thread.header.states: React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.
 - screens.auth.forgot-password: Missing forgot-password route parity for the auth recovery flow.
 - screens.auth.login: Missing true login route parity; old auth.login inputs are not active in the canonical manifest.
@@ -88,13 +80,12 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.members.agent-detail.profile: Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.reminders: Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.workspace: Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
-- screens.members.human.profile: Real Members route capture for human member detail profile. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human. Harmony remains pending real-device/provider capture.
 - screens.members.index: Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page.
 - screens.settings.appearance: Pending as a full Settings screen route. Component coverage lives in components.settings.appearance.page; this screen case needs real Settings route launch on both providers, not a component visual page.
 - screens.settings.billing-portal: Skipped: billing portal is an external browser URL action (https://raft.build/settings/billing), not an in-app screen/WebView route. Validate the Billing page/action state instead.
-- screens.settings.computer-detail: Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state.
-- screens.settings.computers: Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list.
-- screens.settings.server-danger-modal: Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked.
+- screens.settings.computer-detail: Pending: needs React Settings Computer Detail route/provider plus Android Settings Computer Detail route capture with seeded computer/workspace/agent state; do not activate through the generic settings visual page.
+- screens.settings.computers: Pending: needs React Settings Computers route/provider plus Android Settings Computers route capture with seeded computer list; do not activate through the generic settings visual page.
+- screens.settings.server-danger-modal: Real React SettingsPanel DangerZoneSection modal and KMP SlockUnifiedDialog safe open state; destructive submit stays disabled and no delete action is invoked.
 - screens.settings.storage: Pending: needs React Settings Storage route/provider plus Android Settings Storage route capture with seeded storage rows; do not activate through the generic settings visual page.
 - screens.tasks.index: Missing true Tasks screen parity: list, filters, task status, and create-task entry need real route captures.
 - screens.thread.channel: Pending: needs a real ThreadPage channel route capture with seeded channel messages, attachments, replies, task metadata, and composer state on both React and Android. Do not activate with standalone pageData-only fixtures.
@@ -104,6 +95,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- b120ed975-20260703092044: react vs android, total 52, pass 0, basic-pass 0, different 0, matrix runs/b120ed975-20260703092044/component-matrix.json, report runs/b120ed975-20260703092044/report.html
 - 48631ed3f-20260703075006: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/48631ed3f-20260703075006/component-matrix.json, report runs/48631ed3f-20260703075006/report.html
 - c153932a6-20260703042704: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/c153932a6-20260703042704/component-matrix.json, report runs/c153932a6-20260703042704/report.html
 - 695c99afb-20260702214109: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/695c99afb-20260702214109/component-matrix.json, report runs/695c99afb-20260702214109/report.html
