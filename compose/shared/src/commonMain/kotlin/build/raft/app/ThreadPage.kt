@@ -9987,13 +9987,7 @@ private fun ThreadMessageCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(
-                        if (focusAlpha > 0f) {
-                            SlockColor.AccentCyan.copy(alpha = 0.12f * focusAlpha)
-                        } else {
-                            SlockColor.SurfaceWhite
-                        }
-                    )
+                    .background(threadMessageFocusHighlightColor(focusAlpha))
                     .threadMessagePressOutline(pressed)
                     .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -10235,6 +10229,15 @@ private fun ThreadMessageCard(
                 }
             }
         }
+    }
+}
+
+internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
+    val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
+    return if (normalizedAlpha > 0f) {
+        SlockColor.BrandYellow.copy(alpha = 0.4f * normalizedAlpha)
+    } else {
+        SlockColor.SurfaceWhite
     }
 }
 
