@@ -1322,7 +1322,7 @@ internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boo
         ThreadMarkdownTagKind.UserMention -> if (highlighted) SlockColor.BrandYellow else SlockMarkdownTaskChipBackground
     }
 
-private fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): SpanStyle =
+internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): SpanStyle =
     when (kind) {
         ThreadMarkdownTagKind.UserMention ->
             SlockType.Body
@@ -1333,8 +1333,17 @@ private fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: 
                     textDecoration = TextDecoration.Underline,
                     background = if (highlighted) SlockColor.BrandYellow else Color.Unspecified
                 )
+        ThreadMarkdownTagKind.Task ->
+            SlockType.ButtonBold
+                .withSlockFontWeight(FontWeight.SemiBold)
+                .toSpanStyle()
+                .copy(
+                    color = SlockColor.TextBlack,
+                    textDecoration = TextDecoration.Underline,
+                    background = Color.Unspecified
+                )
         else ->
-            SlockType.Caption
+            SlockType.ButtonBold
                 .withSlockFontWeight(FontWeight.SemiBold)
                 .toSpanStyle()
                 .copy(

@@ -344,6 +344,20 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun taskReferenceSpanAvoidsTightBackgroundHighlight() {
+        val taskStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Task)
+        val channelStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
+
+        assertEquals(Color.Unspecified, taskStyle.background)
+        assertEquals(TextDecoration.Underline, taskStyle.textDecoration)
+        assertEquals(SlockColor.TextBlack, taskStyle.color)
+        assertEquals(14.sp, taskStyle.fontSize)
+
+        assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), channelStyle.background)
+        assertEquals(SlockType.ButtonBold.fontSize, channelStyle.fontSize)
+    }
+
+    @Test
     fun task25ReferenceScenarioKeepsReactTokenColorsAndBoundaries() {
         val body =
             "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25; " +
