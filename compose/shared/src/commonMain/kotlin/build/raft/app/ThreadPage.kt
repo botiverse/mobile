@@ -233,7 +233,7 @@ private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
-internal const val ThreadInitialMarkdownPreparseMessageCount = 20
+internal const val ThreadInitialMarkdownPreparseMessageCount = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal enum class ThreadPickedAttachmentComposerAction {

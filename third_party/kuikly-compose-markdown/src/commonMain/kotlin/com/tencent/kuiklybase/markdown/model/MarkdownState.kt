@@ -63,7 +63,7 @@ internal fun rememberMarkdownParserState(
             )
         ).also { state ->
             if (initialParserContent != null) {
-                state.applyCachedInitialContent(initialParserContent)
+                state.applyInitialContentSynchronously(initialParserContent)
             }
         }
     }
@@ -126,6 +126,21 @@ class MarkdownState internal constructor(
             ) ?: return false
         applyParseResult(cached)
         return true
+    }
+
+    internal fun applyInitialContentSynchronously(content: String): Boolean {
+        input.content = content
+        val cacheKey = currentCacheKey()
+        val (cached, cacheHit) =
+            try {
+                MarkdownParseResultCache.getOrPut(cacheKey) {
+                    parseContent(content)
+                }
+            } catch (error: Throwable) {
+                return false
+            }
+        applyParseResult(cached)
+        return cacheHit
     }
 
     suspend fun parse(content: String, immediate: Boolean): Boolean {
