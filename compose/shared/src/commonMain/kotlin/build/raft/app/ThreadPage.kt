@@ -4394,7 +4394,36 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
-                    bridge.toast("Unable to open ${itemId.take(32)}")
+                    coroutineScope.launch {
+                        when (
+                            val result =
+                                dataSource.markdownThreadRefLaunchPayload(
+                                    currentPayload = renderedThread,
+                                    channelLabel = itemId,
+                                    threadShortId = tab
+                                )
+                        ) {
+                            is DataResult.Content -> {
+                                bridge.log(
+                                    "thread_markdown_ref_open label=${itemId.take(32)} " +
+                                        "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
+                                        "parentMessageId=${result.data.parentMessageId.orEmpty()} " +
+                                        "threadId=${result.data.streamChannelId.orEmpty()} " +
+                                        "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
+                                )
+                                onOpenThreadPayload(result.data)
+                            }
+                            is DataResult.Empty -> {
+                                bridge.toast("Unable to open ${itemId.take(32)}")
+                            }
+                            is DataResult.Error -> {
+                                bridge.toast("Unable to open ${itemId.take(32)}")
+                            }
+                            is DataResult.NoPermission -> {
+                                routeAuthRequired(result)
+                            }
+                        }
+                    }
                 }
                 action == "submitAddMember" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedThread

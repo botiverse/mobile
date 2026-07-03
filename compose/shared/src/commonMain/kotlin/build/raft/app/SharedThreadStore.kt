@@ -116,6 +116,12 @@ private data class ReplyThreadResolveKey(
     val parentMessageId: String
 )
 
+internal data class MarkdownThreadRefTarget(
+    val parentMessageId: String,
+    val focusedMessageId: String? = null,
+    val threadChannelId: String? = null
+)
+
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
@@ -215,6 +221,33 @@ internal class SharedThreadDataSource(
 
     private fun cachedReplyThreadStreamId(parentChannelId: String, parentMessageId: String): String? =
         replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
+
+    private fun cachedMarkdownThreadRefTarget(parentChannelId: String, threadShortId: String): MarkdownThreadRefTarget? {
+        val shortId = threadShortId.trim().lowercase()
+        if (parentChannelId.isBlank() || shortId.isBlank()) return null
+        val matches =
+            payloadCache.values
+                .mapNotNull { payload ->
+                    val parentMessageId =
+                        payload.parentMessageId?.takeIf { it.isNotBlank() }
+                            ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                            ?: return@mapNotNull null
+                    if (
+                        payload.parentChannelId != parentChannelId ||
+                        !parentMessageId.lowercase().startsWith(shortId)
+                    ) {
+                        return@mapNotNull null
+                    }
+                    MarkdownThreadRefTarget(
+                        parentMessageId = parentMessageId,
+                        threadChannelId =
+                            payload.streamChannelId?.takeIf { it.isNotBlank() }
+                                ?: payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                    )
+                }
+                .distinctBy { it.parentMessageId }
+        return matches.singleOrNull()
+    }
 
     private fun cacheReplyThreadResolution(payload: KuiklyThreadScreenPayload) {
         val parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return
@@ -862,6 +895,66 @@ internal class SharedThreadDataSource(
             home = home,
             channelLabel = channelLabel
         )
+    }
+
+    suspend fun markdownThreadRefLaunchPayload(
+        currentPayload: KuiklyThreadScreenPayload,
+        channelLabel: String,
+        threadShortId: String?
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val shortId =
+            threadShortId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        val session =
+            readSession()
+                ?: return authSessionRequiredResult()
+        val home =
+            currentHomeSnapshot(session)
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val channel =
+            resolveMarkdownChannelConversation(home, channelLabel)
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val parentChannelId =
+            channel.resolveThreadRouteIdentity().timelineChannelId
+                ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val localTarget =
+            currentPayload.markdownThreadRefTarget(parentChannelId, shortId)
+                ?: cachedMarkdownThreadRefTarget(parentChannelId, shortId)
+        val target =
+            localTarget
+                ?: when (
+                    val result =
+                        fetchThreadSnapshotFromRepository(
+                            fallbackCode = "thread_markdown_ref_context_network",
+                            call = { repository ->
+                                repository.getMessageContext(MessageId(shortId), ChannelId(parentChannelId))
+                            }
+                        )
+                ) {
+                    is DataResult.Content -> result.data.markdownThreadRefTarget(parentChannelId, shortId)
+                    is DataResult.Empty -> return result
+                    is DataResult.Error -> return result
+                    is DataResult.NoPermission -> return result
+                }
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        val payload =
+            buildMarkdownThreadRefLaunchPayload(
+                currentPayload = currentPayload,
+                home = home,
+                channelLabel = channelLabel,
+                threadShortId = shortId,
+                parentMessageId = target.parentMessageId,
+                focusedMessageId = target.focusedMessageId,
+                threadChannelId = target.threadChannelId
+            )
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        target.threadChannelId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { cacheReplyThreadResolution(parentChannelId, target.parentMessageId, it) }
+        return DataResult.Content(payload)
     }
 
     suspend fun removeChannelMember(
@@ -3291,15 +3384,7 @@ internal fun buildMarkdownChannelLaunchPayload(
     home: HomeSnapshot,
     channelLabel: String
 ): KuiklyThreadScreenPayload? {
-    val key = channelLabel.markdownChannelLookupKey()
-    if (key.isBlank()) return null
-    val matches =
-        home.channels
-            .map { it.toConversationSummary() }
-            .filter { it.name.markdownChannelLookupKey() == key }
-            .distinctBy { it.messageStreamChannelId().value }
-    if (matches.size != 1) return null
-    val channel = matches.single()
+    val channel = resolveMarkdownChannelConversation(home, channelLabel) ?: return null
     val routeIdentity = channel.resolveThreadRouteIdentity()
     val streamChannelId =
         routeIdentity.timelineChannelId
@@ -3322,11 +3407,136 @@ internal fun buildMarkdownChannelLaunchPayload(
     ).toInitialPayload("shared-shell-thread-$streamChannelId")
 }
 
+internal fun buildMarkdownThreadRefLaunchPayload(
+    currentPayload: KuiklyThreadScreenPayload,
+    home: HomeSnapshot,
+    channelLabel: String,
+    threadShortId: String,
+    parentMessageId: String,
+    focusedMessageId: String? = null,
+    threadChannelId: String? = null
+): KuiklyThreadScreenPayload? {
+    val channel = resolveMarkdownChannelConversation(home, channelLabel) ?: return null
+    val routeIdentity = channel.resolveThreadRouteIdentity()
+    val parentChannelId =
+        routeIdentity.timelineChannelId
+            ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
+            ?: return null
+    val cleanParentMessageId = parentMessageId.takeIf { it.isNotBlank() } ?: return null
+    val cleanThreadChannelId = threadChannelId?.takeIf { it.isNotBlank() }
+    val instanceId =
+        cleanThreadChannelId?.let { "shared-shell-thread-$it" }
+            ?: "shared-shell-thread-$parentChannelId-$threadShortId"
+    return WireThreadLaunchPayload(
+        instanceId = instanceId,
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        channelKind = routeIdentity.routeKind,
+        threadId = cleanThreadChannelId,
+        sourceThreadId = cleanThreadChannelId,
+        streamChannelId = cleanThreadChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = cleanParentMessageId,
+        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+        parentChannelKind = routeIdentity.routeKind,
+        originParentMessageId = cleanParentMessageId,
+        focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
+        compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
+        localOffsetMinutes = currentPayload.localOffsetMinutes,
+        todayEpochDay = currentPayload.todayEpochDay,
+        nowEpochMillis = currentPayload.nowEpochMillis,
+        timeFormat = currentPayload.timeFormat
+    ).toInitialPayload(instanceId)
+}
+
+private fun resolveMarkdownChannelConversation(home: HomeSnapshot, channelLabel: String): ConversationSummary? {
+    val key = channelLabel.markdownChannelLookupKey()
+    if (key.isBlank()) return null
+    val matches =
+        home.channels
+            .map { it.toConversationSummary() }
+            .filter { it.name.markdownChannelLookupKey() == key }
+            .distinctBy { it.messageStreamChannelId().value }
+    return matches.singleOrNull()
+}
+
 private fun String.markdownChannelLookupKey(): String =
     trim()
         .removePrefix("#")
+        .substringBefore(":")
         .trim()
         .lowercase()
+
+private fun KuiklyThreadScreenPayload.markdownThreadRefTarget(
+    parentChannelId: String,
+    threadShortId: String
+): MarkdownThreadRefTarget? {
+    val shortId = threadShortId.trim().lowercase()
+    if (parentChannelId.isBlank() || shortId.isBlank()) return null
+    val routeIsParentChannel =
+        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
+            (sourceThreadId == parentChannelId || streamChannelId == parentChannelId)
+    val originIsParentMessage =
+        this.parentChannelId == parentChannelId &&
+            originMessage != null
+    val candidateMessages =
+        (if (routeIsParentChannel) messages else emptyList()) +
+            if (originIsParentMessage) listOfNotNull(originMessage) else emptyList()
+    val candidates =
+        candidateMessages
+            .filter { message ->
+                message.id.lowercase().startsWith(shortId)
+            }
+            .map { message ->
+                MarkdownThreadRefTarget(
+                    parentMessageId = message.id,
+                    threadChannelId = message.threadChannelId
+                )
+            }
+            .distinctBy { it.parentMessageId }
+    return candidates.singleOrNull()
+}
+
+private fun ThreadSnapshot.markdownThreadRefTarget(
+    parentChannelId: String,
+    threadShortId: String
+): MarkdownThreadRefTarget? {
+    val expectedShortId = threadShortId.trim().lowercase()
+    val routeThread = conversation.thread
+    if (
+        conversation.kind == ConversationKind.Thread &&
+        routeThread != null &&
+        routeThread.parentChannelId.value == parentChannelId &&
+        routeThread.parentMessageId.value.isNotBlank()
+    ) {
+        return MarkdownThreadRefTarget(
+            parentMessageId = routeThread.parentMessageId.value,
+            focusedMessageId =
+                highlightedMessageId
+                    ?.value
+                    ?.takeIf { it.isNotBlank() && it != routeThread.parentMessageId.value },
+            threadChannelId = routeThread.streamChannelId?.value
+        )
+    }
+    val targetMessageId =
+        highlightedMessageId
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+            ?: parentMessage
+                ?.id
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+            ?: messages
+                .firstOrNull { message ->
+                    message.channelId?.value == parentChannelId &&
+                        message.id.value.lowercase().startsWith(expectedShortId)
+                }
+                ?.id
+                ?.value
+    return targetMessageId?.let { MarkdownThreadRefTarget(parentMessageId = it) }
+}
 
 private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
     if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {

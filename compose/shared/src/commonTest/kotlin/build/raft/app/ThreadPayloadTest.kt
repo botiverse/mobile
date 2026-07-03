@@ -50,6 +50,7 @@ import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.parseSharedThreadUploadedAttachments
+import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
@@ -420,6 +421,83 @@ class ThreadPayloadTest {
 
         assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#missing"))
         assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#design"))
+    }
+
+    @Test
+    fun markdownThreadRefLaunchPayloadResolvesChannelThreadToIdentityOnlyRoute() {
+        val payload =
+            buildMarkdownThreadRefLaunchPayload(
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        instanceId = "current-thread",
+                        alignOwnMessagesRight = true,
+                        compactConsecutiveMessages = true,
+                        localOffsetMinutes = 480,
+                        timeFormat = SlockTimeFormat12Hour
+                    ),
+                home =
+                    markdownChannelHomeSnapshot(
+                        ConversationSummary(
+                            threadId = ThreadId("home-channel-id"),
+                            channelId = ChannelId("home-channel-id"),
+                            channelType = "joint",
+                            kind = ConversationKind.Joint,
+                            name = "首页专修"
+                        )
+                    ),
+                channelLabel = "#首页专修:5fbf9608",
+                threadShortId = "5fbf9608",
+                parentMessageId = "5fbf9608-1111-2222-3333-444444444444",
+                focusedMessageId = "reply-1",
+                threadChannelId = "thread-channel-id"
+            )
+
+        checkNotNull(payload)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("joint", payload.parentChannelKind)
+        assertEquals("home-channel-id", payload.parentChannelId)
+        assertEquals("5fbf9608-1111-2222-3333-444444444444", payload.parentMessageId)
+        assertEquals("thread-channel-id", payload.sourceThreadId)
+        assertEquals("thread-channel-id", payload.streamChannelId)
+        assertEquals("reply-1", payload.focusedMessageId)
+        assertEquals("chat", payload.selectedTab)
+        assertEquals("loading", payload.status)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(true, payload.alignOwnMessagesRight)
+        assertEquals(true, payload.compactConsecutiveMessages)
+        assertEquals(480, payload.localOffsetMinutes)
+        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+    }
+
+    @Test
+    fun messageContextParserKeepsCanonicalThreadTargetForShortRefs() {
+        val payload =
+            parseSharedMessageContext(
+                """
+                {
+                  "channelId": "thread-channel-id",
+                  "targetMessageId": "reply-1",
+                  "canonicalTarget": {
+                    "kind": "thread",
+                    "channelId": "home-channel-id",
+                    "messageId": "reply-1",
+                    "threadParentMessageId": "5fbf9608-1111-2222-3333-444444444444",
+                    "threadChannelId": "thread-channel-id"
+                  },
+                  "messages": []
+                }
+                """.trimIndent(),
+                ThreadId("fallback-thread")
+            )
+
+        assertEquals("thread", payload.canonicalTarget?.kind)
+        assertEquals(ChannelId("home-channel-id"), payload.canonicalTarget?.channelId)
+        assertEquals(MessageId("reply-1"), payload.canonicalTarget?.messageId)
+        assertEquals(
+            MessageId("5fbf9608-1111-2222-3333-444444444444"),
+            payload.canonicalTarget?.threadParentMessageId
+        )
+        assertEquals(ChannelId("thread-channel-id"), payload.canonicalTarget?.threadChannelId)
     }
 
     @Test
