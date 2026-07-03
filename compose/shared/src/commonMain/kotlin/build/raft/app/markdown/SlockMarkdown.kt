@@ -182,11 +182,16 @@ internal object SlockMarkdownInlineTokenRegistry {
         content: String,
         highlightedMentions: Set<String> = emptySet(),
         isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
-        inlineContentScope: String? = null
+        inlineContentScope: String? = null,
+        baseOffset: Int = 0
     ): MarkdownInlineTokenPlan {
         val highlightedMentionKeys =
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
-        val inlineScan = content.threadMarkdownInlineScan(inlineContentScope = inlineContentScope)
+        val inlineScan =
+            content.threadMarkdownInlineScan(
+                baseOffset = baseOffset,
+                inlineContentScope = inlineContentScope
+            )
         val tagTokens =
             inlineScan.tagMatches
                 .filter { match -> isTagValid(match.tag) }
@@ -612,12 +617,37 @@ internal fun slockMarkdownAnnotator(
             val nodeStart = child.startOffset
             val nodeEndExclusive = nodeStart + nodeText.length
             val nodeTokens = tokenPlan.tagTokensStartingInRange(nodeStart, nodeEndExclusive)
-            if (nodeTokens.isEmpty()) return@markdownAnnotator false
+            val localNodeTokens =
+                if (nodeTokens.isEmpty()) {
+                    // Some markdown-renderer paths, including list-item paragraphs,
+                    // expose child offsets in a local node coordinate space.
+                    SlockMarkdownInlineTokenRegistry
+                        .plan(
+                            nodeText,
+                            highlightedMentions,
+                            isTagValid,
+                            inlineContentScope = inlineContentScope,
+                            baseOffset = nodeStart
+                        )
+                        .tagTokens()
+                } else {
+                    emptyList()
+                }
+            if (nodeTokens.isEmpty() && localNodeTokens.isEmpty()) return@markdownAnnotator false
 
             var cursor = 0
-            nodeTokens.forEach { token ->
-                val relativeStart = token.range.first - nodeStart
-                val relativeEndExclusive = (token.range.last - nodeStart + 1).coerceAtMost(nodeText.length)
+            val useDocumentOffsets = nodeTokens.isNotEmpty()
+            val tokens = if (useDocumentOffsets) nodeTokens else localNodeTokens
+            tokens.forEach { token ->
+                val relativeRange =
+                    if (useDocumentOffsets) {
+                        (token.range.first - nodeStart)..(token.range.last - nodeStart)
+                    } else {
+                        token.range
+                    }
+                val relativeStart = relativeRange.first
+                val relativeEndExclusive = (relativeRange.last + 1).coerceAtMost(nodeText.length)
+                if (relativeStart < cursor || relativeStart !in nodeText.indices) return@forEach
                 if (relativeStart > cursor) {
                     append(nodeText.substring(cursor, relativeStart))
                 }
@@ -626,7 +656,11 @@ internal fun slockMarkdownAnnotator(
                     onOpenTag = onOpenTag,
                     resolveTagLabel = resolveTagLabel
                 )
-                consumedTagEndExclusive = maxOf(consumedTagEndExclusive, token.range.last + 1)
+                consumedTagEndExclusive =
+                    maxOf(
+                        consumedTagEndExclusive,
+                        if (useDocumentOffsets) token.range.last + 1 else nodeStart + token.range.last + 1
+                    )
                 cursor = relativeEndExclusive
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))

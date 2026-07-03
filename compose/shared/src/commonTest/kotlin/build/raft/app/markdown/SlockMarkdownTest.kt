@@ -173,6 +173,35 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownListItemParagraphsKeepClickableTags() {
+        val body =
+            """
+            - 请看 #markdown专修
+            - 继续看 #markdown专修:7933cf78 和 #50
+            """.trimIndent()
+        val isTagValid = validThreadMarkdownTags(knownChannels = setOf("markdown专修"))
+        val rendered =
+            renderSlockMarkdownListItemAnnotatedStrings(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        isTagValid = isTagValid
+                    )
+            )
+
+        assertEquals(2, rendered.size)
+        assertEquals(
+            setOf("slock:5"),
+            rendered[0].slockMarkdownClickableTags()
+        )
+        assertEquals(
+            setOf("slock:23", "slock:46"),
+            rendered[1].slockMarkdownClickableTags()
+        )
+    }
+
+    @Test
     fun parserEscapesHtmlTagsOutsideCodeAndAutolinks() {
         val body =
             """
@@ -1065,6 +1094,16 @@ class SlockMarkdownTest {
     }
 
     private fun renderSlockMarkdownListItemTexts(content: String): List<String> {
+        return renderSlockMarkdownListItemAnnotatedStrings(
+            content = content,
+            annotator = slockMarkdownAnnotator(content)
+        ).map { it.text }
+    }
+
+    private fun renderSlockMarkdownListItemAnnotatedStrings(
+        content: String,
+        annotator: MarkdownAnnotator
+    ): List<AnnotatedString> {
         val parserContent = MarkdownParserContent.from(content).parserContent
         val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
@@ -1082,12 +1121,12 @@ class SlockMarkdownTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = slockMarkdownAnnotator(parserContent)
+                annotator = annotator
             )
         return paragraphs.map { paragraph ->
             buildAnnotatedString {
                 buildMarkdownAnnotatedString(parserContent, paragraph, settings)
-            }.text
+            }
         }
     }
 
