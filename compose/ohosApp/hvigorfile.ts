@@ -24,9 +24,6 @@ export default {
 
 function getSigningConfig() {
     if (fileData?.signingConfig) {
-        if (!isSigningProfileCompatible(fileData.signingConfig)) {
-            return null;
-        }
         return {
             type: 'HarmonyOS',
             material: fileData.signingConfig,
@@ -40,9 +37,6 @@ function getSigningConfig() {
     const storePassword = process.env.KEYSTORE_PASSWORD;
 
     if (certFile && profileFile && keyFile) {
-        if (!isSigningProfileCompatible({ profile: profileFile })) {
-            return null;
-        }
         return {
             type: 'HarmonyOS',
             material: {
@@ -58,41 +52,4 @@ function getSigningConfig() {
     }
 
     return null;
-}
-
-function isSigningProfileCompatible(material: object): boolean {
-    const profileFile = (material as { profile?: string }).profile;
-    if (!profileFile) {
-        return true;
-    }
-
-    const expectedBundleName = readAppBundleName();
-    const profileBundleName = readProfileBundleName(profileFile);
-    if (!expectedBundleName || !profileBundleName || expectedBundleName === profileBundleName) {
-        return true;
-    }
-
-    console.warn(
-        `Skip OHOS signing profile for bundle ${profileBundleName}; app bundle is ${expectedBundleName}.`
-    );
-    return false;
-}
-
-function readAppBundleName(): string | null {
-    const appJsonPath = path.resolve(__dirname, './AppScope/app.json5');
-    if (!fs.existsSync(appJsonPath)) {
-        return null;
-    }
-
-    const content = fs.readFileSync(appJsonPath, 'utf8');
-    return content.match(/["']bundleName["']\s*:\s*["']([^"']+)["']/)?.[1] ?? null;
-}
-
-function readProfileBundleName(profileFile: string): string | null {
-    if (!fs.existsSync(profileFile)) {
-        return null;
-    }
-
-    const content = fs.readFileSync(profileFile, 'utf8');
-    return content.match(/["']bundle-name["']\s*:\s*["']([^"']+)["']/)?.[1] ?? null;
 }
