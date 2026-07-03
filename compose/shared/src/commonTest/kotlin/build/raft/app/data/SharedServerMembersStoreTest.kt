@@ -143,6 +143,39 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun applyPresenceIgnoresAmbiguousOfflineWithoutAgentStatus() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Offline,
+                kind = MemberKind.Agent,
+                agentStatus = null
+            )
+        )
+
+        assertEquals(null, store.state.value.presenceFor("agent-1"))
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
+    }
+
+    @Test
     fun applyPresenceRetainsFactBeforeRosterLoads() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)

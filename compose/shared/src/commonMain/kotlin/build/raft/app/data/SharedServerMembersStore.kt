@@ -315,6 +315,13 @@ class SharedServerMembersStore(
     fun applyPresence(event: MemberPresenceUpdated) {
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
+        if (
+            event.agentStatus == null &&
+            event.presence == Presence.Offline &&
+            event.kind != MemberKind.Human
+        ) {
+            return
+        }
         val current = _state.value
         val previousFact = current.presenceByMemberId[memberId]
         if (!event.shouldReplacePresenceFact(previousFact)) return

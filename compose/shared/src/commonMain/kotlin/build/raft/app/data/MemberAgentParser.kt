@@ -657,8 +657,8 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
 
 private fun WireAgent.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val statusValue = activity ?: status
-    val agentStatus = AgentStatus.fromWireValue(statusValue) ?: AgentStatus.Offline
+    val statusValue = resolvedAgentStatusWireValue(activity, status)
+    val agentStatus = AgentStatus.fromWireValue(statusValue)
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
@@ -673,7 +673,12 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
-        presence = if (deletedAt.isNullOrBlank()) agentStatus.presence else Presence.Offline,
+        presence =
+            if (deletedAt.isNullOrBlank()) {
+                agentStatus?.presence ?: Presence.Offline
+            } else {
+                Presence.Offline
+            },
         agentStatus = agentStatus,
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
@@ -703,8 +708,8 @@ private fun MemberProfile.withSourceServer(
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val statusValue = activity ?: status
-    val agentStatus = AgentStatus.fromWireValue(statusValue) ?: AgentStatus.Offline
+    val statusValue = resolvedAgentStatusWireValue(activity, status)
+    val agentStatus = AgentStatus.fromWireValue(statusValue)
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,
@@ -716,7 +721,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
-        presence = agentStatus.presence,
+        presence = agentStatus?.presence ?: Presence.Offline,
         agentStatus = agentStatus,
         statusLabel = statusValue,
         runtime = runtime,
@@ -730,6 +735,13 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
                 ?.let { "computer-id:$it" },
         ),
     )
+}
+
+private fun resolvedAgentStatusWireValue(activity: String?, status: String?): String? {
+    val cleanActivity = activity?.trim()?.takeIf { it.isNotBlank() }
+    if (cleanActivity != null) return cleanActivity
+    val cleanStatus = status?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return cleanStatus.takeUnless { it.equals("inactive", ignoreCase = true) }
 }
 
 private val WireAgent.isDeletedAgent: Boolean

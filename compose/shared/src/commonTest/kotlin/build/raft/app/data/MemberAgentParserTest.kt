@@ -1,7 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.ChannelId
+import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -86,6 +88,47 @@ class MemberAgentParserTest {
         val profile = assertNotNull(members).single()
         assertEquals("agent-1", profile.id.value)
         assertEquals("Builder", profile.displayName)
+    }
+
+    @Test
+    fun agentsListTreatsInactiveLifecycleStatusAsUnknownPresenceStatus() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "displayName": "Builder",
+                "status": "inactive"
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals(null, profile.agentStatus)
+        assertEquals(Presence.Offline, profile.presence)
+    }
+
+    @Test
+    fun agentsListUsesActivityStatusBeforeInactiveLifecycleStatus() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "displayName": "Builder",
+                "status": "inactive",
+                "activity": "working"
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals(AgentStatus.Working, profile.agentStatus)
+        assertEquals(Presence.Active, profile.presence)
     }
 
     @Test
