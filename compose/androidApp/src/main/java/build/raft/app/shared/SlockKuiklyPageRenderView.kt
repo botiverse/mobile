@@ -31,6 +31,7 @@ internal class SlockKuiklyPageRenderView(
     private var childDidAttach = false
     private var childVisible = false
     private var childInitPosted = false
+    private var destroyed = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
 
     private val childDelegate =
@@ -171,6 +172,9 @@ internal class SlockKuiklyPageRenderView(
     }
 
     override fun onDestroy() {
+        destroyed = true
+        childInitPosted = false
+        lazyChildEvents.clear()
         destroyChild()
         super.onDestroy()
     }
@@ -198,18 +202,21 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun scheduleChildInitIfReady() {
-        if (childRenderView != null || childInitPosted || pageName.isBlank() || width <= 0 || height <= 0) {
+        if (destroyed || childRenderView != null || childInitPosted || pageName.isBlank() || width <= 0 || height <= 0) {
             return
         }
         childInitPosted = true
         post {
             childInitPosted = false
+            if (destroyed) {
+                return@post
+            }
             initChildIfReady(width, height)
         }
     }
 
     private fun initChildIfReady(width: Int, height: Int) {
-        if (childRenderView != null || pageName.isBlank() || width <= 0 || height <= 0) {
+        if (destroyed || childRenderView != null || pageName.isBlank() || width <= 0 || height <= 0) {
             return
         }
         val child =
