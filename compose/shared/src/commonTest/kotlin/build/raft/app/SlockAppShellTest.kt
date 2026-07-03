@@ -84,16 +84,12 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellChildPageTabIndexUsesOnlyChildTabs() {
+    fun appShellChildPageSelectedTabUsesOnlyChildTabs() {
         assertEquals("home", appShellChildPageSelectedTab("home"))
         assertEquals("tasks", appShellChildPageSelectedTab("tasks"))
         assertEquals("members", appShellChildPageSelectedTab("members"))
         assertEquals("settings", appShellChildPageSelectedTab("settings"))
         assertEquals("home", appShellChildPageSelectedTab("unknown"))
-        assertEquals(0, appShellChildPageTabIndex("home"))
-        assertEquals(1, appShellChildPageTabIndex("tasks"))
-        assertEquals(2, appShellChildPageTabIndex("members"))
-        assertEquals(3, appShellChildPageTabIndex("settings"))
     }
 
     @Test

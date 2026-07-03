@@ -354,8 +354,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
-import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
@@ -1095,7 +1093,7 @@ private fun SlockAppShellChildTabPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val shellId = pager.pageData.params.optString("shellId")
-    val initialTab = appShellChildPageSelectedTab(pager.pageData.params.optString("tab"))
+    val pageTab = appShellChildPageSelectedTab(pager.pageData.params.optString("tab"))
     val entry = AppShellChildTabRegistry.entry(shellId)
     if (entry == null) {
         PageErrorContent(
@@ -1108,36 +1106,16 @@ private fun SlockAppShellChildTabPageContent() {
         return
     }
     val selectedTab = appShellChildPageSelectedTab(entry.selectedTab)
-    val selectedIndex = appShellChildPageTabIndex(selectedTab)
-    val pagerState =
-        rememberPagerState(initialPage = appShellChildPageTabIndex(initialTab)) {
-            AppShellChildPageTabs.size
-        }
-    LaunchedEffect(selectedIndex) {
-        if (pagerState.currentPage != selectedIndex) {
-            pagerState.scrollToPage(selectedIndex)
+    val active = selectedTab == pageTab
+    LaunchedEffect(pageTab, active, selectedTab) {
+        if (active) {
+            bridge.log(
+                "app_shell_child_tab_render shellId=$shellId pageDataTab=$pageTab " +
+                    "pageTab=$pageTab selectedTab=$selectedTab active=$active"
+            )
         }
     }
-    HorizontalPager(
-        state = pagerState,
-        modifier = Modifier.fillMaxSize(),
-        userScrollEnabled = false,
-        keepItemAlive = true,
-        key = { index -> AppShellChildPageTabs[index] }
-    ) { page ->
-        val pageTab = AppShellChildPageTabs[page]
-        val active = selectedTab == pageTab
-        LaunchedEffect(pageTab, active, selectedTab, pagerState.currentPage, selectedIndex) {
-            if (active) {
-                bridge.log(
-                    "app_shell_child_tab_render shellId=$shellId pageDataTab=$initialTab " +
-                        "pageTab=$pageTab selectedTab=$selectedTab active=$active " +
-                        "currentPage=${pagerState.currentPage} targetIndex=$selectedIndex"
-                )
-            }
-        }
-        entry.renderer(pageTab, active)
-    }
+    entry.renderer(pageTab, active)
 }
 
 @Serializable
@@ -1394,9 +1372,6 @@ internal fun appShellChildPageSelectedTab(selectedTab: String): String {
     return activeTab.takeIf { it in AppShellChildPageTabKeys } ?: "home"
 }
 
-internal fun appShellChildPageTabIndex(selectedTab: String): Int =
-    AppShellChildPageTabs.indexOf(appShellChildPageSelectedTab(selectedTab)).coerceAtLeast(0)
-
 internal fun appShellChildPageData(shellId: String, tab: String): JSONObject =
     JSONObject().apply {
         put("shellId", shellId)
@@ -1534,13 +1509,15 @@ private fun SlockAppShellChildTabHost(
         remember(shellId, childTab) {
             appShellChildPageData(shellId, childTab)
         }
-    SlockKuiklyChildPage(
-        pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
-        pageData = pageData,
-        modifier = Modifier.fillMaxSize(),
-        active = active,
-        glassStyle = AppShellChildPageGlassStyleLiquid
-    )
+    key("app-shell-child-page-$childTab") {
+        SlockKuiklyChildPage(
+            pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
+            pageData = pageData,
+            modifier = Modifier.fillMaxSize(),
+            active = active,
+            glassStyle = AppShellChildPageGlassStyleLiquid
+        )
+    }
 }
 
 @Composable
