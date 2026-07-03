@@ -747,6 +747,7 @@ class ThreadPayloadTest {
         assertFalse(message.body.contains("```"))
         assertEquals(14, message.body.count { it == '`' })
         assertTrue(message.body.contains("Ordinary mention regression: @KMP-专家 #520 Phase 5"))
+        assertTrue(payload.members.any { it.displayName == "KMP-专家" || it.handle == "KMP-专家" })
         assertTrue(message.body.contains("reply/channel-markdown/msg-inline-visual"))
         assertTrue(message.body.contains("owner-key-consumes-thread-route-identity-only"))
         assertTrue(message.body.contains("./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest"))

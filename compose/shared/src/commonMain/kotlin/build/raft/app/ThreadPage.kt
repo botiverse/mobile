@@ -6568,6 +6568,13 @@ internal fun threadVisualFixture(
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-kmp-expert",
+                            displayName = "KMP-专家",
+                            handle = "KMP-专家",
+                            kind = "agent",
+                            avatarLabel = "KM"
                         )
                     ),
                 showComposer = false,
