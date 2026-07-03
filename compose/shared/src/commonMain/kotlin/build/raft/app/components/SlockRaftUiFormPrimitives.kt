@@ -21,7 +21,6 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -188,38 +187,42 @@ internal fun SlockSlugInput(
     fieldHeight: Dp = 42.dp
 ) {
     val shadowOffset = 3.dp
-    Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset).alpha(if (enabled) 1f else 0.60f)) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(fieldHeight)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
-        )
+    val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.40f)
+    val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.45f)
+    val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f)
+    Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
+        if (shadowOffset > 0.dp) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(fieldHeight)
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(shadowColor)
+            )
+        }
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(fieldHeight)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .border(SlockStroke.Default, borderColor),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier =
                     Modifier
-                        .width(42.dp)
+                        .width(32.dp)
                         .height(fieldHeight)
-                        .background(Color(0xFFFFF7D6))
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = 12.dp),
+                        .background(Color(0xFFFFF7D6).copy(alpha = if (enabled) 1f else 0.55f))
+                        .border(SlockStroke.Thin, borderColor),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "/",
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.70f),
+                    color = contentColor.copy(alpha = 0.70f),
                     maxLines = 1
                 )
             }
@@ -229,7 +232,7 @@ internal fun SlockSlugInput(
                 placeholder = "",
                 autoFocus = false,
                 maxLines = 1,
-                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             )

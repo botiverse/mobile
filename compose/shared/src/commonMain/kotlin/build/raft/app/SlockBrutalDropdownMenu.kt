@@ -43,6 +43,7 @@ internal data class SlockBrutalDropdownMenuItem(
     val id: String,
     val label: String,
     val icon: SlockLucideIconName? = null,
+    val trailing: String? = null,
     val destructive: Boolean = false,
     val enabled: Boolean = true
 )
@@ -110,46 +111,68 @@ internal fun SlockBrutalDropdownMenu(
         horizontalAutoFlip = horizontalAutoFlip,
         verticalPlacement = verticalPlacement
     ) { popoverModifier, _ ->
+        SlockBrutalDropdownMenuSurface(
+            items = items,
+            onSelect = onSelect,
+            modifier = popoverModifier,
+            width = popoverWidth,
+            rowHeight = rowHeight,
+            shadowOffset = shadowOffsetDp,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+@Composable
+internal fun SlockBrutalDropdownMenuSurface(
+    items: List<SlockBrutalDropdownMenuItem>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp? = SlockBrutalDropdownMenuWidthValue.dp,
+    rowHeight: Dp = SlockBrutalDropdownMenuRowHeightValue.dp,
+    shadowOffset: Dp = SlockBrutalDropdownMenuShadowOffsetValue.dp,
+    showDividers: Boolean = true,
+    dividerBeforeIds: Set<String> = emptySet(),
+    onDismiss: () -> Unit = {}
+) {
+    Box(
+        modifier = modifier.padding(end = shadowOffset, bottom = shadowOffset)
+    ) {
         Box(
-            modifier = popoverModifier
-                .padding(end = shadowOffsetDp, bottom = shadowOffsetDp)
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = shadowOffset, y = shadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        Column(
+            modifier = Modifier
+                .let { base -> if (width != null) base.width(width) else base.fillMaxWidth() }
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockFloatingContentClickTarget()
         ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = shadowOffsetDp, y = shadowOffsetDp)
-                    .background(SlockColor.ShadowBlack)
-            )
-            Column(
-                modifier = Modifier
-                    .width(popoverWidth)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .slockFloatingContentClickTarget()
-            ) {
-                if (items.isEmpty()) {
-                    SlockBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
-                } else {
-                    items.forEachIndexed { index, item ->
-                        SlockBrutalDropdownMenuRow(
-                            item = item,
-                            rowHeight = rowHeight,
-                            onClick = {
-                                if (item.enabled) {
-                                    onSelect(item.id)
-                                }
-                                onDismiss()
-                            }
+            if (items.isEmpty()) {
+                SlockBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
+            } else {
+                items.forEachIndexed { index, item ->
+                    if (index > 0 && (showDividers || item.id in dividerBeforeIds)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(SlockStroke.Thin)
+                                .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
                         )
-                        if (index < items.lastIndex) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(SlockStroke.Thin)
-                                    .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
-                            )
-                        }
                     }
+                    SlockBrutalDropdownMenuRow(
+                        item = item,
+                        rowHeight = rowHeight,
+                        onClick = {
+                            if (item.enabled) {
+                                onSelect(item.id)
+                            }
+                            onDismiss()
+                        }
+                    )
                 }
             }
         }
@@ -169,6 +192,8 @@ private fun SlockBrutalDropdownMenuRow(
     }
     val labelColor = if (item.destructive) {
         SlockColor.AccentRed
+    } else if (!item.enabled) {
+        SlockColor.TextBlack.copy(alpha = 0.30f)
     } else {
         SlockColor.TextBlack
     }
@@ -198,6 +223,18 @@ private fun SlockBrutalDropdownMenuRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        item.trailing?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp
+                ),
+                color = SlockColor.TextBlack.copy(alpha = 0.40f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

@@ -1791,7 +1791,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 154
+                heightDp = 176
             )
         private val UI_SELECT_CROP =
             VisualCrop(
