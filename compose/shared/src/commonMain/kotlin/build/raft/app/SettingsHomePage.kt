@@ -150,6 +150,7 @@ import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
@@ -2844,6 +2845,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                         when (val result = settingsCapabilities.installQuiverUpdate()) {
                                             is DataResult.Content -> {
                                                 val update = result.data
+                                                update.toSharedHomeAppUpdateNotification()?.let { notification ->
+                                                    homeShellStore.dispatch(
+                                                        SharedHomeShellIntent.Home(
+                                                            SharedHomeIntent.UpsertNotification(notification)
+                                                        )
+                                                    )
+                                                }
                                                 bridge.toast(update.statusLabel.ifBlank { "Update download started" })
                                                 update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
                                                 homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))

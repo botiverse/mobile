@@ -1806,6 +1806,35 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun upsertNotificationReplacesAppUpdateActionStateImmediately() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+        val downloading =
+            SharedHomeNotification(
+                id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                title = "App update available",
+                body = "Current version 1.0.0. Latest version 1.0.1 (1000100).",
+                actionLabel = "Downloading",
+                targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
+                kind = SharedHomeNotificationKind.Info,
+                icon = SharedHomeNotificationIcon.CircleArrowUp
+            )
+        val install = downloading.copy(actionLabel = "Install")
+
+        store.accept(SharedHomeIntent.UpsertNotification(downloading))
+        assertEquals("Downloading", store.state.value.notifications.single().actionLabel)
+
+        store.accept(SharedHomeIntent.UpsertNotification(install))
+        assertEquals("Install", store.state.value.notifications.single().actionLabel)
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+        scope.cancel()
+    }
+
     // #81: app badge projection tests -----------------------------------------
     // These cover the typed badge source boundary (no new server endpoint,
     // derived from existing /servers/unread-summary + /channel-unread-counts).

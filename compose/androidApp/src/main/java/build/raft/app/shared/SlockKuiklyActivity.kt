@@ -1551,8 +1551,6 @@ internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
     private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
-    private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
-    private val quiverUpdateDownloadLock = Any()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -3644,6 +3642,8 @@ internal class SlockKuiklyBridgeModule(
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
+        private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
+        private val quiverUpdateDownloadLock = Any()
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
         private const val ATTACHMENT_CACHE_MAX_FILES = 80

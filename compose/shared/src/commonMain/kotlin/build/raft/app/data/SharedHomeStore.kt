@@ -211,6 +211,8 @@ internal class SharedHomeStore(
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
             SharedHomeIntent.RefreshNotifications ->
                 loadNotifications()
+            is SharedHomeIntent.UpsertNotification ->
+                upsertNotification(intent.notification)
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
@@ -1073,6 +1075,20 @@ internal class SharedHomeStore(
         }
     }
 
+    private fun upsertNotification(notification: SharedHomeNotification) {
+        dismissedLocalNotificationIds.remove(notification.id)
+        val previous = _state.value.notifications
+        val next =
+            if (previous.any { it.id == notification.id }) {
+                previous.map { existing ->
+                    if (existing.id == notification.id) notification else existing
+                }
+            } else {
+                listOf(notification) + previous
+            }
+        reduceState(_state.value.copy(notifications = next))
+    }
+
     private fun reduceState(nextState: SharedHomeState): Boolean {
         val previousState = _state.value
         val intent = stateDiagnosticsIntent
@@ -1224,6 +1240,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
         SharedHomeIntent.RefreshNotifications -> "RefreshNotifications"
+        is SharedHomeIntent.UpsertNotification -> "UpsertNotification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
         is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
         is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
@@ -1562,6 +1579,7 @@ sealed interface SharedHomeIntent {
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data object RefreshNotifications : SharedHomeIntent
+    data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: HomeChannelRow) : SharedHomeIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
@@ -1596,6 +1614,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             SharedHomeIntent.RefreshNotifications,
+            is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
@@ -1620,6 +1639,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             SharedHomeIntent.RefreshNotifications,
+            is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
@@ -1644,6 +1664,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             SharedHomeIntent.RefreshNotifications,
+            is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
