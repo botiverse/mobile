@@ -147,6 +147,16 @@ enum class AgentStatus {
                 "error", "failed", "failure" -> Error
                 else -> null
             }
+
+        fun fromAgentActivityWireValue(value: String?): AgentStatus? =
+            when (value?.trim()?.lowercase()?.replace('-', '_')) {
+                "online" -> Online
+                "thinking" -> Thinking
+                "working" -> Working
+                "error" -> Error
+                "offline" -> Offline
+                else -> null
+            }
     }
 }
 

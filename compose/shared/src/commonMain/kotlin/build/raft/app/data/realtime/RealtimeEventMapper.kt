@@ -586,16 +586,15 @@ private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSum
     canClaim = true,
 )
 
-private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
+private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
     val projectedActivity = entries.latestAgentActivityProjection()
-        ?: AgentActivityProjection(
-            status = AgentStatus.fromWireValue(activity),
-            detail = detail
-        )
+        ?: AgentStatus.fromAgentActivityWireValue(activity)
+            ?.let { status -> AgentActivityProjection(status = status, detail = detail) }
+        ?: return null
     val status = projectedActivity.status
     return MemberPresenceUpdated(
         memberId = MemberId(agentId),
-        presence = status?.presence ?: Presence.Offline,
+        presence = status.presence,
         kind = MemberKind.Agent,
         agentStatus = status,
         statusLabel = projectedActivity.detail,
@@ -609,7 +608,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
 }
 
 private data class AgentActivityProjection(
-    val status: AgentStatus?,
+    val status: AgentStatus,
     val detail: String?
 )
 
@@ -645,7 +644,7 @@ private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
                 detail = ""
             )
         "status", "agent_status" -> {
-            val status = AgentStatus.fromWireValue(stringValue("activity")) ?: return null
+            val status = AgentStatus.fromAgentActivityWireValue(stringValue("activity")) ?: return null
             AgentActivityProjection(
                 status = status,
                 detail = stringValue("detail") ?: ""

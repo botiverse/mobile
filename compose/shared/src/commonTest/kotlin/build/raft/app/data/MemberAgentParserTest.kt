@@ -91,7 +91,7 @@ class MemberAgentParserTest {
     }
 
     @Test
-    fun agentsListTreatsInactiveLifecycleStatusAsUnknownPresenceStatus() {
+    fun agentsListFallsBackInactiveLifecycleStatusToOfflineLikeWeb() {
         val members = parseSharedSettingsAgentsAsMembers(
             """
             [
@@ -106,8 +106,28 @@ class MemberAgentParserTest {
         )
 
         val profile = assertNotNull(members).single()
-        assertEquals(null, profile.agentStatus)
+        assertEquals(AgentStatus.Offline, profile.agentStatus)
         assertEquals(Presence.Offline, profile.presence)
+    }
+
+    @Test
+    fun agentsListFallsBackActiveLifecycleStatusToWorkingLikeWeb() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "displayName": "Builder",
+                "status": "active"
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals(AgentStatus.Working, profile.agentStatus)
+        assertEquals(Presence.Active, profile.presence)
     }
 
     @Test

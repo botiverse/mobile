@@ -435,7 +435,7 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun agentActivityDetailLikeWireValueProjectsWorkingStatus() {
+    fun agentActivityIgnoresInvalidPushedActivity() {
         val event =
             RealtimeEventMapper().map(
                 RealtimeSocketEvents.AgentActivity,
@@ -448,11 +448,7 @@ class RealtimeEventMapperTest {
                 """.trimIndent()
             )
 
-        val presence = assertIs<MemberPresenceUpdated>(event)
-        assertEquals("agent-3", presence.memberId.value)
-        assertEquals(Presence.Active, presence.presence)
-        assertEquals(AgentStatus.Working, presence.agentStatus)
-        assertEquals("Running extension", presence.statusLabel)
+        assertNull(event)
     }
 
     @Test

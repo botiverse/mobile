@@ -657,8 +657,8 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
 
 private fun WireAgent.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val statusValue = resolvedAgentStatusWireValue(activity, status)
-    val agentStatus = AgentStatus.fromWireValue(statusValue)
+    val agentStatus = normalizedAgentActivityStatus(activity, status)
+    val statusValue = agentStatus?.activityWireValue
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
@@ -708,8 +708,8 @@ private fun MemberProfile.withSourceServer(
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val statusValue = resolvedAgentStatusWireValue(activity, status)
-    val agentStatus = AgentStatus.fromWireValue(statusValue)
+    val agentStatus = normalizedAgentActivityStatus(activity, status)
+    val statusValue = agentStatus?.activityWireValue
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,
@@ -737,12 +737,24 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
     )
 }
 
-private fun resolvedAgentStatusWireValue(activity: String?, status: String?): String? {
-    val cleanActivity = activity?.trim()?.takeIf { it.isNotBlank() }
-    if (cleanActivity != null) return cleanActivity
-    val cleanStatus = status?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    return cleanStatus.takeUnless { it.equals("inactive", ignoreCase = true) }
-}
+private fun normalizedAgentActivityStatus(activity: String?, status: String?): AgentStatus =
+    AgentStatus.fromAgentActivityWireValue(activity)
+        ?: if (status?.trim()?.equals("active", ignoreCase = true) == true) {
+            AgentStatus.Working
+        } else {
+            AgentStatus.Offline
+        }
+
+private val AgentStatus.activityWireValue: String
+    get() = when (this) {
+        AgentStatus.Online -> "online"
+        AgentStatus.Working -> "working"
+        AgentStatus.Thinking -> "thinking"
+        AgentStatus.Error -> "error"
+        AgentStatus.Offline,
+        AgentStatus.Disconnected -> "offline"
+        AgentStatus.Idle -> "online"
+    }
 
 private val WireAgent.isDeletedAgent: Boolean
     get() = !deletedAt.isNullOrBlank()
