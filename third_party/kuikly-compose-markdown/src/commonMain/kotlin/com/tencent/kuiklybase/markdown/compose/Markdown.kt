@@ -253,6 +253,10 @@ fun MarkdownSuccess(
     val skipLinkDefinition = state.skipLinkDefinition()
     val rememberedComponents = remember { components }
     val renderStartMark = TimeSource.Monotonic.markNow()
+    slockMarkdownLogSubTrace(
+        "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
+            "contentLength=${content().length} nodeListSize=${state.nodeListState.size}"
+    )
     Column(modifier = modifier) {
         state.nodeListState.forEachIndexed { index, result ->
             handleElement(

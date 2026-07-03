@@ -1030,6 +1030,14 @@ fun SlockMarkdownBody(
         )
     }
     if (performanceKey != null) {
+        performanceLogger(
+            "thread_markdown_body key=$performanceKey contentLength=${content.length} " +
+                "parserHash=${parserContent.hashCode().toString(16)} highlighted=${highlightedMentions.size} " +
+                "tokenCount=${tokenPlan.tokens.size} tagTokens=${tokenPlan.tagTokens().size} " +
+                "inlineCode=${tokenPlan.inlineCodeMatchCount()} scope=${inlineContentScope.orEmpty()}"
+        )
+    }
+    if (performanceKey != null) {
         logMarkdownSpike(
             phase = "markdown.diagnostics.body",
             durationUs = 0L,

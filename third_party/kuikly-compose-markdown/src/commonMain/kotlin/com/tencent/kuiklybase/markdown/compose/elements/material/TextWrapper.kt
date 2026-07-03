@@ -161,9 +161,14 @@ fun MarkdownBasicText(
         inlineContent = inlineContent,
     )
     val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
+    val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
+    val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
+    slockMarkdownLogSubTrace(
+        "phase=markdown.text.provider_rich_text_all durationUs=$textProviderDurationUs textHash=${text.text.hashCode().toString(16)} " +
+            "textLength=${text.text.length} spanStyles=${text.spanStyles.size} paragraphStyles=${text.paragraphStyles.size} " +
+            "stringAnnotations=$stringAnnotationCount linkAnnotations=$linkAnnotationCount inlineContent=${inlineContent.size}"
+    )
     if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
-        val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
         slockMarkdownLogSubTrace(
             "phase=markdown.text.provider_rich_text durationUs=$textProviderDurationUs textLength=${text.text.length} " +
                 "spanStyles=${text.spanStyles.size} paragraphStyles=${text.paragraphStyles.size} " +

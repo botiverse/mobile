@@ -31,6 +31,7 @@ import com.tencent.kuiklybase.markdown.compose.LocalImageTransformer
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnimations
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownExtendedSpans
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import com.tencent.kuiklybase.markdown.compose.extendedspans.ExtendedSpans
@@ -92,6 +93,12 @@ fun MarkdownText(
     } else {
         content
     }
+    slockMarkdownLogSubTrace(
+        "phase=markdown.text.annotated_input textHash=${extendedStyledText.text.hashCode().toString(16)} " +
+            "textLength=${extendedStyledText.text.length} spanStyles=${extendedStyledText.spanStyles.size} " +
+            "stringAnnotations=${extendedStyledText.getStringAnnotations(0, extendedStyledText.length).size} " +
+            "linkAnnotations=${extendedStyledText.getLinkAnnotations(0, extendedStyledText.length).size}"
+    )
 
     // forward the `onTextLayout` to `extended-spans` if provided
     val onTextLayout: ((TextLayoutResult, Color?) -> Unit)? = if (extendedSpans != null) {

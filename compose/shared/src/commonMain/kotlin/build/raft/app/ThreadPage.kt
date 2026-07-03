@@ -1098,6 +1098,15 @@ private fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Strin
         messages.forEach { message -> addKnownThreadMentionValues(message) }
     }
 
+private fun threadMarkdownTagContextSignature(
+    highlightedMentions: Set<String>,
+    knownChannelNames: Set<String>,
+    knownMentionNames: Set<String>
+): String =
+    "highlighted=${highlightedMentions.size}:${highlightedMentions.hashCode().toString(16)} " +
+        "channels=${knownChannelNames.size}:${knownChannelNames.hashCode().toString(16)} " +
+        "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)}"
+
 private fun MutableSet<String>.addKnownThreadMentionValues(member: KuiklyThreadMemberItem) {
     addKnownThreadMentionValue(member.id)
     addKnownThreadMentionValue(member.handle)
@@ -1807,6 +1816,14 @@ internal fun ThreadMessageVisualScreen() {
         remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
             { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
         }
+    val markdownTagContextSignature =
+        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames) {
+            threadMarkdownTagContextSignature(
+                highlightedMentions = highlightedMentions,
+                knownChannelNames = knownMarkdownChannelNames,
+                knownMentionNames = knownMarkdownMentionNames
+            )
+        }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
@@ -1828,6 +1845,7 @@ internal fun ThreadMessageVisualScreen() {
                     onOpenTask = {},
                     onOpenTaskStatusMenu = {},
                     isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
                     onToggleReaction = {},
                     onToggleSaved = {},
                     onOpenAttachment = {},
@@ -1921,6 +1939,7 @@ internal fun ThreadMessageVisualScreen() {
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
                 isMarkdownTagValid = isMarkdownTagValid,
+                markdownTagContextSignature = markdownTagContextSignature,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                 onShowActions = {},
                 onOpenMember = {},
@@ -7025,6 +7044,14 @@ private fun ThreadPageContent(
         remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
             { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
         }
+    val markdownTagContextSignature =
+        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames) {
+            threadMarkdownTagContextSignature(
+                highlightedMentions = highlightedMentions,
+                knownChannelNames = knownMarkdownChannelNames,
+                knownMentionNames = knownMarkdownMentionNames
+            )
+        }
     val resolveMarkdownTagLabel =
         remember(payload.members) {
             { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
@@ -7079,6 +7106,7 @@ private fun ThreadPageContent(
                         contentExtrasVisible = contentExtrasVisible,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = { memberId -> onOpenMemberProfile(memberId, null, null) },
@@ -7822,6 +7850,7 @@ private fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
+    markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -7888,6 +7917,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
@@ -7936,6 +7966,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
@@ -7978,6 +8009,7 @@ private fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
+                markdownTagContextSignature = markdownTagContextSignature,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
                 onOpenMember = onOpenMember,
@@ -7999,7 +8031,8 @@ private fun ThreadChatTab(
 
 private data class ThreadMarkdownPreparsePlan(
     val key: String,
-    val bodies: List<String>
+    val bodies: List<String>,
+    val debugEntries: List<String> = emptyList()
 )
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
@@ -8021,7 +8054,13 @@ private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     }
     return ThreadMarkdownPreparsePlan(
         key = fullRendererContents.joinToString(separator = "\u001f"),
-        bodies = latestBodies
+        bodies = latestBodies,
+        debugEntries =
+            messages
+                .takeLast(ThreadInitialMarkdownPreparseMessageCount)
+                .map { message ->
+                    "id=${message.id.take(8)} len=${message.body.length} hash=${message.body.hashCode().toString(16)}"
+                }
     )
 }
 
@@ -8045,6 +8084,7 @@ private fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
+    markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -8216,8 +8256,17 @@ private fun ThreadMessagesList(
         }
     LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
+            diagnosticsLogger(
+                "thread_markdown_preparse_plan window=initial_latest result=empty " +
+                    "messages=${renderPayload.messages.size} extrasVisible=$contentExtrasVisible"
+            )
             return@LaunchedEffect
         }
+        diagnosticsLogger(
+            "thread_markdown_preparse_plan window=initial_latest candidates=${initialMarkdownPreparsePlan.bodies.size} " +
+                "max=$ThreadInitialMarkdownPreparseMessageCount messages=${renderPayload.messages.size} " +
+                "entries=${initialMarkdownPreparsePlan.debugEntries.joinToString(separator = ";")}"
+        )
         val startedAt = TimeSource.Monotonic.markNow()
         try {
             val result =
@@ -8622,6 +8671,7 @@ private fun ThreadMessagesList(
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
@@ -8822,6 +8872,7 @@ private fun ThreadMessagesList(
                             showReplyAction = renderPayload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                            markdownTagContextSignature = markdownTagContextSignature,
                             taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
                             taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
                             captureLongPressAnchor = captureMessageAnchors,
@@ -9909,6 +9960,7 @@ private fun ThreadMessageCard(
     showReplyAction: Boolean = true,
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    markdownTagContextSignature: String = "",
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
@@ -10133,7 +10185,12 @@ private fun ThreadMessageCard(
                                         remember(message.id, message.body) {
                                             message.threadMarkdownRenderSignature()
                                         }
-                                    key(markdownRenderSignature) {
+                                    diagnosticsLogger(
+                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                            "message=${message.id.take(8)} bodyLen=${message.body.length} " +
+                                            "bodyHash=${message.body.hashCode().toString(16)} context=$markdownTagContextSignature"
+                                    )
+                                    key(markdownRenderSignature, markdownTagContextSignature) {
                                         SlockMarkdownBody(
                                             body = message.body,
                                             textStyle = ThreadMessageBodyTextStyle,
@@ -11960,6 +12017,7 @@ private fun ThreadOriginCard(
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
+    markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -12038,6 +12096,7 @@ private fun ThreadOriginCard(
                                         id = displayOrigin.taskAssigneeId
                                     ),
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                            markdownTagContextSignature = markdownTagContextSignature,
                             taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = timelineSlice.showMessageSaveAction,
