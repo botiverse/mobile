@@ -5279,6 +5279,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadHeaderSearchKeepsChannelSearchPageAndScopesInlineSearchToThreads() {
+        assertEquals(
+            ThreadHeaderSearchAction.ChannelSearch,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            ).threadHeaderSearchAction()
+        )
+        assertEquals(
+            ThreadHeaderSearchAction.InlineThreadSearch,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "thread-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+            ).threadHeaderSearchAction()
+        )
+        assertEquals(
+            null,
+            KuiklyThreadScreenPayload(
+                sourceThreadId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+            ).threadHeaderSearchAction()
+        )
+    }
+
+    @Test
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))

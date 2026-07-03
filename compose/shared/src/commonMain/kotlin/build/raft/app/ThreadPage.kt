@@ -643,6 +643,18 @@ internal fun KuiklyThreadScreenPayload.threadChannelSearchChannelId(): String? =
         ?.trim()
         ?.takeIf { it.isNotBlank() && surfaceKind == KuiklyThreadSurfaceKind.Channel }
 
+internal enum class ThreadHeaderSearchAction {
+    ChannelSearch,
+    InlineThreadSearch
+}
+
+internal fun KuiklyThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderSearchAction? =
+    when {
+        threadChannelSearchChannelId() != null -> ThreadHeaderSearchAction.ChannelSearch
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> ThreadHeaderSearchAction.InlineThreadSearch
+        else -> null
+    }
+
 internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
     return JSONObject().apply {
@@ -7128,11 +7140,18 @@ private fun ThreadPageContent(
                 },
                 onOpenMemberProfile = onOpenMemberProfile,
                 onOpenSearch = {
-                    if (selectedTab != KuiklyThreadTab.Chat) {
-                        selectedTab = KuiklyThreadTab.Chat
-                        onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+                    when (payload.threadHeaderSearchAction()) {
+                        ThreadHeaderSearchAction.ChannelSearch ->
+                            onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
+                        ThreadHeaderSearchAction.InlineThreadSearch -> {
+                            if (selectedTab != KuiklyThreadTab.Chat) {
+                                selectedTab = KuiklyThreadTab.Chat
+                                onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+                            }
+                            inlineSearchVisible = !inlineSearchVisible
+                        }
+                        null -> Unit
                     }
-                    inlineSearchVisible = !inlineSearchVisible
                 },
                 onShowMembers = {
                     activeModal = "members"
@@ -7428,7 +7447,9 @@ private fun ThreadPageHeader(
                     )
                 }
             }
-            ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
+            if (payload.threadHeaderSearchAction() != null) {
+                ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
+            }
             if (payload.showSettingsAction) {
                 ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
             }
@@ -8850,7 +8871,10 @@ private fun ThreadMessagesList(
                 Spacer(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ThreadBottomScrollPaddingHeight)
+                        .height(
+                            ThreadBottomScrollPaddingHeight +
+                                if (inlineSearchVisible) ThreadInlineSearchBarBottomInset else 0.dp
+                        )
                 )
             }
         }
@@ -8874,7 +8898,12 @@ private fun ThreadMessagesList(
                         inlineSearchCurrentIndex =
                             if (inlineSearchCurrentIndex >= inlineSearchMatches.lastIndex) 0 else inlineSearchCurrentIndex + 1
                     }
-                }
+                },
+                onClear = {
+                    inlineSearchQuery = ""
+                    inlineSearchCurrentIndex = 0
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
         if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
@@ -9012,10 +9041,12 @@ private fun ThreadInlineSearchBar(
     currentIndex: Int,
     onQueryChange: (String) -> Unit,
     onPrevious: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val normalizedCurrent = if (matchCount > 0) currentIndex.coerceIn(0, matchCount - 1) + 1 else 0
-    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Row(
             modifier =
@@ -9030,6 +9061,8 @@ private fun ThreadInlineSearchBar(
                 placeholder = "Search this thread",
                 onValueChange = onQueryChange,
                 modifier = Modifier.weight(1f),
+                showClearWhenNotEmpty = true,
+                onClear = onClear,
                 textStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
             )
             Box(
@@ -9062,6 +9095,7 @@ private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 private val ThreadBottomScrollPaddingHeight = 16.dp
+private val ThreadInlineSearchBarBottomInset = 58.dp
 internal data class ThreadInlineActionSpec(
     val label: String,
     val event: String,

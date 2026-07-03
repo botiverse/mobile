@@ -558,6 +558,8 @@ internal fun SlockBrutalSearchField(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
+    showClearWhenNotEmpty: Boolean = false,
+    onClear: () -> Unit = { onValueChange("") },
     textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -600,6 +602,16 @@ internal fun SlockBrutalSearchField(
                 textStyle = textStyle,
                 modifier = Modifier.weight(1f)
             )
+            if (showClearWhenNotEmpty && value.isNotEmpty()) {
+                SlockLucideIcon(
+                    SlockLucideIconName.X,
+                    color = "#FF000000",
+                    modifier =
+                        Modifier
+                            .size(16.dp)
+                            .clickable(enabled = enabled, onClick = onClear)
+                )
+            }
         }
     }
 }
