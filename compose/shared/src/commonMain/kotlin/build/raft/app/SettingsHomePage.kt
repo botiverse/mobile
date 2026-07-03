@@ -13029,6 +13029,7 @@ internal fun buildAppShellThreadPayload(
 ): KuiklyThreadScreenPayload =
     buildAppShellThreadPayload(
         conversation = conversation.toThreadLaunchConversationIdentity(),
+        accessState = conversation.toThreadLaunchAccessState(),
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
@@ -13044,39 +13045,40 @@ internal fun buildAppShellThreadPayload(
     compactConsecutiveMessages: Boolean = false,
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
-    originFallback: ThreadLaunchOriginFallback? = null
+    originFallback: ThreadLaunchOriginFallback? = null,
+    accessState: ThreadLaunchAccessState = ThreadLaunchAccessState()
 ): KuiklyThreadScreenPayload {
     val summary = conversation.toConversationSummary()
-    val surfaceKind = summary.threadSurfaceKind()
+    val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val streamChannelId =
         if (isReplyThread) {
-            summary.threadStreamChannelId()
+            conversation.threadStreamChannelId()
         } else {
             conversation.channelId?.value ?: conversation.threadId.value
         }
     val parentChannelId =
         if (isReplyThread) {
-            summary.threadParentChannelId()
+            conversation.threadParentChannelId()
         } else {
             null
         }
     val parentMessageId =
         if (isReplyThread) {
-            summary.threadParentMessageId()
+            conversation.threadParentMessageId()
         } else {
             null
         }
-    val routeChannelKind = summary.resolveThreadRouteIdentity().channelKind
+    val routeChannelKind = conversation.resolveThreadRouteIdentity().channelKind
     val parentSurfaceKind =
         if (isReplyThread) {
-            summary.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel
+            conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel
         } else {
             null
         }
     val parentChannelKind =
         if (isReplyThread) {
-            summary.threadParentChannelKind()
+            conversation.threadParentChannelKind()
         } else {
             null
         }
@@ -13086,10 +13088,10 @@ internal fun buildAppShellThreadPayload(
         } else {
             null
         }
-    val canSend = conversation.joined && conversation.permissions.canSend
+    val canSend = accessState.joined && accessState.permissions.canSend
     val taskChannelKind = if (isReplyThread) parentChannelKind else routeChannelKind
     val supportsChannelTasks =
-        conversation.permissions.canCreateTask &&
+        accessState.permissions.canCreateTask &&
             !taskChannelKind.equals("joint", ignoreCase = true)
     val composer =
         KuiklyThreadComposerPayload(
@@ -13123,7 +13125,7 @@ internal fun buildAppShellThreadPayload(
         parentMessageId = parentMessageId,
         parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
-        memberScopedMentions = summary.usesMemberScopedMentions(),
+        memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",
@@ -13135,7 +13137,7 @@ internal fun buildAppShellThreadPayload(
         showReactionActions = threadRowAffordances.showReactionActions(),
         showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
-        joined = conversation.joined,
+        joined = accessState.joined,
         canSend = canSend,
         membersCount = 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
@@ -13159,6 +13161,17 @@ internal fun buildAppShellThreadPayload(
     )
     return payload
 }
+
+internal data class ThreadLaunchAccessState(
+    val joined: Boolean = true,
+    val permissions: ConversationPermissions = ConversationPermissions()
+)
+
+private fun ConversationSummary.toThreadLaunchAccessState(): ThreadLaunchAccessState =
+    ThreadLaunchAccessState(
+        joined = joined,
+        permissions = permissions
+    )
 
 private fun Pager.openStandaloneTaskThreadPage(
     task: TaskSummary,
@@ -13360,21 +13373,20 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload {
-    val summary = conversation.toConversationSummary()
-    val surfaceKind = summary.threadSurfaceKind()
+    val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val streamChannelId =
         if (isReplyThread) {
-            summary.threadStreamChannelId()
+            conversation.threadStreamChannelId()
         } else {
             conversation.channelId?.value ?: conversation.threadId.value
         }
-    val parentChannelId = if (isReplyThread) summary.threadParentChannelId() else null
-    val parentMessageId = if (isReplyThread) summary.threadParentMessageId() else null
+    val parentChannelId = if (isReplyThread) conversation.threadParentChannelId() else null
+    val parentMessageId = if (isReplyThread) conversation.threadParentMessageId() else null
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
-        channelKind = summary.resolveThreadRouteIdentity().channelKind,
+        channelKind = conversation.resolveThreadRouteIdentity().channelKind,
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,
@@ -13385,8 +13397,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
-        parentSurfaceKind = if (isReplyThread) summary.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
-        parentChannelKind = if (isReplyThread) summary.threadParentChannelKind() else null,
+        parentSurfaceKind = if (isReplyThread) conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
+        parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",

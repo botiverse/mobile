@@ -5,6 +5,7 @@ import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -427,8 +428,8 @@ class SharedInboxPanelTest {
         val request = item.toHomeMessageOpenRequest()
         assertEquals("message-1", request.anchorMessageId)
         assertEquals(ConversationKind.Channel, request.conversation.kind)
-        assertEquals("android-dev", request.conversation.name)
         val rowSummary = item.toConversationSummary()
+        assertEquals("android-dev", rowSummary.name)
         assertEquals(0, rowSummary.unreadCount)
         assertEquals(0, rowSummary.mentionCount)
     }
@@ -513,13 +514,19 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun threadLaunchIdentityIgnoresDirectoryPresentationAndStatusFields() {
+    fun threadLaunchIdentityIgnoresDisplayAccessDirectoryPresentationAndStatusFields() {
         val base =
             ConversationSummary(
                 threadId = ThreadId("channel-1"),
                 channelId = ChannelId("channel-1"),
                 kind = ConversationKind.Channel,
                 name = "general",
+                subtitle = "Team channel",
+                joined = true,
+                archived = false,
+                jointChannelId = "joint-1",
+                jointRole = "owner",
+                permissions = ConversationPermissions(canRead = true, canSend = true, canCreateTask = true),
                 presenceMemberId = MemberId("member-1"),
                 memberCount = 12,
                 jointPeerServerId = ServerId("server-1"),
@@ -529,6 +536,13 @@ class SharedInboxPanelTest {
             )
         val updated =
             base.copy(
+                name = "renamed",
+                subtitle = "Renamed channel",
+                joined = false,
+                archived = true,
+                jointChannelId = "joint-2",
+                jointRole = "guest",
+                permissions = ConversationPermissions(canRead = true, canSend = false, canCreateTask = false),
                 presenceMemberId = MemberId("member-2"),
                 memberCount = 42,
                 jointPeerServerId = ServerId("server-2"),

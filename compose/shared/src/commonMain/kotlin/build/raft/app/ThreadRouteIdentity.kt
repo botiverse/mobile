@@ -62,7 +62,7 @@ internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdenti
     )
 }
 
-private fun resolveThreadRouteIdentity(
+internal fun resolveThreadRouteIdentity(
     surfaceKind: String,
     channelKind: String?,
     instanceId: String?,
