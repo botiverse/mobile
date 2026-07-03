@@ -133,6 +133,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 8 for Ktor toolchain
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "8"
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
