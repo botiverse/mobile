@@ -8044,8 +8044,16 @@ private data class ThreadMarkdownPreparseCandidate(
     val body: String
 )
 
+private const val ThreadMarkdownInitialPreparseStartFrames = 2
+
 private suspend fun awaitThreadMarkdownPreparseFrameSlot() {
     withFrameNanos { }
+}
+
+private suspend fun awaitThreadMarkdownInitialPreparseStartSlot() {
+    repeat(ThreadMarkdownInitialPreparseStartFrames) {
+        awaitThreadMarkdownPreparseFrameSlot()
+    }
 }
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
@@ -8276,7 +8284,7 @@ private fun ThreadMessagesList(
         remember(timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible), contentExtrasVisible) {
             renderPayload.threadInitialMarkdownPreparsePlan(contentExtrasVisible)
         }
-    LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key) {
+    LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key, initialBottomAnchorReady) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
             diagnosticsLogger(
                 "thread_markdown_preparse_plan scope=loaded_latest_first result=empty " +
@@ -8284,6 +8292,15 @@ private fun ThreadMessagesList(
             )
             return@LaunchedEffect
         }
+        if (!initialBottomAnchorReady) {
+            diagnosticsLogger(
+                "thread_markdown_preparse_plan scope=loaded_latest_first result=deferred " +
+                    "messages=${renderPayload.messages.size} latestItemIndex=$latestItemIndex " +
+                    "focused=${renderPayload.focusedMessageId?.isNotBlank() == true}"
+            )
+            return@LaunchedEffect
+        }
+        awaitThreadMarkdownInitialPreparseStartSlot()
         diagnosticsLogger(
             "thread_markdown_preparse_plan scope=loaded_latest_first " +
                 "bodyCandidates=${initialMarkdownPreparsePlan.candidates.size} " +
