@@ -1093,6 +1093,7 @@ internal class ComposeSlockAppShellChildTabPage : build.raft.app.base.BasePager(
 @Composable
 private fun SlockAppShellChildTabPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val shellId = pager.pageData.params.optString("shellId")
     val initialTab = appShellChildPageSelectedTab(pager.pageData.params.optString("tab"))
     val entry = AppShellChildTabRegistry.entry(shellId)
@@ -1125,7 +1126,13 @@ private fun SlockAppShellChildTabPageContent() {
         key = { index -> AppShellChildPageTabs[index] }
     ) { page ->
         val pageTab = AppShellChildPageTabs[page]
-        entry.renderer(pageTab, selectedTab == pageTab)
+        val active = selectedTab == pageTab
+        LaunchedEffect(pageTab, active, selectedTab) {
+            if (active) {
+                bridge.log("app_shell_child_tab_render tab=$pageTab selectedTab=$selectedTab")
+            }
+        }
+        entry.renderer(pageTab, active)
     }
 }
 
@@ -1386,6 +1393,12 @@ internal fun appShellChildPageSelectedTab(selectedTab: String): String {
 internal fun appShellChildPageTabIndex(selectedTab: String): Int =
     AppShellChildPageTabs.indexOf(appShellChildPageSelectedTab(selectedTab)).coerceAtLeast(0)
 
+internal fun appShellChildPageData(shellId: String, tab: String): JSONObject =
+    JSONObject().apply {
+        put("shellId", shellId)
+        put("tab", appShellChildPageSelectedTab(tab))
+    }
+
 internal fun homeWarmAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     return retainedAppShellTabOrder(activeTab).filter { tab ->
@@ -1487,12 +1500,10 @@ private fun SlockAppShellChildTabHost(
     tab: String,
     active: Boolean
 ) {
+    val childTab = appShellChildPageSelectedTab(tab)
     val pageData =
-        remember(shellId) {
-            JSONObject().apply {
-                put("shellId", shellId)
-                put("tab", tab)
-            }
+        remember(shellId, childTab) {
+            appShellChildPageData(shellId, childTab)
         }
     SlockKuiklyChildPage(
         pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,

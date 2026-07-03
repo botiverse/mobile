@@ -97,6 +97,18 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPageDataCarriesNormalizedInitialTab() {
+        val homeData = appShellChildPageData(shellId = "shell-1", tab = "home")
+        val settingsData = appShellChildPageData(shellId = "shell-1", tab = "settings")
+        val unknownData = appShellChildPageData(shellId = "shell-1", tab = "unknown")
+
+        assertEquals("shell-1", homeData.optString("shellId"))
+        assertEquals("home", homeData.optString("tab"))
+        assertEquals("settings", settingsData.optString("tab"))
+        assertEquals("home", unknownData.optString("tab"))
+    }
+
+    @Test
     fun homeWarmAppShellComposedTabsKeepsOnlyHomeInactive() {
         assertEquals(
             listOf("home", "tasks"),
