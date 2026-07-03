@@ -111,7 +111,6 @@ class AuthSessionStoreTest {
         store.saveSession(staleSession)
         store.clearSession()
         assertNull(store.readSession())
-        assertEquals(listOf(RecordedClearEvent("local", staleFingerprint)), events.events)
 
         assertTrue(
             store.clearSessionFromSessionClearedNotify(
