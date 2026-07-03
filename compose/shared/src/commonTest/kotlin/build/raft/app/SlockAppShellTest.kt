@@ -366,6 +366,46 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellParentHomeStartRequiresReadyHomeRoot() {
+        assertEquals(
+            true,
+            appShellParentShouldStartHome(
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                readyServerId = "server-1",
+                state = SharedHomeState()
+            )
+        )
+        assertEquals(
+            false,
+            appShellParentShouldStartHome(
+                selectedTab = "tasks",
+                selectedHomeDestination = null,
+                readyServerId = "server-1",
+                state = SharedHomeState()
+            )
+        )
+        assertEquals(
+            false,
+            appShellParentShouldStartHome(
+                selectedTab = "home",
+                selectedHomeDestination = "activity",
+                readyServerId = "server-1",
+                state = SharedHomeState()
+            )
+        )
+        assertEquals(
+            false,
+            appShellParentShouldStartHome(
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                readyServerId = null,
+                state = SharedHomeState()
+            )
+        )
+    }
+
+    @Test
     fun homeSurfaceVisibilityDispatchDelaysVisibleProjectionOnly() {
         assertEquals(0L, homeSurfaceVisibilityDispatchDelayMs(false))
         assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))
@@ -460,6 +500,27 @@ class SlockAppShellTest {
         assertEquals(true, destination.pageData.optBoolean("slockReplaceCurrentPage", false))
         assertEquals(false, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertEquals(true, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
+    }
+
+    @Test
+    fun postAuthRouteReturnsToAppShellWhenServerWasRemembered() {
+        val destination =
+            postAuthRouteDestination(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "artin@raft.build"),
+                    accessToken = "access",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1",
+                    selectedServerSlug = "slock",
+                    servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+                )
+            )
+
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageName)
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageData.optString("pageName"))
+        assertEquals(true, destination.pageData.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals(true, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+        assertEquals(false, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
     }
 
     @Test

@@ -1463,6 +1463,17 @@ internal fun appShellBottomTabsVisible(
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
     active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
+internal fun appShellParentShouldStartHome(
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    readyServerId: String?,
+    state: SharedHomeState
+): Boolean =
+    retainedAppShellSelectedTab(selectedTab) == "home" &&
+        selectedHomeDestination == null &&
+        !readyServerId.isNullOrBlank() &&
+        sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
+
 private fun sharedHomeContentRenderSummary(content: SharedHomeContentState): String =
     when (content) {
         is SharedHomeContentState.Loading ->
@@ -1934,6 +1945,24 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
+    val parentShouldStartHome =
+        appShellParentShouldStartHome(
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            readyServerId = readyServerId,
+            state = homeState
+        )
+    LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
+        bridge.log(
+            "app_shell_parent_home_start_check shouldStart=$parentShouldStartHome " +
+                "selectedTab=$selectedTab homeDestination=${selectedHomeDestination.orEmpty()} " +
+                "readyServerId=${readyServerId.orEmpty()} state=${sharedHomeContentRenderSummary(homeState.content)} " +
+                "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
+        )
+        if (parentShouldStartHome) {
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
+        }
+    }
     LaunchedEffect(homeSurfaceVisible, readyServerId) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
         if (delayMs > 0L) {

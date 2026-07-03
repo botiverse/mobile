@@ -172,12 +172,13 @@ private fun LoginScreen() {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        val destination = postAuthRouteDestination(result.data)
                         authDataSource.logDiagnostics(
-                            "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=login " +
+                            "auth_post_success_route page=${destination.pageName} source=login " +
                                 "serversCount=${result.data.servers.size} " +
                                 "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                         )
-                        pager.openPostAuthRoute()
+                        pager.openPostAuthRoute(result.data)
                     }
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
@@ -356,12 +357,13 @@ private fun AuthLegalAcceptanceScreen() {
             is SharedAuthResult.Success -> {
                 submitting = false
                 errorMessage = null
+                val destination = postAuthRouteDestination(result.data)
                 authDataSource.logDiagnostics(
-                    "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=mobile_oauth_legal " +
+                    "auth_post_success_route page=${destination.pageName} source=mobile_oauth_legal " +
                         "serversCount=${result.data.servers.size} " +
                         "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                 )
-                pager.openPostAuthRoute()
+                pager.openPostAuthRoute(result.data)
             }
             is SharedAuthResult.Failure -> {
                 submitting = false
@@ -437,12 +439,13 @@ private fun RegisterScreen() {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        val destination = postAuthRouteDestination(result.data)
                         authDataSource.logDiagnostics(
-                            "auth_post_success_route page=$AUTH_CHOOSE_SERVER_PAGE source=register " +
+                            "auth_post_success_route page=${destination.pageName} source=register " +
                                 "serversCount=${result.data.servers.size} " +
                                 "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                         )
-                        pager.openPostAuthRoute()
+                        pager.openPostAuthRoute(result.data)
                     }
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
@@ -1412,8 +1415,8 @@ private fun Pager.openAuthPage(pageName: String) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
 
-private fun Pager.openPostAuthRoute() {
-    val destination = postAuthRouteDestination()
+private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
+    val destination = postAuthRouteDestination(session)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
             destination.pageName,
@@ -1421,11 +1424,18 @@ private fun Pager.openPostAuthRoute() {
         )
 }
 
-internal fun postAuthRouteDestination(): AuthRouteDestination =
-    AuthRouteDestination(
-        pageName = AUTH_CHOOSE_SERVER_PAGE,
-        pageData = authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
-    )
+internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthRouteDestination =
+    if (!session?.selectedServerId.isNullOrBlank()) {
+        AuthRouteDestination(
+            pageName = SLOCK_APP_SHELL_PAGE,
+            pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
+        )
+    } else {
+        AuthRouteDestination(
+            pageName = AUTH_CHOOSE_SERVER_PAGE,
+            pageData = authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
+        )
+    }
 
 internal data class AuthRouteDestination(
     val pageName: String,
