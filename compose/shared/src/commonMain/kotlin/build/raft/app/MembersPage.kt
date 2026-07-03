@@ -3,11 +3,13 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalModalLayer
 import build.raft.app.components.SlockModalShellModel
+import build.raft.app.components.SlockBrutalTone
 import build.raft.app.PixelAvatarDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
@@ -6581,33 +6583,12 @@ private fun MembersAgentAppLoginCard(
 
 @Composable
 private fun MembersAgentAppLoginStatusBadge(label: String) {
-    Text(
-        text = label,
-        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-        color = SlockColor.TextBlack,
-        modifier =
-            Modifier
-                .background(SlockColor.AccentLime.copy(alpha = 0.32f))
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
-        maxLines = 1
-    )
+    SlockBrutalBadge(label = label, tone = SlockBrutalTone.Lime)
 }
 
 @Composable
 private fun MembersAgentAppLoginScopeChip(scope: String) {
-    Text(
-        text = scope,
-        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-        color = SlockColor.TextBlack,
-        modifier =
-            Modifier
-                .background(SlockColor.EmptyStateGray)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.36f))
-                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
+    SlockBrutalBadge(label = scope, tone = SlockBrutalTone.White)
 }
 
 @Composable
