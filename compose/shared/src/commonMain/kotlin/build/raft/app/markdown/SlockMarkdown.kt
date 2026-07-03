@@ -2,7 +2,6 @@ package build.raft.app.markdown
 
 import build.raft.app.SlockColor
 import build.raft.app.SlockSpacing
-import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.withResolvedSlockFontFamily
@@ -14,26 +13,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
-import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.Placeholder
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
+import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
@@ -45,6 +36,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.withLink
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
@@ -649,56 +641,9 @@ internal fun slockMarkdownAnnotator(
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
-        inlineContent = {
-            tokenPlan.slockMarkdownInlineContent(
-                onOpenTag = onOpenTag,
-                resolveTagLabel = resolveTagLabel
-            )
-        },
+        inlineContent = { emptyMap() },
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
-}
-
-private fun MarkdownInlineTokenPlan.slockMarkdownInlineContent(
-    onOpenTag: (ThreadMarkdownTag) -> Unit,
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
-): Map<String, InlineTextContent> {
-    val inlineTokens = tokens.filter { it.tag != null }
-    if (inlineTokens.isEmpty()) return emptyMap()
-    return inlineTokens.associateNotNull { token ->
-        val tag = token.tag ?: return@associateNotNull null
-        val label =
-            resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
-                ?: threadMarkdownTagDisplayLabel(tag.label)
-        token.id to
-            InlineTextContent(
-                Placeholder(
-                    width = slockMarkdownInlineTagWidthSp(label, tag.kind, token.highlighted),
-                    height = SlockMarkdownInlineChipHeight
-                )
-            ) {
-                if (tag.kind == ThreadMarkdownTagKind.UserMention && !token.highlighted) {
-                    SlockMarkdownMentionText(label, onClick = { onOpenTag(tag) })
-                } else {
-                    SlockMarkdownInlineChip(
-                        label = label,
-                        color = slockMarkdownTagColor(tag.kind, highlighted = token.highlighted),
-                        onClick = { onOpenTag(tag) }
-                    )
-                }
-            }
-    }
-}
-
-private inline fun <T, R : Any> Iterable<T>.associateNotNull(transform: (T) -> Pair<String, R>?): Map<String, R> {
-    val destination = LinkedHashMap<String, R>()
-    for (element in this) {
-        val pair = transform(element)
-        if (pair != null) {
-            destination[pair.first] = pair.second
-        }
-    }
-    return destination
 }
 
 private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
@@ -714,7 +659,15 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
         tag = SlockMarkdownTagAnnotationTag,
         annotation = token.id
     )
-    appendInlineContent(token.id, label)
+    withLink(
+        LinkAnnotation.Clickable(
+            tag = token.id,
+            styles = TextLinkStyles(style = slockMarkdownTagSpanStyle(tag.kind, highlighted = token.highlighted)),
+            linkInteractionListener = LinkInteractionListener { onOpenTag(tag) }
+        )
+    ) {
+        append(label)
+    }
     pop()
 }
 
@@ -789,10 +742,34 @@ private object SlockMarkdownTextProvider : TextProvider {
             text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
         val resolvedInlineContent = resolvedText.filteredSlockMarkdownInlineContent(inlineContent)
+        logMarkdownSpike(
+            phase = "markdown.diagnostics.rich_text",
+            durationUs = 0L,
+            bodyLength = resolvedText.length,
+            extra =
+                "textLength=${resolvedText.text.length} " +
+                    "spanStyles=${resolvedText.spanStyles.size} " +
+                    "stringAnnotations=${resolvedText.getStringAnnotations(0, resolvedText.length).size} " +
+                    "linkAnnotations=${resolvedText.getLinkAnnotations(0, resolvedText.length).size} " +
+                    "incomingInlineContent=${inlineContent.size} " +
+                    "resolvedInlineContent=${resolvedInlineContent.size} " +
+                    "inlineIds=${resolvedText.slockMarkdownInlineContentIds().size}"
+        )
         var lastLayoutSignature by remember { mutableStateOf<SlockMarkdownTextLayoutSignature?>(null) }
         val resolvedOnTextLayout: (TextLayoutResult) -> Unit =
             if (resolvedInlineContent.isEmpty()) {
-                onTextLayout
+                { result ->
+                    logMarkdownSpike(
+                        phase = "markdown.diagnostics.rich_text_layout",
+                        durationUs = 0L,
+                        bodyLength = resolvedText.length,
+                        extra =
+                            "size=${result.size.width}x${result.size.height} " +
+                                "placeholderRects=${result.placeholderRects.size} " +
+                                "inlineContent=0"
+                    )
+                    onTextLayout(result)
+                }
             } else {
                 { result ->
                     val signature =
@@ -802,6 +779,16 @@ private object SlockMarkdownTextProvider : TextProvider {
                         )
                     if (signature != lastLayoutSignature) {
                         lastLayoutSignature = signature
+                        logMarkdownSpike(
+                            phase = "markdown.diagnostics.rich_text_layout",
+                            durationUs = 0L,
+                            bodyLength = resolvedText.length,
+                            extra =
+                                "size=${result.size.width}x${result.size.height} " +
+                                    "placeholderRects=${result.placeholderRects.size} " +
+                                    "nullPlaceholderRects=${result.placeholderRects.count { it == null }} " +
+                                    "inlineContent=${resolvedInlineContent.size}"
+                        )
                         onTextLayout(result)
                     }
                 }
@@ -1092,6 +1079,19 @@ fun SlockMarkdownBody(
             inlineContentScope = inlineContentScope
         )
     }
+    if (performanceKey != null) {
+        logMarkdownSpike(
+            phase = "markdown.diagnostics.body",
+            durationUs = 0L,
+            bodyLength = content.length,
+            extra =
+                "key=$performanceKey " +
+                    "tokens=${tokenPlan.tokens.size} " +
+                    "tagTokens=${tokenPlan.tagTokens().size} " +
+                    "inlineCode=${tokenPlan.inlineCodeMatchCount()} " +
+                    "scope=${inlineContentScope.orEmpty()}"
+        )
+    }
     val annotator = remember(parserContent, highlightedMentions, performanceKey, tokenPlan) {
         slockMarkdownAnnotator(
             parserContent,
@@ -1259,7 +1259,6 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
     )
 }
 
-private val SlockMarkdownInlineChipHeight = 23.sp
 private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alpha = 0.3f)
 private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
 private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
@@ -1294,8 +1293,6 @@ internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withSlockFontWeight(FontWeight.Normal).withResolvedSlockFontFamily()
 
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 12f
-private val SlockMarkdownInlineChipTextHeight = 21.dp
-private val SlockMarkdownMentionUnderlineInset = 3.dp
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
@@ -1398,74 +1395,3 @@ internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted:
                     background = slockMarkdownTagColor(kind, highlighted = highlighted)
                 )
     }
-
-@Composable
-private fun SlockMarkdownInlineChip(label: String, color: Color, onClick: () -> Unit = {}) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(color, RectangleShape)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
-                .clickable { onClick() }
-                .padding(start = 3.dp, end = 3.dp, top = 0.dp, bottom = 0.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        KuiklyText(
-            label,
-            modifier = Modifier.fillMaxWidth().height(SlockMarkdownInlineChipTextHeight),
-            style =
-                SlockType.ButtonBold
-                    .withSlockFontWeight(FontWeight.SemiBold)
-                    .copy(
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp
-                    ),
-            color = SlockColor.TextBlack,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip
-        )
-    }
-}
-
-@Composable
-private fun SlockMarkdownMentionText(label: String, onClick: () -> Unit = {}) {
-    Box(
-        modifier = Modifier.fillMaxSize().clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(20.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SlockMarkdownMentionUnderlineInset)
-                        .height(2.dp)
-                        .background(SlockColor.EmptyStateGray)
-                        .align(Alignment.BottomCenter)
-            )
-            KuiklyText(
-                text = label,
-                modifier = Modifier.fillMaxWidth(),
-                style =
-                    SlockType.Body
-                        .withSlockFontWeight(FontWeight.SemiBold)
-                        .copy(
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            color = SlockColor.TextBlack
-                        ),
-                color = SlockColor.TextBlack,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Visible
-            )
-        }
-    }
-}

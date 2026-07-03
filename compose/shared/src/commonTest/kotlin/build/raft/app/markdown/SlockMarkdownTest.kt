@@ -326,7 +326,7 @@ class SlockMarkdownTest {
         assertEquals(listOf(true, false, false, false, false), plan.tagTokens().map { it.highlighted })
         val expectedTokenIds = plan.tagTokens().mapTo(mutableSetOf()) { it.id }
         assertEquals(expectedTokenIds, annotated.slockMarkdownClickableTags())
-        assertEquals(expectedTokenIds, annotated.slockMarkdownInlineContentIds())
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
     @Test
@@ -561,8 +561,8 @@ class SlockMarkdownTest {
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.slockMarkdownClickableTags()
         )
-        assertEquals(expectedTagIds, annotated.slockMarkdownInlineContentIds())
-        assertEquals(expectedTagIds, annotator.inlineContent?.invoke().orEmpty().keys)
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
@@ -650,15 +650,12 @@ class SlockMarkdownTest {
                 isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
             )
 
-        assertEquals(
-            setOf("slock:5", "slock:16"),
-            annotator.inlineContent?.invoke().orEmpty().keys
-        )
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
         assertEquals("Ping @artin for #405 and  mimo ", annotated.text)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownInlineContentIds())
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
         assertEquals(listOf(" mimo "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
@@ -675,16 +672,13 @@ class SlockMarkdownTest {
                     )
             )
 
-        assertEquals(
-            setOf("slock:18", "slock:28"),
-            annotator.inlineContent?.invoke().orEmpty().keys
-        )
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
         assertEquals("Bold text for @artin in #markdown专修 with  code ", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
-        assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownInlineContentIds())
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
         assertEquals(listOf(" code "), annotated.slockInlineCodeMarkerTextSegments())
     }
 
