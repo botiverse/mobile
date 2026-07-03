@@ -362,16 +362,17 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), taskStyle.background)
         assertEquals(null, taskStyle.textDecoration)
         assertEquals(SlockColor.TextBlack, taskStyle.color)
-        assertEquals(SlockType.ButtonBold.fontSize, taskStyle.fontSize)
+        assertEquals(SlockMarkdownTagFontSize, taskStyle.fontSize)
 
         assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), channelStyle.background)
-        assertEquals(SlockType.ButtonBold.fontSize, channelStyle.fontSize)
+        assertEquals(SlockMarkdownTagFontSize, channelStyle.fontSize)
 
         assertEquals(SlockColor.BrandYellow, selfMentionStyle.background)
         assertEquals(null, selfMentionStyle.textDecoration)
+        assertEquals(SlockMarkdownTagFontSize, selfMentionStyle.fontSize)
         assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
         assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
-        assertEquals(SlockType.ButtonBold.fontSize, ordinaryMentionStyle.fontSize)
+        assertEquals(SlockMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
     }
 
     @Test

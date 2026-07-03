@@ -1397,21 +1397,27 @@ internal fun slockMarkdownTagChromeKind(
             if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
     }
 
+internal val SlockMarkdownTagFontSize = 12.sp
+
+private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
+    SlockType.ButtonBold
+        .withSlockFontWeight(FontWeight.SemiBold)
+        .toSpanStyle()
+        .copy(
+            fontSize = SlockMarkdownTagFontSize
+        )
+
 internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): SpanStyle =
     when (kind) {
         ThreadMarkdownTagKind.UserMention ->
             if (highlighted) {
-                SlockType.ButtonBold
-                    .withSlockFontWeight(FontWeight.SemiBold)
-                    .toSpanStyle()
+                slockMarkdownTagBaseSpanStyle()
                     .copy(
                         color = SlockColor.TextBlack,
                         background = SlockColor.BrandYellow
                     )
             } else {
-                SlockType.ButtonBold
-                    .withSlockFontWeight(FontWeight.SemiBold)
-                    .toSpanStyle()
+                slockMarkdownTagBaseSpanStyle()
                     .copy(
                         color = SlockColor.TextBlack,
                         textDecoration = TextDecoration.Underline,
@@ -1419,17 +1425,13 @@ internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted:
                     )
             }
         ThreadMarkdownTagKind.Task ->
-            SlockType.ButtonBold
-                .withSlockFontWeight(FontWeight.SemiBold)
-                .toSpanStyle()
+            slockMarkdownTagBaseSpanStyle()
                 .copy(
                     color = SlockColor.TextBlack,
                     background = slockMarkdownTagColor(kind, highlighted = highlighted)
                 )
         else ->
-            SlockType.ButtonBold
-                .withSlockFontWeight(FontWeight.SemiBold)
-                .toSpanStyle()
+            slockMarkdownTagBaseSpanStyle()
                 .copy(
                     color = SlockColor.TextBlack,
                     background = slockMarkdownTagColor(kind, highlighted = highlighted)
