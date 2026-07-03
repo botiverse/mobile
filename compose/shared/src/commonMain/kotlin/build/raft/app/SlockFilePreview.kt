@@ -98,8 +98,14 @@ private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewLoadingLabel = "Loading..."
 private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
+private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
+
+private data class SlockFilePreviewVideoSeekRequest(
+    val id: Int,
+    val timeMs: Int
+)
 
 @Serializable
 internal data class WireSlockFilePreviewLaunchPayload(
@@ -1737,6 +1743,7 @@ private fun SlockFilePreviewVideoPanel(
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
     var currentTimeMs by remember(source) { mutableStateOf(0) }
     var totalTimeMs by remember(source) { mutableStateOf(0) }
+    var seekRequest by remember(source) { mutableStateOf<SlockFilePreviewVideoSeekRequest?>(null) }
     val canPlay = source.isNotBlank()
     val isPlaying = playState == PlayState.PLAYING
     Column(
@@ -1761,6 +1768,7 @@ private fun SlockFilePreviewVideoPanel(
                 SlockFilePreviewKuiklyVideo(
                     source = source,
                     playControl = playControl,
+                    seekRequest = seekRequest,
                     onPlayStateChanged = { playState = it },
                     onPlayTimeChanged = { current, total ->
                         currentTimeMs = current
@@ -1794,6 +1802,17 @@ private fun SlockFilePreviewVideoPanel(
                 onTogglePlay = {
                     playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
                 },
+                onSeek = { seekTimeMs ->
+                    val nextTime = seekTimeMs.coerceIn(0, totalTimeMs.coerceAtLeast(0))
+                    currentTimeMs = nextTime
+                    if (playState == PlayState.PLAY_END) {
+                        playState = PlayState.PAUSED
+                    }
+                    seekRequest = SlockFilePreviewVideoSeekRequest(
+                        id = (seekRequest?.id ?: 0) + 1,
+                        timeMs = nextTime
+                    )
+                },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -1808,6 +1827,7 @@ private fun SlockFilePreviewVideoControls(
     totalTimeMs: Int,
     playState: PlayState,
     onTogglePlay: () -> Unit,
+    onSeek: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1843,48 +1863,86 @@ private fun SlockFilePreviewVideoControls(
             )
         }
         SlockFilePreviewVideoProgressBar(
-            progressPercent = slockFilePreviewVideoProgressPercent(currentTimeMs, totalTimeMs)
+            progressPercent = slockFilePreviewVideoProgressPercent(currentTimeMs, totalTimeMs),
+            totalTimeMs = totalTimeMs,
+            onSeek = onSeek.takeIf { canPlay && totalTimeMs > 0 }
         )
     }
 }
 
 @Composable
-private fun SlockFilePreviewVideoProgressBar(progressPercent: Int?) {
+private fun SlockFilePreviewVideoProgressBar(
+    progressPercent: Int?,
+    totalTimeMs: Int,
+    onSeek: ((Int) -> Unit)? = null
+) {
     val percent = progressPercent?.coerceIn(0, 100)
-    Row(
+    var widthPx by remember { mutableStateOf(0f) }
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(5.dp)
-                .background(Color(0x66000000))
-                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
-    ) {
-        when (percent) {
-            null -> {
-                Box(
-                    modifier =
+                .height(18.dp)
+                .onGloballyPositioned { coordinates ->
+                    widthPx = coordinates.size.width.toFloat()
+                }
+                .then(
+                    if (onSeek != null) {
+                        Modifier.pointerInput(totalTimeMs, onSeek, widthPx) {
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    val target = slockFilePreviewVideoSeekTimeFromTap(
+                                        tapX = offset.x,
+                                        widthPx = widthPx,
+                                        totalTimeMs = totalTimeMs
+                                    )
+                                    if (target != null) {
+                                        onSeek.invoke(target)
+                                    }
+                                }
+                            )
+                        }
+                    } else {
                         Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                )
-            }
-            else -> {
-                if (percent > 0) {
+                    }
+                ),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .background(Color(0x66000000))
+                    .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
+        ) {
+            when (percent) {
+                null -> {
                     Box(
                         modifier =
                             Modifier
-                                .weight(percent.toFloat())
+                                .weight(1f)
                                 .fillMaxSize()
-                                .background(SlockColor.AccentCyan)
                     )
                 }
-                if (percent < 100) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight((100 - percent).toFloat())
-                                .fillMaxSize()
-                    )
+                else -> {
+                    if (percent > 0) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(percent.toFloat())
+                                    .fillMaxSize()
+                                    .background(SlockColor.AccentCyan)
+                        )
+                    }
+                    if (percent < 100) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight((100 - percent).toFloat())
+                                    .fillMaxSize()
+                        )
+                    }
                 }
             }
         }
@@ -1932,6 +1990,7 @@ private fun SlockFilePreviewVideoOverlayText(
 private fun SlockFilePreviewKuiklyVideo(
     source: String,
     playControl: VideoPlayControl,
+    seekRequest: SlockFilePreviewVideoSeekRequest?,
     onPlayStateChanged: (PlayState) -> Unit,
     onPlayTimeChanged: (Int, Int) -> Unit,
     onFirstFrame: () -> Unit,
@@ -1947,6 +2006,7 @@ private fun SlockFilePreviewKuiklyVideo(
                 muted(false)
                 rate(1f)
                 playControl(playControl)
+                seekRequest?.let { seekToTimeMs(it) }
             }
             view.getViewEvent().apply {
                 playStateDidChanged { state, _ -> onPlayStateChanged(state) }
@@ -1955,6 +2015,10 @@ private fun SlockFilePreviewKuiklyVideo(
             }
         }
     )
+}
+
+private fun com.tencent.kuikly.core.views.VideoAttr.seekToTimeMs(request: SlockFilePreviewVideoSeekRequest) {
+    setProp(SlockFilePreviewVideoSeekProp, "${request.id}:${request.timeMs}")
 }
 
 internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int, playState: PlayState): String {
@@ -1981,6 +2045,13 @@ internal fun slockFilePreviewVideoProgressPercent(currentTimeMs: Int, totalTimeM
     return ((currentTimeMs.coerceAtLeast(0).toFloat() / totalTimeMs.toFloat()) * 100f)
         .roundToInt()
         .coerceIn(0, 100)
+}
+
+internal fun slockFilePreviewVideoSeekTimeFromTap(tapX: Float, widthPx: Float, totalTimeMs: Int): Int? {
+    if (widthPx <= 0f || totalTimeMs <= 0) return null
+    return ((tapX.coerceIn(0f, widthPx) / widthPx) * totalTimeMs.toFloat())
+        .roundToInt()
+        .coerceIn(0, totalTimeMs)
 }
 
 private fun Int.slockFilePreviewVideoDurationLabel(): String {

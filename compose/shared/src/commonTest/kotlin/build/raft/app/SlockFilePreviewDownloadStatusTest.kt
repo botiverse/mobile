@@ -374,6 +374,15 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun videoSeekTimeTracksTapPosition() {
+        assertEquals(30_000, slockFilePreviewVideoSeekTimeFromTap(tapX = 50f, widthPx = 100f, totalTimeMs = 60_000))
+        assertEquals(0, slockFilePreviewVideoSeekTimeFromTap(tapX = -10f, widthPx = 100f, totalTimeMs = 60_000))
+        assertEquals(60_000, slockFilePreviewVideoSeekTimeFromTap(tapX = 120f, widthPx = 100f, totalTimeMs = 60_000))
+        assertEquals(null, slockFilePreviewVideoSeekTimeFromTap(tapX = 50f, widthPx = 0f, totalTimeMs = 60_000))
+        assertEquals(null, slockFilePreviewVideoSeekTimeFromTap(tapX = 50f, widthPx = 100f, totalTimeMs = 0))
+    }
+
+    @Test
     fun fileIconUsesSpreadsheetForWorkbookFiles() {
         val icon =
             slockFilePreviewFileIconName(

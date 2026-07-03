@@ -122,6 +122,13 @@ class SlockKRVideoViewController implements IKRVideoViewController {
   private listeners = new Set<IKRVideoViewListener>();
 
   setProp(propKey: string, propValue: KRValue | KuiklyRenderCallback): boolean {
+    if (propKey === 'seekToTimeMs') {
+      const seekToTimeMs = slockVideoSeekTimeMs(propValue);
+      if (seekToTimeMs !== null) {
+        this.seekToTime(seekToTimeMs);
+      }
+      return true;
+    }
     return false;
   }
 
@@ -197,6 +204,18 @@ class SlockKRVideoViewController implements IKRVideoViewController {
       listener.onFirstFrameDidDisplay?.(this);
     });
   };
+}
+
+function slockVideoSeekTimeMs(value: KRValue | KuiklyRenderCallback): number | null {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const rawTime = value.substring(value.lastIndexOf(':') + 1);
+    const parsed = Number(rawTime);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 export class SlockKRVideoAdapter implements IKRVideoViewAdapter {

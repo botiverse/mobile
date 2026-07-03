@@ -118,9 +118,31 @@
 }
 
 - (void)krv_setPropWithKey:(NSString *)propKey propValue:(id)propValue {
+    if ([propKey isEqualToString:@"seekToTimeMs"]) {
+        NSNumber *seekTime = [self slock_seekTimeFromPropValue:propValue];
+        if (seekTime) {
+            [self krv_seekToTime:[seekTime unsignedIntegerValue]];
+        }
+    }
 }
 
 - (void)krv_callWithMethod:(NSString *)method params:(NSString *)params {
+}
+
+- (NSNumber *)slock_seekTimeFromPropValue:(id)propValue {
+    if ([propValue isKindOfClass:NSNumber.class]) {
+        return (NSNumber *)propValue;
+    }
+    if ([propValue isKindOfClass:NSString.class]) {
+        NSString *value = (NSString *)propValue;
+        NSString *rawTime = value;
+        NSRange delimiter = [value rangeOfString:@":" options:NSBackwardsSearch];
+        if (delimiter.location != NSNotFound && delimiter.location + 1 < value.length) {
+            rawTime = [value substringFromIndex:delimiter.location + 1];
+        }
+        return @([rawTime doubleValue]);
+    }
+    return nil;
 }
 
 #pragma mark - Player events

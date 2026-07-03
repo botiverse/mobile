@@ -138,7 +138,14 @@ private class SlockKRVideoView(
         videoView.seekTo(seekToTimeMs.coerceAtLeast(0L).toInt())
     }
 
-    override fun setProp(propKey: String, propValue: Any): Boolean = false
+    override fun setProp(propKey: String, propValue: Any): Boolean =
+        when (propKey) {
+            SLOCK_VIDEO_SEEK_TO_TIME_MS_PROP -> {
+                propValue.toSlockSeekTimeMsOrNull()?.let(::seekToTime)
+                true
+            }
+            else -> false
+        }
 
     override fun call(method: String, params: String?) = Unit
 
@@ -154,3 +161,12 @@ private class SlockKRVideoView(
         }
     }
 }
+
+private const val SLOCK_VIDEO_SEEK_TO_TIME_MS_PROP = "seekToTimeMs"
+
+private fun Any.toSlockSeekTimeMsOrNull(): Long? =
+    when (this) {
+        is Number -> toLong()
+        is String -> substringAfterLast(':').toLongOrNull()
+        else -> null
+    }
