@@ -84,40 +84,10 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellChildPageSelectedTabUsesOnlyChildTabs() {
-        assertEquals("home", appShellChildPageSelectedTab("home"))
-        assertEquals("tasks", appShellChildPageSelectedTab("tasks"))
-        assertEquals("members", appShellChildPageSelectedTab("members"))
-        assertEquals("settings", appShellChildPageSelectedTab("settings"))
-        assertEquals("home", appShellChildPageSelectedTab("unknown"))
-    }
-
-    @Test
-    fun appShellChildPageDataCarriesNormalizedInitialTab() {
-        val homeData = appShellChildPageData(shellId = "shell-1", tab = "home")
-        val settingsData = appShellChildPageData(shellId = "shell-1", tab = "settings")
-        val unknownData = appShellChildPageData(shellId = "shell-1", tab = "unknown")
-
-        assertEquals("shell-1", homeData.optString("shellId"))
-        assertEquals("home", homeData.optString("tab"))
-        assertEquals("settings", settingsData.optString("tab"))
-        assertEquals("home", unknownData.optString("tab"))
-    }
-
-    @Test
-    fun appShellChildPageDataTracksSelectedTabForSameShell() {
-        val shellId = "shell-1"
-
-        val homeData = appShellChildPageData(shellId = shellId, tab = "home")
-        val tasksData = appShellChildPageData(shellId = shellId, tab = "tasks")
-        val settingsData = appShellChildPageData(shellId = shellId, tab = "settings")
-
-        assertEquals(shellId, homeData.optString("shellId"))
-        assertEquals(shellId, tasksData.optString("shellId"))
-        assertEquals(shellId, settingsData.optString("shellId"))
-        assertEquals("home", homeData.optString("tab"))
-        assertEquals("tasks", tasksData.optString("tab"))
-        assertEquals("settings", settingsData.optString("tab"))
+    fun childHostAppShellComposedTabsUsesOnlyActiveTab() {
+        assertEquals(listOf("tasks"), childHostAppShellComposedTabs("tasks"))
+        assertEquals(listOf("members"), childHostAppShellComposedTabs("members"))
+        assertEquals(listOf("home"), childHostAppShellComposedTabs("unknown"))
     }
 
     @Test

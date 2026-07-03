@@ -485,8 +485,7 @@ private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
-private val AppShellChildPageTabs = listOf("home", "tasks", "members", "settings")
-private val AppShellChildPageTabKeys = AppShellChildPageTabs.toSet()
+private val AppShellChildPageTabKeys = setOf("home", "tasks", "members")
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
@@ -1093,7 +1092,7 @@ private fun SlockAppShellChildTabPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val shellId = pager.pageData.params.optString("shellId")
-    val pageTab = appShellChildPageSelectedTab(pager.pageData.params.optString("tab"))
+    val tab = retainedAppShellSelectedTab(pager.pageData.params.optString("tab"))
     val entry = AppShellChildTabRegistry.entry(shellId)
     if (entry == null) {
         PageErrorContent(
@@ -1105,17 +1104,16 @@ private fun SlockAppShellChildTabPageContent() {
         )
         return
     }
-    val selectedTab = appShellChildPageSelectedTab(entry.selectedTab)
-    val active = selectedTab == pageTab
-    LaunchedEffect(pageTab, active, selectedTab) {
+    val active = entry.selectedTab == tab
+    LaunchedEffect(tab, active, entry.selectedTab) {
         if (active) {
             bridge.log(
-                "app_shell_child_tab_render shellId=$shellId pageDataTab=$pageTab " +
-                    "pageTab=$pageTab selectedTab=$selectedTab active=$active"
+                "app_shell_child_tab_render shellId=$shellId pageDataTab=$tab " +
+                    "pageTab=$tab selectedTab=${entry.selectedTab} active=$active"
             )
         }
     }
-    entry.renderer(pageTab, active)
+    entry.renderer(tab, active)
 }
 
 @Serializable
@@ -1367,17 +1365,6 @@ internal fun retainedAppShellComposedTabs(selectedTab: String, mountedTabs: Set<
 internal fun activeOnlyAppShellComposedTabs(selectedTab: String): List<String> =
     listOf(retainedAppShellSelectedTab(selectedTab))
 
-internal fun appShellChildPageSelectedTab(selectedTab: String): String {
-    val activeTab = retainedAppShellSelectedTab(selectedTab)
-    return activeTab.takeIf { it in AppShellChildPageTabKeys } ?: "home"
-}
-
-internal fun appShellChildPageData(shellId: String, tab: String): JSONObject =
-    JSONObject().apply {
-        put("shellId", shellId)
-        put("tab", appShellChildPageSelectedTab(tab))
-    }
-
 internal fun homeWarmAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     return retainedAppShellTabOrder(activeTab).filter { tab ->
@@ -1393,6 +1380,9 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
             (tab == "tasks" && "tasks" in mountedTabs)
     }
 }
+
+internal fun childHostAppShellComposedTabs(selectedTab: String): List<String> =
+    activeOnlyAppShellComposedTabs(selectedTab)
 
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
@@ -1484,16 +1474,23 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 @Composable
 private fun AppShellTabs(
     selectedTab: String,
-    childHostShellId: String
+    childHostShellId: String,
+    content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        key("app-shell-child-tabs") {
-            SlockAppShellChildTabHost(
-                shellId = childHostShellId,
-                tab = activeTab,
-                active = true
-            )
+        childHostAppShellComposedTabs(activeTab).forEach { tab ->
+            key("app-shell-$tab") {
+                if (tab in AppShellChildPageTabKeys) {
+                    SlockAppShellChildTabHost(
+                        shellId = childHostShellId,
+                        tab = tab,
+                        active = tab == activeTab
+                    )
+                } else {
+                    content(tab, tab == activeTab)
+                }
+            }
         }
     }
 }
@@ -1504,12 +1501,14 @@ private fun SlockAppShellChildTabHost(
     tab: String,
     active: Boolean
 ) {
-    val childTab = appShellChildPageSelectedTab(tab)
     val pageData =
-        remember(shellId, childTab) {
-            appShellChildPageData(shellId, childTab)
+        remember(shellId, tab) {
+            JSONObject().apply {
+                put("shellId", shellId)
+                put("tab", tab)
+            }
         }
-    key("app-shell-child-page-$childTab") {
+    key("app-shell-child-page-$tab") {
         SlockKuiklyChildPage(
             pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
             pageData = pageData,
@@ -3072,7 +3071,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     AppShellTabs(
                         selectedTab = selectedTab,
                         childHostShellId = childTabShellId
-                    )
+                    ) { tab, active ->
+                        when (tab) {
+                            "settings" -> settingsTabContent(active)
+                            else -> childTabRenderer(tab, active)
+                        }
+                    }
             Box(modifier = Modifier.fillMaxSize()) {
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
