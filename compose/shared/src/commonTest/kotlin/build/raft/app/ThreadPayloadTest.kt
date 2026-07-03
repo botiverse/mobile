@@ -1281,16 +1281,21 @@ class ThreadPayloadTest {
             "composer",
             "composerPendingAttachments",
             "pendingAttachments",
+            "name",
             "title",
             "subtitle",
+            "permissions",
             "memberScopedMentions",
             "showModeTabs",
             "showReplyActions",
             "showComposer",
             "joined",
+            "archived",
             "canSend",
             "membersCount",
             "canAddMembers",
+            "jointChannelId",
+            "jointRole",
             "settingsActions",
             "showMembersAction",
             "showSettingsAction",
@@ -1303,6 +1308,15 @@ class ThreadPayloadTest {
             "originMessage",
             "originPreview",
             "originStatus",
+            "lastMessagePreview",
+            "lastMessageAt",
+            "lastMessageSenderName",
+            "unreadCount",
+            "mentionCount",
+            "hasDraft",
+            "avatar",
+            "presence",
+            "agentStatus",
             "joinLabel",
             "dmPeerName",
             "dmPeerAvatarUrl",
@@ -2172,6 +2186,40 @@ class ThreadPayloadTest {
             emptyList(),
             payload.settingsActions.normalizedThreadSettingsChannelActions(useDefaultWhenEmpty = false)
         )
+    }
+
+    @Test
+    fun conversationAccessFallbackMustMatchRouteIdentityBeforeDisablingComposer() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                joined = true,
+                canSend = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        enabled = true,
+                        streamChannelId = "channel-1"
+                    )
+            )
+        val unrelatedAccessFallback =
+            ConversationSummary(
+                threadId = ThreadId("channel-2"),
+                channelId = ChannelId("channel-2"),
+                kind = ConversationKind.Channel,
+                name = "unrelated",
+                joined = false,
+                permissions = ConversationPermissions(canSend = false)
+            )
+
+        val result = payload.withConversationAccessFallback(unrelatedAccessFallback)
+
+        assertEquals(true, result.joined)
+        assertEquals(true, result.canSend)
+        assertEquals(true, result.composer.enabled)
     }
 
     @Test
