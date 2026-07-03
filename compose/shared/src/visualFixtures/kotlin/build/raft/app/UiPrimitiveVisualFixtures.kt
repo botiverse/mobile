@@ -198,7 +198,7 @@ internal fun UiCheckboxVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SlockCheckboxLabelRow(label = "As Task selected", checked = true, size = 14.dp)
             SlockCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 16.dp)
-            SlockCheckboxLabelRow(label = "Disabled", checked = false, enabled = false, size = 16.dp)
+            SlockCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 16.dp)
         }
     }
 }
@@ -505,7 +505,7 @@ internal fun UiSurfaceListItemVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
-                .height(150.dp)
+                .height(168.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
