@@ -1819,7 +1819,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 150
+                heightDp = 168
             )
         private val UI_AVATAR_LIST_ROW_CROP =
             VisualCrop(

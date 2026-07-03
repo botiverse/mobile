@@ -41,7 +41,7 @@ internal fun SlockCheckbox(
 ) {
     val disabledAlpha = if (enabled) 1f else 0.50f
     val checkedFillColor = if (!enabled && checked) {
-        SlockColor.AccentStone
+        SlockColor.TextBlack.copy(alpha = 0.30f)
     } else {
         SlockColor.TextBlack.copy(alpha = disabledAlpha)
     }
@@ -71,7 +71,7 @@ internal fun SlockCheckbox(
             SlockLucideIcon(
                 SlockLucideIconName.Check,
                 modifier = Modifier.size((size.value * 0.7f).dp),
-                color = "#FFFFFFFF",
+                color = if (enabled) "#FFFFFFFF" else "#80FFFFFF",
                 strokeWidth = 4f
             )
         }
