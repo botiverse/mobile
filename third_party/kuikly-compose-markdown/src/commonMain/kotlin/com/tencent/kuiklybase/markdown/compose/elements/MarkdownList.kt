@@ -49,7 +49,7 @@ fun MarkdownListItems(
     node: ASTNode,
     depth: Int = 0,
     markerModifier: RowScope.() -> Modifier = { Modifier },
-    listModifier: RowScope.() -> Modifier = { Modifier.fillMaxWidth() },
+    listModifier: RowScope.() -> Modifier = { Modifier.weight(1f) },
     bullet: @Composable (index: Int, child: ASTNode?) -> Unit,
 ) {
     val listDp = LocalMarkdownPadding.current.list
@@ -150,7 +150,7 @@ fun MarkdownOrderedList(
     style: TextStyle = LocalMarkdownTypography.current.ordered,
     depth: Int = 0,
     markerModifier: RowScope.() -> Modifier = { Modifier },
-    listModifier: RowScope.() -> Modifier = { Modifier.fillMaxWidth() },
+    listModifier: RowScope.() -> Modifier = { Modifier.weight(1f) },
 ) {
     val orderedListHandler = LocalOrderedListHandler.current
     MarkdownListItems(content, node, depth, markerModifier, listModifier) { index, child ->
@@ -174,7 +174,7 @@ fun MarkdownBulletList(
     style: TextStyle = LocalMarkdownTypography.current.bullet,
     depth: Int = 0,
     markerModifier: RowScope.() -> Modifier = { Modifier },
-    listModifier: RowScope.() -> Modifier = { Modifier.fillMaxWidth() },
+    listModifier: RowScope.() -> Modifier = { Modifier.weight(1f) },
 ) {
     MarkdownListItems(content, node, depth, markerModifier, listModifier) { index, child ->
         MarkdownBullet(depth, style)

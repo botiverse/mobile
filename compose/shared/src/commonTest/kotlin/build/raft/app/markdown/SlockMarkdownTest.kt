@@ -27,6 +27,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
@@ -143,6 +144,29 @@ class SlockMarkdownTest {
     @Test
     fun escapedLineBreaksBecomeMarkdownBlocks() {
         assertEquals("hello\n- #thread", "hello\\n- #thread".normalizeThreadMarkdownBody())
+    }
+
+    @Test
+    fun markdownListItemParagraphsKeepVisibleText() {
+        val body =
+            """
+            1. 方案正确：server 的 `GET /messages/context/:id` 明确支持 `channelId` query，且对 `type === "thread"` 的本地 channel 会走 projection。
+            2. KMP 改动干净：`getMessageContext` 加可选 `channelId`，老调用不受影响。
+            3. 测试到位：新增的 joint local thread projection 测试断言了 scoped 请求和 reply body 真正加载。
+            4. 一个观察（非 blocker）：reply-thread 初始加载现在对所有带 focusedMessageId 的 reply thread 都先走 focused-context。
+            5. main 上 app compile 被挡确实是别的 agent 未提交的 androidApp 改动。
+            """.trimIndent()
+
+        val rendered = renderSlockMarkdownListItemTexts(body)
+
+        assertEquals(5, rendered.size)
+        assertTrue(rendered[0].contains("方案正确"))
+        assertTrue(rendered[0].contains("GET /messages/context/:id"))
+        assertTrue(rendered[0].contains("channelId"))
+        assertTrue(rendered[1].contains("KMP 改动干净"))
+        assertTrue(rendered[2].contains("reply body 真正加载"))
+        assertTrue(rendered[3].contains("focusedMessageId"))
+        assertTrue(rendered[4].contains("androidApp 改动"))
     }
 
     @Test
@@ -949,6 +973,33 @@ class SlockMarkdownTest {
 
     private fun renderSlockMarkdownParagraphText(content: String): String {
         return buildSlockMarkdownParagraphAnnotatedString(content).text
+    }
+
+    private fun renderSlockMarkdownListItemTexts(content: String): List<String> {
+        val parserContent = MarkdownParserContent.from(content).parserContent
+        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val paragraphs = mutableListOf<ASTNode>()
+        fun collectListParagraphs(node: ASTNode) {
+            if (node.type == MarkdownElementTypes.PARAGRAPH &&
+                node.parent?.type == MarkdownElementTypes.LIST_ITEM
+            ) {
+                paragraphs += node
+            }
+            node.children.forEach(::collectListParagraphs)
+        }
+        collectListParagraphs(parsedTree)
+
+        val settings =
+            DefaultAnnotatorSettings(
+                linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
+                codeSpanStyle = SpanStyle(),
+                annotator = slockMarkdownAnnotator(parserContent)
+            )
+        return paragraphs.map { paragraph ->
+            buildAnnotatedString {
+                buildMarkdownAnnotatedString(parserContent, paragraph, settings)
+            }.text
+        }
     }
 
     private fun AnnotatedString.slockMarkdownClickableTags(): Set<String> =
