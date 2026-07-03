@@ -1,0 +1,51 @@
+package build.raft.app.push
+
+import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.shared.AndroidUnreadNotificationPoster
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import org.json.JSONObject
+
+class SlockFirebaseMessagingService : FirebaseMessagingService() {
+    override fun onRegistered(installationId: String) {
+        super.onRegistered(installationId)
+        SlockDiagnosticsLogger.i(TAG, "fcm_registered installationIdPresent=${installationId.isNotBlank()}")
+        // Server registration is intentionally left for the native push contract follow-up.
+    }
+
+    override fun onMessageReceived(message: RemoteMessage) {
+        super.onMessageReceived(message)
+        val data = message.data
+        if (data.isEmpty()) {
+            SlockDiagnosticsLogger.i(TAG, "fcm_message_received type=empty_data")
+            return
+        }
+
+        val request = data.toUnreadNotificationRequest()
+        val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
+        SlockDiagnosticsLogger.i(
+            TAG,
+            "fcm_message_handled dataKeys=${data.keys.sorted().joinToString(",")} status=${result["status"]} code=${result["code"]}"
+        )
+    }
+
+    private fun Map<String, String>.toUnreadNotificationRequest(): JSONObject =
+        JSONObject().apply {
+            put("serverId", this@toUnreadNotificationRequest["serverId"].orEmpty())
+            put("messageId", this@toUnreadNotificationRequest["messageId"].orEmpty())
+            put("threadId", this@toUnreadNotificationRequest["threadId"].orEmpty())
+            put("channelId", this@toUnreadNotificationRequest["channelId"].orEmpty())
+            put("parentChannelId", this@toUnreadNotificationRequest["parentChannelId"].orEmpty())
+            put("parentMessageId", this@toUnreadNotificationRequest["parentMessageId"].orEmpty())
+            put("category", this@toUnreadNotificationRequest["category"].orEmpty())
+            put("title", this@toUnreadNotificationRequest["title"].orEmpty())
+            put("body", this@toUnreadNotificationRequest["body"].orEmpty())
+            put("notificationKey", this@toUnreadNotificationRequest["notificationKey"].orEmpty())
+            put("routeUrl", this@toUnreadNotificationRequest["routeUrl"].orEmpty())
+            put("serverSeq", this@toUnreadNotificationRequest["serverSeq"].orEmpty())
+        }
+
+    private companion object {
+        const val TAG = "SlockFCM"
+    }
+}
