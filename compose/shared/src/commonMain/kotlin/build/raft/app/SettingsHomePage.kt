@@ -1458,6 +1458,20 @@ internal fun appShellBottomTabsVisible(
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
     active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
+internal fun appShellShouldStartHomeFromParent(
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    readyServerId: String?,
+    state: SharedHomeState
+): Boolean =
+    sharedHomeShouldStartOnActive(
+        active =
+            retainedAppShellSelectedTab(selectedTab) == "home" &&
+                retainedHomeSecondaryDestination(selectedHomeDestination) == null,
+        sessionReady = !readyServerId.isNullOrBlank(),
+        state = state
+    )
+
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
 
@@ -1887,6 +1901,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
+    LaunchedEffect(homeSurfaceVisible, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
+        if (
+            appShellShouldStartHomeFromParent(
+                selectedTab = selectedTab,
+                selectedHomeDestination = selectedHomeDestination,
+                readyServerId = readyServerId,
+                state = homeState
+            )
+        ) {
+            homeShellStore.dispatch(SharedHomeShellIntent.Start)
+        }
+    }
     LaunchedEffect(homeSurfaceVisible, readyServerId) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
         if (delayMs > 0L) {
