@@ -153,6 +153,7 @@ jobs:
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Gradle build (assembleRelease / assembleDebug)
+        working-directory: compose
         run: |
           ./gradlew \
             :shared:generateSqlDelightInterface \
