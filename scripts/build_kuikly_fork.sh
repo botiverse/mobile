@@ -7,6 +7,44 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 KUIKLY_DIR="$REPO_ROOT/third_party/kuikly-ui"
+MODE="all"
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/build_kuikly_fork.sh [--all|--android-only|--ohos-only]
+
+Build and publish the checked-out KuiklyUI fork into mavenLocal so Slock
+consumes forked artifacts instead of public/stale release artifacts.
+
+  --all           publish Android/foundation and OHOS artifacts (default)
+  --android-only  publish Android/foundation artifacts used by Android/iOS shared builds
+  --ohos-only     publish OHOS KLIB artifacts used by OHOS shared builds
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --all)
+      MODE="all"
+      ;;
+    --android-only)
+      MODE="android"
+      ;;
+    --ohos-only)
+      MODE="ohos"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 # This intentionally publishes the Slock fork under the selected Kuikly release
 # line so mavenLocal overrides the public artifacts with our staging fixes.
@@ -42,10 +80,14 @@ OHOS_ARGS=(
   :compose:publishOhosArm64PublicationToMavenLocal
 )
 
-echo "==> Publishing KuiklyUI fork Android artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
-KUIKLY_KOTLIN_VERSION=2.1.21 ./gradlew "${ARGS[@]}"
+if [[ "$MODE" == "all" || "$MODE" == "android" ]]; then
+  echo "==> Publishing KuiklyUI fork Android artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
+  KUIKLY_KOTLIN_VERSION=2.1.21 ./gradlew "${ARGS[@]}"
+fi
 
-echo "==> Publishing KuiklyUI fork OHOS artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
-KUIKLY_KOTLIN_VERSION=2.0.21-KBA-010 ./gradlew "${OHOS_ARGS[@]}"
+if [[ "$MODE" == "all" || "$MODE" == "ohos" ]]; then
+  echo "==> Publishing KuiklyUI fork OHOS artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
+  KUIKLY_KOTLIN_VERSION=2.0.21-KBA-010 ./gradlew "${OHOS_ARGS[@]}"
+fi
 
-echo "==> Done. Slock can now consume the forked Kuikly Android and OHOS artifacts."
+echo "==> Done. Slock can now consume the selected forked Kuikly artifacts."
