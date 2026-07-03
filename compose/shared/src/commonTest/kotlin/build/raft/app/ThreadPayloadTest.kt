@@ -5359,7 +5359,7 @@ class ThreadPayloadTest {
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
-        assertEquals(2, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(4, threadMessagesBeyondBoundsItemCount(80))
         assertEquals(
             -568,
             threadLatestItemBottomAnchorScrollOffset(
