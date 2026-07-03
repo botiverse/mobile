@@ -36,6 +36,7 @@ class SharedHomeDataSource(
     private val api: SlockHomeApi,
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
     computersApi: SlockComputersApi? = null,
+    private val appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     @Suppress("UNUSED_PARAMETER")
@@ -158,7 +159,35 @@ class SharedHomeDataSource(
         DataResult.Empty(EmptyReason.NoChannels)
 
     suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> =
-        loadMachineNotifications()
+        loadNotificationsFromSources()
+
+    private suspend fun loadNotificationsFromSources(): DataResult<List<SharedHomeNotification>> {
+        val appUpdateNotifications =
+            when (val appUpdateResult = loadAppUpdateNotification()) {
+                is DataResult.Content -> listOfNotNull(appUpdateResult.data)
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> emptyList()
+            }
+        return when (val machineResult = loadMachineNotifications()) {
+            is DataResult.Content -> DataResult.Content(appUpdateNotifications + machineResult.data)
+            is DataResult.Empty -> DataResult.Content(appUpdateNotifications)
+            is DataResult.Error ->
+                if (appUpdateNotifications.isNotEmpty()) DataResult.Content(appUpdateNotifications) else machineResult
+            is DataResult.NoPermission ->
+                if (appUpdateNotifications.isNotEmpty()) DataResult.Content(appUpdateNotifications) else machineResult
+        }
+    }
+
+    private suspend fun loadAppUpdateNotification(): DataResult<SharedHomeNotification?> {
+        val provider = appUpdateStatusProvider ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (val result = provider()) {
+            is DataResult.Content -> DataResult.Content(result.data.toSharedHomeAppUpdateNotification())
+            is DataResult.Empty -> DataResult.Content(null)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
 
     private suspend fun loadMachineNotifications(): DataResult<List<SharedHomeNotification>> {
         val client = typedComputersApi
@@ -229,7 +258,34 @@ enum class SharedHomeNotificationIcon {
 }
 
 internal fun String.isLocalHomeNotificationId(): Boolean =
-    startsWith("machine-offline:") || startsWith("machine-outdated:")
+    startsWith("machine-offline:") ||
+        startsWith("machine-outdated:") ||
+        isAppUpdateHomeNotificationId()
+
+internal fun String.isAppUpdateHomeNotificationId(): Boolean =
+    startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
+
+internal const val APP_UPDATE_HOME_NOTIFICATION_ID = "app-update:quiver"
+
+internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification(): SharedHomeNotification? {
+    if (!supported || !updateAvailable || latestVersionCode <= 0L) return null
+    if (currentVersionCode > 0L && latestVersionCode <= currentVersionCode) return null
+    val currentVersion = currentVersionLabel.ifBlank { "current build" }
+    val latestVersion =
+        latestVersionLabel
+            .takeIf { it.isNotBlank() }
+            ?.let { "$it ($latestVersionCode)" }
+            ?: "version code $latestVersionCode"
+    return SharedHomeNotification(
+        id = APP_UPDATE_HOME_NOTIFICATION_ID,
+        title = "App update available",
+        body = "Current version $currentVersion. Latest version $latestVersion.",
+        actionLabel = "Download",
+        targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
+        kind = SharedHomeNotificationKind.Info,
+        icon = SharedHomeNotificationIcon.CircleArrowUp
+    )
+}
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()

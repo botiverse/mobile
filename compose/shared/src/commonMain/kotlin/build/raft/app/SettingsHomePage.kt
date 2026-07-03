@@ -28,6 +28,7 @@ import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
@@ -1505,6 +1506,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val authStore = sharedStores.authStore
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
+    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val memberRepository =
         remember {
             RealMemberRepository(
@@ -1514,12 +1516,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
         }
     val homeDataSource =
-        remember(memberRepository, sharedStores.serverMembersStore) {
+        remember(memberRepository, sharedStores.serverMembersStore, settingsCapabilities) {
             SharedHomeDataSource(
                 sessionStore = authStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
+                appUpdateStatusProvider = { settingsCapabilities.checkQuiverUpdateStatus() },
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 parseHome = { payload, session ->
@@ -1594,7 +1597,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }
-    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val localePreferenceStore =
@@ -2785,6 +2787,23 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 },
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
+                                },
+                                onAppUpdateInstall = {
+                                    appShellCoroutineScope.launch {
+                                        when (val result = settingsCapabilities.installQuiverUpdate()) {
+                                            is DataResult.Content -> {
+                                                val update = result.data
+                                                bridge.toast(update.statusLabel.ifBlank { "Update download started" })
+                                                update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
+                                            }
+                                            is DataResult.Empty ->
+                                                bridge.toast("App update is unavailable")
+                                            is DataResult.Error ->
+                                                bridge.toast(result.error.code.ifBlank { "App update failed" })
+                                            is DataResult.NoPermission ->
+                                                bridge.toast(result.blocker.code.ifBlank { "App update blocked" })
+                                        }
+                                    }
                                 },
                                 selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
                                 onSelectedConversationCleared = {
@@ -9717,6 +9736,7 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
+    onAppUpdateInstall: (() -> Unit)? = null,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
     onOpenSearch: () -> Unit,
@@ -9938,10 +9958,16 @@ private fun SharedHomeScreen(
                     onOpenSaved()
                 },
                 onNotificationView = { notification ->
-                    notification.targetId?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { url ->
-                        bridge.openUrl(url)
-                    } ?: run {
-                        bridge.toast("Notification opened")
+                    when {
+                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateInstall != null ->
+                            onAppUpdateInstall()
+                        notification.targetId?.startsWith("http://") == true ||
+                            notification.targetId?.startsWith("https://") == true -> {
+                            notification.targetId?.let(bridge::openUrl)
+                        }
+                        else -> {
+                            bridge.toast("Notification opened")
+                        }
                     }
                 },
                 onNotificationDismiss = { notification ->

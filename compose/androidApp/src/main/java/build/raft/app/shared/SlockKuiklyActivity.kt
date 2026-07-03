@@ -2037,11 +2037,15 @@ internal class SlockKuiklyBridgeModule(
 
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
         val request = JSONObject(params ?: "{}")
-        if (request.optString("action") == "quiverUpdateCheck") {
+        val action = request.optString("action")
+        if (action == "quiverUpdateCheck" || action == "quiverUpdateStatus" || action == "quiverUpdateInstall") {
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
                 val result =
-                        runCatching { checkQuiverUpdate() }
+                        runCatching {
+                                    val install = action != "quiverUpdateStatus"
+                                    checkQuiverUpdate(install = install)
+                                }
                                 .getOrElse { throwable ->
                                     mapOf(
                                             "status" to "error",
@@ -2406,7 +2410,7 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
-    private suspend fun checkQuiverUpdate(): Map<String, Any> {
+    private suspend fun checkQuiverUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
         val response =
                 QuiverClient(BuildConfig.QUIVER_BASE_URL)
@@ -2425,7 +2429,7 @@ internal class SlockKuiklyBridgeModule(
                         "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
         )
         val installResult =
-                if (response.requireUpdate() != null) {
+                if (install && response.requireUpdate() != null) {
                     installQuiverUpdate(response, arch)
                 } else {
                     QuiverInstallResult()
@@ -2444,6 +2448,8 @@ internal class SlockKuiklyBridgeModule(
                         "updateCheckStatusLabel" to updateStatusLabel,
                         "updateCheckDetail" to updateDetail,
                         "updateAvailable" to updateAvailable,
+                        "currentVersionLabel" to (BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() }),
+                        "currentVersionCode" to BuildConfig.VERSION_CODE.toLong(),
                         "latestVersionLabel" to response.latest?.version.orEmpty(),
                         "latestVersionCode" to (response.latest?.version_code ?: response.latest_version_code ?: 0L),
                         "updateDownloadUrl" to response.asset?.download_url.orEmpty(),

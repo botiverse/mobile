@@ -659,6 +659,29 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun notificationTriggerUsesFirstVisibleNotificationIcon() {
+        val notifications =
+            listOf(
+                SlockHomeNotificationItem(
+                    id = "app-update:quiver",
+                    title = "App update available",
+                    body = "Current version 1.0.0. Latest version 1.0.1.",
+                    kind = SlockHomeNotificationKind.Info,
+                    icon = SlockHomeNotificationIcon.CircleArrowUp
+                ),
+                SlockHomeNotificationItem(
+                    id = "machine-offline:1",
+                    title = "Machine offline",
+                    body = "Reconnect when needed.",
+                    kind = SlockHomeNotificationKind.Warning,
+                    icon = SlockHomeNotificationIcon.WifiOff
+                )
+            )
+
+        assertEquals(SlockLucideIconName.CircleArrowUp, notifications.homeNotificationTriggerIconName())
+    }
+
+    @Test
     fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
         assertEquals(66.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
         assertEquals(90.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))

@@ -160,6 +160,8 @@ data class SharedSettingsUpdateCheckSnapshot(
     val statusLabel: String = "Unavailable",
     val detail: String = "App update checks are unavailable on this host.",
     val updateAvailable: Boolean = false,
+    val currentVersionLabel: String = "",
+    val currentVersionCode: Long = 0L,
     val latestVersionLabel: String = "",
     val latestVersionCode: Long = 0L,
     val downloadUrl: String = "",
@@ -414,6 +416,12 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         DataResult.Error(ScreenError("settings_quiver_update_check_unavailable", retryable = false))
+
+    suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        DataResult.Error(ScreenError("settings_quiver_update_status_unavailable", retryable = false))
+
+    suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        DataResult.Error(ScreenError("settings_quiver_update_install_unavailable", retryable = false))
 
     suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> =
         DataResult.Content(Unit)

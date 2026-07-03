@@ -1773,7 +1773,7 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
                     .clickable { onToggle() },
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.TriangleAlert, Modifier.size(16.dp))
+                SlockLucideIcon(visibleNotifications.homeNotificationTriggerIconName(), Modifier.size(16.dp))
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
@@ -1790,6 +1790,12 @@ internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<Sl
     filter { notification ->
         notification.title.isNotBlank() || notification.body.isNotBlank()
     }
+
+internal fun List<SlockHomeNotificationItem>.homeNotificationTriggerIconName(): SlockLucideIconName =
+    visibleHomeNotifications()
+        .firstOrNull()
+        ?.let { notification -> notification.icon.notificationIconName(notification.kind) }
+        ?: SlockLucideIconName.Bell
 
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {

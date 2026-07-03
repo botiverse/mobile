@@ -106,6 +106,20 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
+    override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "quiverUpdateCheck"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_check_failed" }))
+        }
+        return DataResult.Content(response.toDeveloperSnapshot())
+    }
+
+    override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        quiverUpdateAction("quiverUpdateStatus")
+
+    override suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        quiverUpdateAction("quiverUpdateInstall")
+
     override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
             bridge.settingsCapability(
@@ -249,6 +263,14 @@ internal class BridgeSettingsPlatformCapabilities(
         return response.toSystemNotificationActionResult()
     }
 
+    private suspend fun quiverUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", action))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_failed" }))
+        }
+        return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
+    }
+
     private fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
         val rowsJson = optJSONArray("rows")
         val rows =
@@ -330,6 +352,8 @@ internal class BridgeSettingsPlatformCapabilities(
                     statusLabel = optString("updateCheckStatusLabel").ifBlank { "Unavailable" },
                     detail = optString("updateCheckDetail").ifBlank { "App update checks are unavailable on this host." },
                     updateAvailable = optBoolean("updateAvailable", false),
+                    currentVersionLabel = optString("currentVersionLabel"),
+                    currentVersionCode = optLong("currentVersionCode", 0L),
                     latestVersionLabel = optString("latestVersionLabel"),
                     latestVersionCode = optLong("latestVersionCode", 0L),
                     downloadUrl = optString("updateDownloadUrl"),

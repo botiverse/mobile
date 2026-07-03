@@ -97,6 +97,74 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun loadNotificationsAddsAppUpdateWhenNewerQuiverBuildExists() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                appUpdateStatusProvider = {
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            updateAvailable = true,
+                            currentVersionLabel = "1.0.0",
+                            currentVersionCode = 1_000_000L,
+                            latestVersionLabel = "1.0.1",
+                            latestVersionCode = 1_000_100L,
+                            downloadUrl = "https://example.test/raft.apk"
+                        )
+                    )
+                },
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val result = source.loadNotifications()
+
+        val notification = (result as DataResult.Content).data.single()
+        assertEquals(APP_UPDATE_HOME_NOTIFICATION_ID, notification.id)
+        assertEquals("App update available", notification.title)
+        assertEquals("Current version 1.0.0. Latest version 1.0.1 (1000100).", notification.body)
+        assertEquals("Download", notification.actionLabel)
+        assertEquals(SharedHomeNotificationKind.Info, notification.kind)
+        assertEquals(SharedHomeNotificationIcon.CircleArrowUp, notification.icon)
+    }
+
+    @Test
+    fun loadNotificationsSkipsAppUpdateWhenLatestCodeDoesNotBeatCurrentCode() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                appUpdateStatusProvider = {
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            updateAvailable = true,
+                            currentVersionLabel = "1.0.1",
+                            currentVersionCode = 1_000_100L,
+                            latestVersionLabel = "1.0.1",
+                            latestVersionCode = 1_000_100L
+                        )
+                    )
+                },
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val result = source.loadNotifications()
+
+        assertEquals(emptyList(), (result as DataResult.Content).data)
+    }
+
+    @Test
+    fun appUpdateNotificationIsLocalDismissable() {
+        assertTrue(APP_UPDATE_HOME_NOTIFICATION_ID.isLocalHomeNotificationId())
+    }
+
+    @Test
     fun loadHomeDoesNotBlockOnAgentDirectMessageStatusEnrichment() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val agentDm =
