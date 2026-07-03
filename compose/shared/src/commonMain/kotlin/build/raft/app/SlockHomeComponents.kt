@@ -2051,7 +2051,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     }
     val clickModifier =
         if (onClick != null) {
-            Modifier.pointerInput(Unit) {
+            Modifier.pointerInput(icon, label, onClick) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
@@ -2179,9 +2179,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
-    val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
+    val rowClickIdentity = "channel:$symbol:$name:${avatarWireValue.orEmpty()}:$badge:$joined"
+    val clickModifier = remember(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
-            Modifier.pointerInput(Unit) {
+            Modifier.pointerInput(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
                 detectTapGestures(
                     onPress = {
                         captureAnchorForPress = true
@@ -2201,7 +2202,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 )
             }
         } else if (onClick != null) {
-            Modifier.pointerInput(Unit) {
+            Modifier.pointerInput(rowClickIdentity, onClick, onPress, onPressEnd) {
                 detectTapGestures(
                     onPress = {
                         onPress?.invoke()
@@ -2325,9 +2326,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
-    val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
+    val rowClickIdentity = "dm:${memberId.orEmpty()}:$name:${avatarWireValue.orEmpty()}:$badge"
+    val clickModifier = remember(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
-            Modifier.pointerInput(Unit) {
+            Modifier.pointerInput(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
                 detectTapGestures(
                     onPress = {
                         captureAnchorForPress = true
@@ -2347,7 +2349,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 )
             }
         } else if (onClick != null) {
-            Modifier.pointerInput(Unit) {
+            Modifier.pointerInput(rowClickIdentity, onClick, onPress, onPressEnd) {
                 detectTapGestures(
                     onPress = {
                         onPress?.invoke()

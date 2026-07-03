@@ -427,7 +427,7 @@ fun Modifier.willAppear(onAppear: () -> Unit): Modifier {
 
 fun Modifier.touchListener(
     onTouchEvent: (type: TouchType, position: Offset) -> Unit
-) = pointerInput(Unit) {
+) = pointerInput(onTouchEvent) {
     forEachGesture {
         awaitPointerEventScope {
             // 初始化触控点跟踪
