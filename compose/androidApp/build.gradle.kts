@@ -131,7 +131,7 @@ android {
         buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
-        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver-worker.artin.workers.dev")}\"")
+        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver.oranix.io")}\"")
         buildConfigField("String", "QUIVER_APP_SLUG", "\"${slockBuildConfigString("SLOCK_QUIVER_APP_SLUG", "raft-android")}\"")
         buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "main")}\"")
     }

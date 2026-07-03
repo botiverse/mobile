@@ -100,7 +100,7 @@ Android release to Quiver.
 Environment overrides:
   QUIVER_APP_SLUG=raft-android
   QUIVER_CHANNEL=main
-  QUIVER_API=https://quiver-worker.artin.workers.dev
+  QUIVER_API=https://quiver.oranix.io
   QUIVER_SESSION_COOKIE=<quiver_session cookie>
   QUIVER_AUTH_TOKEN=<agent or CI bearer token>
   QUIVER_CLI=quiver

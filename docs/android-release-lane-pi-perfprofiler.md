@@ -151,7 +151,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    `docs/...-practices-2026-07-02.md`).
    ```bash
    # scope 1: current_version_code < latest → update_available=true
-   curl -sS "https://quiver-worker.artin.workers.dev/public/v2/apps/raft-android/updates/check?channel=main&product_type=android-apk&current_version_code=0&platform=android&arch=arm64-v8a&filetype=apk" \
+   curl -sS "https://quiver.oranix.io/public/v2/apps/raft-android/updates/check?channel=main&product_type=android-apk&current_version_code=0&platform=android&arch=arm64-v8a&filetype=apk" \
      | python3 -c "import json,sys;d=json.load(sys.stdin);print('update_available:',d['update_available'],'latest.version_code:',d['latest']['version_code'],'asset.size_bytes:',d['asset']['size_bytes'])"
 
    # scope 2: current_version_code == latest → update_available=false
@@ -161,7 +161,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
 8. **Pull the public download URL** (for owner to download via browser /
    `curl`) and post it to the task thread.
    ```bash
-   curl -sS "https://quiver-worker.artin.workers.dev/public/v2/apps/raft-android/updates/check?channel=main&..." \
+   curl -sS "https://quiver.oranix.io/public/v2/apps/raft-android/updates/check?channel=main&..." \
      | python3 -c "import json,sys;print(json.load(sys.stdin)['asset']['download_url'])"
    ```
    The signed `/public/r2/...&sig=...` URL is short-lived (R2 default

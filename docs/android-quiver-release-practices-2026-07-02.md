@@ -141,7 +141,7 @@ SDK configuration for Slock Android:
 
 | Parameter | Value |
 | --- | --- |
-| `baseUrl` | `https://quiver-worker.artin.workers.dev` |
+| `baseUrl` | `https://quiver.oranix.io` |
 | `appSlug` | `raft-android` |
 | `channel` | `debug` for debug builds, `main` for release builds, overrideable |
 | `productType` | `android-apk` |
