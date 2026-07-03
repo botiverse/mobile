@@ -1549,7 +1549,7 @@ private fun ThreadPageScreen() {
                 "responseBytes=${payloadTrace.responseBytes} durationMs=${payloadTrace.durationMs} dispatcher=caller"
         )
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val threadPageCoroutineScope = rememberCoroutineScope()
     val threadLocalStore =
@@ -1767,7 +1767,7 @@ private fun ThreadPageScreen() {
                 authorProfile
                     ?.toThreadCandidateAgentDetailSnapshot()
                     ?.let { candidate ->
-                        val agentDetailStore = SlockSharedStoreRegistry.get(pager, bridge).agentDetailStore
+                        val agentDetailStore = SlockSharedStoreRegistry.get(bridge).agentDetailStore
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(candidate.agentId, candidate))
                     }

@@ -211,7 +211,7 @@ internal val settingsBillingSmokePayload =
 private fun SettingsBillingScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val launchPayload =
         rememberBillingPayload(
             pager.pageData.params.optString("payload"),

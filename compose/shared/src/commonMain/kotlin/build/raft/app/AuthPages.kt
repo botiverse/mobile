@@ -94,7 +94,7 @@ private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvid
     filterNot { provider -> provider in MobileHiddenSocialAuthProviders }.toSet()
 
 private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
-    val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
+    val sharedStores = SlockSharedStoreRegistry.get(bridge)
     return sharedStores.authDataSource
 }
 
@@ -558,7 +558,7 @@ private fun ForgotPasswordScreen() {
 private fun AuthDeveloperScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(
@@ -621,7 +621,7 @@ private data class AuthDiagnosticsUiState(
 private fun AuthDiagnosticsScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val settingsDataSource =
         remember {

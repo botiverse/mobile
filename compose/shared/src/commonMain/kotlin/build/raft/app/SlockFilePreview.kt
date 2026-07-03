@@ -201,7 +201,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val notifyModule = remember(pager.pagerId) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val networkClient = sharedStores.networkClient
     val threadApi =
         remember(networkClient) {

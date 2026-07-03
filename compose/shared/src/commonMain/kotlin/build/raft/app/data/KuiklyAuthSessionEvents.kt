@@ -15,6 +15,25 @@ interface SlockAuthSessionClearEventSink {
     fun postSessionCleared(reason: String, previousSessionFingerprint: String)
 }
 
+internal class SlockAuthSessionClearEventDispatcher : SlockAuthSessionClearEventSink {
+    @Volatile
+    private var sink: SlockAuthSessionClearEventSink? = null
+
+    fun bindSink(sink: SlockAuthSessionClearEventSink) {
+        this.sink = sink
+    }
+
+    fun unbindSink(sink: SlockAuthSessionClearEventSink) {
+        if (this.sink === sink) {
+            this.sink = null
+        }
+    }
+
+    override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
+        sink?.postSessionCleared(reason, previousSessionFingerprint)
+    }
+}
+
 internal data class AuthSessionClearedSignal(
     val source: String,
     val reason: String,
@@ -25,19 +44,11 @@ internal class KuiklyAuthSessionEvents(
     pager: Pager,
     source: String
 ) : SlockAuthSessionClearEventSink {
-    @Volatile
-    private var currentPager: Pager = pager
-
-    @Volatile
-    private var currentSource: String = source
+    private val currentPager: Pager = pager
+    private val currentSource: String = source
 
     private val module: NotifyModule
         get() = currentPager.acquireModule(NotifyModule.MODULE_NAME)
-
-    fun updatePager(pager: Pager) {
-        currentPager = pager
-        currentSource = "pager:${pager.pagerId}"
-    }
 
     fun addSessionClearedListener(onCleared: (AuthSessionClearedSignal) -> Unit): CallbackRef =
         module.addNotify(AUTH_SESSION_CLEARED_EVENT, crossProcess = true) { data ->

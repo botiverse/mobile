@@ -160,6 +160,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
+import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.serverConfirmationItemId
@@ -706,7 +707,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
@@ -1589,7 +1590,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
@@ -1708,12 +1709,51 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val appUpdateEvents = remember(pager) { KuiklyAppUpdateEvents(pager) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
+    val authSessionEvents =
+        remember(pager.pagerId) {
+            KuiklyAuthSessionEvents(
+                pager = pager,
+                source = "app-shell:${pager.pagerId}"
+            )
+        }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
     val appShellCoroutineScope = rememberCoroutineScope()
+    DisposableEffect(authSessionEvents, sharedStores.authSessionClearEvents, authStore) {
+        sharedStores.authSessionClearEvents.bindSink(authSessionEvents)
+        val callbackRef =
+            authSessionEvents.addSessionClearedListener { signal ->
+                if (authSessionEvents.isLocalSource(signal)) {
+                    return@addSessionClearedListener
+                }
+                bridge.log("shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                appShellCoroutineScope.launch {
+                    runCatchingPreservingCancellation {
+                        authStore.clearSessionFromSessionClearedNotify(
+                            reason = signal.reason,
+                            previousSessionFingerprint = signal.previousSessionFingerprint
+                        )
+                    }.onSuccess { applied ->
+                        bridge.log(
+                            "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
+                                "source=${signal.source} reason=${signal.reason}"
+                        )
+                    }.onFailure { throwable ->
+                        bridge.log(
+                            "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
+                        )
+                    }
+                }
+            }
+        onDispose {
+            authSessionEvents.removeSessionClearedListener(callbackRef)
+            sharedStores.authSessionClearEvents.unbindSink(authSessionEvents)
+        }
+    }
     val homeActivityRepository =
         remember {
             RealInboxRepository(
@@ -8825,7 +8865,7 @@ private fun AuthChooseServerPageContent() {
     val closeChooser = remember(pager) {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authDataSource = sharedStores.authDataSource
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
