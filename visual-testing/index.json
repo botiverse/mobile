@@ -67,7 +67,7 @@
     "report": "latest/report.html",
     "componentMatrix": "latest/component-matrix.json",
     "llms": "latest/metadata.json",
-    "raftUiReport": "runs/c153932a6-20260703042704/raft-ui/"
+    "raftUiReport": "latest/raft-ui/"
   },
   "componentMatrixSummary": {
     "total": 81,
@@ -1566,5 +1566,5 @@
       "llms": "runs/1c6dce5ad-20260701171619/metadata.json"
     }
   ],
-  "latestRaftUiReport": "runs/c153932a6-20260703042704/raft-ui/"
+  "latestRaftUiReport": "latest/raft-ui/"
 }
