@@ -120,6 +120,7 @@ private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
+private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
 private val DirectMessageStatusDotSize = SlockStatusIndicatorTokens.InlineSize
@@ -1642,11 +1643,14 @@ internal data class SlockChannelOrderDragState(
             (startIndex + (nextDragY / rowStepPx.coerceAtLeast(1f)).roundToInt())
                 .coerceIn(baseOrder.indices)
         val nextOrder = baseOrder.moveItem(activeId, targetIndex)
-        val settledOffset = (targetIndex - startIndex) * rowStepPx
+        // rowOffsetPx is the dragged row's offset from its stable (pre-drag)
+        // slot: the row follows the finger exactly; sibling rows render their
+        // preview shift separately. Slot-snapped offsets here made the dragged
+        // row appear frozen (task #356 device feedback).
         return copy(
             totalDragY = nextDragY,
             previewOrder = nextOrder,
-            rowOffsetPx = nextDragY - settledOffset
+            rowOffsetPx = nextDragY
         )
     }
 }
@@ -2485,7 +2489,28 @@ private fun SlockSidebarSortOverlay(
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val rowStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
-    val displayOrder = dragState?.previewOrder ?: order
+    val edgeScrollZonePx = with(density) { 48.dp.toPx() }
+    val listState = rememberLazyListState()
+    // While a row is dragged the LazyColumn item order stays FIXED: reordering
+    // items mid-gesture moves the composable to a new slot, which restarts its
+    // pointerInput and kills the drag stream (Kuikly LazyColumn contract).
+    // The dragged row follows the finger via offset; other rows shift by the
+    // delta between their stable index and their preview index. The reorder is
+    // committed on drop.
+    fun edgeAutoScroll(active: SlockChannelOrderDragState): Float {
+        val info = listState.layoutInfo
+        val draggedInfo = info.visibleItemsInfo.firstOrNull { it.key == "sort-${active.activeId}" } ?: return 0f
+        val visualTop = draggedInfo.offset + active.rowOffsetPx
+        val visualBottom = visualTop + draggedInfo.size
+        val scrollDelta =
+            when {
+                visualTop < info.viewportStartOffset + edgeScrollZonePx -> -EdgeAutoScrollStepPx
+                visualBottom > info.viewportEndOffset - edgeScrollZonePx -> EdgeAutoScrollStepPx
+                else -> 0f
+            }
+        if (scrollDelta != 0f) listState.dispatchRawDelta(scrollDelta)
+        return scrollDelta
+    }
     SlockUnifiedDialog(
         title = title,
         onDismiss = onDismiss,
@@ -2493,15 +2518,25 @@ private fun SlockSidebarSortOverlay(
         contentSpacing = 12.dp
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             userScrollEnabled = dragState == null
         ) {
-            items(displayOrder.size, key = { index -> "sort-${displayOrder[index]}" }) { index ->
-                val itemId = displayOrder[index]
+            items(order.size, key = { index -> "sort-${order[index]}" }) { index ->
+                val itemId = order[index]
                 val item = itemsById[itemId] ?: return@items
                 val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                val dragOffsetY = if (dragState?.activeId == itemId) dragState?.rowOffsetPx ?: 0f else 0f
+                val activeDrag = dragState
+                val dragOffsetY =
+                    when {
+                        activeDrag == null -> 0f
+                        activeDrag.activeId == itemId -> activeDrag.rowOffsetPx
+                        else -> {
+                            val previewIndex = activeDrag.previewOrder.indexOf(itemId)
+                            if (previewIndex >= 0) (previewIndex - index) * rowStepPx else 0f
+                        }
+                    }
                 ChannelRow(
                     name = item.name,
                     symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
@@ -2509,9 +2544,9 @@ private fun SlockSidebarSortOverlay(
                     joined = item.joined || isDirectMessage,
                     showPresence = false,
                     interactionState =
-                        if (dragState?.activeId == itemId) ChannelRowInteractionState.Pressed else ChannelRowInteractionState.Default,
+                        if (activeDrag?.activeId == itemId) ChannelRowInteractionState.Pressed else ChannelRowInteractionState.Default,
                     captureLongPressAnchor = false,
-                    dragEnabled = displayOrder.size > 1,
+                    dragEnabled = order.size > 1,
                     rowDragEnabled = true,
                     dragOffsetY = dragOffsetY,
                     onDragStart = {
@@ -2526,7 +2561,16 @@ private fun SlockSidebarSortOverlay(
                             )
                     },
                     onDragMove = { deltaY ->
-                        dragState = dragState?.dragBy(deltaY = deltaY, rowStepPx = rowStepPx, fallbackOrder = order)
+                        val moved = dragState?.dragBy(deltaY = deltaY, rowStepPx = rowStepPx, fallbackOrder = order)
+                        if (moved != null) {
+                            val scrolled = edgeAutoScroll(moved)
+                            dragState =
+                                if (scrolled != 0f) {
+                                    moved.dragBy(deltaY = scrolled, rowStepPx = rowStepPx, fallbackOrder = order)
+                                } else {
+                                    moved
+                                }
+                        }
                     },
                     onDragEnd = {
                         val ended = dragState
