@@ -13,7 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
@@ -46,6 +50,7 @@ import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
 import com.tencent.kuiklybase.markdown.compose.Markdown
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
+import com.tencent.kuiklybase.markdown.compose.components.markdownComponents
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
@@ -1306,6 +1311,13 @@ fun SlockMarkdownBody(
             codeBlock = PaddingValues(SlockSpacing.Sm)
         )
     }
+    val components = remember {
+        markdownComponents(
+            horizontalRule = {
+                SlockMarkdownHorizontalRule()
+            }
+        )
+    }
     val uriHandler =
         remember {
             object : UriHandler {
@@ -1339,11 +1351,12 @@ fun SlockMarkdownBody(
                 val refTypography = typography
                 val refAnnotator = annotator
                 val refPadding = padding
+                val refComponents = components
                 val refModifier = markdownModifier
                 val refColors = colors
                 val refTextProvider = SlockMarkdownTextProvider
                 // Pass-through, no-op; just to keep the locals from being flagged unused.
-                @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refModifier; refColors; refTextProvider
+                @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refComponents; refModifier; refColors; refTextProvider
             }
             traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
                 Markdown(
@@ -1353,6 +1366,7 @@ fun SlockMarkdownBody(
                     textProvider = SlockMarkdownTextProvider,
                     annotator = annotator,
                     padding = padding,
+                    components = components,
                     modifier = markdownModifier
                 )
             }
@@ -1369,6 +1383,26 @@ fun SlockMarkdownBody(
 private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
 private val SlockMarkdownMinimumInlineLineHeight = 22.sp
+private val SlockMarkdownDividerColor = SlockColor.BorderBlack.copy(alpha = 0.22f)
+private val SlockMarkdownDividerThickness = 2.dp
+private val SlockMarkdownDividerVerticalPadding = SlockSpacing.Sm
+
+@Composable
+private fun SlockMarkdownHorizontalRule() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = SlockMarkdownDividerVerticalPadding)
+    ) {
+        Spacer(
+            Modifier
+                .fillMaxWidth()
+                .height(SlockMarkdownDividerThickness)
+                .background(SlockMarkdownDividerColor)
+        )
+    }
+}
 
 internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
