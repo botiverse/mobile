@@ -319,6 +319,23 @@ class ThreadPayloadTest {
         )
         assertFalse(
             shouldSuppressCompactThreadAuthor(
+                previous = base.copy(timestampLabel = "2026-06-27T23:50:00Z"),
+                next =
+                    base.copy(
+                        id = "local-send-1",
+                        timestampLabel = "Now",
+                        deliveryState = ThreadMessageDeliverySending,
+                        pendingSendContext =
+                            KuiklyThreadPendingSendContext(
+                                channelId = "channel-1",
+                                body = "optimistic"
+                            )
+                    ),
+                localOffsetMinutes = 0
+            )
+        )
+        assertFalse(
+            shouldSuppressCompactThreadAuthor(
                 previous = base,
                 next = base.copy(id = "m5", authorId = "u-cindy", authorName = "Cindy", timestampLabel = "2026-06-27T01:05:00Z"),
                 localOffsetMinutes = 0

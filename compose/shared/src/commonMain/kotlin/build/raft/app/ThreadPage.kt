@@ -113,6 +113,7 @@ import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
+import build.raft.app.model.slockEpochMillisUtcIso
 import build.raft.app.model.toGravatarAvatarUrl
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
@@ -831,7 +832,8 @@ private fun KuiklyThreadMessageItem.isSendingLocalSend(): Boolean =
 private fun buildThreadPendingSendMessage(
     localMessageId: String,
     context: KuiklyThreadPendingSendContext,
-    session: StoredAuthSession?
+    session: StoredAuthSession?,
+    timestampLabel: String = "Now"
 ): KuiklyThreadMessageItem {
     val user = session?.user
     val authorName = user?.bestDisplayName ?: "You"
@@ -845,7 +847,7 @@ private fun buildThreadPendingSendMessage(
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = user?.avatarUrl,
         gravatarHash = user?.gravatarHash,
-        timestampLabel = "Now",
+        timestampLabel = timestampLabel,
         body = context.body,
         // Phase 3 #3 #3 (#280): explicit nullable instead of \`context.streamChannelId ?: context.channelId\`
         // (反例 3, intentionally left during #278 send flow scope). v0.2 ReplyThread contract
@@ -873,8 +875,21 @@ private fun buildThreadPendingSendMessage(
 
 private data class ThreadDeferredAttachmentSend(
     val localMessageId: String,
-    val context: KuiklyThreadPendingSendContext
+    val context: KuiklyThreadPendingSendContext,
+    val timestampLabel: String
 )
+
+private fun buildThreadPendingSendTimestampLabel(
+    bridge: build.raft.app.base.BridgeModule,
+    fallbackNowEpochMillis: Long?
+): String {
+    val bridgeEpochMillis = runCatching { bridge.currentTimeStamp() }.getOrDefault(0L)
+    val epochMillis =
+        bridgeEpochMillis.takeIf { it > 0L }
+            ?: fallbackNowEpochMillis?.takeIf { it > 0L }
+            ?: return "Now"
+    return slockEpochMillisUtcIso(epochMillis)
+}
 
 @Serializable
 internal data class KuiklyThreadMessageCommentRef(
@@ -3439,7 +3454,8 @@ internal fun SharedThreadRouteContent(
                 ?: buildThreadPendingSendMessage(
                     localMessageId = localMessageId,
                     context = context,
-                    session = currentSession
+                    session = currentSession,
+                    timestampLabel = buildThreadPendingSendTimestampLabel(bridge, sendBasePayload.nowEpochMillis)
                 )
         val sendStartedAt = TimeSource.Monotonic.markNow()
         bridge.performanceMarker(
@@ -3829,7 +3845,8 @@ internal fun SharedThreadRouteContent(
                 buildThreadPendingSendMessage(
                     localMessageId = pending.localMessageId,
                     context = readyContext,
-                    session = currentSession
+                    session = currentSession,
+                    timestampLabel = pending.timestampLabel
                 )
             )
         )
@@ -4907,13 +4924,16 @@ internal fun SharedThreadRouteContent(
                             memberScopedMentions = payload.memberScopedMentions
                         )
                     val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
+                    val localTimestampLabel =
+                        buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
                     threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyLocalSendStarted(
                             buildThreadPendingSendMessage(
                                 localMessageId = localMessageId,
                                 context = pendingContext,
-                                session = currentSession
+                                session = currentSession,
+                                timestampLabel = localTimestampLabel
                             )
                         )
                     )
@@ -4928,7 +4948,8 @@ internal fun SharedThreadRouteContent(
                         deferredAttachmentSend =
                             ThreadDeferredAttachmentSend(
                                 localMessageId = localMessageId,
-                                context = pendingContext
+                                context = pendingContext,
+                                timestampLabel = localTimestampLabel
                             )
                     } else {
                         sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
@@ -11155,7 +11176,7 @@ private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
 
     val currentEpochMillis = parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
     val nextEpochMillis = next.parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
-    if (currentEpochMillis == null || nextEpochMillis == null) return true
+    if (currentEpochMillis == null || nextEpochMillis == null) return false
 
     val elapsedMillis = nextEpochMillis - currentEpochMillis
     if (elapsedMillis !in 0..ThreadCompactContinuationWindowMillis) return false
