@@ -883,12 +883,12 @@ internal fun ThreadComposerContent(
     // updates / suggestion list filtering are all under this; per-phase breakdown
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
     traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
-    var fieldValue by remember(state.instanceId) {
+    var fieldValue by remember(state.instanceId, state.syncNonce) {
         mutableStateOf(TextFieldValue(state.seedText, selection = TextRange(state.seedText.length)))
     }
     val text = fieldValue.text
-    var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
-    var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
+    var asTask by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.seedAsTask) }
+    var focused by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
@@ -1073,6 +1073,10 @@ internal fun ThreadComposerContent(
                         placeholder = state.placeholder,
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
+                            // Ignore stale platform callbacks from the pre-sync local value.
+                            if (next.text == fieldValue.text && next.text != state.seedText) {
+                                return@TextField
+                            }
                             fieldValue = next
                             focused = true
                             println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
