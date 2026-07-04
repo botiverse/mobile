@@ -549,6 +549,18 @@ internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
+internal fun KuiklyThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
+    listOfNotNull(
+        parentChannelId,
+        sourceThreadId,
+        streamChannelId
+    )
+        .asSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinct()
+        .toList()
+
 internal fun KuiklyThreadScreenPayload.threadMessagePermalink(
     message: KuiklyThreadMessageItem,
     serverSlug: String?,
@@ -2612,14 +2624,11 @@ internal fun SharedThreadRouteContent(
     var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
     DisposableEffect(
         realtimeEvents,
+        payload.parentChannelId,
         payload.sourceThreadId,
         payload.streamChannelId
     ) {
-        val activeRoomIds =
-            listOfNotNull(
-                payload.sourceThreadId,
-                payload.streamChannelId
-            ).distinct()
+        val activeRoomIds = payload.activeRealtimeRoomIds()
         realtimeEvents.joinChannels(activeRoomIds)
         onDispose {
             realtimeEvents.leaveChannels(activeRoomIds)

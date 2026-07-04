@@ -2383,6 +2383,38 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyThreadRealtimeRoomsIncludeParentChannelAndThreadRooms() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "dm-parent-channel",
+                sourceThreadId = "thread-channel",
+                streamChannelId = "thread-channel"
+            )
+
+        assertEquals(
+            listOf("dm-parent-channel", "thread-channel"),
+            payload.activeRealtimeRoomIds()
+        )
+    }
+
+    @Test
+    fun replyThreadRealtimeRoomsWaitForConcreteParentChannel() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = " ",
+                sourceThreadId = "thread-channel",
+                streamChannelId = "thread-channel"
+            )
+
+        assertEquals(
+            listOf("thread-channel"),
+            payload.activeRealtimeRoomIds()
+        )
+    }
+
+    @Test
     fun topLevelThreadMessagesCanConvertToTasksWhenTaskActionsAreEnabled() {
         val payload =
             KuiklyThreadScreenPayload(
