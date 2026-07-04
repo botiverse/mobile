@@ -13877,7 +13877,7 @@ private fun ThreadMembersModal(
             else -> null
         }
     SlockUnifiedDialog(
-        title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
+        title = "Members (${membersCount.takeIf { it > 0 } ?: members.size})",
         onDismiss = onDismiss,
         minWidth = 300.dp,
         maxWidth = 332.dp,
@@ -13903,7 +13903,7 @@ private fun ThreadMembersModal(
                     }
                 } else {
                     if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader("AGENTS") }
+                        item { SlockModalSectionHeader("Agents") }
                         items(agents.size, key = { agents[it].memberKey }) { index ->
                             val member = agents[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
@@ -13927,7 +13927,7 @@ private fun ThreadMembersModal(
                         }
                     }
                     if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader("HUMANS") }
+                        item { SlockModalSectionHeader("Humans") }
                         items(humans.size, key = { humans[it].memberKey }) { index ->
                             val member = humans[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
@@ -13953,7 +13953,7 @@ private fun ThreadMembersModal(
                 }
             }
             SlockModalFullWidthActionButton(
-                label = "ADD MEMBER",
+                label = "Add Member",
                 icon = SlockLucideIconName.UserPlus,
                 onClick = { if (canAddMembers) onAddMember() },
                 color = SlockColor.AccentPink,
@@ -14004,7 +14004,7 @@ private fun ThreadAddMemberModal(
             else -> null
         }
     SlockUnifiedDialog(
-        title = "ADD MEMBER",
+        title = "Add Member",
         onDismiss = onDismiss,
         minWidth = 356.dp,
         maxWidth = 356.dp,
@@ -14021,13 +14021,13 @@ private fun ThreadAddMemberModal(
                 )
             }
             Text(
-                text = "SEARCH",
+                text = "Search",
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
             SlockBrutalSearchField(
                 value = query,
-                placeholder = "NAME",
+                placeholder = "Name",
                 leadingIcon = SlockLucideIconName.Search,
                 enabled = !blocked,
                 onValueChange = {
@@ -14048,7 +14048,7 @@ private fun ThreadAddMemberModal(
                     }
                 } else {
                     if (agentCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("AGENTS") }
+                        item { SlockModalSectionHeader("Agents") }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -14076,7 +14076,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (humanCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("HUMANS") }
+                        item { SlockModalSectionHeader("Humans") }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
