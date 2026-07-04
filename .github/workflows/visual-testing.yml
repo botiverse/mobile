@@ -1,0 +1,247 @@
+name: Visual Testing
+
+# End-to-end visual parity pipeline (task #299/#300 in #visual-testing):
+#   react-capture  ─┐
+#                   ├─► report (diff → report → site → optional publish)
+#   android-capture ─┘
+# React and Android captures run in parallel; the report job joins their
+# artifacts, generates the site with the canonical visual-testing CLI from
+# botiverse/slock, and publishes to this repo's gh-pages behind the CLI's
+# preflight guard (case-count drop / missing Raft UI entry are rejected).
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish generated site to gh-pages (preflight-guarded)"
+        type: boolean
+        default: false
+      case_filter:
+        description: "Optional case selection (comma-separated ids for --case); empty = full manifest"
+        type: string
+        default: ""
+      slock_source_ref:
+        description: "botiverse/slock ref for React source + visual CLI"
+        type: string
+        default: "staging"
+
+concurrency:
+  group: visual-testing-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  react-capture:
+    name: React capture (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: slock-source
+    steps:
+      - name: Checkout slock source (React + visual CLI)
+        uses: actions/checkout@v5
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-source
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: slock-source/package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: slock-source/pnpm-lock.yaml
+
+      - name: Install web + visual-testing workspace deps
+        run: pnpm install --frozen-lockfile --filter "@slock-ai/web..." --filter "@botiverse/raft-visual-testing..."
+
+      - name: Install playwright chromium
+        run: pnpm --filter "@slock-ai/web" exec playwright install --with-deps chromium
+
+      - name: Capture React visuals
+        env:
+          CASE_FILTER: ${{ inputs.case_filter }}
+        run: |
+          ARGS=""
+          if [ -n "$CASE_FILTER" ]; then ARGS="--case $CASE_FILTER"; fi
+          node packages/visual-testing/src/cli.mjs capture --providers react $ARGS
+
+      - name: Upload react results
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-results-react
+          path: slock-source/visual-testing-results/react
+          if-no-files-found: error
+
+  android-capture:
+    name: Android capture (emulator connected test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write github-packages.properties
+        run: |
+          {
+            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
+            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
+          } > compose/github-packages.properties
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api-35-x86_64
+
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run visual capture connected test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: ./compose
+          script: |
+            adb wait-for-device
+            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
+              :androidApp:connectedConnectedTestAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest
+            mkdir -p ../visual-testing-results/android
+            adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
+
+      - name: Upload android results
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-results-android
+          path: visual-testing-results/android
+          if-no-files-found: error
+
+      - name: Upload connected test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-connected-test-reports
+          path: compose/androidApp/build/reports/androidTests
+          if-no-files-found: ignore
+
+  report:
+    name: Diff, report, site, publish
+    needs: [react-capture, android-capture]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+        with:
+          path: mobile
+
+      - name: Checkout slock source (visual CLI)
+        uses: actions/checkout@v5
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-source
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: slock-source/package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: slock-source/pnpm-lock.yaml
+
+      - name: Install visual-testing CLI deps (sharp)
+        working-directory: slock-source
+        run: pnpm install --frozen-lockfile --filter "@botiverse/raft-visual-testing..."
+
+      - name: Download react results
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-results-react
+          path: mobile/visual-testing-results/react
+
+      - name: Download android results
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-results-android
+          path: mobile/visual-testing-results/android
+
+      - name: Diff / report / site
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: |
+          node scripts/slock-visual-testing.mjs diff --baseline react --current android
+          node scripts/slock-visual-testing.mjs report --baseline react --current android
+          node scripts/slock-visual-testing.mjs site --baseline react --current android
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-testing-site
+          path: mobile/artifacts/visual-testing-site
+          if-no-files-found: error
+
+      - name: Publish to gh-pages (preflight-guarded)
+        if: ${{ inputs.publish }}
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: |
+          git config user.name "raft-visual-bot"
+          git config user.email "visual-testing@raft.build"
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages || echo "no existing gh-pages branch"
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current android --repo-dir . --dry-run
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current android --repo-dir .
