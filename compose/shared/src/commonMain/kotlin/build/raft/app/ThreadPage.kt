@@ -2299,7 +2299,7 @@ private fun ThreadMessageVisualCard(
                     ) {
                         Text(
                             text = message.authorName,
-                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -10710,7 +10710,7 @@ private fun ThreadMessageCard(
                                 ) {
                                     Text(
                                         text = message.authorName,
-                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -12864,12 +12864,12 @@ private fun ThreadMessageAvatarSlot(
 ) {
     val slotHeight =
         when {
-            showAvatar -> 44.dp
+            showAvatar -> 40.dp
             showTimestamp -> 18.dp
             else -> 0.dp
         }
     Box(
-        modifier = Modifier.width(40.dp).height(slotHeight),
+        modifier = Modifier.width(36.dp).height(slotHeight),
         contentAlignment = Alignment.TopCenter
     ) {
         when {
@@ -12921,7 +12921,7 @@ private fun ThreadMessageAvatar(
     Box(
         modifier =
             Modifier
-                .size(40.dp)
+                .size(36.dp)
                 .pointerInput(onClick, onLongPress) {
                     detectTapGestures(
                         onTap = { onClick() },
@@ -12932,7 +12932,7 @@ private fun ThreadMessageAvatar(
     ) {
         SlockAvatarWithStatus(
             statusColor = if (muted) null else status?.color,
-            avatarSize = 40.dp,
+            avatarSize = 36.dp,
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
@@ -12943,7 +12943,7 @@ private fun ThreadMessageAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                    avatarSize = 40.dp,
+                    avatarSize = 36.dp,
                     borderWidth = SlockStroke.Default,
                     gravatarUrl = gravatarUrl
                 )
@@ -12973,12 +12973,12 @@ private fun ThreadMessageStaticAvatar(
             avatarWireValue?.takeIf { it.isNotBlank() }
         }
     Box(
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier.size(36.dp),
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
             statusColor = status?.color,
-            avatarSize = 40.dp,
+            avatarSize = 36.dp,
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
@@ -12987,7 +12987,7 @@ private fun ThreadMessageStaticAvatar(
             SlockAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
-                avatarSize = 40.dp,
+                avatarSize = 36.dp,
                 borderWidth = SlockStroke.Default,
                 gravatarUrl = gravatarUrl
             )
