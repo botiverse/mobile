@@ -9,6 +9,7 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class SharedServerMembersStoreTest {
     @Test
@@ -271,6 +272,66 @@ class SharedServerMembersStoreTest {
             SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
             store.state.value.memberStatus(ServerId("server-1"), "agent-1")
         )
+    }
+
+    @Test
+    fun removeMemberEvictsServerChannelSuggestionAndPresenceSlices() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+
+        val removed =
+            store.removeMember(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("agent-1"),
+                memberKind = MemberKind.Agent
+            )
+
+        assertEquals(true, removed)
+        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertEquals(listOf("u1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(listOf("u1"), suggestions.map { it.memberId })
+        assertNull(store.state.value.presenceFor("agent-1"))
+        assertNull(store.state.value.memberStatus(ServerId("server-1"), "agent-1"))
+        assertNull(store.state.value.memberProfile(ServerId("server-1"), "agent-1"))
     }
 
     @Test

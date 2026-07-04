@@ -4,6 +4,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -310,6 +311,82 @@ class SharedServerMembersStore(
                 members = merged.values.toList().withServerMemberPresenceFacts(current.presenceByMemberId)
             )
         )
+    }
+
+    fun removeMember(
+        serverId: ServerId,
+        memberId: MemberId,
+        memberKind: MemberKind? = null
+    ): Boolean {
+        val serverKey = serverId.value.trim()
+        val memberKey = memberId.value.trim()
+        if (serverKey.isBlank() || memberKey.isBlank()) return false
+        val current = _state.value
+        var changed = false
+        val nextEntry = current.entriesByServerId[serverKey]?.let { entry ->
+            val nextMembers = entry.members.removeServerMember(memberKey, memberKind)
+            if (nextMembers.size != entry.members.size) {
+                changed = true
+                entry.copy(members = nextMembers)
+            } else {
+                entry
+            }
+        }
+        val nextEntries =
+            if (nextEntry != null) {
+                current.entriesByServerId + (serverKey to nextEntry)
+            } else {
+                current.entriesByServerId
+            }
+        val nextChannelSlices =
+            current.channelMemberSlices.mapValues { (scope, slice) ->
+                if (scope.serverId != serverKey && slice.serverId?.trim() != serverKey) {
+                    slice
+                } else {
+                    val nextMembers = slice.members.removeServerMember(memberKey, memberKind)
+                    if (nextMembers.size != slice.members.size) {
+                        changed = true
+                        slice.copy(members = nextMembers)
+                    } else {
+                        slice
+                    }
+                }
+            }
+        val nextSuggestionSlices =
+            current.memberSuggestionSlices.mapValues { (scope, slice) ->
+                if (scope.serverId != serverKey) {
+                    slice
+                } else {
+                    val nextSuggestions =
+                        slice.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
+                            memberId = memberKey,
+                            memberKind = memberKind,
+                            remove = true
+                        )
+                    if (nextSuggestions.size != slice.suggestions.size) {
+                        changed = true
+                        slice.copy(suggestions = nextSuggestions)
+                    } else {
+                        slice
+                    }
+                }
+            }
+        val nextPresenceFacts =
+            if (current.presenceByMemberId.containsKey(memberKey)) {
+                changed = true
+                current.presenceByMemberId - memberKey
+            } else {
+                current.presenceByMemberId
+            }
+        if (!changed) return false
+        _state.value =
+            current.copy(
+                entriesByServerId = nextEntries,
+                presenceByMemberId = nextPresenceFacts,
+                memberSuggestionSlices = nextSuggestionSlices,
+                channelMemberSlices = nextChannelSlices
+            )
+        return true
     }
 
     fun applyPresence(event: MemberPresenceUpdated) {
