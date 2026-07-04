@@ -646,7 +646,9 @@ class SlockHomeComponentsTest {
         val moved = state.dragBy(deltaY = 70f, rowStepPx = 32f, fallbackOrder = emptyList())
 
         assertEquals(listOf("channel-b", "channel-c", "channel-a"), moved.previewOrder)
-        assertEquals(6f, moved.rowOffsetPx)
+        // Finger-follow contract: the dragged row's offset from its stable slot
+        // is the raw accumulated drag distance.
+        assertEquals(70f, moved.rowOffsetPx)
     }
 
     @Test
