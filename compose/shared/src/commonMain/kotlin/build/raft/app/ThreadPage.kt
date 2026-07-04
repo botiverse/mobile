@@ -8181,6 +8181,11 @@ private data class ThreadMarkdownPreparsePlan(
     val parserCandidateCount: Int = priorityParserCandidateCount + deferredParserCandidateCount
 }
 
+private data class ThreadMarkdownVisiblePreparsePlan(
+    val key: String,
+    val candidates: List<ThreadMarkdownPreparseCandidate>
+)
+
 private data class ThreadMarkdownPreparseCandidate(
     val id: String,
     val body: String,
@@ -8316,6 +8321,83 @@ internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateIds(
     contentExtrasVisible: Boolean
 ): List<String> =
     threadInitialMarkdownPreparsePlan(contentExtrasVisible).candidates.map { it.id }
+
+internal fun ThreadTimelineSlice.visibleMarkdownPreparseCandidateIds(
+    firstVisibleItemIndex: Int,
+    lastVisibleItemIndex: Int,
+    overscanItems: Int,
+    contentExtrasVisible: Boolean
+): List<String> =
+    threadVisibleMarkdownPreparsePlan(
+        firstVisibleItemIndex = firstVisibleItemIndex,
+        lastVisibleItemIndex = lastVisibleItemIndex,
+        overscanItems = overscanItems,
+        contentExtrasVisible = contentExtrasVisible
+    ).candidates.map { it.id }
+
+private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
+    firstVisibleItemIndex: Int,
+    lastVisibleItemIndex: Int,
+    overscanItems: Int,
+    contentExtrasVisible: Boolean
+): ThreadMarkdownVisiblePreparsePlan {
+    if (!contentExtrasVisible ||
+        firstVisibleItemIndex < 0 ||
+        lastVisibleItemIndex < firstVisibleItemIndex ||
+        (messages.isEmpty() && originMessage == null)
+    ) {
+        return emptyThreadMarkdownVisiblePreparsePlan()
+    }
+
+    val expandedFirst = (firstVisibleItemIndex - overscanItems.coerceAtLeast(0)).coerceAtLeast(0)
+    val expandedLast = lastVisibleItemIndex + overscanItems.coerceAtLeast(0)
+    val candidates =
+        buildList {
+            if (hasThreadOriginItem() &&
+                originMessage != null &&
+                ThreadOriginListItemIndex in expandedFirst..expandedLast
+            ) {
+                add(
+                    ThreadMarkdownPreparseCandidate(
+                        id = "origin:${originMessage.id}",
+                        body = originMessage.body,
+                        messageId = originMessage.id
+                    )
+                )
+            }
+            val firstMessageItemIndex = firstMessageListItemIndex()
+            val firstMessageIndex = (expandedFirst - firstMessageItemIndex).coerceAtLeast(0)
+            val lastMessageIndex = (expandedLast - firstMessageItemIndex).coerceAtMost(messages.lastIndex)
+            if (firstMessageIndex <= lastMessageIndex) {
+                for (index in firstMessageIndex..lastMessageIndex) {
+                    val message = messages[index]
+                    add(
+                        ThreadMarkdownPreparseCandidate(
+                            id = message.id,
+                            body = message.body,
+                            messageId = message.id
+                        )
+                    )
+                }
+            }
+        }
+            .distinctBy { candidate -> candidate.id }
+    if (candidates.isEmpty()) {
+        return emptyThreadMarkdownVisiblePreparsePlan()
+    }
+    return ThreadMarkdownVisiblePreparsePlan(
+        key =
+            candidates.joinToString(separator = "|") { candidate ->
+                "${candidate.id}:${candidate.body.length}:${candidate.body.hashCode()}"
+            },
+        candidates = candidates
+    )
+}
+
+private fun emptyThreadMarkdownVisiblePreparsePlan(): ThreadMarkdownVisiblePreparsePlan =
+    ThreadMarkdownVisiblePreparsePlan(key = "", candidates = emptyList())
+
+private const val ThreadOriginListItemIndex = 0
 
 @Composable
 private fun ThreadMessagesList(
@@ -8611,6 +8693,49 @@ private fun ThreadMessagesList(
                     "messages=${renderPayload.messages.size} error=${error::class.simpleName}"
             )
         }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        initialMarkdownPreparsePlan.key,
+        contentExtrasVisible,
+        lazyItemCount
+    ) {
+        if (!contentExtrasVisible || initialMarkdownPreparsePlan.key.isEmpty()) {
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) {
+                emptyThreadMarkdownVisiblePreparsePlan()
+            } else {
+                renderPayload.threadVisibleMarkdownPreparsePlan(
+                    firstVisibleItemIndex = visibleItems.minOf { item -> item.index },
+                    lastVisibleItemIndex = visibleItems.maxOf { item -> item.index },
+                    overscanItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
+                    contentExtrasVisible = contentExtrasVisible
+                )
+            }
+        }
+            .distinctUntilChanged()
+            .collect { visiblePreparsePlan ->
+                if (visiblePreparsePlan.key.isEmpty()) {
+                    return@collect
+                }
+                val startedAt = TimeSource.Monotonic.markNow()
+                val result =
+                    prepareSlockMarkdownFullRendererBodies(
+                        bodies = visiblePreparsePlan.candidates.map { candidate -> candidate.body },
+                        maxBodies = visiblePreparsePlan.candidates.size
+                    )
+                diagnosticsLogger(
+                    "thread_markdown_preparse scope=visible_overscan " +
+                        "bodyCandidates=${visiblePreparsePlan.candidates.size} " +
+                        "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
+                        "cacheHit=${result.cacheHitCount} messages=${renderPayload.messages.size} " +
+                        "overscan=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
+            }
     }
     val initialBottomAnchorPending =
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor

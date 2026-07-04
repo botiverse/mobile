@@ -374,6 +374,43 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun visibleMarkdownPreparse_usesVisibleWindowAndOverscan() {
+        val messages = (0 until 8).map { index -> message("m$index") }
+        val slice = payload(messages = messages).timelineSlice()
+
+        assertEquals(
+            listOf("m2", "m3", "m4"),
+            slice.visibleMarkdownPreparseCandidateIds(
+                firstVisibleItemIndex = 4,
+                lastVisibleItemIndex = 4,
+                overscanItems = 1,
+                contentExtrasVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun visibleMarkdownPreparse_includesOriginWhenOverscanTouchesOrigin() {
+        val messages = (0 until 4).map { index -> message("m$index") }
+        val slice =
+            payload(
+                originStatus = "content",
+                originMessage = message("origin"),
+                messages = messages
+            ).timelineSlice()
+
+        assertEquals(
+            listOf("origin:origin", "m0", "m1", "m2"),
+            slice.visibleMarkdownPreparseCandidateIds(
+                firstVisibleItemIndex = 2,
+                lastVisibleItemIndex = 2,
+                overscanItems = 2,
+                contentExtrasVisible = true
+            )
+        )
+    }
+
+    @Test
     fun latestMessageListItemIndex_originMessageParticipatesInScrollableItemsAgain() {
         val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
             .latestMessageListItemIndexPublic()
