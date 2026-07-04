@@ -54,6 +54,14 @@ on:
         options:
           - release
           - debug
+      release_mode:
+        description: "draft = CI creates a draft release for agent review (policy default); publish = immediately active (emergencies only)"
+        required: true
+        type: choice
+        default: "draft"
+        options:
+          - draft
+          - publish
       publish_quiver:
         description: "If true, push the signed APK + metadata to Quiver + create share page"
         required: true
@@ -290,6 +298,7 @@ jobs:
       SLOCK_ANDROID_VERSION_BUILD: ${{ inputs.version_build }}
       SLOCK_ANDROID_VERSION_SUFFIX: ${{ inputs.version_suffix }}
       SLOCK_SKIP_GRADLE_BUILD: "1"
+      SLOCK_QUIVER_DRAFT: ${{ inputs.release_mode == 'publish' && '0' || '1' }}
       # KMP follow-up: when helper gains sign/zipalign, flip this on.
       SLOCK_COLLECT_ANDROID_SYMBOLS: "0"
     steps:
@@ -307,7 +316,7 @@ jobs:
       - name: Install Quiver CLI (npm)
         shell: bash
         run: |
-          npm install -g @oranix/quiver-cli@0.1.0
+          npm install -g @oranix/quiver-cli@0.2.0
           quiver --version
 
       - name: Generate changelog from git history
@@ -372,7 +381,7 @@ jobs:
 
       - name: Create share page
         id: create-share-page
-        if: inputs.create_share_page
+        if: inputs.create_share_page && inputs.release_mode == 'publish' 
         env:
           SLOCK_QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
           QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
@@ -406,5 +415,25 @@ jobs:
             echo "| **APK** | \`${{ needs.build_android_release.outputs.apk_path }}\` |"
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
             echo "| **Quiver channel** | \`${{ inputs.quiver_channel }}\` |"
+            echo "| **Release mode** | \`${{ inputs.release_mode }}\` |"
+            echo "| **Release id** | \`${{ steps.publish-quiver-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"
+            echo
+            if [ "${{ inputs.release_mode }}" = "draft" ]; then
+              echo "### Draft release — review required before publish"
+              echo
+              echo "Raw changelog (proofread + translate before publishing):"
+              echo
+              echo '\`\`\`'
+              cat changelog.txt 2>/dev/null || echo "(no changelog generated)"
+              echo '\`\`\`'
+              echo
+              echo "Publish flow (see quiver docs/release-runbook.md):"
+              echo
+              echo '\`\`\`sh'
+              echo "quiver releases show raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
+              echo "quiver releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-zh-file zh.md --changelog-en-file en.md"
+              echo "quiver releases publish raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
+              echo '\`\`\`'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
