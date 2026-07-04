@@ -508,6 +508,28 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityOpenRequestUsesLatestActivityAsAnchorWhenPresent() {
+        val item =
+            InboxItem(
+                key = "thread:thread-channel-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("parent-msg"),
+                firstUnreadMessageId = MessageId("older-unread-reply"),
+                latestActivityMessageId = MessageId("latest-visible-reply"),
+                lastMessageId = MessageId("last-reply")
+            )
+        val request = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.LatestActivity)
+
+        assertEquals("latest-visible-reply", request.anchorMessageId)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("parent-msg")), request.conversationIdentity.threadId)
+    }
+
+    @Test
     fun homeOpenRequestLaunchIdentityIgnoresRowActivitySummaryChanges() {
         val base =
             InboxItem(

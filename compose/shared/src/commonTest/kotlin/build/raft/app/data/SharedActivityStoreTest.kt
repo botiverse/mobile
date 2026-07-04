@@ -1,9 +1,11 @@
 package build.raft.app.data
 
 import build.raft.app.SharedActivityFooterSlot
+import build.raft.app.HomeMessageAnchorPolicy
 import build.raft.app.activityFooterSlots
 import build.raft.app.activityTaskBadgeText
 import build.raft.app.toConversationSummary
+import build.raft.app.toHomeMessageOpenRequest
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -825,6 +827,31 @@ class SharedActivityStoreTest {
         assertEquals(MessageId("first-channel-1-new"), visible.firstUnreadMessageId)
         assertEquals(1, store.state.value.totalCount)
         assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeThreadMessageUpdatesActivityAnchorBeforeRefreshCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+        val row =
+            threadItem(channelId = "thread-channel-1", unreadCount = 1)
+                .copy(
+                    firstUnreadMessageId = MessageId("older-unread-reply"),
+                    latestActivityMessageId = MessageId("older-latest-reply")
+                )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(row), totalUnreadCount = 1))
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("latest-visible-reply", channelId = "thread-channel-1"))))
+
+        val visible = store.state.value.items.single()
+        assertEquals(MessageId("latest-visible-reply"), visible.latestActivityMessageId)
+        assertEquals(
+            "latest-visible-reply",
+            visible.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.LatestActivity).anchorMessageId
+        )
         scope.cancel()
     }
 

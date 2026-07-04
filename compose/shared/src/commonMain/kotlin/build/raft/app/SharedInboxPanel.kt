@@ -589,7 +589,7 @@ private fun SharedActivityList(
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
-                        onOpenMessage(item.toHomeMessageOpenRequest())
+                        onOpenMessage(item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.LatestActivity))
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
                     onOpenMenu = { anchor ->
@@ -1336,6 +1336,11 @@ internal data class HomeMessageOpenRequest(
     val originFallback: ThreadLaunchOriginFallback? = null
 )
 
+internal enum class HomeMessageAnchorPolicy {
+    FirstUnread,
+    LatestActivity
+}
+
 /**
  * Per-kind stream channel id resolver. Replaces the prior silent fallback
  * `if (kind == Thread) threadChannelId else threadChannelId ?: channelId` (反例 1 in #280 audit).
@@ -1367,10 +1372,18 @@ internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
 internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
     firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId
 
-internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
+internal fun InboxItem.resolveInboxAnchorMessageId(policy: HomeMessageAnchorPolicy): MessageId? =
+    when (policy) {
+        HomeMessageAnchorPolicy.FirstUnread -> resolveInboxAnchorMessageId()
+        HomeMessageAnchorPolicy.LatestActivity -> latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId
+    }
+
+internal fun InboxItem.toHomeMessageOpenRequest(
+    anchorPolicy: HomeMessageAnchorPolicy = HomeMessageAnchorPolicy.FirstUnread
+): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversationIdentity = toThreadLaunchConversationIdentity(),
-        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
+        anchorMessageId = resolveInboxAnchorMessageId(anchorPolicy)?.value?.takeIf { it.isNotBlank() },
         originFallback = toThreadLaunchOriginFallback()
     )
 
