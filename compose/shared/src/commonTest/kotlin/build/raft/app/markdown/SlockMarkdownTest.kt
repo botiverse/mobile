@@ -412,6 +412,56 @@ class SlockMarkdownTest {
         assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
         assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
         assertEquals(SlockMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
+
+        val activeMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, active = true)
+        assertEquals(SlockColor.BrandYellow, activeMentionStyle.background)
+        assertEquals(null, activeMentionStyle.textDecoration)
+    }
+
+    @Test
+    fun activeMarkdownReferenceTagOverridesDefaultChromeImmediately() {
+        val body = "Ping @artin in #markdown专修 and task #42"
+        val validator =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownMentions = setOf("artin")
+            )
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                highlightedMentions = setOf("artin"),
+                isTagValid = validator
+            )
+        val channelToken = plan.tagTokens().first { it.tag?.kind == ThreadMarkdownTagKind.Channel }
+        val taskToken = plan.tagTokens().first { it.tag?.kind == ThreadMarkdownTagKind.Task }
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        highlightedMentions = setOf("artin"),
+                        isTagValid = validator,
+                        activeTagKey = threadMarkdownTagActivationKey(channelToken.tag!!),
+                        tokenPlan = plan
+                    )
+            )
+
+        assertEquals(SlockColor.BrandYellow, annotated.slockMarkdownClickableTagBackground(channelToken.id))
+        assertEquals(
+            SlockColor.BrandYellow.copy(alpha = 0.4f),
+            annotated.slockMarkdownClickableTagBackground(taskToken.id)
+        )
+        assertEquals(
+            threadMarkdownTagActivationKey(channelToken.tag!!),
+            threadMarkdownTagActivationKey(
+                ThreadMarkdownTag(
+                    label = " #MARKDOWN专修 ",
+                    kind = ThreadMarkdownTagKind.Channel,
+                    channelName = " MARKDOWN专修 "
+                )
+            )
+        )
     }
 
     @Test
@@ -1141,6 +1191,16 @@ class SlockMarkdownTest {
         getLinkAnnotations(0, length)
             .mapNotNull { (it.item as? LinkAnnotation.Clickable)?.tag }
             .toSet()
+
+    private fun AnnotatedString.slockMarkdownClickableTagBackground(tag: String): Color? =
+        getLinkAnnotations(0, length)
+            .firstNotNullOfOrNull { range ->
+                (range.item as? LinkAnnotation.Clickable)
+                    ?.takeIf { it.tag == tag }
+                    ?.styles
+                    ?.style
+                    ?.background
+            }
 
     private fun AnnotatedString.slockMarkdownTagChromeAnnotations(): List<String> =
         getStringAnnotations(SlockMarkdownTagChromeAnnotationTag, 0, length)

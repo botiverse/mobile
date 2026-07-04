@@ -582,6 +582,7 @@ internal fun slockMarkdownAnnotator(
     highlightedMentions: Set<String> = emptySet(),
     isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
     inlineContentScope: String? = null,
+    activeTagKey: String? = null,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
@@ -612,6 +613,7 @@ internal fun slockMarkdownAnnotator(
                 highlightedMentions = highlightedMentions,
                 isTagValid = isTagValid,
                 inlineContentScope = inlineContentScope,
+                activeTagKey = activeTagKey,
                 onOpenTag = onOpenTag,
                 resolveTagLabel = resolveTagLabel
             )
@@ -634,6 +636,7 @@ internal fun slockMarkdownAnnotator(
                 highlightedMentions = highlightedMentions,
                 isTagValid = isTagValid,
                 inlineContentScope = inlineContentScope,
+                activeTagKey = activeTagKey,
                 onOpenTag = onOpenTag,
                 resolveTagLabel = resolveTagLabel
             )
@@ -657,6 +660,7 @@ private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
     highlightedMentions: Set<String>,
     isTagValid: (ThreadMarkdownTag) -> Boolean,
     inlineContentScope: String?,
+    activeTagKey: String?,
     onOpenTag: (ThreadMarkdownTag) -> Unit,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)?
 ): Int {
@@ -701,12 +705,14 @@ private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
             highlightedMentions = highlightedMentions,
             isTagValid = isTagValid,
             inlineContentScope = inlineContentScope,
+            activeTagKey = activeTagKey,
             onOpenTag = onOpenTag,
             resolveTagLabel = resolveTagLabel
         )
     }
     appendSlockMarkdownTagToken(
         token = splitStart.token,
+        activeTagKey = activeTagKey,
         onOpenTag = onOpenTag,
         resolveTagLabel = resolveTagLabel
     )
@@ -718,6 +724,7 @@ private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
             highlightedMentions = highlightedMentions,
             isTagValid = isTagValid,
             inlineContentScope = inlineContentScope,
+            activeTagKey = activeTagKey,
             onOpenTag = onOpenTag,
             resolveTagLabel = resolveTagLabel
         )
@@ -732,6 +739,7 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegmentOrText(
     highlightedMentions: Set<String>,
     isTagValid: (ThreadMarkdownTag) -> Boolean,
     inlineContentScope: String?,
+    activeTagKey: String?,
     onOpenTag: (ThreadMarkdownTag) -> Unit,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)?
 ) {
@@ -742,6 +750,7 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegmentOrText(
             highlightedMentions = highlightedMentions,
             isTagValid = isTagValid,
             inlineContentScope = inlineContentScope,
+            activeTagKey = activeTagKey,
             onOpenTag = onOpenTag,
             resolveTagLabel = resolveTagLabel
         )
@@ -791,6 +800,7 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
     highlightedMentions: Set<String>,
     isTagValid: (ThreadMarkdownTag) -> Boolean,
     inlineContentScope: String?,
+    activeTagKey: String?,
     onOpenTag: (ThreadMarkdownTag) -> Unit,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)?
 ): Boolean {
@@ -834,6 +844,7 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
         }
         appendSlockMarkdownTagToken(
             token = token,
+            activeTagKey = activeTagKey,
             onOpenTag = onOpenTag,
             resolveTagLabel = resolveTagLabel
         )
@@ -845,6 +856,7 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
 
 private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
     token: MarkdownInlineToken,
+    activeTagKey: String?,
     onOpenTag: (ThreadMarkdownTag) -> Unit,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)?
 ) {
@@ -863,10 +875,11 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
             annotation = chromeKind.wireValue
         )
     }
+    val active = activeTagKey != null && activeTagKey == threadMarkdownTagActivationKey(tag)
     withLink(
         LinkAnnotation.Clickable(
             tag = token.id,
-            styles = TextLinkStyles(style = slockMarkdownTagSpanStyle(tag.kind, highlighted = token.highlighted)),
+            styles = slockMarkdownTagLinkStyles(tag.kind, highlighted = token.highlighted, active = active),
             linkInteractionListener = LinkInteractionListener { onOpenTag(tag) }
         )
     ) {
@@ -1173,6 +1186,7 @@ fun SlockMarkdownBody(
     onOpenUrl: (String) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
+    activeTagKey: String? = null,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -1256,12 +1270,13 @@ fun SlockMarkdownBody(
                     "scope=${inlineContentScope.orEmpty()}"
         )
     }
-    val annotator = remember(parserContent, highlightedMentions, performanceKey, tokenPlan) {
+    val annotator = remember(parserContent, highlightedMentions, activeTagKey, performanceKey, tokenPlan) {
         slockMarkdownAnnotator(
             parserContent,
             highlightedMentions = highlightedMentions,
             isTagValid = isTagValid,
             inlineContentScope = inlineContentScope,
+            activeTagKey = activeTagKey,
             onOpenTag = { tag -> currentOnOpenTag(tag) },
             resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) },
             onDiagnostics =
@@ -1552,6 +1567,21 @@ internal fun slockMarkdownTagChromeKind(
 
 internal val SlockMarkdownTagFontSize = 14.sp
 
+internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
+    buildString {
+        append(tag.kind.name)
+        append(':')
+        append(tag.label.trim().lowercase())
+        tag.channelName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { channelName ->
+            append(":channel=")
+            append(channelName)
+        }
+        tag.threadShortId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { threadShortId ->
+            append(":thread=")
+            append(threadShortId)
+        }
+    }
+
 private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
     SlockType.ButtonBold
         .withSlockFontWeight(FontWeight.SemiBold)
@@ -1560,8 +1590,20 @@ private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
             fontSize = SlockMarkdownTagFontSize
         )
 
-internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): SpanStyle =
-    when (kind) {
+internal fun slockMarkdownTagSpanStyle(
+    kind: ThreadMarkdownTagKind,
+    highlighted: Boolean = false,
+    active: Boolean = false
+): SpanStyle {
+    if (active) {
+        return slockMarkdownTagBaseSpanStyle()
+            .copy(
+                color = SlockColor.TextBlack,
+                textDecoration = null,
+                background = SlockColor.BrandYellow
+            )
+    }
+    return when (kind) {
         ThreadMarkdownTagKind.UserMention ->
             if (highlighted) {
                 slockMarkdownTagBaseSpanStyle()
@@ -1590,3 +1632,18 @@ internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted:
                     background = slockMarkdownTagColor(kind, highlighted = highlighted)
                 )
     }
+}
+
+internal fun slockMarkdownTagLinkStyles(
+    kind: ThreadMarkdownTagKind,
+    highlighted: Boolean = false,
+    active: Boolean = false
+): TextLinkStyles {
+    val defaultStyle = slockMarkdownTagSpanStyle(kind, highlighted = highlighted, active = active)
+    val pressedStyle =
+        slockMarkdownTagSpanStyle(kind, highlighted = highlighted, active = true)
+    return TextLinkStyles(
+        style = defaultStyle,
+        pressedStyle = pressedStyle
+    )
+}
