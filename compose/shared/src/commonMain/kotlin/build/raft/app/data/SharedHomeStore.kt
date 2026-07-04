@@ -1294,6 +1294,9 @@ internal class SharedHomeStore(
         (finalState.content as? SharedHomeContentState.Content)?.let { content ->
             updateConversationIdentity(content.baseSnapshot)
             contentByServer[content.baseSnapshot.server.id] = content
+            content.baseSnapshot.sidebarOrder?.let { sidebarOrder ->
+                sidebarOrderByServer[content.baseSnapshot.server.id] = sidebarOrder
+            }
         }
         _state.value = finalState
         if (intent != null) {

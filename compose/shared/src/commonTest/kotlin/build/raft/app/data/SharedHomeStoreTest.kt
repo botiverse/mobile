@@ -261,6 +261,12 @@ class SharedHomeStoreTest {
                             hasDraftKnown = true
                         )
                     ),
+                sidebarOrder =
+                    SettingsServerSidebarOrderSnapshot(
+                        pinnedChannelIds = listOf("channel-1"),
+                        pinnedOrder = listOf("channel-1"),
+                        pinnedSortMode = "manual"
+                    ),
                 unreadTotal = 9,
                 unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
                 serverUnreadCounts = mapOf("server-1" to 9)
@@ -305,6 +311,8 @@ class SharedHomeStoreTest {
         assertEquals(false, hydratedContent.snapshot.channels.single().hasDraft)
         assertEquals(null, hydratedContent.snapshot.channels.single().lastMessagePreview)
         assertEquals(emptyMap(), hydratedContent.snapshot.serverUnreadCounts)
+        assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedChannelIds)
+        assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedOrder)
 
         blockedLoad.release()
         loadJob.join()
@@ -313,6 +321,11 @@ class SharedHomeStoreTest {
         assertTrue(freshContent is SharedHomeContentState.Content)
         assertEquals("general", freshContent.snapshot.channels.single().name)
         assertEquals(false, freshContent.contentRefreshing)
+        assertEquals(
+            listOf("channel-1"),
+            freshContent.snapshot.sidebarOrder?.pinnedChannelIds,
+            "network home payload without sidebarOrder should retain the hydrated sidebar-order cache"
+        )
         scope.cancel()
     }
 
@@ -2731,6 +2744,63 @@ class SharedHomeStoreTest {
         assertEquals(1, updateCalls.size)
         assertEquals(listOf("channel-1"), updateCalls.first().pinnedChannelIds)
         assertEquals(listOf("channel-1"), updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedWritesSidebarOrderToHomeIdentityPersist() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = emptyList(),
+            pinnedOrder = emptyList(),
+            pinnedSortMode = "manual"
+        )
+        val updatedSnapshot = initial.copy(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1")
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { DataResult.Content(updatedSnapshot) },
+            persistSlices = listOf(persistSlice)
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = BlockingHomeApi()
+        val coldStore =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+        val blockedLoad = api.blockNextChannels()
+        val loadJob = launch { coldStore.accept(SharedHomeIntent.Start) }
+        blockedLoad.awaitStarted()
+
+        val hydratedContent = coldStore.state.value.content
+        assertTrue(hydratedContent is SharedHomeContentState.Content)
+        assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedChannelIds)
+        assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedOrder)
+
+        blockedLoad.release()
+        loadJob.join()
         scope.cancel()
     }
 

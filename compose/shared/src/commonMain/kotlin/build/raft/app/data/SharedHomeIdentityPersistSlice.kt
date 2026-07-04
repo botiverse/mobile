@@ -69,6 +69,10 @@ private object SharedHomeIdentityPersistSpec :
                     intent is SharedHomeIntent.ForegroundRefresh ||
                     intent is SharedHomeIntent.SelectServer ||
                     intent is SharedHomeIntent.ChannelCreated ||
+                    intent is SharedHomeIntent.TogglePinned ||
+                    intent is SharedHomeIntent.SetPinnedSortMode ||
+                    intent is SharedHomeIntent.SetChannelSortMode ||
+                    intent is SharedHomeIntent.ReorderSidebar ||
                     intent is SharedHomeIntent.CloseDirectMessage ||
                     intent is SharedHomeIntent.ArchiveChannel
                 )
@@ -89,8 +93,7 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
         directMessages = directMessages.map { it.pruneForHomeIdentityPersist() },
         unreadTotal = 0,
         unreadSource = AppBadgeSource.UNKNOWN,
-        serverUnreadCounts = emptyMap(),
-        sidebarOrder = null
+        serverUnreadCounts = emptyMap()
     )
 
 private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =
