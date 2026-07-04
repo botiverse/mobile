@@ -28,15 +28,19 @@ import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.InboxItem
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.data.SlockTasksApi
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadRowAffordancePreference
@@ -62,8 +66,10 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -3945,6 +3951,46 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun nestedReplyOpenFromReplyThreadUsesExplicitParentChannelInsteadOfReplyStream() {
+        val parent =
+            KuiklyThreadMessageItem(
+                id = "task-parent-541",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "Task parent",
+                threadChannelId = "nested-reply-stream-541",
+                taskId = "task-541",
+                taskNumber = 541
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-reply-stream-541",
+                title = ThreadReplyPageTitle,
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-stream-541",
+                streamChannelId = "reply-stream-541",
+                parentChannelId = "parent-channel",
+                parentMessageId = "root-parent-message",
+                messages = listOf(parent)
+            )
+        val timeline = payload.toThreadTimelineSlice()
+        val taskParent = timeline.findTaskParentMessage("task-541")
+        val loadingPayload =
+            payload.replyThreadLoadingPayload(
+                parentMessageId = taskParent!!.id,
+                parentChannelId = payload.replyParentChannelIdForNestedOpen(),
+                threadChannelId = parent.threadChannelId
+            )
+
+        assertEquals("parent-channel", payload.replyParentChannelIdForNestedOpen())
+        assertEquals("parent-channel", loadingPayload.parentChannelId)
+        assertEquals("task-parent-541", loadingPayload.parentMessageId)
+        assertEquals("nested-reply-stream-541", loadingPayload.sourceThreadId)
+        assertEquals("nested-reply-stream-541", loadingPayload.streamChannelId)
+    }
+
+    @Test
     fun replyThreadLoadingPayloadOmitsUnreadableChannelSubtitle() {
         val parent =
             KuiklyThreadMessageItem(
@@ -4983,6 +5029,33 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun markdownTaskNumberOpenUsesCurrentChannelNumberEndpointBeforeServerFallback() = runBlocking {
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-541","channelId":"parent-channel","threadId":"reply-stream","messageId":"parent-message","taskNumber":541,"title":"Correct channel task","status":"in_progress"}}""",
+                serverTasksBody =
+                    """{"tasks":[{"id":"wrong-task-541","channelId":"reply-stream","threadId":"reply-stream","messageId":"parent-message","taskNumber":541,"title":"Wrong stream task","status":"in_progress"}]}"""
+            )
+        val result =
+            openMarkdownTaskNumberPayload(
+                serverId = ServerId("server-1"),
+                taskNumber = 541,
+                currentPayload = KuiklyThreadScreenPayload(status = "content"),
+                currentTaskChannelId = ChannelId("parent-channel"),
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = null
+            )
+
+        val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
+        assertEquals("task-541", found.task.id.value)
+        assertEquals("parent-channel", found.payload.parentChannelId)
+        assertEquals("parent-message", found.payload.parentMessageId)
+        assertEquals("reply-stream", found.payload.streamChannelId)
+        assertEquals(listOf("taskByNumber:parent-channel:541"), api.calls)
+    }
+
+    @Test
     fun linkedTaskProjectionIsOnlyAuthoritativeAfterTasksLoadSettles() {
         val references =
             KuiklyThreadScreenPayload(
@@ -5964,4 +6037,34 @@ class ThreadPayloadTest {
             threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId
         )
+
+    private class FakeMarkdownTaskNumberApi(
+        private val channelTaskBody: String,
+        private val serverTasksBody: String
+    ) : SlockTasksApi {
+        val calls = mutableListOf<String>()
+
+        override suspend fun serverTasks(
+            serverId: ServerId,
+            priority: DataRequestPriority
+        ): HomeNetworkResponse {
+            calls += "serverTasks:${serverId.value}"
+            return HomeNetworkResponse(code = 200, bodyText = serverTasksBody)
+        }
+
+        override suspend fun taskByNumber(
+            channelId: ChannelId,
+            taskNumber: Int,
+            priority: DataRequestPriority
+        ): HomeNetworkResponse {
+            calls += "taskByNumber:${channelId.value}:$taskNumber"
+            return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
+        }
+
+        override suspend fun updateTaskStatus(
+            taskId: TaskId,
+            status: TaskStatus
+        ): HomeNetworkResponse =
+            HomeNetworkResponse(code = 501, bodyText = null)
+    }
 }

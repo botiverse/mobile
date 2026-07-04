@@ -56,6 +56,19 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_network", retryable = true))
         }
 
+    suspend fun loadChannelTaskByNumber(
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): DataResult<TaskActionResult> =
+        try {
+            typedApi.taskByNumber(channelId, taskNumber, priority)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_number_network", retryable = true))
+        }
+
     override suspend fun updateTaskStatus(
         taskId: TaskId,
         status: TaskStatus

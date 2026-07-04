@@ -1269,7 +1269,7 @@ private fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) {
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
-private sealed interface MarkdownTaskNumberOpenResult {
+internal sealed interface MarkdownTaskNumberOpenResult {
     data class Found(val task: TaskSummary, val payload: KuiklyThreadScreenPayload) : MarkdownTaskNumberOpenResult
     data class Ambiguous(val taskNumber: Int, val candidates: List<TaskSummary>) : MarkdownTaskNumberOpenResult
     data object NotFound : MarkdownTaskNumberOpenResult
@@ -1277,7 +1277,7 @@ private sealed interface MarkdownTaskNumberOpenResult {
     data object Failed : MarkdownTaskNumberOpenResult
 }
 
-private suspend fun openMarkdownTaskNumberPayload(
+internal suspend fun openMarkdownTaskNumberPayload(
     serverId: ServerId,
     taskNumber: Int,
     currentPayload: KuiklyThreadScreenPayload,
@@ -1285,6 +1285,28 @@ private suspend fun openMarkdownTaskNumberPayload(
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore?
 ): MarkdownTaskNumberOpenResult {
+    currentTaskChannelId?.let { channelId ->
+        when (
+            val channelResult =
+                tasksDataSource.loadChannelTaskByNumber(
+                    channelId = channelId,
+                    taskNumber = taskNumber,
+                    priority = DataRequestPriority.Foreground
+                )
+        ) {
+            is DataResult.Content -> {
+                val task = channelResult.data.task
+                val payload =
+                    currentPayload.markdownTaskNumberLaunchPayload(task)
+                        ?: return MarkdownTaskNumberOpenResult.Failed
+                tasksDataStore?.upsertTask(serverId.value, task)
+                return MarkdownTaskNumberOpenResult.Found(task, payload)
+            }
+            is DataResult.NoPermission -> return MarkdownTaskNumberOpenResult.AuthRequired
+            is DataResult.Empty,
+            is DataResult.Error -> Unit
+        }
+    }
     val snapshot =
         when (
             val result =
@@ -1414,6 +1436,15 @@ internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(): String? {
     if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     return parentChannelId.nonBlank() ?: timelineChannelId
 }
+
+internal fun KuiklyThreadScreenPayload.replyParentChannelIdForNestedOpen(): String? =
+    if (isReplyThreadWithExplicitParentPair()) {
+        parentChannelId.nonBlank()
+    } else {
+        sourceThreadId.nonBlank()
+            ?: streamChannelId.nonBlank()
+            ?: parentChannelId.nonBlank()
+    }
 
 private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
     surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
@@ -4082,7 +4113,7 @@ internal fun SharedThreadRouteContent(
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
-                            parentChannelId = renderedThread.sourceThreadId,
+                            parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
                             threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
@@ -4329,7 +4360,7 @@ internal fun SharedThreadRouteContent(
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
-                            parentChannelId = renderedThread.sourceThreadId,
+                            parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
                             threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
@@ -5353,87 +5384,76 @@ private fun ThreadMarkdownTaskCandidateRow(
     currentChannel: Boolean,
     onClick: () -> Unit
 ) {
-    val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.18f) else SlockColor.SurfaceWhite
-    Box(
+    val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.16f) else SlockColor.SurfaceWhite
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 5.dp)
+                .heightIn(min = 78.dp)
+                .background(background)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 82.dp)
-                    .background(background)
-                    .border(
-                        SlockStroke.Default,
-                        if (currentChannel) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.26f)
-                    )
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "#${task.taskNumber ?: "?"}",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = task.threadMarkdownTaskCandidateChannelLabel(),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = task.title.ifBlank { "Untitled task" },
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = task.threadMarkdownTaskCandidateDetail(currentChannel),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.48f),
+                    text = "#${task.taskNumber ?: "?"}",
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Text(
+                    text = task.threadMarkdownTaskCandidateChannelLabel(),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
             }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalAlignment = Alignment.End
-            ) {
-                val statusMeta = task.status.sharedTaskStatusChipMeta()
+            Text(
+                text = task.title.ifBlank { "Untitled task" },
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = task.threadMarkdownTaskCandidateDetail(currentChannel),
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.48f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.End
+        ) {
+            val statusMeta = task.status.sharedTaskStatusChipMeta()
+            SlockAnchoredMetaChip(
+                label = statusMeta.label,
+                iconName = statusMeta.icon,
+                iconSize = statusMeta.iconSize,
+                color = statusMeta.color,
+                modifier = Modifier.widthIn(max = 112.dp),
+                onClick = null
+            )
+            if (currentChannel) {
                 SlockAnchoredMetaChip(
-                    label = statusMeta.label,
-                    iconName = statusMeta.icon,
-                    iconSize = statusMeta.iconSize,
-                    color = statusMeta.color,
+                    label = "Current",
+                    iconName = SlockLucideIconName.Hash,
+                    iconSize = 10.dp,
+                    color = SlockColor.BrandYellow,
                     modifier = Modifier.widthIn(max = 112.dp),
                     onClick = null
                 )
-                if (currentChannel) {
-                    SlockAnchoredMetaChip(
-                        label = "Current",
-                        iconName = SlockLucideIconName.Hash,
-                        iconSize = 10.dp,
-                        color = SlockColor.BrandYellow,
-                        modifier = Modifier.widthIn(max = 112.dp),
-                        onClick = null
-                    )
-                }
             }
         }
     }
@@ -5457,7 +5477,7 @@ private fun TaskSummary.threadMarkdownTaskCandidateDetail(currentChannel: Boolea
     }
 
 private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
-    (count * 92 + 8).coerceIn(126, 316).dp
+    (count * 80 + 12).coerceIn(156, 420).dp
 
 @Composable
 private fun ThreadCreateAgentActionDialogHost(
