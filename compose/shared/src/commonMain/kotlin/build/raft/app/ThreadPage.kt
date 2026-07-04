@@ -10176,9 +10176,7 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     totalItemCount: Int
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
-    val rawOffset = itemSize - viewportHeight
-    if (rawOffset >= 0 || visibleItemCount < totalItemCount) return rawOffset
-    return 0
+    return itemSize - viewportHeight
 }
 
 internal fun threadFocusedItemScrollOffset(
@@ -10199,7 +10197,6 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
 }
 
 private fun LazyListState.isLatestItemAtRenderedBottom(latestItemIndex: Int): Boolean {
-    if (!canScrollForward) return true
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false

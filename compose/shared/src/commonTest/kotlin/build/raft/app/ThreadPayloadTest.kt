@@ -1091,7 +1091,7 @@ class ThreadPayloadTest {
     @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
-            0,
+            -520,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 120,
                 viewportHeight = 640,
@@ -1115,6 +1115,19 @@ class ThreadPayloadTest {
                 viewportHeight = 640,
                 visibleItemCount = 1,
                 totalItemCount = 3
+            )
+        )
+    }
+
+    @Test
+    fun threadBottomAnchorOffsetKeepsShortReplyThreadPaddingAtViewportBottom() {
+        assertEquals(
+            -544,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 96,
+                viewportHeight = 640,
+                visibleItemCount = 5,
+                totalItemCount = 5
             )
         )
     }
