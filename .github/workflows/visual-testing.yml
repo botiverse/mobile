@@ -17,11 +17,7 @@ on:
         type: boolean
         default: false
       case_filter:
-        description: "Optional case selection (comma-separated ids for --case); empty = full manifest"
-        type: string
-        default: ""
-      android_method:
-        description: "Optional single capture test method (e.g. captureThreadMessageRow) — runs one emulator shard only, for fast targeted Android captures"
+        description: "Optional case ids, comma-separated — drives BOTH React --case and the Android instrumentation method filter (fast targeted round); empty = full manifest"
         type: string
         default: ""
       slock_source_ref:
@@ -93,9 +89,42 @@ jobs:
     name: Android build (connected test APKs)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      method_filter: ${{ steps.methods.outputs.filter }}
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
+
+      # Map requested case ids to KmpVisualScreenshotCaptureTest methods so a
+      # case_filter round only captures those cases on Android too.
+      - name: Derive android method filter
+        id: methods
+        env:
+          CASES: ${{ inputs.case_filter }}
+        run: |
+          python3 - <<'EOF'
+          import os, re
+          cases = [c.strip() for c in os.environ.get("CASES", "").split(",") if c.strip()]
+          methods = []
+          if cases:
+              src = open("compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt").read()
+              chunks = re.split(r"\bfun\s+(\w+)\s*\(", src)
+              for case in cases:
+                  needle = f'"{case}"'
+                  found = None
+                  for i in range(1, len(chunks) - 1, 2):
+                      if needle in chunks[i + 1]:
+                          found = chunks[i]
+                          break
+                  if found:
+                      methods.append(f"build.raft.app.visual.KmpVisualScreenshotCaptureTest#{found}")
+                  else:
+                      print(f"::warning::no capture method found for case {case}")
+          value = ",".join(methods)
+          print(f"derived method filter: {value or '(none — full sharded run)'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"filter={value}\n")
+          EOF
 
       - name: Free runner disk space
         run: |
@@ -172,34 +201,34 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3, 4, 5]
     steps:
-      # Targeted single-method runs (android_method input) only use shard 0;
-      # the other shards no-op so the run finishes in one emulator's time.
+      # Targeted case_filter runs only use shard 0; the other shards no-op
+      # so the round finishes in one emulator's time.
       - name: Free runner disk space for emulator
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
       - name: Setup Android SDK
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: android-actions/setup-android@v3
 
       - name: Download APKs
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: actions/download-artifact@v4
         with:
           name: visual-test-apks
           path: apks
 
       - name: Enable KVM
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Run visual capture shard
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -217,12 +246,12 @@ jobs:
             adb wait-for-device
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
-            adb shell am instrument -w -e class build.raft.app.visual.KmpVisualScreenshotCaptureTest${{ inputs.android_method != '' && format('#{0}', inputs.android_method) || '' }}${{ inputs.android_method == '' && format(' -e numShards 6 -e shardIndex {0}', matrix.shard) || '' }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
             mkdir -p visual-testing-results/android
             adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
 
       - name: Upload android results
-        if: ${{ inputs.android_method == '' || matrix.shard == 0 }}
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
