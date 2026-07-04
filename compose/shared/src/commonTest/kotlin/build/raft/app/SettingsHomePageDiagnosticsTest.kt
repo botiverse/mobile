@@ -198,7 +198,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun aboutPayloadUsesNeutralUpdateCopyBeforeHostCapabilityLoads() {
+    fun aboutPayloadHidesUpdateCheckBeforeHostCapabilityLoads() {
         val payload =
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
                 .toAboutPayload(
@@ -206,19 +206,17 @@ class SettingsHomePageDiagnosticsTest {
                     updateCheck = SharedSettingsUpdateCheckSnapshot()
                 )
 
-        val updateRow =
+        val actionRows =
             payload.sections
                 .first { it.title == "Actions" }
                 .rows
-                .first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
 
-        assertEquals("Check", updateRow.status)
-        assertEquals("Checks Quiver for a newer Android APK and opens the installer when available.", updateRow.detail)
-        assertFalse(updateRow.enabled)
+        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+        assertTrue(actionRows.any { it.key == "openSlock" })
     }
 
     @Test
-    fun aboutPayloadExplainsExplicitUnsupportedUpdateChecksAsDisabledBuildFeature() {
+    fun aboutPayloadHidesExplicitUnsupportedUpdateChecks() {
         val payload =
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
                 .toAboutPayload(
@@ -230,15 +228,13 @@ class SettingsHomePageDiagnosticsTest {
                         )
                 )
 
-        val updateRow =
+        val actionRows =
             payload.sections
                 .first { it.title == "Actions" }
                 .rows
-                .first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
 
-        assertEquals("Disabled", updateRow.status)
-        assertEquals("This build does not expose in-app update checks.", updateRow.detail)
-        assertFalse(updateRow.enabled)
+        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+        assertTrue(actionRows.any { it.key == "openSlock" })
     }
 
     @Test
