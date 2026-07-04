@@ -137,6 +137,10 @@ class SharedActivityStore internal constructor(
         if (!event.refreshesActivity()) return
         val current = _state.value
         if (current.loading || current.refreshing) return
+        val patched = current.withRealtimeActivityMessage(event)
+        if (patched != null) {
+            reduceState(SharedActivityIntent.ApplyRealtimeEvent(event), patched)
+        }
         if (!current.loaded || current.snapshot != null) {
             load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
         }
@@ -930,6 +934,50 @@ private fun InboxSnapshot.unreadIncrementForMessage(
     if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
     if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
     return 1
+}
+
+private fun SharedActivityState.withRealtimeActivityMessage(event: RealtimeEvent): SharedActivityState? {
+    val message =
+        when (event) {
+            is MessageNew -> event.message
+            else -> return null
+        }
+    val snapshot = snapshot ?: return null
+    var changed = false
+    val nextItems =
+        snapshot.items.map { item ->
+            if (!item.matchesRealtimeActivityMessage(message)) {
+                item
+            } else {
+                changed = true
+                item.copy(
+                    latestActivityMessageId = message.id,
+                    latestActivityPreview = message.body.takeIf { it.isNotBlank() } ?: item.latestActivityPreview,
+                    latestActivityAt = message.timestampLabel.takeIf { it.isNotBlank() } ?: item.latestActivityAt,
+                    latestActivitySenderName = message.author.displayName.takeIf { it.isNotBlank() } ?: item.latestActivitySenderName
+                )
+            }
+        }
+    if (!changed) return null
+    return copy(snapshot = snapshot.copy(items = nextItems), errorCode = null)
+}
+
+private fun InboxItem.matchesRealtimeActivityMessage(message: Message): Boolean {
+    val messageStreamIds =
+        setOfNotNull(
+            message.channelId?.value,
+            message.threadChannelId?.value,
+            message.threadId.value.takeIf { it.isNotBlank() }
+        )
+    return when (kind) {
+        InboxItemKind.Thread ->
+            listOfNotNull(threadChannelId?.value, channelId.value.takeIf { it.isNotBlank() })
+                .any { it in messageStreamIds }
+        InboxItemKind.Channel,
+        InboxItemKind.DirectMessage,
+        InboxItemKind.MentionAction,
+        InboxItemKind.System -> channelId.value in messageStreamIds
+    }
 }
 
 private fun isActiveActivityConversation(
