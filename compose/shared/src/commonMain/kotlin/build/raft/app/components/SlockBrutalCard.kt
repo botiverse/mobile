@@ -2,6 +2,7 @@ package build.raft.app.components
 
 import build.raft.app.SlockColor
 import build.raft.app.SlockStroke
+import build.raft.app.slockSquareCorners
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -60,11 +61,13 @@ internal fun SlockBrutalCard(
             Modifier
                 .matchParentSize()
                 .offset(x = shadowOffset, y = shadowOffset)
+                .slockSquareCorners()
                 .background(SlockColor.ShadowBlack)
         )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(contentPadding),
@@ -100,6 +103,7 @@ internal fun SlockBrutalPanel(
             Modifier
                 .matchParentSize()
                 .offset(x = shadowOffset, y = shadowOffset)
+                .slockSquareCorners()
                 .background(SlockColor.ShadowBlack)
         )
         Column(
@@ -107,6 +111,7 @@ internal fun SlockBrutalPanel(
                 .widthIn(min = minWidth, max = maxWidth)
                 .then(contentModifier)
                 .fillMaxWidth()
+                .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
             content = content

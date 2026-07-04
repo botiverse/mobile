@@ -403,6 +403,14 @@ fun LazyListScope.Hover(
 
 fun Modifier.borderRadius(radius: Dp) = clip(RoundedCornerShape(radius))
 
+internal fun Modifier.slockSquareCorners(): Modifier =
+    setProp(SlockSquareCornerBorderRadiusProp, SlockSquareCornerBorderRadiusValue)
+        .setProp(SlockSquareCornerClipPathProp, "")
+
+private const val SlockSquareCornerBorderRadiusProp = "borderRadius"
+private const val SlockSquareCornerBorderRadiusValue = "0.0,0.0,0.0,0.0"
+private const val SlockSquareCornerClipPathProp = "clipPath"
+
 fun Color.changeAlpha(alpha: Float) = this.copy(alpha = alpha)
 
 /**
