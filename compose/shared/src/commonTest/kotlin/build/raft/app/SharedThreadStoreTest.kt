@@ -4702,7 +4702,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        val timelineEvents = CopyOnWriteArrayList<ThreadTimelineSlice>()
+        val timelineEvents = mutableListOf<ThreadTimelineSlice>()
         val job = launch(Dispatchers.Unconfined) {
             store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
         }
@@ -4737,7 +4737,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        val timelineEvents = CopyOnWriteArrayList<ThreadTimelineSlice>()
+        val timelineEvents = mutableListOf<ThreadTimelineSlice>()
         val job = launch(Dispatchers.Unconfined) {
             store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
         }
