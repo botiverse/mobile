@@ -20,7 +20,7 @@ class SlockAgentStatusLabelTest {
         assertEquals(SlockColor.AccentLime, online.color)
         assertFalse(online.pulsing)
 
-        val presenceOnly = slockAgentStatusIndicatorState(null, Presence.Away)
+        val presenceOnly = slockAgentStatusIndicatorState(status = null, presence = Presence.Away)
         assertEquals("Away", presenceOnly.label)
         assertEquals(SlockColor.BrandYellow, presenceOnly.color)
     }
