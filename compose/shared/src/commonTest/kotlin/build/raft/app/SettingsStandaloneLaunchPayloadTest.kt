@@ -140,17 +140,21 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     @Test
-    fun accountConnectedAccountsKeepProviderRowsVisible() {
+    fun accountConnectedAccountsHidePasswordIdentityRows() {
+        // React parity: web Connected accounts lists only social providers; the
+        // email+password identity is covered by the Email field + Change
+        // password row (artin, task #341).
         val accounts =
             listOf(
                 KuiklySettingsConnectedAccount(providerId = "password", provider = "Email password", identifier = "artin@example.com", status = "connected"),
+                KuiklySettingsConnectedAccount(providerId = "", provider = "Email password", identifier = "artin@example.com", status = "connected"),
                 KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected"),
                 KuiklySettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected"),
                 KuiklySettingsConnectedAccount(providerId = "saml", provider = "SAML", identifier = "corp.example.com", status = "connected")
             )
 
         assertEquals(
-            listOf("password", "google", "github", "saml"),
+            listOf("google", "github", "saml"),
             accounts.visibleSettingsConnectedAccounts().map { it.providerId }
         )
     }
