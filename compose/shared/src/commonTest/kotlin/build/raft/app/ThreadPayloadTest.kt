@@ -3717,6 +3717,7 @@ class ThreadPayloadTest {
         assertEquals("parent-message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
         assertEquals(false, composer.showAsTaskToggle)
+        assertEquals(true, initialPayload.threadComposerMemberScopedMentions())
     }
 
     @Test
