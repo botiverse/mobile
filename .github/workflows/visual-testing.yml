@@ -86,9 +86,16 @@ jobs:
           if-no-files-found: error
 
   android-capture:
-    name: Android capture (emulator connected test)
+    name: Android capture (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
+    # AndroidJUnitRunner shards the capture test methods across parallel
+    # emulator jobs; each case writes distinct files so artifacts merge
+    # cleanly in the report job.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
@@ -175,14 +182,14 @@ jobs:
           # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
-            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true :androidApp:connectedConnectedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest || echo "connected test exited non-zero; pulling whatever was captured"
+            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true :androidApp:connectedConnectedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest -Pandroid.testInstrumentationRunnerArguments.numShards=3 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }} || echo "connected test exited non-zero; pulling whatever was captured"
             mkdir -p ../visual-testing-results/android
             adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
 
       - name: Upload android results
         uses: actions/upload-artifact@v4
         with:
-          name: visual-results-android
+          name: visual-results-android-shard-${{ matrix.shard }}
           path: visual-testing-results/android
           if-no-files-found: error
 
@@ -190,7 +197,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-connected-test-reports
+          name: android-connected-test-reports-shard-${{ matrix.shard }}
           path: compose/androidApp/build/reports/androidTests
           if-no-files-found: ignore
 
@@ -243,10 +250,11 @@ jobs:
           name: visual-results-react
           path: mobile/visual-testing-results/react
 
-      - name: Download android results
+      - name: Download android results (merge shards)
         uses: actions/download-artifact@v4
         with:
-          name: visual-results-android
+          pattern: visual-results-android-shard-*
+          merge-multiple: true
           path: mobile/visual-testing-results/android
 
       - name: Diff / report / site

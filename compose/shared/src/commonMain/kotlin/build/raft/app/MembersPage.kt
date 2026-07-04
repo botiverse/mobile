@@ -3586,17 +3586,19 @@ private fun MembersLifecycleConfirmation(
 ) {
     val accent = if (action.destructive) SlockColor.AccentRed else SlockColor.AccentOrange
     // Hosted inside SlockUnifiedDialog, which owns the card padding.
+    // Banner metrics mirror React Banner density=md: p-3 (12), gap-3 (12),
+    // text-sm (14/20), border-2, and ConfirmDialog's mb-5 (20) to the buttons.
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(accent.copy(alpha = 0.2f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top
         ) {
             // React Banner icons: destructive → AlertTriangle, warning →
@@ -3608,7 +3610,7 @@ private fun MembersLifecycleConfirmation(
             )
             Text(
                 text = membersLifecycleConfirmMessage(action, agentName),
-                style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack
             )
         }
