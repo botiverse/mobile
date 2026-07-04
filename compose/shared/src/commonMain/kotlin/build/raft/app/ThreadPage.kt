@@ -2027,6 +2027,7 @@ internal fun ThreadHeaderVisualScreen() {
     Box(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
+            applyTopSafeArea = false,
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = { _, _, _ -> },
@@ -7512,6 +7513,7 @@ private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    applyTopSafeArea: Boolean = true,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
@@ -7519,7 +7521,7 @@ private fun ThreadPageHeader(
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
