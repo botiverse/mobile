@@ -107,13 +107,33 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+/**
+ * Thread-safe append/snapshot log buffer for tests that run stores on
+ * multi-threaded dispatchers. commonTest compiles for native targets too, so
+ * JVM types like CopyOnWriteArrayList are off-limits (#214).
+ */
+@OptIn(ExperimentalAtomicApi::class)
+private class ConcurrentTestLogBuffer {
+    private val entries = AtomicReference<List<String>>(emptyList())
+
+    fun add(entry: String) {
+        while (true) {
+            val current = entries.load()
+            if (entries.compareAndSet(current, current + entry)) return
+        }
+    }
+
+    fun any(predicate: (String) -> Boolean): Boolean = entries.load().any(predicate)
+}
 
 class SharedThreadStoreTest {
     @Test
@@ -766,7 +786,7 @@ class SharedThreadStoreTest {
                 channelId = "thread-a"
             )
         )
-        val logs = CopyOnWriteArrayList<String>()
+        val logs = ConcurrentTestLogBuffer()
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         val channelJob = scope.launch { store.accept(SharedThreadIntent.Start(basePayload())) }
@@ -4654,7 +4674,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        val payloadEvents = CopyOnWriteArrayList<KuiklyThreadScreenPayload>()
+        val payloadEvents = mutableListOf<KuiklyThreadScreenPayload>()
         val job = launch(Dispatchers.Unconfined) {
             store.payloadFlow().collect { payload -> payloadEvents += payload }
         }
