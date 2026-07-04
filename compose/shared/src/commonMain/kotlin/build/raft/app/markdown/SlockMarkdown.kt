@@ -60,6 +60,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import kotlin.time.TimeSource
 
@@ -601,114 +602,245 @@ internal fun slockMarkdownAnnotator(
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
-    var consumedTagEndExclusive = -1
-    var consumedTagLabel: String? = null
-    var consumedTagRemainder: String? = null
     return markdownAnnotator(
+        annotateSequence = { markdownContent, children, startIndex, _ ->
+            consumeSlockMarkdownSplitTagSequence(
+                markdownContent = markdownContent,
+                children = children,
+                startIndex = startIndex,
+                tokenPlan = tokenPlan,
+                highlightedMentions = highlightedMentions,
+                isTagValid = isTagValid,
+                inlineContentScope = inlineContentScope,
+                onOpenTag = onOpenTag,
+                resolveTagLabel = resolveTagLabel
+            )
+        },
         annotate = { markdownContent, child, _ ->
             if (child.parent?.type == MarkdownElementTypes.CODE_SPAN) {
                 return@markdownAnnotator false
             }
 
-            val nodeText = child.getTextInNode(markdownContent).toString()
-            val pendingTagRemainder = consumedTagRemainder
-            if (!pendingTagRemainder.isNullOrEmpty()) {
-                when {
-                    pendingTagRemainder.startsWith(nodeText) -> {
-                        consumedTagRemainder =
-                            pendingTagRemainder
-                                .drop(nodeText.length)
-                                .takeIf { it.isNotEmpty() }
-                        return@markdownAnnotator true
-                    }
-                    nodeText.startsWith(pendingTagRemainder) -> {
-                        append(nodeText.drop(pendingTagRemainder.length))
-                        consumedTagRemainder = null
-                        return@markdownAnnotator true
-                    }
-                }
-            }
             if (child.type != MarkdownTokenTypes.TEXT) {
                 return@markdownAnnotator false
             }
 
+            val nodeText = child.getTextInNode(markdownContent).toString()
             val nodeStart = child.startOffset
-            val nodeEndExclusive = nodeStart + nodeText.length
-            if (nodeStart < consumedTagEndExclusive &&
-                consumedTagLabel?.contains(nodeText.trim()) == true
-            ) {
-                return@markdownAnnotator true
-            }
-            val nodeTokens = tokenPlan.tagTokensStartingInRange(nodeStart, nodeEndExclusive)
-            val localNodeTokens =
-                if (nodeTokens.isEmpty()) {
-                    // Some markdown-renderer paths, including list-item paragraphs,
-                    // expose child offsets in a local node coordinate space.
-                    SlockMarkdownInlineTokenRegistry
-                        .plan(
-                            nodeText,
-                            highlightedMentions,
-                            isTagValid,
-                            inlineContentScope = inlineContentScope,
-                            baseOffset = nodeStart
-                        )
-                        .tagTokens()
-                } else {
-                    emptyList()
-                }
-            if (nodeTokens.isEmpty() && localNodeTokens.isEmpty()) return@markdownAnnotator false
-
-            var cursor = 0
-            val useDocumentOffsets = nodeTokens.isNotEmpty()
-            val tokens = if (useDocumentOffsets) nodeTokens else localNodeTokens
-            tokens.forEach { token ->
-                val relativeRange =
-                    if (useDocumentOffsets) {
-                        (token.range.first - nodeStart)..(token.range.last - nodeStart)
-                    } else {
-                        token.range
-                    }
-                val sourceStart = nodeText.indexOf(token.label, startIndex = cursor).takeIf { it >= 0 }
-                val relativeStart = sourceStart ?: relativeRange.first
-                var relativeEndExclusive =
-                    (sourceStart?.let { it + token.label.length } ?: (relativeRange.last + 1))
-                        .coerceAtMost(nodeText.length)
-                val tokenRemainder =
-                    token.label.drop((relativeEndExclusive - relativeStart).coerceAtLeast(0))
-                if (tokenRemainder.isNotEmpty() && nodeText.startsWith(tokenRemainder, relativeEndExclusive)) {
-                    relativeEndExclusive = (relativeEndExclusive + tokenRemainder.length).coerceAtMost(nodeText.length)
-                }
-                if (relativeStart < cursor || relativeStart !in nodeText.indices) return@forEach
-                if (relativeStart > cursor) {
-                    append(nodeText.substring(cursor, relativeStart))
-                }
-                appendSlockMarkdownTagToken(
-                    token = token,
-                    onOpenTag = onOpenTag,
-                    resolveTagLabel = resolveTagLabel
-                )
-                if (useDocumentOffsets) {
-                    consumedTagEndExclusive =
-                        maxOf(
-                            consumedTagEndExclusive,
-                            token.range.last + 1,
-                            token.range.first + token.label.length
-                        )
-                    consumedTagLabel = token.label
-                }
-                val consumedSource = nodeText.substring(relativeStart, relativeEndExclusive)
-                consumedTagRemainder =
-                    token.label
-                        .removePrefix(consumedSource)
-                        .takeIf { remainder -> remainder.isNotEmpty() && remainder != token.label }
-                cursor = relativeEndExclusive
-            }
-            if (cursor < nodeText.length) append(nodeText.substring(cursor))
-            true
+            appendSlockMarkdownTextSegment(
+                text = nodeText,
+                documentOffset = nodeStart,
+                tokenPlan = tokenPlan,
+                highlightedMentions = highlightedMentions,
+                isTagValid = isTagValid,
+                inlineContentScope = inlineContentScope,
+                onOpenTag = onOpenTag,
+                resolveTagLabel = resolveTagLabel
+            )
         },
         inlineContent = { emptyMap() },
         config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
+}
+
+private data class SlockMarkdownSplitTagStart(
+    val token: MarkdownInlineToken,
+    val relativeStart: Int,
+    val consumedPrefix: String
+)
+
+private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
+    markdownContent: String,
+    children: List<ASTNode>,
+    startIndex: Int,
+    tokenPlan: MarkdownInlineTokenPlan,
+    highlightedMentions: Set<String>,
+    isTagValid: (ThreadMarkdownTag) -> Boolean,
+    inlineContentScope: String?,
+    onOpenTag: (ThreadMarkdownTag) -> Unit,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+): Int {
+    val child = children.getOrNull(startIndex) ?: return 0
+    if (child.parent?.type == MarkdownElementTypes.CODE_SPAN || child.type != MarkdownTokenTypes.TEXT) {
+        return 0
+    }
+    val nodeText = child.getTextInNode(markdownContent).toString()
+    val nodeStart = child.startOffset
+    val splitStart = nodeText.slockMarkdownSplitTagStart(nodeStart, tokenPlan) ?: return 0
+    var consumedCount = 1
+    var remaining = splitStart.token.label.drop(splitStart.consumedPrefix.length)
+    var tailText: String? = null
+    var tailDocumentOffset = 0
+    var nextIndex = startIndex + 1
+    while (remaining.isNotEmpty() && nextIndex < children.size) {
+        val nextChild = children[nextIndex]
+        val nextText = nextChild.getTextInNode(markdownContent).toString()
+        when {
+            remaining.startsWith(nextText) -> {
+                remaining = remaining.drop(nextText.length)
+                consumedCount++
+                nextIndex++
+            }
+            nextText.startsWith(remaining) -> {
+                tailText = nextText.drop(remaining.length).takeIf { it.isNotEmpty() }
+                tailDocumentOffset = nextChild.startOffset + remaining.length
+                remaining = ""
+                consumedCount++
+            }
+            else -> return 0
+        }
+    }
+    if (remaining.isNotEmpty()) return 0
+
+    val prefixEnd = splitStart.relativeStart
+    if (prefixEnd > 0) {
+        appendSlockMarkdownTextSegmentOrText(
+            text = nodeText.substring(0, prefixEnd),
+            documentOffset = nodeStart,
+            tokenPlan = tokenPlan,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            inlineContentScope = inlineContentScope,
+            onOpenTag = onOpenTag,
+            resolveTagLabel = resolveTagLabel
+        )
+    }
+    appendSlockMarkdownTagToken(
+        token = splitStart.token,
+        onOpenTag = onOpenTag,
+        resolveTagLabel = resolveTagLabel
+    )
+    tailText?.let { tail ->
+        appendSlockMarkdownTextSegmentOrText(
+            text = tail,
+            documentOffset = tailDocumentOffset,
+            tokenPlan = tokenPlan,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            inlineContentScope = inlineContentScope,
+            onOpenTag = onOpenTag,
+            resolveTagLabel = resolveTagLabel
+        )
+    }
+    return consumedCount
+}
+
+private fun AnnotatedString.Builder.appendSlockMarkdownTextSegmentOrText(
+    text: String,
+    documentOffset: Int,
+    tokenPlan: MarkdownInlineTokenPlan,
+    highlightedMentions: Set<String>,
+    isTagValid: (ThreadMarkdownTag) -> Boolean,
+    inlineContentScope: String?,
+    onOpenTag: (ThreadMarkdownTag) -> Unit,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+) {
+    if (!appendSlockMarkdownTextSegment(
+            text = text,
+            documentOffset = documentOffset,
+            tokenPlan = tokenPlan,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            inlineContentScope = inlineContentScope,
+            onOpenTag = onOpenTag,
+            resolveTagLabel = resolveTagLabel
+        )
+    ) {
+        append(text)
+    }
+}
+
+private fun String.slockMarkdownSplitTagStart(
+    nodeStart: Int,
+    tokenPlan: MarkdownInlineTokenPlan
+): SlockMarkdownSplitTagStart? {
+    val nodeEndExclusive = nodeStart + length
+    return tokenPlan
+        .tagTokensStartingInRange(nodeStart, nodeEndExclusive)
+        .firstNotNullOfOrNull { token ->
+            val relativeStartFromRange = token.range.first - nodeStart
+            val relativeStart =
+                if (relativeStartFromRange in indices) {
+                    relativeStartFromRange
+                } else {
+                    indices.firstOrNull { index ->
+                        val char = this[index]
+                        (char == '#' || char == '@') && token.label.startsWith(substring(index))
+                    } ?: return@firstNotNullOfOrNull null
+                }
+            val available = substring(relativeStart)
+            if (available.isNotEmpty() &&
+                token.label.startsWith(available) &&
+                available.length < token.label.length
+            ) {
+                SlockMarkdownSplitTagStart(
+                    token = token,
+                    relativeStart = relativeStart,
+                    consumedPrefix = available
+                )
+            } else {
+                null
+            }
+        }
+}
+
+private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
+    text: String,
+    documentOffset: Int,
+    tokenPlan: MarkdownInlineTokenPlan,
+    highlightedMentions: Set<String>,
+    isTagValid: (ThreadMarkdownTag) -> Boolean,
+    inlineContentScope: String?,
+    onOpenTag: (ThreadMarkdownTag) -> Unit,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+): Boolean {
+    val documentTokens = tokenPlan.tagTokensStartingInRange(documentOffset, documentOffset + text.length)
+    val localTokens =
+        if (documentTokens.isEmpty()) {
+            // Some markdown-renderer paths, including list-item paragraphs,
+            // expose child offsets in a local node coordinate space.
+            SlockMarkdownInlineTokenRegistry
+                .plan(
+                    text,
+                    highlightedMentions,
+                    isTagValid,
+                    inlineContentScope = inlineContentScope,
+                    baseOffset = documentOffset
+                )
+                .tagTokens()
+        } else {
+            emptyList()
+        }
+    if (documentTokens.isEmpty() && localTokens.isEmpty()) return false
+
+    var cursor = 0
+    val useDocumentOffsets = documentTokens.isNotEmpty()
+    val tokens = if (useDocumentOffsets) documentTokens else localTokens
+    tokens.forEach { token ->
+        val relativeRange =
+            if (useDocumentOffsets) {
+                (token.range.first - documentOffset)..(token.range.last - documentOffset)
+            } else {
+                token.range
+            }
+        val sourceStart = text.indexOf(token.label, startIndex = cursor).takeIf { it >= 0 }
+        val relativeStart = sourceStart ?: relativeRange.first
+        val relativeEndExclusive =
+            (sourceStart?.let { it + token.label.length } ?: (relativeRange.last + 1))
+                .coerceAtMost(text.length)
+        if (relativeStart < cursor || relativeStart !in text.indices) return@forEach
+        if (relativeStart > cursor) {
+            append(text.substring(cursor, relativeStart))
+        }
+        appendSlockMarkdownTagToken(
+            token = token,
+            onOpenTag = onOpenTag,
+            resolveTagLabel = resolveTagLabel
+        )
+        cursor = relativeEndExclusive
+    }
+    if (cursor < text.length) append(text.substring(cursor))
+    return true
 }
 
 private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(

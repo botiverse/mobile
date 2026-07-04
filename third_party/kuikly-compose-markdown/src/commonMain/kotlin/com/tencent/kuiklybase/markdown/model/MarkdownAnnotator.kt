@@ -16,6 +16,19 @@ interface MarkdownAnnotator {
      */
     val annotate: (AnnotatedString.Builder.(content: String, child: ASTNode, annotatorSettings: AnnotatorSettings) -> Boolean)?
 
+    /**
+     * Allows an annotator to consume a sequence of sibling AST nodes starting at [startIndex].
+     * Return the number of consumed siblings, or 0 to continue with the normal single-child path.
+     */
+    val annotateSequence: (
+        AnnotatedString.Builder.(
+            content: String,
+            children: List<ASTNode>,
+            startIndex: Int,
+            annotatorSettings: AnnotatorSettings
+        ) -> Int
+    )?
+
     val inlineContent: (() -> Map<String, InlineTextContent>)?
 
     /** Defines static configuration for the [com.tencent.kuikly.ntcompose.ui.text.AnnotatedString] annotator */
@@ -25,16 +38,33 @@ interface MarkdownAnnotator {
 @Immutable
 class DefaultMarkdownAnnotator(
     override val annotate: (AnnotatedString.Builder.(content: String, child: ASTNode, annotatorSettings: AnnotatorSettings) -> Boolean)?,
+    override val annotateSequence: (
+        AnnotatedString.Builder.(
+            content: String,
+            children: List<ASTNode>,
+            startIndex: Int,
+            annotatorSettings: AnnotatorSettings
+        ) -> Int
+    )?,
     override val inlineContent: (() -> Map<String, InlineTextContent>)?,
     override val config: MarkdownAnnotatorConfig,
 ) : MarkdownAnnotator
 
 fun markdownAnnotator(
     annotate: (AnnotatedString.Builder.(content: String, child: ASTNode, annotatorSettings: AnnotatorSettings) -> Boolean)? = null,
+    annotateSequence: (
+        AnnotatedString.Builder.(
+            content: String,
+            children: List<ASTNode>,
+            startIndex: Int,
+            annotatorSettings: AnnotatorSettings
+        ) -> Int
+    )? = null,
     inlineContent: (() -> Map<String, InlineTextContent>)? = null,
     config: MarkdownAnnotatorConfig = markdownAnnotatorConfig(),
 ): MarkdownAnnotator = DefaultMarkdownAnnotator(
     annotate = annotate,
+    annotateSequence = annotateSequence,
     inlineContent = inlineContent,
     config = config
 )

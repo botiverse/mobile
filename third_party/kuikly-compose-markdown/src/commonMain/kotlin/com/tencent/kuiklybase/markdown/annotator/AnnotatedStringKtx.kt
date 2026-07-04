@@ -269,9 +269,19 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     annotatorSettings: AnnotatorSettings,
 ) {
     val annotate = annotatorSettings.annotator.annotate
+    val annotateSequence = annotatorSettings.annotator.annotateSequence
     val eolAsNewLine = annotatorSettings.annotator.config.eolAsNewLine
     var skipIfNext: Any? = null
-    children.forEach { child ->
+    var childIndex = 0
+    while (childIndex < children.size) {
+        val child = children[childIndex]
+        if (skipIfNext == null) {
+            val consumed = annotateSequence?.invoke(this, content, children, childIndex, annotatorSettings) ?: 0
+            if (consumed > 0) {
+                childIndex += consumed
+                continue
+            }
+        }
         if (skipIfNext == null || skipIfNext != child.type) {
             if (annotate == null || !annotate(content, child, annotatorSettings)) {
                 val parentType = child.parent?.type
@@ -372,5 +382,6 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
         } else {
             skipIfNext = null
         }
+        childIndex++
     }
 }

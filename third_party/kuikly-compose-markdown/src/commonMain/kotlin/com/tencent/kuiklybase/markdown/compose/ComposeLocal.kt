@@ -86,7 +86,7 @@ val LocalTextProvider = staticCompositionLocalOf<TextProvider> { NoOpTextProvide
  * Local [MarkdownAnnotator] provider
  */
 val LocalMarkdownAnnotator = compositionLocalOf<MarkdownAnnotator> {
-    return@compositionLocalOf DefaultMarkdownAnnotator(null, null, DefaultMarkdownAnnotatorConfig())
+    return@compositionLocalOf DefaultMarkdownAnnotator(null, null, null, DefaultMarkdownAnnotatorConfig())
 }
 
 /**

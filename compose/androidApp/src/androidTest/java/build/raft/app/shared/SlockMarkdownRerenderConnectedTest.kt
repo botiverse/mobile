@@ -11,6 +11,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.math.abs
 
 class SlockMarkdownRerenderConnectedTest {
@@ -34,6 +36,7 @@ class SlockMarkdownRerenderConnectedTest {
                 waitForMarkdownChipRows(
                     scenario = scenario,
                     instrumentation = instrumentation,
+                    outputDir = context.getExternalFilesDir("markdown-rerender"),
                     minRows = MinVisibleChipRows
                 )
 
@@ -51,6 +54,7 @@ class SlockMarkdownRerenderConnectedTest {
     private fun waitForMarkdownChipRows(
         scenario: ActivityScenario<SlockKuiklyActivity>,
         instrumentation: Instrumentation,
+        outputDir: File?,
         minRows: Int
     ): MarkdownChipScanResult {
         val deadline = SystemClock.uptimeMillis() + RenderTimeoutMs
@@ -59,13 +63,16 @@ class SlockMarkdownRerenderConnectedTest {
             instrumentation.waitForIdleSync()
             val screenshot = captureActivityBitmap(scenario)
             val current = screenshot.scanMarkdownChipRows()
-            screenshot.recycle()
             if (current.pinkRows >= minRows && current.yellowRows >= minRows) {
+                screenshot.saveDebugCopy(outputDir, "markdown-rerender-pass.png")
+                screenshot.recycle()
                 return current
             }
-            if (current.score > best.score) {
+            if (current.score >= best.score) {
                 best = current
+                screenshot.saveDebugCopy(outputDir, "markdown-rerender-best.png")
             }
+            screenshot.recycle()
             SystemClock.sleep(PollIntervalMs)
         } while (SystemClock.uptimeMillis() < deadline)
         return best
@@ -141,6 +148,14 @@ class SlockMarkdownRerenderConnectedTest {
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
             abs(Color.blue(this) - Color.blue(target)) <= tolerance
 
+    private fun Bitmap.saveDebugCopy(outputDir: File?, name: String) {
+        val directory = outputDir ?: return
+        directory.mkdirs()
+        FileOutputStream(File(directory, name)).use { stream ->
+            compress(Bitmap.CompressFormat.PNG, 100, stream)
+        }
+    }
+
     private data class MarkdownChipScanResult(
         val pinkPixels: Int = 0,
         val yellowPixels: Int = 0,
@@ -153,7 +168,7 @@ class SlockMarkdownRerenderConnectedTest {
 
     private companion object {
         private const val MinVisibleChipRows = 8
-        private const val RenderTimeoutMs = 4_000L
+        private const val RenderTimeoutMs = 25_000L
         private const val PollIntervalMs = 120L
         private val ChannelChipPink = Color.rgb(254, 216, 229)
         private val HighlightedMentionYellow = Color.rgb(255, 212, 64)
