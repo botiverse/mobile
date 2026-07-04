@@ -6,6 +6,7 @@ import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
+import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -45,6 +46,7 @@ internal fun SlockAttachmentPreviewCard(
         modifier =
             modifier
                 .size(SlockAttachmentPreviewCardWidth, SlockAttachmentPreviewCardHeight)
+                .slockSquareCorners()
                 .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.15f))
                 .background(if (loading) SlockColor.BrandYellow.copy(alpha = 0.3f) else SlockColor.SurfaceWhite)
                 .clickable(onClick = onClick)
@@ -99,6 +101,7 @@ internal fun SlockAttachmentPreviewCard(
                         .align(Alignment.BottomStart)
                         .height(6.dp)
                         .width(36.dp)
+                        .slockSquareCorners()
                         .background(SlockColor.BrandYellow),
                 contentAlignment = Alignment.Center
             ) {}

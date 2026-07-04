@@ -1743,6 +1743,7 @@ private fun ComposerImageAttachmentPreview(
             Modifier
                 .fillMaxSize()
                 .clickable(enabled = previewEnabled, onClick = onPreview)
+                .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
@@ -1766,6 +1767,7 @@ private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentIte
         modifier =
             Modifier
                 .fillMaxSize()
+                .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 8.dp),
@@ -1806,6 +1808,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
         modifier =
             Modifier
                 .fillMaxSize()
+                .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite.copy(alpha = 0.86f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
@@ -1829,6 +1832,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .height(4.dp)
+                        .slockSquareCorners()
                         .background(SlockColor.ShadowBlack.copy(alpha = 0.15f))
             ) {
                 Box(
@@ -1836,6 +1840,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         Modifier
                             .fillMaxWidth(progress.coerceAtLeast(4) / 100f)
                             .height(4.dp)
+                            .slockSquareCorners()
                             .background(SlockColor.AccentPink)
                 )
             }
@@ -1850,6 +1855,7 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .clickable(onClick = onRetry)
+                .slockSquareCorners()
                 .background(SlockColor.AccentOrange.copy(alpha = 0.92f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 4.dp),

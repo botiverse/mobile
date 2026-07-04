@@ -9,6 +9,7 @@ import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
+import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -305,9 +306,11 @@ internal fun SlockBrutalActionSheetRow(
 ) {
     Button(
         onClick = onClick,
+        shape = RectangleShape,
         modifier =
             modifier
                 .fillMaxWidth()
+                .slockSquareCorners()
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
@@ -442,6 +445,7 @@ internal fun SlockBrutalInputField(
                         .fillMaxWidth()
                         .height(fieldMinHeight)
                         .offset(x = shadowOffset, y = shadowOffset)
+                        .slockSquareCorners()
                         .background(SlockColor.ShadowBlack)
             )
         }
@@ -450,6 +454,7 @@ internal fun SlockBrutalInputField(
                 Modifier
                     .fillMaxWidth()
                     .height(fieldMinHeight)
+                    .slockSquareCorners()
                     .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
@@ -578,6 +583,7 @@ internal fun SlockBrutalSearchField(
                     .fillMaxWidth()
                     .height(42.dp)
                     .offset(x = shadowOffset, y = shadowOffset)
+                    .slockSquareCorners()
                     .background(SlockColor.ShadowBlack)
         )
         Row(
@@ -585,6 +591,7 @@ internal fun SlockBrutalSearchField(
                 Modifier
                     .fillMaxWidth()
                     .height(42.dp)
+                    .slockSquareCorners()
                     .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(horizontal = 12.dp, vertical = 9.dp),

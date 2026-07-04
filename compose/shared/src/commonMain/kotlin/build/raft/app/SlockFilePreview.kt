@@ -2533,6 +2533,7 @@ internal fun SlockFilePreviewGenericCard(
 ) {
     Column(
         modifier = modifier
+            .slockSquareCorners()
             .background(SlockColor.SurfaceWhite)
             .padding(SlockSpacing.Xl),
         horizontalAlignment = Alignment.CenterHorizontally,
