@@ -349,8 +349,8 @@ internal class BridgeSettingsPlatformCapabilities(
             updateCheck =
                 SharedSettingsUpdateCheckSnapshot(
                     supported = optBoolean("updateCheckSupported", false),
-                    statusLabel = optString("updateCheckStatusLabel").ifBlank { "Unavailable" },
-                    detail = optString("updateCheckDetail").ifBlank { "App update checks are unavailable on this host." },
+                    statusLabel = optString("updateCheckStatusLabel").ifBlank { "Disabled" },
+                    detail = optString("updateCheckDetail").ifBlank { "This build does not expose in-app update checks." },
                     actionLabel = optString("updateCheckActionLabel"),
                     updateAvailable = optBoolean("updateAvailable", false),
                     currentVersionLabel = optString("currentVersionLabel"),
