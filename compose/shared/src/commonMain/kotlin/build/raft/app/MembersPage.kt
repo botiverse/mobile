@@ -15,7 +15,7 @@ import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
-import build.raft.app.components.SlockRaftUiSelectField
+import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
@@ -4258,6 +4258,122 @@ private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
 }
 
 @Composable
+private fun MembersAgentServerRoleEditor(
+    role: MembersAgentServerRole,
+    expanded: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit
+) {
+    val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
+    Box(modifier = Modifier.width(160.dp).height(33.dp + shadowOffset)) {
+        if (enabled) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .width(160.dp)
+                .height(33.dp)
+                .background(role.backgroundColor)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onToggle)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = role.label,
+                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SlockLucideIcon(
+                SlockLucideIconName.ChevronDown,
+                modifier = Modifier.size(14.dp),
+                color = SlockColor.TextBlackArgb,
+                rotationDegrees = if (expanded) 180f else 0f
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
+    SlockUnifiedDialog(
+        title = "AGENT ROLES",
+        onDismiss = onDismiss,
+        maxWidth = 432.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            MembersAgentRoleHelpRow(
+                role = "Admin",
+                summary = "Operational server admin.",
+                details = "Server profile. Channels and channel members. No agents, machines, invites, join links, or role promotion yet."
+            )
+            MembersAgentRoleHelpRow(
+                role = "Member",
+                summary = "Regular server participant.",
+                details = "Allowed channels, DMs, and tasks. No server-level settings, channels, or membership management."
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentRoleHelpRow(
+    role: String,
+    summary: String,
+    details: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.20f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = role,
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = summary,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack.copy(alpha = 0.60f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = details,
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.75f)
+        )
+    }
+}
+
+@Composable
 private fun MembersHumanCreatedAgentsSection(
     member: MemberProfile,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
@@ -4759,6 +4875,8 @@ private fun MembersAgentProfileTab(
     var draftServerRole by remember(member.id.value, currentServerRole?.wireValue) {
         mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
     }
+    var serverRoleMenuExpanded by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
+    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
     var serverRoleError by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf<String?>(null) }
     var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
@@ -4960,6 +5078,7 @@ private fun MembersAgentProfileTab(
                 is DataResult.Content,
                 is DataResult.Empty -> {
                     editingServerRole = false
+                    serverRoleMenuExpanded = false
                 }
                 is DataResult.NoPermission ->
                     serverRoleError = "No permission: ${result.blocker.code}"
@@ -5275,7 +5394,9 @@ private fun MembersAgentProfileTab(
                     )
                     SlockLucideIcon(
                         SlockLucideIconName.Info,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clickable { roleHelpOpen = true },
                         color = SlockColor.TextMutedGrayArgb
                     )
                     if (canEditServerRole && !editingServerRole) {
@@ -5283,6 +5404,7 @@ private fun MembersAgentProfileTab(
                             onClick = {
                                 draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                                 serverRoleError = null
+                                serverRoleMenuExpanded = true
                                 editingServerRole = true
                             }
                         )
@@ -5293,19 +5415,24 @@ private fun MembersAgentProfileTab(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                     ) {
-                        Box(modifier = Modifier.width(160.dp)) {
-                            SlockRaftUiSelectField(
+                        MembersAgentServerRoleEditor(
+                            role = draftServerRole,
+                            expanded = serverRoleMenuExpanded,
+                            enabled = !savingServerRole,
+                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded }
+                        )
+                        if (serverRoleMenuExpanded && !savingServerRole) {
+                            SlockRaftUiSelectionPopover(
+                                title = "Role",
                                 options = membersAgentServerRoleOptions(draftServerRole),
                                 selectedId = draftServerRole.wireValue,
-                                selectedLabel = draftServerRole.label,
-                                title = "Role",
-                                enabled = !savingServerRole,
-                                triggerHeight = 32.dp,
-                                rowHeight = 34.dp,
+                                modifier = Modifier.width(160.dp),
+                                showHeader = false,
                                 onSelect = { option ->
-                                    draftServerRole =
-                                        option.id.toMembersAgentServerRoleOrNull()
-                                            ?: draftServerRole
+                                    val nextRole = option.id.toMembersAgentServerRoleOrNull()
+                                        ?: return@SlockRaftUiSelectionPopover
+                                    draftServerRole = nextRole
+                                    serverRoleMenuExpanded = false
                                     serverRoleError = null
                                 }
                             )
@@ -5325,6 +5452,7 @@ private fun MembersAgentProfileTab(
                                 onClick = {
                                     draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                                     serverRoleError = null
+                                    serverRoleMenuExpanded = false
                                     editingServerRole = false
                                 },
                                 enabled = !savingServerRole,
@@ -5348,6 +5476,9 @@ private fun MembersAgentProfileTab(
                         MembersAgentServerRoleChip(currentServerRole)
                     }
                 }
+            }
+            if (roleHelpOpen) {
+                MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
             }
             // Computer row
             Row(
