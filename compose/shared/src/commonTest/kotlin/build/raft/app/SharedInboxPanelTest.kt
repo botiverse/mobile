@@ -485,30 +485,28 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun homeOpenRequestUsesFirstUnreadAsAnchorWhenPresent() {
-        // Phase 3 #3 #1 (A): anchor chain walks firstUnreadMessageId -> latestActivityMessageId
-        // -> lastMessageId regardless of kind or unreadCount. When firstUnreadMessageId is
-        // present (regardless of unreadCount bucket), it wins. This replaces the old
-        // unread-aware chain that picked latestActivityMessageId for unreadCount == 0
-        // (反例 11 / #280 audit). Channel / DirectMessage / System share the same 3-level chain.
+    fun homeOpenRequestUsesFirstUnreadOnlyWhenRowIsUnread() {
         val item =
             InboxItem(
                 key = "channel:general",
                 kind = InboxItemKind.Channel,
                 channelId = ChannelId("channel-1"),
                 channelName = "general",
+                unreadCount = 1,
                 lastMessageId = MessageId("last-message"),
                 latestActivityMessageId = MessageId("activity-message"),
                 firstUnreadMessageId = MessageId("first-unread")
             )
-        val request = item.toHomeMessageOpenRequest()
+        val unreadRequest = item.toHomeMessageOpenRequest()
+        val readRequest = item.copy(unreadCount = 0).toHomeMessageOpenRequest()
 
         assertEquals(MessageId("activity-message"), item.toConversationSummary().lastMessageId)
-        assertEquals("first-unread", request.anchorMessageId)
+        assertEquals("first-unread", unreadRequest.anchorMessageId)
+        assertEquals("last-message", readRequest.anchorMessageId)
     }
 
     @Test
-    fun activityOpenRequestMatchesReactThreadAnchorContract() {
+    fun homeOpenRequestMatchesReactThreadAnchorContract() {
         val item =
             InboxItem(
                 key = "thread:thread-channel-1",
@@ -524,12 +522,12 @@ class SharedInboxPanelTest {
                 latestActivityMessageId = MessageId("latest-visible-reply"),
                 lastMessageId = MessageId("last-reply")
             )
-        val unreadRequest = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+        val unreadRequest = item.toHomeMessageOpenRequest()
         val readRequest =
             item.copy(
                 unreadCount = 0,
                 firstUnreadMessageId = MessageId("stale-first-unread")
-            ).toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+            ).toHomeMessageOpenRequest()
 
         assertEquals("older-unread-reply", unreadRequest.anchorMessageId)
         assertEquals("latest-visible-reply", readRequest.anchorMessageId)
@@ -537,7 +535,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityOpenRequestMatchesReactChannelAnchorContract() {
+    fun homeOpenRequestMatchesReactChannelAnchorContract() {
         val item =
             InboxItem(
                 key = "channel:general",
@@ -549,12 +547,12 @@ class SharedInboxPanelTest {
                 latestActivityMessageId = MessageId("activity-message"),
                 lastMessageId = MessageId("last-message")
             )
-        val unreadRequest = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+        val unreadRequest = item.toHomeMessageOpenRequest()
         val readRequest =
             item.copy(
                 unreadCount = 0,
                 firstUnreadMessageId = MessageId("stale-first-unread")
-            ).toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+            ).toHomeMessageOpenRequest()
 
         assertEquals("first-unread", unreadRequest.anchorMessageId)
         assertEquals("last-message", readRequest.anchorMessageId)
@@ -581,14 +579,14 @@ class SharedInboxPanelTest {
                 lastMessagePreview = "Second preview",
                 lastMessageAt = "2026-06-27T10:05:00Z",
                 lastMessageSenderName = "Bob",
-                unreadCount = 4,
+                unreadCount = 0,
                 firstUnreadMessageId = MessageId("first-unread-2")
             )
 
         assertNotEquals(base.toConversationSummary(), updated.toConversationSummary())
         assertEquals(base.toHomeMessageOpenRequest().conversationIdentity, updated.toHomeMessageOpenRequest().conversationIdentity)
         assertEquals("first-unread-1", base.toHomeMessageOpenRequest().anchorMessageId)
-        assertEquals("first-unread-2", updated.toHomeMessageOpenRequest().anchorMessageId)
+        assertEquals("last-message-2", updated.toHomeMessageOpenRequest().anchorMessageId)
     }
 
     @Test
@@ -706,10 +704,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun inboxPanelThreadItemResolveAnchorMessageId3LevelChain() {
-        // 反例 11 regression: Thread item anchor must walk firstUnreadMessageId ->
-        // latestActivityMessageId -> lastMessageId and never fall back to parentMessageId.
-        // The latter is the parent channel origin, not a thread reply id.
+    fun inboxPanelThreadItemResolveAnchorMessageIdMatchesReactContract() {
         val threadItem =
             InboxItem(
                 key = "thread:thread-channel-1",
@@ -720,6 +715,7 @@ class SharedInboxPanelTest {
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentMessageId = MessageId("parent-msg"),
+                unreadCount = 1,
                 firstUnreadMessageId = MessageId("unread-reply"),
                 latestActivityMessageId = MessageId("latest-reply"),
                 lastMessageId = MessageId("last-reply")
@@ -739,7 +735,14 @@ class SharedInboxPanelTest {
                 firstUnreadMessageId = null,
                 latestActivityMessageId = null
             )
-        assertEquals(MessageId("last-reply"), onlyLast.resolveInboxAnchorMessageId())
+        assertEquals(null, onlyLast.resolveInboxAnchorMessageId())
+
+        val readWithStaleFirstUnread =
+            threadItem.copy(
+                key = "thread-read-stale-first",
+                unreadCount = 0
+            )
+        assertEquals(MessageId("latest-reply"), readWithStaleFirstUnread.resolveInboxAnchorMessageId())
 
         val noneButParent =
             threadItem.copy(
