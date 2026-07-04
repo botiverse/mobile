@@ -74,6 +74,8 @@ import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SharedMessageTranslationState
+import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.PendingMentionActionExecuteResult
@@ -1865,12 +1867,17 @@ internal fun ThreadMessageVisualScreen() {
                 knownMentionNames = knownMarkdownMentionNames
             )
         }
+    val visualReplyMetadataByParentId =
+        remember(payload) {
+            payload.toThreadReplyMetadataMap()
+        }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
             messages.forEach { selectedMessage ->
                 ThreadMessageCard(
                     message = selectedMessage,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
                     highlightedMentions = highlightedMentions,
                     shareSelectionActive = true,
                     selectedForShare = true,
@@ -1879,6 +1886,7 @@ internal fun ThreadMessageVisualScreen() {
                     showReplyAction = payload.showReplyActions,
                     taskOpenEnabled = payload.showTaskOpenActions,
                     taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    showReactionAddAction = payload.showReactionActions,
                     timestampLabel = payload.formatTimestampLabel(selectedMessage.timestampLabel),
                     onShowActions = {},
                     onOpenMember = {},
@@ -1966,6 +1974,7 @@ internal fun ThreadMessageVisualScreen() {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
+                replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                 highlightedMentions = highlightedMentions,
                 alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                 showReplyAction = payload.showReplyActions,
@@ -1979,6 +1988,7 @@ internal fun ThreadMessageVisualScreen() {
                     },
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
+                showReactionAddAction = payload.showReactionActions,
                 isMarkdownTagValid = isMarkdownTagValid,
                 markdownTagContextSignature = markdownTagContextSignature,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
@@ -2376,6 +2386,7 @@ internal fun SharedThreadRouteContent(
     val notifyModule = remember(pager) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val initialRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -3933,6 +3944,7 @@ internal fun SharedThreadRouteContent(
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             currentServerSlug = currentServerSlug,
+            translationStore = translationStore,
             onExportShareImage = { rect ->
                 bridge.exportThreadShareImage(
                     x = rect?.x,
@@ -6299,11 +6311,12 @@ internal fun threadVisualFixture(
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
                 showModeTabs = false,
-                showReplyActions = false,
+                showReplyActions = true,
                 alignOwnMessagesRight = true,
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("product"),
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -6311,15 +6324,19 @@ internal fun threadVisualFixture(
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorKind = "agent",
+                            authorAgentStatus = "online",
                             isOwn = false,
                             avatarLabel = "CI",
                             timestampLabel = "06/22 10:30",
                             messageType = "Chat",
                             body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
                             threadChannelId = "thread-msg-agent-reply",
+                            replyCount = 5,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply-agent-visual-2",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false)
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = false)
                                 )
                         )
                     ),
@@ -6428,6 +6445,7 @@ internal fun threadVisualFixture(
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorKind = "agent",
+                            authorAgentStatus = "online",
                             avatarLabel = "CI",
                             timestampLabel = "06/22 23:30",
                             messageType = "Chat",
@@ -6957,6 +6975,7 @@ private fun ThreadPageContent(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
+    translationStore: SharedMessageTranslationStore? = null,
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onBack: () -> Unit,
@@ -7254,6 +7273,7 @@ private fun ThreadPageContent(
                                     selectedShareMessageIds + messageId
                                 }
                         },
+                        translationStore = translationStore,
                         onThreadContentReady = {}
                     )
                 KuiklyThreadTab.Tasks ->
@@ -7990,6 +8010,7 @@ private fun ThreadChatTab(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
+    translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
@@ -8057,6 +8078,7 @@ private fun ThreadChatTab(
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onToggleShareSelection = onToggleShareSelection,
+                    translationStore = translationStore,
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
@@ -8106,6 +8128,7 @@ private fun ThreadChatTab(
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onToggleShareSelection = onToggleShareSelection,
+                    translationStore = translationStore,
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
@@ -8149,6 +8172,7 @@ private fun ThreadChatTab(
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
                 onToggleShareSelection = onToggleShareSelection,
+                translationStore = translationStore,
                 onThreadContentReady = onThreadContentReady
             )
     }
@@ -8419,6 +8443,7 @@ private fun ThreadMessagesList(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
+    translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
@@ -8427,6 +8452,31 @@ private fun ThreadMessagesList(
         }
         ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
         return
+    }
+    val translationState =
+        translationStore?.state?.collectAsState()?.value ?: SharedMessageTranslationState()
+    if (translationStore != null) {
+        LaunchedEffect(threadInstanceKey, translationStore) {
+            translationStore.ensureSettingsLoaded(force = true)
+        }
+        val translationBatchSignature =
+            remember(timelineSlice.messages) {
+                timelineSlice.messages.joinToString("|") { "${it.id}:${it.body.hashCode()}" }
+            }
+        LaunchedEffect(
+            translationStore,
+            translationBatchSignature,
+            translationState.settings.available,
+            translationState.settings.autoTranslationEnabled,
+            translationState.settings.preferredTranslationDisplay,
+            translationState.settings.effectiveLanguage
+        ) {
+            translationStore.requestAutoTranslations(
+                timelineSlice.messages
+                    .filter { it.isTranslationEligible(translationState.settings) }
+                    .map { it.toTranslationCandidate() }
+            )
+        }
     }
     val messageIndexSignature =
         remember(timelineSlice.messages) {
@@ -9300,6 +9350,12 @@ private fun ThreadMessagesList(
                                 timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
                             )
                         } else {
+                            val translationUi =
+                                if (translationStore != null) {
+                                    resolveThreadMessageTranslationUi(displayMessage, translationState)
+                                } else {
+                                    null
+                                }
                             ThreadMessageCard(
                                 message = displayMessage,
                                 replyMetadata = replyMetadata,
@@ -9345,6 +9401,7 @@ private fun ThreadMessagesList(
                                     taskStatusMenuAnchor = anchor
                                 },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
@@ -9360,7 +9417,17 @@ private fun ThreadMessagesList(
                                 onOpenMarkdownTag = onOpenMarkdownTag,
                                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                                 onMentionAuthor = onMentionAuthor,
-                                richContentEnabled = isRichContentEnabled
+                                richContentEnabled = isRichContentEnabled,
+                                translation = translationUi,
+                                onToggleTranslationOriginal = {
+                                    translationStore?.setShowOriginal(
+                                        message.id,
+                                        !(translationUi?.showOriginal ?: false)
+                                    )
+                                },
+                                onRetryTranslation = {
+                                    translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
+                                }
                             )
                         }
                     }
@@ -9470,6 +9537,8 @@ private fun ThreadMessagesList(
                     showShareMessagesAction = !message.hasLocalSendState(),
                     showCancelAction = isSendingLocalSend,
                     showDeleteAction = isFailedLocalSend,
+                    showTranslateAction =
+                        translationStore != null && message.isTranslationEligible(translationState.settings),
                     onDismiss = { actionMessageId = null },
                     onCopyLink = {
                         actionMessageId = null
@@ -9522,6 +9591,10 @@ private fun ThreadMessagesList(
                     onDelete = {
                         actionMessageId = null
                         onThreadEvent("deleteLocalFailedSend", message.id, null, null)
+                    },
+                    onTranslate = {
+                        actionMessageId = null
+                        translationStore?.translateNow(message.toTranslationCandidate())
                     },
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -10440,6 +10513,7 @@ private fun ThreadMessageCard(
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
     showInlineSaveAction: Boolean = false,
+    showReactionAddAction: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
@@ -10470,6 +10544,9 @@ private fun ThreadMessageCard(
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
+    translation: ThreadMessageTranslationUi? = null,
+    onToggleTranslationOriginal: () -> Unit = {},
+    onRetryTranslation: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -10479,6 +10556,7 @@ private fun ThreadMessageCard(
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
+                ?: message.threadAuthorAgentStatusIndicatorState()
         } else {
             null
         }
@@ -10655,19 +10733,26 @@ private fun ThreadMessageCard(
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .background(Color.Transparent)
                             ) {
-                                if (richContentEnabled) {
+                                val renderedBody = translation?.displayBody ?: message.body
+                                if (translation?.pendingPlaceholder == true) {
+                                    ThreadMessageTranslationPendingPlaceholder()
+                                } else if (richContentEnabled) {
                                     val markdownRenderSignature =
-                                        remember(message.id, message.body) {
-                                            message.threadMarkdownRenderSignature()
+                                        remember(message.id, renderedBody) {
+                                            if (renderedBody == message.body) {
+                                                message.threadMarkdownRenderSignature()
+                                            } else {
+                                                message.copy(body = renderedBody).threadMarkdownRenderSignature()
+                                            }
                                         }
                                     diagnosticsLogger(
                                         "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                            "message=${message.id.take(8)} bodyLen=${message.body.length} " +
-                                            "bodyHash=${message.body.hashCode().toString(16)} context=$markdownTagContextSignature"
+                                            "message=${message.id.take(8)} bodyLen=${renderedBody.length} " +
+                                            "bodyHash=${renderedBody.hashCode().toString(16)} context=$markdownTagContextSignature"
                                     )
                                     key(markdownRenderSignature, markdownTagContextSignature) {
                                         SlockMarkdownBody(
-                                            body = message.body,
+                                            body = renderedBody,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -10681,9 +10766,20 @@ private fun ThreadMessageCard(
                                     }
                                 } else {
                                     Text(
-                                        text = message.body,
+                                        text = renderedBody,
                                         style = ThreadMessageBodyTextStyle,
                                         color = SlockColor.TextBlack
+                                    )
+                                }
+                            }
+                        }
+                        if (actionCard == null) {
+                            translation?.indicator?.let { indicator ->
+                                Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                    ThreadMessageTranslationIndicator(
+                                        indicator = indicator,
+                                        onToggleOriginal = onToggleTranslationOriginal,
+                                        onRetry = onRetryTranslation
                                     )
                                 }
                             }
@@ -10725,6 +10821,7 @@ private fun ThreadMessageCard(
                                     onOpenTask = onOpenTask,
                                     onShowActions = onShowActions,
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                    showReactionAddAction = showReactionAddAction,
                                     onToggleReaction = onToggleReaction
                                 )
                             }
@@ -11363,6 +11460,15 @@ internal data class ThreadAgentStatusLookup(
     }
 }
 
+internal fun KuiklyThreadMessageItem.threadAuthorAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
+    if (!showsAgentStatusIndicator()) return null
+    val status = AgentStatus.fromWireValue(authorAgentStatus) ?: return null
+    return slockAgentStatusIndicatorState(
+        status = status,
+        presence = status.presence
+    )
+}
+
 private fun SharedServerMembersState.recordThreadAgentStatuses(
     serverId: String?,
     statusByMemberId: MutableMap<String, AgentStatus>
@@ -11538,13 +11644,15 @@ private fun ThreadMessageFooterMeta(
     onOpenTask: (String) -> Unit,
     onShowActions: (Offset) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
+    showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
-    if (!hasTask && !hasReplies && !hasReactions) return
+    val showReactionAddChip = showReactionAddAction && (hasReplies || hasReactions)
+    if (!hasTask && !hasReplies && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -11608,6 +11716,9 @@ private fun ThreadMessageFooterMeta(
                     )
                 }
             }
+        }
+        if (showReactionAddChip) {
+            ThreadReactionAddChip(onClick = onShowActions)
         }
     }
 }
@@ -11826,6 +11937,7 @@ private fun threadMessageMenuActions(
     showShareMessagesAction: Boolean,
     showCancelAction: Boolean,
     showDeleteAction: Boolean,
+    showTranslateAction: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -11837,7 +11949,8 @@ private fun threadMessageMenuActions(
     onTaskStatusChange: (String) -> Unit,
     onConvertToTask: () -> Unit,
     onCancel: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTranslate: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
     buildList {
         if (showCopyLinkAction) {
@@ -11852,6 +11965,16 @@ private fun threadMessageMenuActions(
         }
         add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
         add(ThreadMessageMenuAction("Select Text", SlockLucideIconName.FileText, "copy", onClick = onSelectText))
+        if (showTranslateAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = "Translate",
+                    icon = SlockLucideIconName.Languages,
+                    group = "copy",
+                    onClick = onTranslate
+                )
+            )
+        }
         if (showShareMessagesAction) {
             add(
                 ThreadMessageMenuAction(
@@ -11949,6 +12072,7 @@ private fun ThreadMessageActionMenu(
     showShareMessagesAction: Boolean,
     showCancelAction: Boolean,
     showDeleteAction: Boolean,
+    showTranslateAction: Boolean = false,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -11963,6 +12087,7 @@ private fun ThreadMessageActionMenu(
     onConvertToTask: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
+    onTranslate: () -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val actions =
@@ -11977,6 +12102,7 @@ private fun ThreadMessageActionMenu(
             showShareMessagesAction,
             showCancelAction,
             showDeleteAction,
+            showTranslateAction,
             onReply,
             onCopyLink,
             onCopy,
@@ -11988,7 +12114,8 @@ private fun ThreadMessageActionMenu(
             onTaskStatusChange,
             onConvertToTask,
             onCancel,
-            onDelete
+            onDelete,
+            onTranslate
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -12001,6 +12128,7 @@ private fun ThreadMessageActionMenu(
                 showShareMessagesAction = showShareMessagesAction,
                 showCancelAction = showCancelAction,
                 showDeleteAction = showDeleteAction,
+                showTranslateAction = showTranslateAction,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,
@@ -12012,7 +12140,8 @@ private fun ThreadMessageActionMenu(
                 onTaskStatusChange = onTaskStatusChange,
                 onConvertToTask = onConvertToTask,
                 onCancel = onCancel,
-                onDelete = onDelete
+                onDelete = onDelete,
+                onTranslate = onTranslate
             )
         }
     var menuSize by remember { mutableStateOf(Size.Zero) }
@@ -12644,6 +12773,7 @@ private fun ThreadOriginCard(
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                            showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),

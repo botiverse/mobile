@@ -1153,6 +1153,14 @@ private fun SharedTaskCard(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                task.updatedAtLabel.takeIf { it.isNotBlank() }?.let { updatedAt ->
+                    Text(
+                        text = updatedAt,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        maxLines = 1
+                    )
+                }
             }
             Text(
                 text = task.tasksMeaningfulDisplayTitle(),
@@ -1176,7 +1184,7 @@ private fun SharedTaskCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = task.tasksAssigneeDisplayName() ?: "Unassigned",
+                    text = task.tasksAssigneeDisplayName()?.let { "@$it" } ?: "Unassigned",
                     style = SlockType.Caption,
                     color = SlockColor.TextBlack.copy(alpha = 0.7f),
                     maxLines = 1,
@@ -1185,12 +1193,15 @@ private fun SharedTaskCard(
                 )
                 // Use the same anchored Button(onClick2) model as thread meta chips so the
                 // status pill reliably wins the tap instead of the parent card gesture.
+                // Sentence-case label + trailing pencil mirror React's editable status
+                // badge (InlineBadgeEditor with uppercase={false}).
                 SlockAnchoredMetaChip(
-                    label = if (updating) "Updating" else task.status.label.uppercase(),
+                    label = if (updating) "Updating" else task.status.label,
                     iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
+                    trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
                     borderWidth = SlockStroke.Default,
                     anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )

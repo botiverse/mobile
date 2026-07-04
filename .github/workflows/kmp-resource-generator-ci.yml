@@ -217,7 +217,30 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --ohos-only
 
+      # stately/sqliter/sqldelight/ktor fork publishes dominate OHOS job time;
+      # cache their mavenLocal output keyed on the fork pins.
+      - name: Resolve OHOS shared fork pins
+        id: ohos-forks
+        shell: bash
+        run: |
+          {
+            echo "stately=$(git ls-tree HEAD third_party/stately --object-only)"
+            echo "sqliter=$(git ls-tree HEAD third_party/sqliter --object-only)"
+            echo "sqldelight=$(git ls-tree HEAD third_party/sqldelight --object-only)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache OHOS shared fork mavenLocal artifacts
+        id: ohos-forks-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository/co/touchlab
+            ~/.m2/repository/app/cash/sqldelight
+            ~/.m2/repository/io/ktor
+          key: ohos-forkdeps-mavenlocal-${{ runner.os }}-${{ steps.ohos-forks.outputs.stately }}-${{ steps.ohos-forks.outputs.sqliter }}-${{ steps.ohos-forks.outputs.sqldelight }}-${{ hashFiles('scripts/prepare_ktor_ohos_fork.sh', 'third_party/ktor-ohos/**') }}
+
       - name: Publish OHOS shared fork dependencies
+        if: steps.ohos-forks-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git submodule sync third_party/stately third_party/sqliter third_party/sqldelight

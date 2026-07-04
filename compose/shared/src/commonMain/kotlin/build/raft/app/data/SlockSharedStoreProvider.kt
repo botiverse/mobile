@@ -43,6 +43,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
+    val messageTranslationStore: SharedMessageTranslationStore,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
@@ -266,6 +267,16 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
+                messageTranslationStore =
+                    SharedMessageTranslationStore(
+                        authStore = authStore,
+                        api = NetworkSlockMessageTranslationApi(networkClient),
+                        scope = CoroutineScope(SupervisorJob()),
+                        fallbackLanguage = {
+                            KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
+                        },
+                        diagnosticsLogger = { message -> bridge.log("shared_message_translation $message") }
+                    ),
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
                 threadSendScope = CoroutineScope(SupervisorJob())

@@ -229,6 +229,14 @@ jobs:
         working-directory: slock-source
         run: pnpm install --frozen-lockfile --filter "@botiverse/raft-visual-testing..."
 
+      # Fixture data drift gate (task #304): mobile's generated
+      # VisualFixtureData.kt must match slock's canonical fixtureData.json.
+      - name: Check fixture data drift
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
+
       - name: Download react results
         uses: actions/download-artifact@v4
         with:

@@ -1,0 +1,182 @@
+package build.raft.app
+
+import build.raft.app.data.SharedMessageTranslationCandidate
+import build.raft.app.data.SharedMessageTranslationEntry
+import build.raft.app.data.SharedMessageTranslationSettings
+import build.raft.app.data.SharedMessageTranslationState
+import build.raft.app.data.SharedMessageTranslationStatus
+import build.raft.app.data.isSilentTranslationEntry
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.material3.Text
+import androidx.compose.runtime.Composable
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+
+/**
+ * Per-message translation render model, aligned with the React `MessageItem`
+ * translation behavior:
+ *  - translated + showing translation → substitute the body
+ *  - pending + showing translation → placeholder block instead of the body
+ *  - indicator row under the content: Translating… / Show original /
+ *    Show translation / Translation unavailable · Retry
+ *  - silent skip reasons render nothing at all
+ */
+internal enum class ThreadMessageTranslationIndicatorAction {
+    ToggleOriginal,
+    Retry,
+    None,
+}
+
+internal data class ThreadMessageTranslationIndicatorUi(
+    val actionLabel: String,
+    val message: String,
+    val pending: Boolean = false,
+    val failed: Boolean = false,
+    val action: ThreadMessageTranslationIndicatorAction = ThreadMessageTranslationIndicatorAction.None,
+)
+
+internal data class ThreadMessageTranslationUi(
+    val messageId: String,
+    val displayBody: String? = null,
+    val pendingPlaceholder: Boolean = false,
+    val showOriginal: Boolean = false,
+    val indicator: ThreadMessageTranslationIndicatorUi? = null,
+)
+
+internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTranslationCandidate =
+    SharedMessageTranslationCandidate(
+        messageId = id,
+        body = body,
+        isOwn = isOwn,
+        isSystem = isSystemMessage(),
+    )
+
+internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
+    settings.available &&
+        settings.effectiveLanguage != null &&
+        !isSystemMessage() &&
+        !isOwn &&
+        !hasLocalSendState() &&
+        body.isNotBlank()
+
+internal fun resolveThreadMessageTranslationUi(
+    message: KuiklyThreadMessageItem,
+    translationState: SharedMessageTranslationState,
+): ThreadMessageTranslationUi? {
+    if (!message.isTranslationEligible(translationState.settings)) return null
+    val entry = translationState.entries[message.id] ?: return null
+    if (entry.originalContent.isNotEmpty() && entry.originalContent != message.body) {
+        // Message content changed since this entry was produced; wait for the
+        // next batch to refresh it instead of rendering a stale translation.
+        return null
+    }
+    if (entry.isSilentTranslationEntry()) return null
+    val showOriginal =
+        entry.showOriginal ?: (translationState.settings.preferredTranslationDisplay == "original")
+    val translatedBody =
+        entry.translatedContent?.takeIf {
+            entry.status == SharedMessageTranslationStatus.Translated && !showOriginal
+        }
+    val pendingPlaceholder =
+        entry.status == SharedMessageTranslationStatus.Pending && !showOriginal
+    return ThreadMessageTranslationUi(
+        messageId = message.id,
+        displayBody = translatedBody,
+        pendingPlaceholder = pendingPlaceholder,
+        showOriginal = showOriginal,
+        indicator = entry.toTranslationIndicatorUi(showOriginal),
+    )
+}
+
+private fun SharedMessageTranslationEntry.toTranslationIndicatorUi(
+    showOriginal: Boolean
+): ThreadMessageTranslationIndicatorUi? =
+    when (status) {
+        SharedMessageTranslationStatus.Translated ->
+            ThreadMessageTranslationIndicatorUi(
+                actionLabel = if (showOriginal) "Show translation" else "Show original",
+                message = "",
+                action = ThreadMessageTranslationIndicatorAction.ToggleOriginal,
+            )
+        SharedMessageTranslationStatus.Pending ->
+            ThreadMessageTranslationIndicatorUi(
+                actionLabel = "",
+                message = "Translating…",
+                pending = true,
+            )
+        SharedMessageTranslationStatus.Failed, SharedMessageTranslationStatus.Skipped ->
+            ThreadMessageTranslationIndicatorUi(
+                actionLabel = "Retry",
+                message = "Translation unavailable",
+                failed = true,
+                action = ThreadMessageTranslationIndicatorAction.Retry,
+            )
+        SharedMessageTranslationStatus.NotFound -> null
+    }
+
+@Composable
+internal fun ThreadMessageTranslationIndicator(
+    indicator: ThreadMessageTranslationIndicatorUi,
+    onToggleOriginal: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val tint = if (indicator.failed) SlockColor.AccentOrange else SlockColor.TextMutedGray
+    val tintArgb = if (indicator.failed) SlockColor.AccentOrangeArgb else SlockColor.TextMutedGrayArgb
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockLucideIcon(
+            name = if (indicator.failed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Languages,
+            modifier = Modifier.size(12.dp),
+            color = tintArgb,
+            spinning = indicator.pending
+        )
+        if (indicator.message.isNotBlank()) {
+            Text(
+                text = indicator.message,
+                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                color = tint
+            )
+        }
+        if (indicator.actionLabel.isNotBlank()) {
+            val onAction =
+                when (indicator.action) {
+                    ThreadMessageTranslationIndicatorAction.Retry -> onRetry
+                    ThreadMessageTranslationIndicatorAction.ToggleOriginal -> onToggleOriginal
+                    ThreadMessageTranslationIndicatorAction.None -> null
+                }
+            Text(
+                text = indicator.actionLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                color = tint,
+                modifier =
+                    if (onAction != null) {
+                        Modifier.clickable { onAction() }
+                    } else {
+                        Modifier
+                    }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ThreadMessageTranslationPendingPlaceholder() {
+    Box(
+        modifier =
+            Modifier
+                .width(176.dp)
+                .height(16.dp)
+                .background(SlockColor.AccentStone)
+    )
+}
