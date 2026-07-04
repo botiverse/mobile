@@ -292,6 +292,32 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun languageRegionDisplayPreferenceRemainsEditableWhenServerTranslationDisabled() = runBlocking {
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    accountJson = """
+                        {
+                          "id":"user-1",
+                          "email":"user@slock.ai",
+                          "name":"slock-user",
+                          "preferredTranslationDisplay":"original"
+                        }
+                    """.trimIndent(),
+                    translationJson = """{"translationEnabled":false,"translationAvailable":false,"canManageTranslation":false}"""
+                )
+            )
+
+        val languageRegion = repository.getLanguageRegionSettings()
+
+        assertTrue(languageRegion is DataResult.Content)
+        assertEquals(false, languageRegion.data.serverTranslation.enabled)
+        assertEquals("original", languageRegion.data.translationDisplay.selectedKey)
+        assertTrue(languageRegion.data.translationDisplay.available)
+    }
+
+    @Test
     fun languageRegionPreferenceUpdatesUseAuthMePatchBodies() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
@@ -312,15 +338,21 @@ class SettingsRepositoryDataSourceTest {
             repository.updateLanguageRegionPreference(
                 SettingsLanguageRegionPreferenceUpdateRequest(clearPreferredLanguage = true)
             )
+        val translationDisplay =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = "original")
+            )
 
         assertTrue(timezone is DataResult.Content)
         assertTrue(timeFormat is DataResult.Content)
         assertTrue(clearLanguage is DataResult.Content)
+        assertTrue(translationDisplay is DataResult.Content)
         assertEquals(
             listOf(
                 """{"preferredTimezone":"Asia/Tokyo"}""",
                 """{"preferredTimeFormat":"24h"}""",
-                """{"preferredLanguage":null}"""
+                """{"preferredLanguage":null}""",
+                """{"preferredTranslationDisplay":"original"}"""
             ),
             network.accountUpdateBodies
         )

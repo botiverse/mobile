@@ -3099,7 +3099,7 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
                         SettingsMobileSelectionOptionSnapshot("translated", "Translated"),
                         SettingsMobileSelectionOptionSnapshot("original", "Original")
                     ),
-                available = translationEnabled
+                available = true
             )
     )
 }

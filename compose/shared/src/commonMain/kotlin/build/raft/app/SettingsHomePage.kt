@@ -4651,7 +4651,7 @@ private fun SettingsLanguagePreferenceCard(
     val canSave =
         !busy &&
             dirty &&
-            ((languageDirty && snapshot.browserLanguage.available) || (displayDirty && snapshot.translationDisplay.available))
+            ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS, "Save")
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
         SlockBrutalSectionLabel(label = "Message display")
@@ -4664,7 +4664,7 @@ private fun SettingsLanguagePreferenceCard(
                     SegmentedControlOption("original", "Original", SlockLucideIconName.FileText)
                 ),
             onValueSelected = onDisplayDraftChange,
-            enabled = snapshot.translationDisplay.available && !busy
+            enabled = !busy
         )
         if (!snapshot.translationDisplay.available) {
             SettingsFormDetailText(snapshot.translationDisplay.detail)

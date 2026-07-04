@@ -345,15 +345,23 @@ class SharedSettingsStoreTest {
                 SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
             )
         )
+        store.accept(
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = "original")
+            )
+        )
         store.accept(SharedSettingsIntent.SetLanguageRegionServerTranslation(false))
 
         val updated = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
         assertEquals("Asia/Tokyo", updated.timezone.selectedKey)
+        assertEquals("original", updated.translationDisplay.selectedKey)
+        assertTrue(updated.translationDisplay.available)
         assertEquals(false, updated.serverTranslation.enabled)
         assertEquals(
             listOf(
                 "languageRegion",
                 "updateLanguageRegionPreference:timezone=Asia/Tokyo",
+                "updateLanguageRegionPreference:display=original",
                 "updateServerTranslation:false",
                 "languageRegion"
             ),
@@ -2020,6 +2028,7 @@ class SharedSettingsStoreTest {
                 clearPreferredTimezone -> "timezone=null"
                 preferredTimeFormat != null -> "timeFormat=$preferredTimeFormat"
                 clearPreferredTimeFormat -> "timeFormat=null"
+                preferredTranslationDisplay != null -> "display=$preferredTranslationDisplay"
                 else -> "empty"
             }
 
@@ -2564,7 +2573,16 @@ class SharedSettingsStoreTest {
                                     selectedLabel = if (it == "12h") "12-hour" else "24-hour",
                                     statusLabel = if (it == "12h") "12-hour" else "24-hour"
                                 )
-                            } ?: current.timeFormat
+                            } ?: current.timeFormat,
+                        translationDisplay =
+                            request.preferredTranslationDisplay?.let {
+                                current.translationDisplay.copy(
+                                    selectedKey = it,
+                                    selectedLabel = if (it == "original") "Original" else "Translated",
+                                    statusLabel = if (it == "original") "Original" else "Translated",
+                                    available = true
+                                )
+                            } ?: current.translationDisplay
                     )
                 )
             return languageRegionResult
@@ -3170,6 +3188,7 @@ class SharedSettingsStoreTest {
             clearPreferredTimezone -> "timezone=null"
             preferredTimeFormat != null -> "timeFormat=$preferredTimeFormat"
             clearPreferredTimeFormat -> "timeFormat=null"
+            preferredTranslationDisplay != null -> "display=$preferredTranslationDisplay"
             else -> "empty"
         }
 
