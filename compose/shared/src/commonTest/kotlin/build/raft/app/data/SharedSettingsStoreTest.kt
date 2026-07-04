@@ -1850,7 +1850,7 @@ class SharedSettingsStoreTest {
         val preferences = FakeRecompositionProfilerPreferenceRepository()
         val engine =
             FakeProfilerEngine(
-                startFailure = NoSuchMethodError("missing CompositionObserverKt.observe")
+                startFailure = Error("missing CompositionObserverKt.observe")
             )
         val store =
             SharedSettingsStore(

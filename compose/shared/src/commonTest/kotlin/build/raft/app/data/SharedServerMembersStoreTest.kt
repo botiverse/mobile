@@ -813,8 +813,9 @@ class SharedServerMembersStoreTest {
             agentId: MemberId
         ): DataResult<AgentLifecycleActionResult> {
             deleteAgentCalls += 1
-            membersByServer.replaceAll { _, members ->
-                members.filterNot { it.id == agentId && it.kind == MemberKind.Agent }
+            for (key in membersByServer.keys.toList()) {
+                membersByServer[key] =
+                    membersByServer.getValue(key).filterNot { it.id == agentId && it.kind == MemberKind.Agent }
             }
             return DataResult.Content(
                 AgentLifecycleActionResult(
