@@ -5,6 +5,7 @@ import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotSame
 
 /**
  * Focused regression coverage for [ThreadRenderSignature] / [KuiklyThreadScreenPayload.toRenderSignature].
@@ -152,7 +153,7 @@ class ThreadRenderSignatureTest {
         val b = payload(messages = sharedContent.toList())
         val aRef: List<KuiklyThreadMessageItem> = sharedContent
         val bRef: List<KuiklyThreadMessageItem> = b.messages
-        assertNotEquals(System.identityHashCode(aRef), System.identityHashCode(bRef))
+        assertNotSame(aRef, bRef)
         assertEquals(a.toRenderSignature(), b.toRenderSignature())
     }
 

@@ -35,7 +35,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.jvm.Volatile
+import kotlin.concurrent.Volatile
 
 class SharedHomeStoreTest {
     @Test

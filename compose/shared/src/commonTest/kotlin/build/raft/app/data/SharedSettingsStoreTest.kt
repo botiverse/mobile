@@ -1850,7 +1850,7 @@ class SharedSettingsStoreTest {
         val preferences = FakeRecompositionProfilerPreferenceRepository()
         val engine =
             FakeProfilerEngine(
-                startFailure = NoSuchMethodError("missing CompositionObserverKt.observe")
+                startFailure = Error("missing CompositionObserverKt.observe")
             )
         val store =
             SharedSettingsStore(
@@ -3315,8 +3315,8 @@ class SharedSettingsStoreTest {
         contract.dispatch(SharedSettingsIntent.Start)
         yield()
 
-        assert(log.isNotEmpty()) { "Expected at least one transition, got ${log.size}" }
-        assert(log.any { it.intent == SharedSettingsIntent.Start }) { "Start intent not found in log" }
+        assertTrue(log.isNotEmpty(), "Expected at least one transition, got ${log.size}")
+        assertTrue(log.any { it.intent == SharedSettingsIntent.Start }, "Start intent not found in log")
         scope.cancel()
     }
 
@@ -3352,9 +3352,10 @@ class SharedSettingsStoreTest {
         yield()
 
         // After second dispatch, at least one intent should be skipped or the first is still in-flight
-        assert(skippedIntents.size >= skippedBefore) {
+        assertTrue(
+            skippedIntents.size >= skippedBefore,
             "Expected skipped intents to not decrease (was $skippedBefore, now ${skippedIntents.size})"
-        }
+        )
         scope.cancel()
     }
 
