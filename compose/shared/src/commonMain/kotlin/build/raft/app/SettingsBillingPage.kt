@@ -383,8 +383,9 @@ private fun settingsBillingMobileWebViewChromeScript(): String =
           mobileBillingStyle = document.createElement("style");
           mobileBillingStyle.id = mobileBillingStyleId;
           mobileBillingStyle.textContent = [
-            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-hidden-header=\"true\"] { display: none !important; }",
-            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] { padding-top: 0 !important; }"
+            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-hidden-header=\"true\"] { display: none !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; }",
+            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] { padding-top: 0 !important; margin-top: 0 !important; scroll-padding-top: 0 !important; }",
+            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] > :first-child { margin-top: 0 !important; }"
           ].join("\n");
           document.head.appendChild(mobileBillingStyle);
         }
@@ -398,9 +399,24 @@ private fun settingsBillingMobileWebViewChromeScript(): String =
               continue;
             }
             header.setAttribute("data-slock-mobile-billing-hidden-header", "true");
+            header.style.display = "none";
+            header.style.height = "0px";
+            header.style.minHeight = "0px";
+            header.style.margin = "0px";
+            header.style.padding = "0px";
+            header.style.borderWidth = "0px";
             var content = header.nextElementSibling;
             if (content && content.classList && content.classList.contains("overflow-y-auto")) {
               content.setAttribute("data-slock-mobile-billing-content", "true");
+              content.style.paddingTop = "0px";
+              content.style.marginTop = "0px";
+              content.style.scrollPaddingTop = "0px";
+              if (content.firstElementChild) {
+                content.firstElementChild.style.marginTop = "0px";
+              }
+              if (content.scrollTop > 0 && content.scrollTop < 96) {
+                content.scrollTop = 0;
+              }
             }
           }
         };
