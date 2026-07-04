@@ -505,6 +505,7 @@ internal data class KuiklyThreadScreenPayload(
     val originPreview: String? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
+    val focusedMessageRequestNonce: Int = 0,
     val originStatus: String = "none",
     val originErrorCode: String? = null,
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
@@ -8598,7 +8599,7 @@ private fun ThreadMessagesList(
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var consumedFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var consumedFocusedMessageAnchorKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var inlineSearchQuery by remember(threadInstanceKey) { mutableStateOf("") }
     var inlineSearchCurrentIndex by remember(threadInstanceKey) { mutableStateOf(0) }
     val inlineSearchMatches =
@@ -9024,11 +9025,19 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.focusedMessageId,
+        renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
         lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (targetMessageId == consumedFocusedMessageId) {
+        val targetRequestKey =
+            focusedMessageAnchorRequestKey(
+                messageId = targetMessageId,
+                requestNonce = renderPayload.focusedMessageRequestNonce,
+                targetSignature = focusedMessageTargetSignature,
+                lazyItemCount = lazyItemCount
+            )
+        if (targetRequestKey == consumedFocusedMessageAnchorKey) {
             return@LaunchedEffect
         }
         val targetIndex = renderPayload.focusedMessageListItemIndex()
@@ -9058,7 +9067,7 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
-        consumedFocusedMessageId = targetMessageId
+        consumedFocusedMessageAnchorKey = targetRequestKey
     }
     LaunchedEffect(threadInstanceKey, inlineSearchVisible, activeInlineSearchMatch) {
         val match = activeInlineSearchMatch ?: return@LaunchedEffect
@@ -9081,6 +9090,7 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.focusedMessageId,
+        renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
         latestMessageLayoutKey,
         latestItemIndex
@@ -9958,6 +9968,14 @@ private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: Stri
     if (messageIndex < 0) return -1
     return firstMessageListItemIndex() + messageIndex
 }
+
+internal fun focusedMessageAnchorRequestKey(
+    messageId: String,
+    requestNonce: Int,
+    targetSignature: String,
+    lazyItemCount: Int
+): String =
+    "${messageId.trim()}:$requestNonce:$targetSignature:$lazyItemCount"
 
 internal fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1

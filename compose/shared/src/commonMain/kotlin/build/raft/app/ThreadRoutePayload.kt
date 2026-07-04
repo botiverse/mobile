@@ -11,6 +11,19 @@ internal const val THREAD_PAGE = "compose_thread"
 
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
+private object ThreadFocusedMessageRequestNonce {
+    private var counter: Int = 0
+
+    fun next(): Int {
+        counter += 1
+        if (counter <= 0) counter = 1
+        return counter
+    }
+}
+
+internal fun nextThreadFocusedMessageRequestNonce(): Int =
+    ThreadFocusedMessageRequestNonce.next()
+
 @Serializable
 internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
@@ -38,7 +51,8 @@ internal data class WireThreadLaunchPayload(
     val timeFormat: String = SlockTimeFormat24Hour,
     val composerSeedText: String = "",
     val composerSyncNonce: Int = 0,
-    val composerFocusRequestNonce: Int = 0
+    val composerFocusRequestNonce: Int = 0,
+    val focusedMessageRequestNonce: Int = 0
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -111,6 +125,7 @@ internal data class WireThreadLaunchPayload(
                     null
                 },
             focusedMessageId = focusedMessageId.nonBlank(),
+            focusedMessageRequestNonce = focusedMessageRequestNonce,
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
             showModeTabs = !isReplyThread,
@@ -186,7 +201,8 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         timeFormat = timeFormat,
         composerSeedText = composer.seedText,
         composerSyncNonce = composer.syncNonce,
-        composerFocusRequestNonce = composer.focusRequestNonce
+        composerFocusRequestNonce = composer.focusRequestNonce,
+        focusedMessageRequestNonce = focusedMessageRequestNonce
     )
 
 internal fun WireThreadLaunchPayload.threadComposerDraftKey(
