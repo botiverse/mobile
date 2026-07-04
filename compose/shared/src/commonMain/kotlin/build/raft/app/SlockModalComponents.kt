@@ -388,16 +388,47 @@ internal fun SlockModalCompactMemberRow(
         }
         when {
             trailingIcon != null && onTrailingClick != null -> {
-                SlockModalSquareActionButton(
-                    icon = trailingIcon,
-                    onClick = onTrailingClick,
-                    color = if (selected) SlockColor.SurfaceWhite else Color(0xFFFFF2F2),
-                    enabled = enabled
-                )
+                if (trailingIcon == SlockLucideIconName.X) {
+                    SlockModalMemberRemoveButton(
+                        icon = trailingIcon,
+                        onClick = onTrailingClick,
+                        enabled = enabled
+                    )
+                } else {
+                    SlockModalSquareActionButton(
+                        icon = trailingIcon,
+                        onClick = onTrailingClick,
+                        color = if (selected) SlockColor.SurfaceWhite else Color(0xFFFFF2F2),
+                        enabled = enabled
+                    )
+                }
             }
             trailingIcon != null -> SlockLucideIcon(trailingIcon, modifier = Modifier.size(15.dp), color = "#FF000000")
             trailingText.isNotBlank() -> Text(text = trailingText, style = SlockType.Caption, color = SlockColor.TextMutedGray)
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
+    }
+}
+
+@Composable
+private fun SlockModalMemberRemoveButton(
+    icon: SlockLucideIconName,
+    onClick: () -> Unit,
+    enabled: Boolean
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(24.dp)
+                .background(if (enabled) Color(0xFFFFE5E5) else SlockColor.SurfaceCream)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            icon,
+            modifier = Modifier.size(12.dp),
+            color = if (enabled) "#FF000000" else "#FF777777"
+        )
     }
 }
