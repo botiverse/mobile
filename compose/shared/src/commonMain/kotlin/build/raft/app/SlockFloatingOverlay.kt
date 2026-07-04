@@ -17,7 +17,6 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.input.pointer.nativeDispatchCapture
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -26,6 +25,8 @@ import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.zIndex
 
 internal const val SlockFloatingOverlayHostZIndex = 1000f
+
+internal expect fun Modifier.slockNativeDispatchCapture(): Modifier
 
 internal data class SlockFloatingOverlayLayout(
     val origin: Offset = Offset.Zero,
@@ -147,7 +148,7 @@ internal fun Modifier.slockFloatingContentClickTarget(): Modifier =
         .clickable(onClick = {})
 
 private fun Modifier.slockFloatingContentPointerBarrier(): Modifier =
-    nativeDispatchCapture()
+    slockNativeDispatchCapture()
         .pointerInput(Unit) {
             awaitEachGesture {
                 while (true) {
@@ -171,7 +172,7 @@ private fun SlockFloatingOverlayDismissBarrier(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
-            .nativeDispatchCapture()
+            .slockNativeDispatchCapture()
             .pointerInput(dismissClickableActive, onDismiss) {
                 awaitEachGesture {
                     var moved = false
