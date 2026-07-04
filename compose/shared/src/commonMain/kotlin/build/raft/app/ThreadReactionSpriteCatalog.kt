@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.resources.DrawableResource
 import com.tencent.kuikly.compose.resources.InternalResourceApi
-import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.tmm.kmmresource.resource.AssetResource
 
 internal data class ThreadReactionAtlasResource(
@@ -97,14 +96,25 @@ internal data class ThreadReactionSpriteCatalog(
     }
 }
 
+// kmmresource packs MR assets at the APK root: assets/<originalPath>
+// (e.g. assets/slock_reactions/reaction_atlas_v1.png). The image adapter
+// resolves "assets://<path>" by stripping the scheme and opening <path>
+// relative to the assets root, so the URL must NOT carry the Kuikly
+// "common/" segment — ImageUri.commonAssets produced
+// "assets://common/slock_reactions/..." which exists in no APK and made
+// the atlas silently fall back to legacy glyphs on every Android build
+// (task #335 follow-up).
+private val ThreadReactionSpriteAtlasImageUrl: String =
+    "assets://${MR.assets.reactions.reaction_atlas_v1.originalPath}"
+
 @OptIn(InternalResourceApi::class)
 internal val ThreadReactionSpriteAtlasDrawableResource: DrawableResource =
-    DrawableResource(ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl(""))
+    DrawableResource(ThreadReactionSpriteAtlasImageUrl)
 
 internal val ThreadReactionSpriteAtlasResource = ThreadReactionAtlasResource(
     image = MR.assets.reactions.reaction_atlas_v1,
     manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
-    imageUrl = ImageUri.commonAssets(MR.assets.reactions.reaction_atlas_v1.originalPath).toUrl("")
+    imageUrl = ThreadReactionSpriteAtlasImageUrl
 )
 
 internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
