@@ -93,6 +93,16 @@ jobs:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
+      # Gradle caches + kuikly fork build + APKs leave <6GB free on the runner,
+      # and the emulator FATALs needing ~7.4GB for its userdata partition.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /opt/ghc \
+            /usr/local/share/boost /usr/local/lib/node_modules
+          df -h /
+
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
@@ -161,12 +171,11 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           working-directory: ./compose
+          # The runner executes each script line as a separate command;
+          # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
-            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
-              :androidApp:connectedConnectedTestAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest \
-              || echo "connected test exited non-zero; pulling whatever was captured"
+            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true :androidApp:connectedConnectedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest || echo "connected test exited non-zero; pulling whatever was captured"
             mkdir -p ../visual-testing-results/android
             adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
 
