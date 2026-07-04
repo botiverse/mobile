@@ -108,6 +108,42 @@ class SlockTimeTest {
     }
 
     @Test
+    fun formatsRelativeTimestampLabelsForListMetadata() {
+        val today = slockEpochDayForDate(2026, 5, 10)
+        val now = checkNotNull(parseSlockTimestampEpochMillisOrNull("2026-05-10T12:00:00+08:00"))
+
+        assertEquals(
+            "Just now",
+            formatSlockRelativeTimestampLabel("2026-05-10T11:59:40+08:00", 480, today, now)
+        )
+        assertEquals(
+            "15 minutes ago",
+            formatSlockRelativeTimestampLabel("2026-05-10T11:45:00+08:00", 480, today, now)
+        )
+        assertEquals(
+            "1 hour ago",
+            formatSlockRelativeTimestampLabel("2026-05-10T10:30:00+08:00", 480, today, now)
+        )
+        assertEquals(
+            "Yesterday",
+            formatSlockRelativeTimestampLabel("2026-05-09T22:00:00+08:00", 480, today, now)
+        )
+        assertEquals(
+            "Friday",
+            formatSlockRelativeTimestampLabel("2026-05-08T22:00:00+08:00", 480, today, now)
+        )
+        assertEquals(
+            "Apr 30",
+            formatSlockRelativeTimestampLabel("2026-04-30T22:00:00+08:00", 480, today, now)
+        )
+        assertEquals(
+            "Dec 31, 2025",
+            formatSlockRelativeTimestampLabel("2025-12-31T23:58:00+08:00", 480, today, now)
+        )
+        assertEquals("raw value", formatSlockRelativeTimestampLabel("raw value", 480, today, now))
+    }
+
+    @Test
     fun parsesEpochForSorting() {
         assertEquals(1778335200000L, parseSlockTimestampEpochMillisOrNull("1778335200000"))
         assertEquals(1778335200000L, parseSlockTimestampEpochMillisOrNull("1778335200"))

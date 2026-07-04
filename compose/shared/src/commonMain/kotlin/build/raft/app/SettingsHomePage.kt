@@ -317,6 +317,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.model.formatSlockRelativeTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
@@ -13172,7 +13173,7 @@ internal typealias AppShellTimeContext = SlockTimeContext
 internal typealias AppShellThreadTimeContext = SlockTimeContext
 
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
-    timeContext?.formatTimestampLabel(this) ?: this
+    formatSlockRelativeTimestampLabel(this, timeContext)
 
 internal fun formatSettingsTimestampLabel(
     value: String?,
