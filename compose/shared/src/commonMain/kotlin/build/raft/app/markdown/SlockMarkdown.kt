@@ -1431,7 +1431,6 @@ internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
     Task("task"),
-    Mention("mention"),
     SelfMention("selfMention")
 }
 
@@ -1440,7 +1439,16 @@ internal fun slockMarkdownInlineTagWidthSp(
     kind: ThreadMarkdownTagKind,
     highlighted: Boolean = false
 ) =
-    slockMarkdownInlineChipWidthSp(label, kind)
+    if (kind == ThreadMarkdownTagKind.UserMention && !highlighted) {
+        slockMarkdownPlainMentionWidthSp(label)
+    } else {
+        slockMarkdownInlineChipWidthSp(label, kind)
+    }
+
+private fun slockMarkdownPlainMentionWidthSp(label: String) =
+    (label.sumOf { it.slockPlainMentionWidthSp().toDouble() }.toFloat() + label.slockPlainMentionWidthSafetySp())
+        .coerceAtLeast(28f)
+        .sp
 
 internal fun slockMarkdownInlineChipWidthSp(
     label: String,
@@ -1493,6 +1501,35 @@ private fun Char.slockInlineChipWidthSp(): Float =
         else -> 7f
     }
 
+private fun String.slockPlainMentionWidthSafetySp(): Float =
+    when {
+        slockInlineTextWidthUnits() <= 10 -> 12f
+        length <= 14 -> 18f
+        else -> 24f
+    }
+
+private fun Char.slockPlainMentionWidthSp(): Float =
+    when {
+        code > 0x7F -> 14f
+        isDigit() -> 7.2f
+        isUpperCase() ->
+            when (this) {
+                'M', 'W' -> 10.4f
+                'I' -> 4.8f
+                else -> 8.6f
+            }
+        isLowerCase() ->
+            when (this) {
+                'f', 'i', 'j', 'l', 'r', 't' -> 4.8f
+                'm', 'w' -> 10.4f
+                else -> 7.4f
+            }
+        this == '@' -> 13.2f
+        this in "_-" -> 5.8f
+        this == '.' -> 3.8f
+        else -> 6.6f
+    }
+
 internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
     when (kind) {
         ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownThreadChipBackground
@@ -1510,7 +1547,7 @@ internal fun slockMarkdownTagChromeKind(
         ThreadMarkdownTagKind.Channel -> SlockMarkdownTagChromeKind.Channel
         ThreadMarkdownTagKind.Task -> SlockMarkdownTagChromeKind.Task
         ThreadMarkdownTagKind.UserMention ->
-            if (highlighted) SlockMarkdownTagChromeKind.SelfMention else SlockMarkdownTagChromeKind.Mention
+            if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
     }
 
 internal val SlockMarkdownTagFontSize = 14.sp
@@ -1536,8 +1573,8 @@ internal fun slockMarkdownTagSpanStyle(kind: ThreadMarkdownTagKind, highlighted:
                 slockMarkdownTagBaseSpanStyle()
                     .copy(
                         color = SlockColor.TextBlack,
-                        textDecoration = null,
-                        background = slockMarkdownTagColor(kind, highlighted = false)
+                        textDecoration = TextDecoration.Underline,
+                        background = Color.Unspecified
                     )
             }
         ThreadMarkdownTagKind.Task ->

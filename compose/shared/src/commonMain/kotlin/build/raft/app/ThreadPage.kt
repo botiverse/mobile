@@ -6269,7 +6269,7 @@ internal fun threadVisualFixture(
                             avatarLabel = "CI",
                             timestampLabel = "06/22 10:30",
                             messageType = "Chat",
-                            body = "Captured the Android visual artifact for #product:f8e569cb with @artin and queued React parity.",
+                            body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
                             threadChannelId = "thread-msg-agent-reply",
                             replyCount = 5,
                             unreadReplyCount = 2,
