@@ -2940,7 +2940,7 @@ class SharedHomeStoreTest {
         )
 
         store.accept(SharedHomeIntent.Start)
-        store.accept(SharedHomeIntent.ReorderChannels(listOf("channel-2", "channel-1")))
+        store.accept(SharedHomeIntent.ReorderSidebar(channelOrder = listOf("channel-2", "channel-1")))
 
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(listOf("channel-2", "channel-1", "joint-1"), after?.channelOrder)
@@ -2948,6 +2948,61 @@ class SharedHomeStoreTest {
         assertEquals(1, updateCalls.size)
         assertEquals(listOf("channel-2", "channel-1", "joint-1"), updateCalls.first().channelOrder)
         assertEquals("manual", updateCalls.first().channelSortMode)
+        scope.cancel()
+    }
+
+    @Test
+    fun reorderSidebarPersistsManualPinnedOrderAndKeepsUnknownIdsOut() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general"),
+                        channel("channel-2", "random")
+                    )
+            )
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-1", "channel-2"),
+            pinnedAgentIds = listOf("agent-1"),
+            pinnedOrder = listOf("channel-1", "agent-1", "channel-2"),
+            pinnedSortMode = "recent"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(
+            pinnedOrder = listOf("channel-2", "channel-1", "agent-1"),
+            pinnedSortMode = "manual"
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = RecordingHomeApi(),
+                    parseHome = { _, _ -> DataResult.Content(home.copy(sidebarOrder = initial)) }
+                ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ReorderSidebar(
+                pinnedOrder = listOf("channel-2", "channel-1", "agent-1", "not-pinned")
+            )
+        )
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-2", "channel-1", "agent-1"), after?.pinnedOrder)
+        assertEquals("manual", after?.pinnedSortMode)
+        assertEquals(1, updateCalls.size)
+        assertEquals(listOf("channel-2", "channel-1", "agent-1"), updateCalls.first().pinnedOrder)
+        assertEquals("manual", updateCalls.first().pinnedSortMode)
+        assertEquals(null, updateCalls.first().channelOrder)
         scope.cancel()
     }
 
