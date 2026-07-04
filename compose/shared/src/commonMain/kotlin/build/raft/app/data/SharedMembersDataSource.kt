@@ -54,16 +54,28 @@ internal class SharedMembersDataSource(
     suspend fun addChannelMember(
         channelId: String,
         memberId: String,
-        kind: MemberKind
+        kind: MemberKind,
+        serverId: String? = null
     ): DataResult<Unit> {
-        return when (val result = memberRepository.addChannelMember(
-            DataRequestPriority.Foreground,
+        val request =
             AddChannelMemberRequest(
                 channelId = build.raft.app.model.ChannelId(channelId),
                 memberId = build.raft.app.model.MemberId(memberId),
                 kind = kind
             )
-        )) {
+        val result =
+            serverId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { cleanServerId ->
+                    serverMembersStore?.addChannelMember(
+                        serverId = build.raft.app.model.ServerId(cleanServerId),
+                        request = request,
+                        priority = DataRequestPriority.Foreground
+                    )
+                }
+                ?: memberRepository.addChannelMember(DataRequestPriority.Foreground, request)
+        return when (result) {
             is DataResult.Content -> DataResult.Content(Unit)
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> result

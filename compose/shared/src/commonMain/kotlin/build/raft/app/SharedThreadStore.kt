@@ -505,16 +505,19 @@ internal class SharedThreadDataSource(
             actionCardsApiClient
                 ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
         val channelId = ChannelId(targetChannelId)
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val addedHumans = mutableListOf<String>()
         val addedAgents = mutableListOf<String>()
         var firstFailure: DataResult<ChannelMemberActionResult>? = null
 
         for (humanId in humanIds) {
+            val request = AddChannelMemberRequest(channelId = channelId, memberId = MemberId(humanId), kind = MemberKind.Human)
             val result =
-                repository.addChannelMember(
-                    DataRequestPriority.Foreground,
-                    AddChannelMemberRequest(channelId = channelId, memberId = MemberId(humanId), kind = MemberKind.Human)
-                )
+                if (serverMembersStore != null && serverId != null) {
+                    serverMembersStore.addChannelMember(serverId, request, DataRequestPriority.Foreground)
+                } else {
+                    repository.addChannelMember(DataRequestPriority.Foreground, request)
+                }
             if (result is DataResult.Content) {
                 addedHumans += humanId
             } else if (firstFailure == null) {
@@ -522,11 +525,13 @@ internal class SharedThreadDataSource(
             }
         }
         for (agentId in agentIds) {
+            val request = AddChannelMemberRequest(channelId = channelId, memberId = MemberId(agentId), kind = MemberKind.Agent)
             val result =
-                repository.addChannelMember(
-                    DataRequestPriority.Foreground,
-                    AddChannelMemberRequest(channelId = channelId, memberId = MemberId(agentId), kind = MemberKind.Agent)
-                )
+                if (serverMembersStore != null && serverId != null) {
+                    serverMembersStore.addChannelMember(serverId, request, DataRequestPriority.Foreground)
+                } else {
+                    repository.addChannelMember(DataRequestPriority.Foreground, request)
+                }
             if (result is DataResult.Content) {
                 addedAgents += agentId
             } else if (firstFailure == null) {
@@ -796,12 +801,19 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): MembersEnrichOutcome {
-        val repository = memberRepository ?: return MembersEnrichOutcome.Unchanged
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
             ?: return MembersEnrichOutcome.Unchanged
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val store = serverMembersStore
+        val repository = memberRepository
         val channelMembers =
             try {
-                repository.getChannelMembers(DataRequestPriority.Visible, ChannelId(threadId))
+                if (store != null && serverId != null) {
+                    store.loadChannelMembers(serverId, ChannelId(threadId), DataRequestPriority.Visible)
+                } else {
+                    repository?.getChannelMembers(DataRequestPriority.Visible, ChannelId(threadId))
+                        ?: return MembersEnrichOutcome.Unchanged
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (t: Throwable) {
@@ -820,7 +832,6 @@ internal class SharedThreadDataSource(
                 is DataResult.Content -> error("unreachable: filtered by !is DataResult.Content above")
             }
         }
-        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val serverMembers = serverId?.let { serverMembersStore?.currentServerMembers(it) }
         val members =
             channelMembers.data.members
@@ -861,16 +872,24 @@ internal class SharedThreadDataSource(
         val cleanMemberId =
             memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
                 ?: return DataResult.Error(ScreenError(code = "thread_member_id_missing", retryable = false))
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val request =
+            AddChannelMemberRequest(
+                channelId = channelId,
+                memberId = cleanMemberId,
+                kind = memberKind
+            )
         return when (
             val result =
-                repository.addChannelMember(
-                    DataRequestPriority.Foreground,
-                    AddChannelMemberRequest(
-                        channelId = channelId,
-                        memberId = cleanMemberId,
-                        kind = memberKind
+                if (serverMembersStore != null && serverId != null) {
+                    serverMembersStore.addChannelMember(
+                        serverId = serverId,
+                        request = request,
+                        priority = DataRequestPriority.Foreground
                     )
-                )
+                } else {
+                    repository.addChannelMember(DataRequestPriority.Foreground, request)
+                }
         ) {
             is DataResult.Content ->
                 DataResult.Content(
@@ -974,16 +993,24 @@ internal class SharedThreadDataSource(
         val cleanMemberId =
             memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
                 ?: return DataResult.Error(ScreenError(code = "thread_member_id_missing", retryable = false))
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val request =
+            RemoveChannelMemberRequest(
+                channelId = channelId,
+                memberId = cleanMemberId,
+                kind = memberKind
+            )
         return when (
             val result =
-                repository.removeChannelMember(
-                    DataRequestPriority.Foreground,
-                    RemoveChannelMemberRequest(
-                        channelId = channelId,
-                        memberId = cleanMemberId,
-                        kind = memberKind
+                if (serverMembersStore != null && serverId != null) {
+                    serverMembersStore.removeChannelMember(
+                        serverId = serverId,
+                        request = request,
+                        priority = DataRequestPriority.Foreground
                     )
-                )
+                } else {
+                    repository.removeChannelMember(DataRequestPriority.Foreground, request)
+                }
         ) {
             is DataResult.Content ->
                 DataResult.Content(

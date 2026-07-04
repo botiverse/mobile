@@ -335,6 +335,128 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun deleteAgentCallsRepositoryAndEvictsMemberThroughStore() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+
+        val result =
+            store.deleteAgent(
+                serverId = ServerId("server-1"),
+                agentId = MemberId("agent-1")
+            )
+
+        assertIs<DataResult.Content<AgentLifecycleActionResult>>(result)
+        assertEquals(1, repository.deleteAgentCalls)
+        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun addChannelMemberUpdatesChannelSliceAndSuggestionStateThroughStore() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"))
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
+        val result =
+            store.addChannelMember(
+                serverId = ServerId("server-1"),
+                request =
+                    AddChannelMemberRequest(
+                        channelId = ChannelId("channel-1"),
+                        memberId = MemberId("agent-1"),
+                        kind = MemberKind.Agent
+                    )
+            )
+
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        assertEquals(listOf("u1", "agent-1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(true, suggestions.single { it.memberId == "agent-1" }.inMentionChannel)
+        assertEquals(1, repository.addChannelMemberCalls)
+    }
+
+    @Test
+    fun removeChannelMemberUpdatesChannelSliceAndSuggestionStateThroughStore() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
+        val result =
+            store.removeChannelMember(
+                serverId = ServerId("server-1"),
+                request =
+                    RemoveChannelMemberRequest(
+                        channelId = ChannelId("channel-1"),
+                        memberId = MemberId("agent-1"),
+                        kind = MemberKind.Agent
+                    )
+            )
+
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        assertEquals(listOf("u1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(false, suggestions.single { it.memberId == "agent-1" }.inMentionChannel)
+        assertEquals(1, repository.removeChannelMemberCalls)
+    }
+
+    @Test
     fun memberStatusFlowEmitsOnlyForTargetMemberStatusChanges() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -659,6 +781,9 @@ class SharedServerMembersStoreTest {
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
         var getMembersCalls = 0
         var getChannelMembersCalls = 0
+        var addChannelMemberCalls = 0
+        var removeChannelMemberCalls = 0
+        var deleteAgentCalls = 0
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -683,7 +808,22 @@ class SharedServerMembersStoreTest {
         override suspend fun startAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun stopAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
-        override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
+        override suspend fun deleteAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> {
+            deleteAgentCalls += 1
+            membersByServer.replaceAll { _, members ->
+                members.filterNot { it.id == agentId && it.kind == MemberKind.Agent }
+            }
+            return DataResult.Content(
+                AgentLifecycleActionResult(
+                    agentId = agentId,
+                    success = true,
+                    action = "delete"
+                )
+            )
+        }
         override suspend fun assignAgentMachine(priority: DataRequestPriority, request: AgentMachineAssignmentRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun getChannelMembers(
             priority: DataRequestPriority,
@@ -697,8 +837,47 @@ class SharedServerMembersStoreTest {
                 )
             )
         }
-        override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
-        override suspend fun removeChannelMember(priority: DataRequestPriority, request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
+        override suspend fun addChannelMember(
+            priority: DataRequestPriority,
+            request: AddChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> {
+            addChannelMemberCalls += 1
+            val member =
+                membersByServer.values
+                    .asSequence()
+                    .flatMap { it.asSequence() }
+                    .firstOrNull { it.id == request.memberId && it.kind == request.kind }
+                    ?: member(request.memberId.value, request.memberId.value).copy(kind = request.kind)
+            val current = channelMembersByChannel[request.channelId.value].orEmpty()
+            channelMembersByChannel[request.channelId.value] = current.upsertFakeMember(member)
+            return DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = member,
+                    added = true
+                )
+            )
+        }
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> {
+            removeChannelMemberCalls += 1
+            channelMembersByChannel[request.channelId.value] =
+                channelMembersByChannel[request.channelId.value]
+                    .orEmpty()
+                    .filterNot { it.id == request.memberId && it.kind == request.kind }
+            return DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = null,
+                    added = false
+                )
+            )
+        }
     }
 }
 
@@ -707,3 +886,8 @@ private fun server(id: String): ServerSummary =
 
 private fun member(id: String, name: String): MemberProfile =
     MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
+
+private fun List<MemberProfile>.upsertFakeMember(member: MemberProfile): List<MemberProfile> {
+    val current = filterNot { it.id == member.id && it.kind == member.kind }
+    return current + member
+}

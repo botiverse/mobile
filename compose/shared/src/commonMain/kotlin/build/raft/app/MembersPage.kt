@@ -1327,6 +1327,7 @@ private class MemberDetailRouteProvider(
     }
 
     suspend fun runLifecycleAction(
+        serverId: ServerId,
         agentId: MemberId,
         action: MembersAgentLifecycleAction
     ): DataResult<AgentLifecycleActionResult> {
@@ -1347,7 +1348,11 @@ private class MemberDetailRouteProvider(
                         )
                     )
                 MembersAgentLifecycleAction.Delete ->
-                    memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
+                    serverMembersStore.deleteAgent(
+                        serverId = serverId,
+                        agentId = agentId,
+                        priority = DataRequestPriority.Foreground
+                    )
                 MembersAgentLifecycleAction.UnassignMachine ->
                     memberRepository.assignAgentMachine(
                         DataRequestPriority.Foreground,
@@ -1357,8 +1362,15 @@ private class MemberDetailRouteProvider(
         return result
     }
 
-    suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
-        memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+    suspend fun updateAgentProfile(
+        serverId: ServerId,
+        request: AgentProfileUpdateRequest
+    ): DataResult<MemberProfile> =
+        serverMembersStore.updateAgentProfile(
+            serverId = serverId,
+            request = request,
+            priority = DataRequestPriority.Foreground
+        )
 
     suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult> =
         when (member.kind) {
@@ -1368,11 +1380,13 @@ private class MemberDetailRouteProvider(
         }
 
     suspend fun uploadAgentAvatar(
+        serverId: ServerId,
         agentId: MemberId,
         file: PlatformFile
     ): DataResult<MemberProfile> =
         withContext(Dispatchers.Default) {
-            memberRepository.uploadAgentAvatar(
+            serverMembersStore.uploadAgentAvatar(
+                serverId = serverId,
                 priority = DataRequestPriority.Foreground,
                 request = AgentAvatarUploadRequest(agentId = agentId, file = file)
             )
@@ -1632,23 +1646,11 @@ private fun MemberDetailPageContent() {
                                 agentId: MemberId,
                                 action: MembersAgentLifecycleAction
                             ): DataResult<AgentLifecycleActionResult> {
-                                val result = provider.runLifecycleAction(agentId, action)
+                                val result = provider.runLifecycleAction(current.server.id, agentId, action)
                                 if (result is DataResult.Content && result.data.success) {
                                     provider.updateCachedLifecycleResult(action, agentId)
                                     localAgentDetailRefreshKey += 1
                                     if (action == MembersAgentLifecycleAction.Delete) {
-                                        provider.serverMembersStore.removeMember(
-                                            serverId = current.server.id,
-                                            memberId = agentId,
-                                            memberKind = MemberKind.Agent
-                                        )
-                                        routeScope.launch {
-                                            provider.serverMembersStore.refreshMembers(
-                                                serverId = current.server.id,
-                                                priority = DataRequestPriority.Background,
-                                                force = true
-                                            )
-                                        }
                                         provider.bridge.closePage()
                                     }
                                 }
@@ -1666,7 +1668,7 @@ private fun MemberDetailPageContent() {
                             override suspend fun updateAgentProfile(
                                 request: AgentProfileUpdateRequest
                             ): DataResult<MemberProfile> {
-                                val result = provider.updateAgentProfile(request)
+                                val result = provider.updateAgentProfile(current.server.id, request)
                                 if (result is DataResult.Content) {
                                     provider.updateCachedMemberProfile(result.data)
                                 }
@@ -1719,7 +1721,7 @@ private fun MemberDetailPageContent() {
                         provider.pickAgentAvatarFile()
                     },
                     onUploadAgentAvatar = { agentId, file ->
-                        val result = provider.uploadAgentAvatar(agentId, file)
+                        val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
                         if (result is DataResult.Content) {
                             provider.updateCachedMemberProfile(result.data)
                         }
