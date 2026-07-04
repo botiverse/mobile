@@ -5355,7 +5355,13 @@ private fun ThreadMarkdownTaskCandidateModal(
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.58f)
             )
-            SlockModalListShell(height = threadMarkdownTaskCandidateListHeight(state.candidates.size)) {
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(threadMarkdownTaskCandidateListHeight(state.candidates.size)),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 if (state.candidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -5384,76 +5390,87 @@ private fun ThreadMarkdownTaskCandidateRow(
     currentChannel: Boolean,
     onClick: () -> Unit
 ) {
-    val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.16f) else SlockColor.SurfaceWhite
-    Row(
+    val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.18f) else SlockColor.SurfaceWhite
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 78.dp)
-                .background(background)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 2.dp)
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 82.dp)
+                    .background(background)
+                    .border(
+                        SlockStroke.Default,
+                        if (currentChannel) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.26f)
+                    )
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "#${task.taskNumber ?: "?"}",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = task.threadMarkdownTaskCandidateChannelLabel(),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 Text(
-                    text = "#${task.taskNumber ?: "?"}",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                    maxLines = 1,
+                    text = task.title.ifBlank { "Untitled task" },
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = task.threadMarkdownTaskCandidateChannelLabel(),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                    text = task.threadMarkdownTaskCandidateDetail(currentChannel),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.48f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                text = task.title.ifBlank { "Untitled task" },
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = task.threadMarkdownTaskCandidateDetail(currentChannel),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.48f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalAlignment = Alignment.End
-        ) {
-            val statusMeta = task.status.sharedTaskStatusChipMeta()
-            SlockAnchoredMetaChip(
-                label = statusMeta.label,
-                iconName = statusMeta.icon,
-                iconSize = statusMeta.iconSize,
-                color = statusMeta.color,
-                modifier = Modifier.widthIn(max = 112.dp),
-                onClick = null
-            )
-            if (currentChannel) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                val statusMeta = task.status.sharedTaskStatusChipMeta()
                 SlockAnchoredMetaChip(
-                    label = "Current",
-                    iconName = SlockLucideIconName.Hash,
-                    iconSize = 10.dp,
-                    color = SlockColor.BrandYellow,
+                    label = statusMeta.label,
+                    iconName = statusMeta.icon,
+                    iconSize = statusMeta.iconSize,
+                    color = statusMeta.color,
                     modifier = Modifier.widthIn(max = 112.dp),
                     onClick = null
                 )
+                if (currentChannel) {
+                    SlockAnchoredMetaChip(
+                        label = "Current",
+                        iconName = SlockLucideIconName.Hash,
+                        iconSize = 10.dp,
+                        color = SlockColor.BrandYellow,
+                        modifier = Modifier.widthIn(max = 112.dp),
+                        onClick = null
+                    )
+                }
             }
         }
     }
