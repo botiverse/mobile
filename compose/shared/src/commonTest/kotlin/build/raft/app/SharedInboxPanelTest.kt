@@ -508,7 +508,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityOpenRequestUsesLatestActivityAsAnchorWhenPresent() {
+    fun activityOpenRequestMatchesReactThreadAnchorContract() {
         val item =
             InboxItem(
                 key = "thread:thread-channel-1",
@@ -519,14 +519,45 @@ class SharedInboxPanelTest {
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentMessageId = MessageId("parent-msg"),
+                unreadCount = 1,
                 firstUnreadMessageId = MessageId("older-unread-reply"),
                 latestActivityMessageId = MessageId("latest-visible-reply"),
                 lastMessageId = MessageId("last-reply")
             )
-        val request = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.LatestActivity)
+        val unreadRequest = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+        val readRequest =
+            item.copy(
+                unreadCount = 0,
+                firstUnreadMessageId = MessageId("stale-first-unread")
+            ).toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
 
-        assertEquals("latest-visible-reply", request.anchorMessageId)
-        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("parent-msg")), request.conversationIdentity.threadId)
+        assertEquals("older-unread-reply", unreadRequest.anchorMessageId)
+        assertEquals("latest-visible-reply", readRequest.anchorMessageId)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("parent-msg")), unreadRequest.conversationIdentity.threadId)
+    }
+
+    @Test
+    fun activityOpenRequestMatchesReactChannelAnchorContract() {
+        val item =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                unreadCount = 2,
+                firstUnreadMessageId = MessageId("first-unread"),
+                latestActivityMessageId = MessageId("activity-message"),
+                lastMessageId = MessageId("last-message")
+            )
+        val unreadRequest = item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+        val readRequest =
+            item.copy(
+                unreadCount = 0,
+                firstUnreadMessageId = MessageId("stale-first-unread")
+            ).toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow)
+
+        assertEquals("first-unread", unreadRequest.anchorMessageId)
+        assertEquals("last-message", readRequest.anchorMessageId)
     }
 
     @Test
