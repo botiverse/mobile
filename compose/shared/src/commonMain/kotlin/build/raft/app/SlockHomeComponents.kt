@@ -410,7 +410,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         onNotificationDismiss = { unsupportedStandaloneHomeAction("dismissNotification", it.id) },
         onRefresh = { standaloneHomeStore.dispatch(SharedHomeIntent.Refresh) },
         onChannelSortModeChange = { unsupportedStandaloneHomeAction("setChannelSortMode", it.wireValue) },
-        onSidebarOrderChange = { channelOrder, pinnedOrder -> standaloneHomeStore.dispatch(SharedHomeIntent.ReorderSidebar(channelOrder, pinnedOrder)) },
+        onSidebarOrderChange = { target, order -> standaloneHomeStore.dispatch(target.toReorderSidebarIntent(order)) },
         onDmSortModeChange = { unsupportedStandaloneHomeAction("setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { unsupportedStandaloneHomeAction("setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
@@ -641,7 +641,7 @@ internal fun SlockStructuralHomeShell(
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
-    onSidebarOrderChange: (channelOrder: List<String>?, pinnedOrder: List<String>?) -> Unit = { _, _ -> },
+    onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
@@ -1060,6 +1060,7 @@ internal fun SlockStructuralHomeShell(
                                         onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                             onChannelLongPress(channel.id, anchor)
                                             activePinMenuConversationId = channel.id
+                                            activeMenuSection = SlockHomeSortSection.JointChannels
                                             pinMenuAnchor = anchor
                                             pressedRowKey = null
                                         }) else null,
@@ -1161,7 +1162,7 @@ internal fun SlockStructuralHomeShell(
                     anchor = sortMenuAnchor,
                     items = SlockHomeSortMenuItems,
                     selectedId = when (section) {
-                        SlockHomeSortSection.Channels -> channelSortModeState.wireValue
+                        SlockHomeSortSection.Channels, SlockHomeSortSection.JointChannels -> channelSortModeState.wireValue
                         SlockHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
                         SlockHomeSortSection.Pinned -> pinnedSortModeState.wireValue
                     },
@@ -1169,7 +1170,7 @@ internal fun SlockStructuralHomeShell(
                     onSelect = { selected ->
                         val nextMode = SlockSidebarSortMode.fromWireValue(selected)
                         when (section) {
-                            SlockHomeSortSection.Channels -> {
+                            SlockHomeSortSection.Channels, SlockHomeSortSection.JointChannels -> {
                                 channelSortModeState = nextMode
                                 onChannelSortModeChange(nextMode)
                             }
@@ -1221,8 +1222,10 @@ internal fun SlockStructuralHomeShell(
                     val sortableFromMenu =
                         when (activeMenuSection) {
                             SlockHomeSortSection.Pinned -> pinnedItemsForSort.size > 1
-                            SlockHomeSortSection.Channels -> !activeIsDirectMessage && !activeIsJoint && baseDisplayedChannels.size > 1
-                            else -> false
+                            SlockHomeSortSection.Channels -> baseDisplayedChannels.size > 1
+                            SlockHomeSortSection.JointChannels -> displayedJointChannels.size > 1
+                            SlockHomeSortSection.DirectMessages -> displayedDirectMessages.size > 1
+                            null -> false
                         }
                     if (sortableFromMenu && sortOverlaySection == null) {
                         add(
@@ -1275,12 +1278,16 @@ internal fun SlockStructuralHomeShell(
                 val sortItems =
                     when (section) {
                         SlockHomeSortSection.Pinned -> displayedPinned
-                        else -> baseDisplayedChannels
+                        SlockHomeSortSection.JointChannels -> displayedJointChannels
+                        SlockHomeSortSection.DirectMessages -> displayedDirectMessages
+                        SlockHomeSortSection.Channels -> baseDisplayedChannels
                     }
                 SlockSidebarSortOverlay(
                     title = when (section) {
                         SlockHomeSortSection.Pinned -> labels.pinned
-                        else -> labels.channels
+                        SlockHomeSortSection.JointChannels -> labels.jointChannels
+                        SlockHomeSortSection.DirectMessages -> labels.directMessages
+                        SlockHomeSortSection.Channels -> labels.channels
                     },
                     items = sortItems,
                     saveLabel = labels.saveSort,
@@ -1290,8 +1297,10 @@ internal fun SlockStructuralHomeShell(
                         val initialIds = sortItems.map { it.id }
                         if (orderedIds != initialIds) {
                             when (section) {
-                                SlockHomeSortSection.Pinned -> onSidebarOrderChange(null, orderedIds)
-                                else -> onSidebarOrderChange(orderedIds, null)
+                                SlockHomeSortSection.Pinned -> onSidebarOrderChange(SlockSidebarSortTarget.Pinned, orderedIds)
+                                SlockHomeSortSection.JointChannels -> onSidebarOrderChange(SlockSidebarSortTarget.JointChannels, orderedIds)
+                                SlockHomeSortSection.DirectMessages -> onSidebarOrderChange(SlockSidebarSortTarget.DirectMessages, orderedIds)
+                                SlockHomeSortSection.Channels -> onSidebarOrderChange(SlockSidebarSortTarget.Channels, orderedIds)
                             }
                         }
                     }
@@ -1401,7 +1410,17 @@ internal fun homeLazyItemCount(
         (if (pinnedExpanded) pinnedCount else 0)
 }
 
-private enum class SlockHomeSortSection { Channels, DirectMessages, Pinned }
+private enum class SlockHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
+
+enum class SlockSidebarSortTarget { Channels, JointChannels, DirectMessages, Pinned }
+
+internal fun SlockSidebarSortTarget.toReorderSidebarIntent(order: List<String>): SharedHomeIntent.ReorderSidebar =
+    when (this) {
+        SlockSidebarSortTarget.Channels -> SharedHomeIntent.ReorderSidebar(channelOrder = order)
+        SlockSidebarSortTarget.JointChannels -> SharedHomeIntent.ReorderSidebar(jointChannelOrder = order)
+        SlockSidebarSortTarget.DirectMessages -> SharedHomeIntent.ReorderSidebar(dmOrder = order)
+        SlockSidebarSortTarget.Pinned -> SharedHomeIntent.ReorderSidebar(pinnedOrder = order)
+    }
 
 private val SlockHomeSortMenuItems =
     SlockSidebarSortMode.entries.map { mode ->

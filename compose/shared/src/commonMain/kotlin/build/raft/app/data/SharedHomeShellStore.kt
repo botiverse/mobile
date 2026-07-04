@@ -270,7 +270,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
         is SharedHomeIntent.SetChannelSortMode -> "SetChannelSortMode:$mode"
-        is SharedHomeIntent.ReorderSidebar -> "ReorderSidebar:${channelOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
+        is SharedHomeIntent.ReorderSidebar -> "ReorderSidebar:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
         is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
         is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"

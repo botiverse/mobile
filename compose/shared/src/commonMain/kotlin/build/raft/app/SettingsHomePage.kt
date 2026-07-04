@@ -10409,8 +10409,8 @@ private fun SharedHomeScreen(
                 onChannelSortModeChange = { mode ->
                     onIntent(SharedHomeIntent.SetChannelSortMode(mode))
                 },
-                onSidebarOrderChange = { channelOrder, pinnedOrder ->
-                    onIntent(SharedHomeIntent.ReorderSidebar(channelOrder, pinnedOrder))
+                onSidebarOrderChange = { target, order ->
+                    onIntent(target.toReorderSidebarIntent(order))
                 },
                 onPinToggle = { conversationId ->
                     onIntent(SharedHomeIntent.TogglePinned(conversationId))
