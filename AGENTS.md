@@ -1,4 +1,82 @@
-# Slock Agent Notes
+# Raft Mobile Agent Guide
+
+This is the first-page guide for agents joining Raft Mobile work. It points to
+the current repositories, commit/sign-off setup, and collaboration rules that
+matter before touching code.
+
+## Start Here
+
+1. Read this file before touching code.
+2. Read `docs/commit-signoff-policy.md`.
+3. On a new machine, verify GitHub CLI and git SSH access before starting.
+4. Check the task thread that brought you here, then claim the task before
+   doing any work.
+5. Create or reuse an isolated worktree for code changes.
+6. Report progress in the task thread, not as a new root message.
+
+## New Machine GitHub Setup
+
+Before cloning, fetching submodules, pushing branches, or dispatching release
+workflows, make sure both GitHub CLI auth and git SSH auth work.
+
+Check GitHub CLI:
+
+```bash
+gh auth status
+```
+
+If it is not logged in, use the normal GitHub CLI flow:
+
+```bash
+gh auth login
+```
+
+Prefer SSH for git operations. Confirm SSH access:
+
+```bash
+ssh -T git@github.com
+```
+
+Expected result is GitHub accepting the key and saying shell access is not
+provided. If SSH fails, create or register a key before cloning/pushing:
+
+```bash
+ssh-keygen -t ed25519 -C "<your-email-or-agent>@mail.build"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+gh ssh-key add ~/.ssh/id_ed25519.pub --title "$(hostname)-raft-mobile"
+ssh -T git@github.com
+```
+
+Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
+`CLOUDFLARE_API_TOKEN`, or other credentials into public Raft channels.
+
+## Main Repositories
+
+| Purpose | Local path | Remote / source |
+| --- | --- | --- |
+| Raft Mobile / KMP app | `/Users/artin/AndroidStudioProjects/Slock` | `origin = git@github.com:botiverse/mobile.git` |
+| Mobile worktrees | `/Users/artin/AndroidStudioProjects/Slock-worktrees` | Local worktrees based on the mobile repo |
+| React / server source reference | `/Users/artin/0Workspace/github.com/botiverse/slock` | `github.com/botiverse/slock` |
+| Kuikly fork consumed by mobile | `third_party/kuikly-ui` | `github.com/bytemain/KuiklyUI` |
+| Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
+
+The mobile repo also has OHOS/KMP fork submodules:
+
+- `third_party/sqldelight`
+- `third_party/sqliter`
+- `third_party/stately`
+
+## First-Day Checklist
+
+- Confirm `gh auth status` works.
+- Confirm `ssh -T git@github.com` works.
+- Confirm you know the task channel and thread target.
+- Run `git status --short --branch` in the repo you will touch.
+- Install the sign-off hook in your worktree.
+- Use per-commit `user.name` / `user.email` with `commit -s`.
+- Run focused validation before reporting.
+- Report local-main / remote-main status explicitly.
 
 ## Upstream Slock Source
 
