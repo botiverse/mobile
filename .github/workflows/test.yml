@@ -1,9 +1,9 @@
-name: KMP Resource Generator CI
+name: Test
 
 on:
   pull_request:
     paths:
-      - ".github/workflows/kmp-resource-generator-ci.yml"
+      - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
@@ -17,7 +17,7 @@ on:
     branches:
       - main
     paths:
-      - ".github/workflows/kmp-resource-generator-ci.yml"
+      - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
@@ -34,7 +34,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: kmp-resource-generator-${{ github.ref }}
+  group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -87,9 +87,12 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --android-only
 
-      - name: Compile shared Android target
+      # Compiling the unit-test source set closes the gap where a broken
+      # commonTest (or an API change that breaks tests) sailed through green
+      # CI — main sources alone do not compile test code (#198 follow-up).
+      - name: Compile shared Android target and unit tests
         working-directory: compose
-        run: ./gradlew :shared:compileDebugKotlinAndroid --no-daemon --console=plain
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileDebugUnitTestKotlinAndroid --no-daemon --console=plain
 
   ios:
     name: iOS shared compile
