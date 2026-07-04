@@ -7613,6 +7613,7 @@ private fun ThreadComposerRoute(
         surface = surface,
         state = composerState.toThreadComposerUiState(),
         threadMessages = timelineSlice.messages,
+        originMessage = renderedPayload.originMessage,
         prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
         memberSuggestionsFlow = memberSuggestionsFlow,
         channelSuggestionsFlow = channelSuggestionsFlow,
@@ -7629,6 +7630,7 @@ private fun ThreadComposerContentWithSuggestions(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
     threadMessages: List<KuiklyThreadMessageItem>,
+    originMessage: KuiklyThreadMessageItem?,
     prioritizeThreadParticipants: Boolean,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
@@ -7641,10 +7643,11 @@ private fun ThreadComposerContentWithSuggestions(
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
     val loadedMemberSuggestions =
-        remember(memberSuggestionSlice.suggestions, threadMessages, prioritizeThreadParticipants) {
+        remember(memberSuggestionSlice.suggestions, threadMessages, originMessage, prioritizeThreadParticipants) {
             memberSuggestionSlice.suggestions
                 .sortForThreadMentionParticipants(
                     threadMessages = threadMessages,
+                    originMessage = originMessage,
                     prioritizeThreadParticipants = prioritizeThreadParticipants
                 )
                 .map { suggestion ->
@@ -7718,10 +7721,12 @@ internal fun KuiklyThreadScreenPayload.shouldPrioritizeThreadMentionParticipants
 
 internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants(
     threadMessages: List<KuiklyThreadMessageItem>,
+    originMessage: KuiklyThreadMessageItem? = null,
     prioritizeThreadParticipants: Boolean
 ): List<SharedMembersMemberSuggestion> {
-    if (!prioritizeThreadParticipants || threadMessages.isEmpty()) return this
-    val ranks = threadMessages.recentThreadParticipantRanks()
+    if (!prioritizeThreadParticipants || (threadMessages.isEmpty() && originMessage == null)) return this
+    val participantMessages = listOfNotNull(originMessage) + threadMessages
+    val ranks = participantMessages.recentThreadParticipantRanks()
     if (ranks.isEmpty()) return this
     fun List<SharedMembersMemberSuggestion>.sortGroup(): List<SharedMembersMemberSuggestion> =
         withIndex()

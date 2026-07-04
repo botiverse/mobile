@@ -200,6 +200,35 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMentionSuggestionsIncludeOriginAuthorInParticipantRanks() {
+        val suggestions =
+            listOf(
+                mentionSuggestion("Cindy", "cindy", "u-cindy", inMentionChannel = true),
+                mentionSuggestion("Origin", "origin", "u-origin", inMentionChannel = true),
+                mentionSuggestion("Artin", "artin", "u-artin", inMentionChannel = true),
+                mentionSuggestion("Guest", "guest", "u-guest", inMentionChannel = true)
+            )
+        val originMessage = threadMessage("origin-message", "u-origin", "origin")
+        val messages =
+            listOf(
+                threadMessage("m1", "u-cindy", "cindy"),
+                threadMessage("m2", "u-artin", "artin")
+            )
+
+        val sorted =
+            suggestions.sortForThreadMentionParticipants(
+                threadMessages = messages,
+                originMessage = originMessage,
+                prioritizeThreadParticipants = true
+            )
+
+        assertEquals(
+            listOf("artin", "cindy", "origin", "guest"),
+            sorted.map { it.handle }
+        )
+    }
+
+    @Test
     fun threadMentionSuggestionsKeepOriginalOrderWhenNotThreadRanked() {
         val suggestions =
             listOf(
