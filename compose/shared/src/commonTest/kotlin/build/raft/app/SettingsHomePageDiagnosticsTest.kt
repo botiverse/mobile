@@ -177,6 +177,47 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun aboutPayloadOnlyKeepsVersionBuildStatusInApplicationRows() {
+        val payload =
+            SharedSettingsAboutSnapshot(
+                appName = "Raft",
+                versionLabel = "1.0.1",
+                buildLabel = "1000100",
+                buildTime = "2026-07-03T19:03:28Z",
+                gitCommit = "15fb7be3",
+                packageName = "build.raft.app"
+            ).toAboutPayload(webUrl = "https://app.raft.build")
+
+        val rows = payload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
+
+        assertEquals("", rows.getValue("appName").status)
+        assertEquals("1000100", rows.getValue("version").status)
+        assertEquals("", rows.getValue("buildTime").status)
+        assertEquals("", rows.getValue("gitCommit").status)
+        assertEquals("", rows.getValue("package").status)
+    }
+
+    @Test
+    fun aboutPayloadExplainsUnsupportedUpdateChecksAsDisabledBuildFeature() {
+        val payload =
+            SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
+                .toAboutPayload(
+                    webUrl = "https://app.raft.build",
+                    updateCheck = SharedSettingsUpdateCheckSnapshot()
+                )
+
+        val updateRow =
+            payload.sections
+                .first { it.title == "Actions" }
+                .rows
+                .first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
+
+        assertEquals("Disabled", updateRow.status)
+        assertEquals("This build does not expose in-app update checks.", updateRow.detail)
+        assertFalse(updateRow.enabled)
+    }
+
+    @Test
     fun emptyDiagnosticsStillAllowsDiagnosticExportsWithoutLogPreview() {
         val payload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(

@@ -8513,11 +8513,11 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                     title = "Application",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, "Application", appName.ifBlank { "Raft" }, status = "Shared shell"),
+                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, "Application", appName.ifBlank { "Raft" }),
                             KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
-                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, "Build time", buildTime.ifBlank { "Unknown" }, status = "Host"),
-                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, "Git commit", gitCommit.ifBlank { "Unknown" }, status = "Source"),
-                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Read only")
+                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, "Build time", buildTime.ifBlank { "Unknown" }),
+                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, "Git commit", gitCommit.ifBlank { "Unknown" }),
+                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" })
                         )
                 ),
                 KuiklySharedSettingsSection(
