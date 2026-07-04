@@ -59,6 +59,9 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
@@ -416,6 +419,17 @@ class ThreadPayloadTest {
         assertEquals("YESTERDAY", threadDateDividerLabel(julyOneLater, julyThree, timeContext))
         assertEquals("TODAY", threadDateDividerLabel(julyThree, julyFour, timeContext))
         assertEquals(null, threadDateDividerLabel(julyFour, julyFour.copy(id = "local", timestampLabel = "Now"), timeContext))
+    }
+
+    @Test
+    fun threadDateDividerTextStyleUsesCompactMetaScale() {
+        val style = threadDateDividerTextStyle()
+
+        assertEquals(11.sp, style.fontSize)
+        assertEquals(14.sp, style.lineHeight)
+        assertEquals(0.sp, style.letterSpacing)
+        assertEquals(FontWeight.Bold, style.fontWeight)
+        assertEquals(FontFamily.Monospace, style.fontFamily)
     }
 
     @Test

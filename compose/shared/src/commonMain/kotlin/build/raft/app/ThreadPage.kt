@@ -183,6 +183,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -10604,7 +10605,7 @@ private fun ThreadDateDivider(label: String) {
         Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
         Text(
             text = label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            style = threadDateDividerTextStyle(),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -10612,6 +10613,16 @@ private fun ThreadDateDivider(label: String) {
         Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
     }
 }
+
+internal fun threadDateDividerTextStyle(): TextStyle =
+    SlockType.Caption.copy(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 11.sp,
+        lineHeight = 14.sp,
+        color = SlockColor.TextMutedGray,
+        letterSpacing = 0.sp
+    )
 
 @Composable
 private fun ThreadMessageCard(
