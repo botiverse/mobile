@@ -868,14 +868,14 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
         tag = SlockMarkdownTagAnnotationTag,
         annotation = token.id
     )
-    val chromeKind = slockMarkdownTagChromeKind(tag.kind, highlighted = token.highlighted)
+    val active = activeTagKey != null && activeTagKey == threadMarkdownTagActivationKey(tag)
+    val chromeKind = slockMarkdownTagChromeKind(tag.kind, highlighted = token.highlighted, active = active)
     if (chromeKind != null) {
         pushStringAnnotation(
             tag = SlockMarkdownTagChromeAnnotationTag,
             annotation = chromeKind.wireValue
         )
     }
-    val active = activeTagKey != null && activeTagKey == threadMarkdownTagActivationKey(tag)
     withLink(
         LinkAnnotation.Clickable(
             tag = token.id,
@@ -1446,7 +1446,8 @@ internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
     Task("task"),
-    SelfMention("selfMention")
+    SelfMention("selfMention"),
+    Active("active")
 }
 
 internal fun slockMarkdownInlineTagWidthSp(
@@ -1555,14 +1556,19 @@ internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boo
 
 internal fun slockMarkdownTagChromeKind(
     kind: ThreadMarkdownTagKind,
-    highlighted: Boolean = false
+    highlighted: Boolean = false,
+    active: Boolean = false
 ): SlockMarkdownTagChromeKind? =
-    when (kind) {
-        ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownTagChromeKind.Thread
-        ThreadMarkdownTagKind.Channel -> SlockMarkdownTagChromeKind.Channel
-        ThreadMarkdownTagKind.Task -> SlockMarkdownTagChromeKind.Task
-        ThreadMarkdownTagKind.UserMention ->
-            if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
+    if (active) {
+        SlockMarkdownTagChromeKind.Active
+    } else {
+        when (kind) {
+            ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownTagChromeKind.Thread
+            ThreadMarkdownTagKind.Channel -> SlockMarkdownTagChromeKind.Channel
+            ThreadMarkdownTagKind.Task -> SlockMarkdownTagChromeKind.Task
+            ThreadMarkdownTagKind.UserMention ->
+                if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
+        }
     }
 
 internal val SlockMarkdownTagFontSize = 14.sp

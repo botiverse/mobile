@@ -448,6 +448,14 @@ class SlockMarkdownTest {
             )
 
         assertEquals(SlockColor.BrandYellow, annotated.slockMarkdownClickableTagBackground(channelToken.id))
+        assertTrue(
+            annotated.slockMarkdownTagChromeAnnotations()
+                .contains(SlockMarkdownTagChromeKind.Active.wireValue)
+        )
+        assertFalse(
+            annotated.slockMarkdownTagChromeAnnotations()
+                .contains(SlockMarkdownTagChromeKind.Channel.wireValue)
+        )
         assertEquals(
             SlockColor.BrandYellow.copy(alpha = 0.4f),
             annotated.slockMarkdownClickableTagBackground(taskToken.id)
