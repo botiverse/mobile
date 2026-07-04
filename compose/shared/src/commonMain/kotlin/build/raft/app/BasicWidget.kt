@@ -589,7 +589,7 @@ internal class Border(
 )
 
 internal fun Modifier.border(border: Border) =
-    this.border(width = border.lineWidth, color = border.color)
+    this.border(width = border.lineWidth, color = border.color).slockSquareCorners()
 
 @Composable
 internal fun TextField(
