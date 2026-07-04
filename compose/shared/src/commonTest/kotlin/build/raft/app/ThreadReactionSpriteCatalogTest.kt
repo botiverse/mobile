@@ -36,7 +36,16 @@ class ThreadReactionSpriteCatalogTest {
 
     @Test
     fun resourceAdapterUsesGeneratedKmmResourcePath() {
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://common/"))
+        // kmmresource packs MR assets at assets/<originalPath> in the APK, and the
+        // image adapter opens exactly the path after "assets://" — a "common/"
+        // segment here points at a file that exists in no APK (silent legacy
+        // fallback on every device).
+        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://"))
+        assertTrue(!ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://common/"))
+        assertEquals(
+            "assets://${ThreadReactionSpriteAtlasResource.image.originalPath}",
+            ThreadReactionSpriteAtlasResource.imageUrl
+        )
         assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
         assertTrue(ThreadReactionSpriteAtlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
     }
