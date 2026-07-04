@@ -33,6 +33,9 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
 private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
+private const val SLOCK_INLINE_CODE_SOFT_BREAK_INTERVAL = 16
+private const val SLOCK_INLINE_CODE_SOFT_BREAK_THRESHOLD = 24
+private const val SLOCK_INLINE_CODE_SOFT_BREAK = '\u200B'
 
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
@@ -321,7 +324,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
                         append(' ')
-                        buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
+                        append(child.slockInlineCodeText(content))
                         append(' ')
                         pop()
                         addStringAnnotation(
@@ -383,5 +386,34 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
             skipIfNext = null
         }
         childIndex++
+    }
+}
+
+private fun ASTNode.slockInlineCodeText(content: String): String =
+    children
+        .innerList()
+        .joinToString(separator = "") { child -> child.getUnescapedTextInNode(content) }
+        .withSlockInlineCodeSoftBreaks()
+
+private fun String.withSlockInlineCodeSoftBreaks(): String {
+    if (length <= SLOCK_INLINE_CODE_SOFT_BREAK_THRESHOLD) return this
+    return buildString(length + length / SLOCK_INLINE_CODE_SOFT_BREAK_INTERVAL) {
+        var runLength = 0
+        this@withSlockInlineCodeSoftBreaks.forEachIndexed { index, char ->
+            append(char)
+            if (char.isWhitespace()) {
+                runLength = 0
+            } else {
+                runLength += 1
+                if (
+                    runLength >= SLOCK_INLINE_CODE_SOFT_BREAK_INTERVAL &&
+                    index < this@withSlockInlineCodeSoftBreaks.lastIndex &&
+                    !this@withSlockInlineCodeSoftBreaks[index + 1].isWhitespace()
+                ) {
+                    append(SLOCK_INLINE_CODE_SOFT_BREAK)
+                    runLength = 0
+                }
+            }
+        }
     }
 }
