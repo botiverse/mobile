@@ -124,6 +124,42 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionRefreshRequestTracksOpenedMentionAndChannelPanels() {
+        assertEquals(
+            ThreadComposerSuggestionRefreshRequest.Member,
+            threadComposerSuggestionRefreshRequest(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
+            )
+        )
+        assertEquals(
+            ThreadComposerSuggestionRefreshRequest.Channel,
+            threadComposerSuggestionRefreshRequest(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0)
+            )
+        )
+    }
+
+    @Test
+    fun suggestionRefreshRequestSkipsClosedOrInactivePanels() {
+        assertEquals(
+            null,
+            threadComposerSuggestionRefreshRequest(
+                focused = false,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
+            )
+        )
+        assertEquals(
+            null,
+            threadComposerSuggestionRefreshRequest(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.None
+            )
+        )
+    }
+
+    @Test
     fun composerAttachmentRowsUseReactImageAndFileWidths() {
         val rows =
             composerAttachmentRows(

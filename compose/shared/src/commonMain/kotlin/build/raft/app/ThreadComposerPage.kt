@@ -231,6 +231,23 @@ internal enum class ThreadComposerSuggestionPanelState {
     ChannelError
 }
 
+internal enum class ThreadComposerSuggestionRefreshRequest {
+    Member,
+    Channel
+}
+
+internal fun threadComposerSuggestionRefreshRequest(
+    focused: Boolean,
+    trigger: KuiklyComposerSuggestionTrigger
+): ThreadComposerSuggestionRefreshRequest? {
+    if (!focused) return null
+    return when (trigger) {
+        is KuiklyComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionRefreshRequest.Member
+        is KuiklyComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionRefreshRequest.Channel
+        KuiklyComposerSuggestionTrigger.None -> null
+    }
+}
+
 internal fun threadComposerSuggestionPanelState(
     focused: Boolean,
     trigger: KuiklyComposerSuggestionTrigger,
@@ -910,6 +927,20 @@ internal fun ThreadComposerContent(
         )
     if (suggestionTrigger !is KuiklyComposerSuggestionTrigger.None) {
         println("[composer] suggestions focused=" + focused + " memberCount=" + filteredMemberSuggestions.size + " channelCount=" + filteredChannelSuggestions.size + " panel=" + suggestionPanelState)
+    }
+    val suggestionRefreshRequest =
+        remember(focused, suggestionTrigger) {
+            threadComposerSuggestionRefreshRequest(
+                focused = focused,
+                trigger = suggestionTrigger
+            )
+        }
+    LaunchedEffect(state.instanceId, suggestionRefreshRequest) {
+        when (suggestionRefreshRequest) {
+            ThreadComposerSuggestionRefreshRequest.Member -> onEvent("refreshMemberSuggestions", null, null, null)
+            ThreadComposerSuggestionRefreshRequest.Channel -> onEvent("refreshChannelSuggestions", null, null, null)
+            null -> Unit
+        }
     }
     val composerEnabled = state.enabled && surface.sendChannelId != null
     val canSend =

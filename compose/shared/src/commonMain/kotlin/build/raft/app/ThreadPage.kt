@@ -3853,15 +3853,24 @@ internal fun SharedThreadRouteContent(
         sendPendingLocalMessage(pending.localMessageId, readyContext, startedFromComposer = true)
     }
 
-    suspend fun refreshComposerMemberSuggestionsAfterMembershipMutation() {
+    suspend fun refreshComposerMemberSuggestions(reason: String) {
         val store = serverMembersStore ?: return
         val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return
+        bridge.log(
+            "thread_composer_member_suggestions_refresh reason=$reason " +
+                "serverId=${serverId.value} mentionChannelId=${memberSuggestionScopeChannelId.orEmpty()} " +
+                "memberScoped=$memberSuggestionScopedMentions"
+        )
         store.ensureMemberSuggestionsForServer(
             serverId = serverId,
             mentionChannelId = memberSuggestionScopeChannelId,
             memberScopedMentions = memberSuggestionScopedMentions,
             force = true
         )
+    }
+
+    suspend fun refreshComposerMemberSuggestionsAfterMembershipMutation() {
+        refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
     fun patchComposerMemberSuggestionsAfterMembershipMutation(
@@ -4831,6 +4840,15 @@ internal fun SharedThreadRouteContent(
                 val currentDraftState = composerDraftViewModel.state.value
                 val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
                 when (action) {
+                "refreshMemberSuggestions" -> {
+                    coroutineScope.launch {
+                        refreshComposerMemberSuggestions(reason = "panel_open")
+                    }
+                }
+                "refreshChannelSuggestions" -> {
+                    bridge.log("thread_composer_channel_suggestions_refresh reason=panel_open")
+                    membersStore?.dispatch(SharedMembersIntent.RefreshChannelSuggestions)
+                }
                 "change" -> {
                     bridge.log(
                         "thread_composer_change instanceId=$composerInstanceId " +
