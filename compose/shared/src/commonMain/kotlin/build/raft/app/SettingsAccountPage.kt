@@ -142,22 +142,26 @@ internal data class KuiklySettingsConnectedAccount(
     val canConnect: Boolean = status == "notConnected"
 )
 
-internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
-    instanceId = "settings-account-smoke",
-    profile = KuiklySettingsAccountProfile(
-        displayName = "Artin",
-        handle = "@artin",
-        email = "artin@raft.build",
-        avatarLabel = "AR",
-        verified = true,
-        roleLabel = "Workspace owner"
-    ),
-    connectedAccounts = listOf(
-        KuiklySettingsConnectedAccount("password", "Email password", "artin@raft.build", "connected", canConnect = false),
-        KuiklySettingsConnectedAccount("google", "Google", "artin@raft.build", "connected"),
-        KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected")
-    )
-)
+internal val settingsAccountSmokePayload: KuiklySettingsAccountPayload
+    get() {
+        val fixture = SettingsVisualFixtureBridge.values
+        return KuiklySettingsAccountPayload(
+            instanceId = "settings-account-smoke",
+            profile = KuiklySettingsAccountProfile(
+                displayName = fixture.ownerDisplayName,
+                handle = fixture.ownerHandle,
+                email = fixture.ownerEmail,
+                avatarLabel = fixture.ownerAvatarLabel,
+                verified = fixture.ownerEmailVerified,
+                roleLabel = fixture.ownerRoleLabel
+            ),
+            connectedAccounts = listOf(
+                KuiklySettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
+                KuiklySettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected"),
+                KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected")
+            )
+        )
+    }
 
 @Composable
 private fun SettingsAccountScreen() {
