@@ -139,7 +139,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.Default,
     val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
         LargeScreenNavigationPreference.entries,
-    val compactConsecutiveMessages: Boolean = false,
+    val compactConsecutiveMessages: Boolean = true,
     val imageAnnotationEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val threadRowAffordances: Set<ThreadRowAffordancePreference> =
@@ -197,7 +197,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readCompactConsecutiveMessagesSync(): Boolean =
-        store.getBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, false)
+        store.getBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true)
 
     override suspend fun readCompactConsecutiveMessages(): Boolean =
         readCompactConsecutiveMessagesSync()
