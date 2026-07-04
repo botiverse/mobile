@@ -10768,7 +10768,7 @@ private fun ThreadMessageCard(
 internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
     val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
     return if (normalizedAlpha > 0f) {
-        SlockColor.BrandYellow.copy(alpha = 0.4f * normalizedAlpha)
+        SlockColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
     } else {
         SlockColor.SurfaceWhite
     }

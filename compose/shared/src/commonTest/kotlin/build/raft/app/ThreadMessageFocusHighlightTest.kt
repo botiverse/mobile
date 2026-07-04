@@ -5,13 +5,13 @@ import kotlin.test.assertEquals
 
 class ThreadMessageFocusHighlightTest {
     @Test
-    fun focusedMessageHighlightUsesVisibleYellowSearchMarker() {
+    fun focusedMessageHighlightUsesBlueFocusMarker() {
         assertEquals(
-            SlockColor.BrandYellow.copy(alpha = 0.4f),
+            SlockColor.AccentCyan.copy(alpha = 0.12f),
             threadMessageFocusHighlightColor(1f)
         )
         assertEquals(
-            SlockColor.BrandYellow.copy(alpha = 0.2f),
+            SlockColor.AccentCyan.copy(alpha = 0.06f),
             threadMessageFocusHighlightColor(0.5f)
         )
         assertEquals(
@@ -23,7 +23,7 @@ class ThreadMessageFocusHighlightTest {
     @Test
     fun focusedMessageHighlightClampsAnimationAlpha() {
         assertEquals(
-            SlockColor.BrandYellow.copy(alpha = 0.4f),
+            SlockColor.AccentCyan.copy(alpha = 0.12f),
             threadMessageFocusHighlightColor(2f)
         )
         assertEquals(

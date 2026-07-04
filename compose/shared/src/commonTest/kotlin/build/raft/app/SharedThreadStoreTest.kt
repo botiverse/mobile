@@ -3255,6 +3255,83 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun focusedReplyContextKeepsRouteParentAsOrigin() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository = FakeConversationRepository(
+            threadResult = DataResult.Content(threadSnapshot(body = "fallback body")),
+            messageContextResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        threadId = "thread-parent-1",
+                        messages =
+                            listOf(
+                                message(
+                                    threadId = "parent-channel-1",
+                                    channelId = "parent-channel-1",
+                                    id = "parent-1",
+                                    seq = 1,
+                                    body = "route parent body"
+                                ),
+                                message(
+                                    threadId = "thread-parent-1",
+                                    channelId = "thread-parent-1",
+                                    id = "reply-focus-1",
+                                    seq = 2,
+                                    body = "focused reply body"
+                                )
+                            ),
+                        parentMessage =
+                            message(
+                                threadId = "thread-parent-1",
+                                channelId = "thread-parent-1",
+                                id = "reply-focus-1",
+                                seq = 2,
+                                body = "focused reply body"
+                            ),
+                        conversation =
+                            conversationSummary("thread-parent-1").copy(
+                                kind = ConversationKind.Thread,
+                                channelId = ChannelId("thread-parent-1"),
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = ChannelId("parent-channel-1"),
+                                        parentMessageId = MessageId("parent-1"),
+                                        streamChannelId = ChannelId("thread-parent-1")
+                                    )
+                            )
+                    ).copy(highlightedMessageId = MessageId("reply-focus-1"))
+                )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val route =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-parent-1",
+                streamChannelId = "thread-parent-1",
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-1",
+                originParentMessageId = "parent-1",
+                focusedMessageId = "reply-focus-1"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(route) as DataResult.Content).data
+
+        assertEquals(listOf(MessageId("reply-focus-1")), repository.getMessageContextRequests)
+        assertEquals(listOf<ChannelId?>(ChannelId("thread-parent-1")), repository.getMessageContextChannelIdRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals("parent-1", payload.parentMessageId)
+        assertEquals("parent-1", payload.originParentMessageId)
+        assertEquals("parent-1", payload.originMessage?.id)
+        assertEquals("reply-focus-1", payload.focusedMessageId)
+        assertEquals(listOf("reply-focus-1"), payload.messages.map { it.id })
+    }
+
+    @Test
     fun fetchThreadPayloadFallsBackWhenFocusedMessageContextDoesNotMatchRouteThread() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(

@@ -4848,17 +4848,20 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 !baseTargetsParentConversation &&
                     conversation.kind == ConversationKind.Thread
                 )
+    val routeParentMessageId =
+        base.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
     val parentId =
         if (routeIsReplyThread) {
-            parentMessage?.id?.value
-                ?: base.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
+            routeParentMessageId
                 ?: conversation.thread?.parentMessageId?.value
+                ?: parentMessage?.id?.value
         } else {
             null
         }
     val resolvedParentMessage =
         parentMessage
+            ?.takeIf { message -> parentId == null || message.id.value == parentId }
             ?.takeUnless { it.isSparseReplyOriginParentCandidate() }
             ?: parentId?.let { id ->
                 messages.firstOrNull { message ->
