@@ -84,10 +84,19 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun childHostAppShellComposedTabsUsesOnlyActiveTab() {
-        assertEquals(listOf("tasks"), childHostAppShellComposedTabs("tasks"))
-        assertEquals(listOf("members"), childHostAppShellComposedTabs("members"))
-        assertEquals(listOf("home"), childHostAppShellComposedTabs("unknown"))
+    fun childHostAppShellComposedTabsKeepsMountedChildTabsAlive() {
+        assertEquals(
+            listOf("home", "tasks"),
+            childHostAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("home", "tasks", "members"),
+            childHostAppShellComposedTabs("members", mountedTabs = setOf("home", "tasks", "members"))
+        )
+        assertEquals(
+            listOf("tasks", "home"),
+            childHostAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
+        )
     }
 
     @Test
