@@ -3,25 +3,14 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
+import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.SlockHttpExecutor
+import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
-import build.raft.app.network.createSlockKtorHttpClient
-import io.ktor.client.HttpClient
-import io.ktor.client.request.forms.submitFormWithBinaryData
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.request.url
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.Headers
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
-import io.ktor.http.contentType
-import kotlinx.coroutines.CancellationException
+import build.raft.app.network.createPlatformSlockHttpExecutor
 import kotlin.time.TimeSource
 
 internal class SharedKtorSlockNetworkClient(
@@ -30,14 +19,12 @@ internal class SharedKtorSlockNetworkClient(
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
-    private val foregroundHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Foreground),
-    private val visibleHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Visible),
-    private val backgroundHttpClient: HttpClient = createSlockKtorHttpClient(SlockRequestPriority.Background)
+    private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
 ) : SlockNetworkClient {
     private val authMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = SlockAuthApiClient(SharedKtorSlockAuthTransport(baseUrl, foregroundHttpClient, warningLogger))
+            authApi = SlockAuthApiClient(SharedKtorSlockAuthTransport(baseUrl, executor, warningLogger))
         )
 
     override suspend fun request(
@@ -58,18 +45,18 @@ internal class SharedKtorSlockNetworkClient(
             val normalizedPath = path.networkDiagnosticsPath()
             val response =
                 authMiddleware.request(serverIdOverride) { auth ->
-                    executeKtor(
-                        client = priority.toNetworkPriority().httpClient(),
+                    executor.execute(
+                        priority = priority.toNetworkPriority(),
                         url = absoluteUrl(path, query),
                         method = method.uppercase(),
                         headers =
                             buildMap {
-                                put(HttpHeaders.Authorization, auth.authorization)
+                                put(HEADER_AUTHORIZATION, auth.authorization)
                                 put(HEADER_SERVER_ID, auth.serverId)
                             },
                         bodyText = bodyText,
                         jsonBody = bodyText != null
-                    )
+                    ).toHomeNetworkResponse()
                 }
             warningLogger(
                 "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
@@ -98,14 +85,14 @@ internal class SharedKtorSlockNetworkClient(
         ) {
             val startedAt = TimeSource.Monotonic.markNow()
             val response =
-                executeKtor(
-                    client = priority.toNetworkPriority().httpClient(),
+                executor.execute(
+                    priority = priority.toNetworkPriority(),
                     url = url,
                     method = method.uppercase(),
                     headers = headers,
                     bodyText = bodyText,
                     jsonBody = false
-                )
+                ).toHomeNetworkResponse()
             warningLogger(
                 "endpoint category=raw_absolute_url path=${url.substringBefore('?')} method=${method.uppercase()} " +
                     "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
@@ -243,17 +230,17 @@ internal class SharedKtorSlockNetworkClient(
             val startedAt = TimeSource.Monotonic.markNow()
             val response =
                 authMiddleware.request { auth ->
-                    executeMultipartKtor(
-                        client = priority.toNetworkPriority().httpClient(),
-                        path = path,
+                    executor.executeMultipart(
+                        priority = priority.toNetworkPriority(),
+                        url = absoluteUrl(path),
                         fields = fields,
                         files = files,
                         headers =
                             mapOf(
-                                HttpHeaders.Authorization to auth.authorization,
+                                HEADER_AUTHORIZATION to auth.authorization,
                                 HEADER_SERVER_ID to auth.serverId
                             )
-                    )
+                    ).toHomeNetworkResponse()
                 }
             warningLogger(
                 "endpoint category=$category path=$diagnosticPath method=POST " +
@@ -266,79 +253,6 @@ internal class SharedKtorSlockNetworkClient(
             response
         }
 
-    private suspend fun executeKtor(
-        client: HttpClient,
-        url: String,
-        method: String,
-        headers: Map<String, String>,
-        bodyText: String?,
-        jsonBody: Boolean
-    ): HomeNetworkResponse =
-        try {
-            client.request {
-                url(url)
-                this.method = HttpMethod(method)
-                headers.forEach { (name, value) -> header(name, value) }
-                if (bodyText != null) {
-                    if (jsonBody) contentType(ContentType.Application.Json)
-                    setBody(bodyText)
-                }
-            }.toHomeNetworkResponse()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            warningLogger(
-                "slock_shared_ktor_failed path=${url.substringBefore('?')} " +
-                    "method=$method ${error.safeDiagnosticsSummary()}"
-            )
-            HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = error.message)
-        }
-
-    private suspend fun executeMultipartKtor(
-        client: HttpClient,
-        path: String,
-        fields: Map<String, String>,
-        files: List<MultipartFile>,
-        headers: Map<String, String>
-    ): HomeNetworkResponse =
-        try {
-            client.submitFormWithBinaryData(
-                url = absoluteUrl(path),
-                formData =
-                    io.ktor.client.request.forms.formData {
-                        fields.forEach { (key, value) -> append(key, value) }
-                        files.forEach { file ->
-                            append(
-                                key = file.name,
-                                value = file.bytes,
-                                headers =
-                                    Headers.build {
-                                        append(HttpHeaders.ContentType, file.mimeType)
-                                        append(
-                                            HttpHeaders.ContentDisposition,
-                                            "filename=\"${file.fileName.sanitizeMultipartFileName()}\""
-                                        )
-                                    }
-                            )
-                        }
-                    }
-            ) {
-                headers.forEach { (name, value) -> header(name, value) }
-            }.toHomeNetworkResponse()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            warningLogger("slock_shared_ktor_failed path=$path method=multipart ${error.safeDiagnosticsSummary()}")
-            HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = error.message)
-        }
-
-    private fun SlockRequestPriority.httpClient(): HttpClient =
-        when (this) {
-            SlockRequestPriority.Foreground -> foregroundHttpClient
-            SlockRequestPriority.Visible -> visibleHttpClient
-            SlockRequestPriority.Background -> backgroundHttpClient
-        }
-
     private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
         val url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
         if (query.isEmpty()) return url
@@ -346,9 +260,9 @@ internal class SharedKtorSlockNetworkClient(
     }
 }
 
-class SharedKtorSlockAuthTransport(
+class SharedKtorSlockAuthTransport internal constructor(
     private val baseUrl: String,
-    private val httpClient: HttpClient,
+    private val executor: SlockHttpExecutor,
     private val warningLogger: (String) -> Unit = {}
 ) : SlockAuthTransport {
     constructor(
@@ -356,7 +270,7 @@ class SharedKtorSlockAuthTransport(
         warningLogger: (String) -> Unit = {}
     ) : this(
         baseUrl = baseUrl,
-        httpClient = createSlockKtorHttpClient(SlockRequestPriority.Foreground),
+        executor = createPlatformSlockHttpExecutor(warningLogger),
         warningLogger = warningLogger
     )
 
@@ -398,44 +312,32 @@ class SharedKtorSlockAuthTransport(
         method: String,
         authorization: String? = null,
         bodyText: String? = null
-    ): AuthNetworkResponse =
-        try {
-            val response =
-                httpClient.request {
-                    url("${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
-                    this.method = HttpMethod(method)
-                    authorization?.let { header(HttpHeaders.Authorization, it) }
-                    if (bodyText != null) {
-                        contentType(ContentType.Application.Json)
-                        setBody(bodyText)
-                    }
-                }
-            response.toAuthNetworkResponse()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            warningLogger("slock_auth_ktor_failed path=$path method=$method ${error.safeDiagnosticsSummary()}")
-            AuthNetworkResponse(code = 0, bodyText = null, errorBodyText = error.message)
+    ): AuthNetworkResponse {
+        val response =
+            executor.execute(
+                priority = SlockRequestPriority.Foreground,
+                url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}",
+                method = method,
+                headers = authorization?.let { mapOf(HEADER_AUTHORIZATION to it) } ?: emptyMap(),
+                bodyText = bodyText,
+                jsonBody = bodyText != null
+            )
+        if (response.code == 0) {
+            warningLogger("slock_auth_transport_failed path=$path method=$method")
         }
-}
-
-private suspend fun HttpResponse.toHomeNetworkResponse(): HomeNetworkResponse {
-    val body = bodyAsText()
-    return if (status.value in 200..299) {
-        HomeNetworkResponse(code = status.value, bodyText = body, errorBodyText = null)
-    } else {
-        HomeNetworkResponse(code = status.value, bodyText = null, errorBodyText = body)
+        return response.toAuthNetworkResponse()
     }
 }
 
-private suspend fun HttpResponse.toAuthNetworkResponse(): AuthNetworkResponse {
-    val body = bodyAsText()
-    return if (status.value in 200..299) {
-        AuthNetworkResponse(code = status.value, bodyText = body.takeUnless { it.isBlank() }, errorBodyText = null)
-    } else {
-        AuthNetworkResponse(code = status.value, bodyText = null, errorBodyText = body.takeUnless { it.isBlank() })
-    }
-}
+private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(code = code, bodyText = bodyText, errorBodyText = errorBodyText)
+
+private fun SlockHttpExecutorResponse.toAuthNetworkResponse(): AuthNetworkResponse =
+    AuthNetworkResponse(
+        code = code,
+        bodyText = bodyText?.takeUnless { it.isBlank() },
+        errorBodyText = errorBodyText?.takeUnless { it.isBlank() }
+    )
 
 private fun DataRequestPriority.toNetworkPriority(): SlockRequestPriority =
     when (this) {
@@ -473,9 +375,6 @@ private fun platformFileReadErrorBody(errorCode: String, message: String): Strin
 
 private fun List<MultipartFile>.uploadByteEstimate(): Long =
     sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L }
-
-private fun String.sanitizeMultipartFileName(): String =
-    replace("\"", "'").replace("\r", "").replace("\n", "")
 
 private fun String.jsonString(): String =
     buildString {
@@ -581,60 +480,3 @@ private fun String.percentEncode(): String {
     }
     return builder.toString()
 }
-
-private fun Throwable.safeDiagnosticsName(): String =
-    this::class.simpleName ?: "Exception"
-
-private fun Throwable.safeDiagnosticsSummary(): String =
-    buildString {
-        append("reason=")
-        append(safeDiagnosticsName())
-        cause
-            ?.safeDiagnosticsName()
-            ?.takeUnless { it == safeDiagnosticsName() }
-            ?.let { causeName ->
-                append(" cause=")
-                append(causeName)
-            }
-        listOfNotNull(message, cause?.message)
-            .firstOrNull { it.isNotBlank() }
-            ?.toSafeDiagnosticsToken()
-            ?.let { detail ->
-                append(" detail=")
-                append(detail)
-            }
-    }
-
-private fun String.toSafeDiagnosticsToken(): String {
-    val redacted =
-        SensitiveNetworkDiagnosticsPatterns.fold(this) { current, pattern ->
-            current.replace(pattern, "$1[redacted]")
-        }
-    return redacted
-        .replace(Regex("""\s+"""), "_")
-        .filter { char ->
-            char.isLetterOrDigit() ||
-                char == '_' ||
-                char == '-' ||
-                char == '.' ||
-                char == ':' ||
-                char == '/' ||
-                char == '=' ||
-                char == '[' ||
-                char == ']'
-        }
-        .take(180)
-        .ifBlank { "blank" }
-}
-
-private val SensitiveNetworkDiagnosticsPatterns =
-    listOf(
-        Regex("""(\bauthorization\s*[:=]\s*bearer\s+)[^\s,;]+""", RegexOption.IGNORE_CASE),
-        Regex("""(\bbearer\s+)[^\s,;]+""", RegexOption.IGNORE_CASE),
-        Regex("""(\baccess[_-]?token\s*[:=]\s*)[^\s,;]+""", RegexOption.IGNORE_CASE),
-        Regex("""(\brefresh[_-]?token\s*[:=]\s*)[^\s,;]+""", RegexOption.IGNORE_CASE),
-        Regex("""(\bpassword\s*[:=]\s*)[^\s,;]+""", RegexOption.IGNORE_CASE),
-        Regex("""(\braw\s+(?:response|body)\s*[:=]\s*).+""", RegexOption.IGNORE_CASE),
-        Regex("""\b((?:eyJ)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.)[A-Za-z0-9_-]+\b"""),
-        Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
-    )

@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_SERVER_ID
+import build.raft.app.network.KtorSlockHttpExecutor
 import build.raft.app.network.MultipartFile
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -34,9 +35,12 @@ class SharedKtorSlockNetworkClientTest {
             SharedKtorSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
-                foregroundHttpClient = httpClient,
-                visibleHttpClient = httpClient,
-                backgroundHttpClient = httpClient
+                executor =
+                    KtorSlockHttpExecutor(
+                        foregroundHttpClient = httpClient,
+                        visibleHttpClient = httpClient,
+                        backgroundHttpClient = httpClient
+                    )
             )
 
         val response =
@@ -78,9 +82,12 @@ class SharedKtorSlockNetworkClientTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 warningLogger = logs::add,
-                foregroundHttpClient = httpClient,
-                visibleHttpClient = httpClient,
-                backgroundHttpClient = httpClient
+                executor =
+                    KtorSlockHttpExecutor(
+                        foregroundHttpClient = httpClient,
+                        visibleHttpClient = httpClient,
+                        backgroundHttpClient = httpClient
+                    )
             )
 
         val query = " do not C++ #tag/中文 "
@@ -126,9 +133,12 @@ class SharedKtorSlockNetworkClientTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 platformFileResolver = resolver,
-                foregroundHttpClient = httpClient,
-                visibleHttpClient = httpClient,
-                backgroundHttpClient = httpClient
+                executor =
+                    KtorSlockHttpExecutor(
+                        foregroundHttpClient = httpClient,
+                        visibleHttpClient = httpClient,
+                        backgroundHttpClient = httpClient
+                    )
             )
 
         val response = client.uploadAccountAvatar(DataRequestPriority.Foreground, file)

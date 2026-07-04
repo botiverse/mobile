@@ -44,6 +44,11 @@ pluginManagement {
                 )
                 includeModule("com.tencent.kuiklybase", "resource-generator")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
+                includeModule(
+                    "com.tencent.kuiklybase.network.ohos-runtime",
+                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
+                )
             }
             credentials {
                 val (user, token) = githubPackagesCredentials()
@@ -123,6 +128,11 @@ dependencyResolutionManagement {
             content {
                 includeModule("com.tencent.kuiklybase", "resource-core")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
+                includeModule(
+                    "com.tencent.kuiklybase.network.ohos-runtime",
+                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
+                )
             }
             credentials {
                 val (user, token) = githubPackagesCredentials()
