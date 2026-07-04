@@ -138,6 +138,10 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
             drawRotatedRectChrome(canvas, viewWidth, viewHeight, strokeWidth, shadowOffset)
             return
         }
+        if (geometryMode == GEOMETRY_FILLED_PATH) {
+            drawFilledPathChrome(canvas, viewWidth, viewHeight, strokeWidth, shadowOffset)
+            return
+        }
         val shadowPath =
             tiltedBadgePath(
                 width = viewWidth,
@@ -154,6 +158,31 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         strokePaint.color = borderColor
         strokePaint.strokeWidth = strokeWidth
         canvas.drawPath(bodyPath, strokePaint)
+    }
+
+    private fun drawFilledPathChrome(
+        canvas: Canvas,
+        viewWidth: Float,
+        viewHeight: Float,
+        strokeWidth: Float,
+        shadowOffset: Float
+    ) {
+        val shadowPath =
+            tiltedBadgePath(
+                width = viewWidth,
+                height = viewHeight,
+                inset = 0f,
+                offsetX = shadowOffset,
+                offsetY = shadowOffset
+            )
+        val outerPath = tiltedBadgePath(width = viewWidth, height = viewHeight, inset = 0f)
+        val innerPath = tiltedBadgePath(width = viewWidth, height = viewHeight, inset = strokeWidth)
+        fillPaint.color = shadowColor
+        canvas.drawPath(shadowPath, fillPaint)
+        fillPaint.color = borderColor
+        canvas.drawPath(outerPath, fillPaint)
+        fillPaint.color = fillColor
+        canvas.drawPath(innerPath, fillPaint)
     }
 
     private fun drawRotatedRectChrome(
@@ -331,6 +360,7 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
             when (value.lowercase()) {
                 GEOMETRY_ROTATED_RECT -> GEOMETRY_ROTATED_RECT
                 GEOMETRY_RECT -> GEOMETRY_RECT
+                GEOMETRY_FILLED_PATH -> GEOMETRY_FILLED_PATH
                 else -> GEOMETRY_PATH
             }
         if (geometryMode == next) return false
@@ -368,7 +398,8 @@ internal class SlockNativeTiltedBadgeChromeRenderView(context: Context) : KRView
         private const val LAYER_TYPE_HARDWARE = "hardware"
         private const val LAYER_TYPE_SOFTWARE = "software"
         private const val GEOMETRY_PATH = "path"
-        private const val GEOMETRY_ROTATED_RECT = "rotatedRect"
+        private const val GEOMETRY_FILLED_PATH = "filledpath"
+        private const val GEOMETRY_ROTATED_RECT = "rotatedrect"
         private const val GEOMETRY_RECT = "rect"
     }
 }
