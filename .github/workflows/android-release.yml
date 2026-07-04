@@ -68,7 +68,7 @@ on:
         description: "Share page TTL in seconds (only used when create_share_page=true)"
         required: false
         type: string
-        default: "86400"
+        default: "604800"
 
   # Future: tag-triggered release
   # push:

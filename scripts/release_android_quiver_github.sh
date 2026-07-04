@@ -12,7 +12,7 @@ CHANNEL="${SLOCK_QUIVER_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 PUBLISH_QUIVER="${SLOCK_PUBLISH_QUIVER:-true}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
-SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-86400}"
+SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
 PUSH_REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
 PUSH_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
 KUIKLY_REMOTE="${SLOCK_KUIKLY_REMOTE:-origin}"
@@ -47,7 +47,7 @@ Options:
   --variant <name>        Android variant: release or debug. Default: release.
   --no-publish-quiver     Build only; do not publish to Quiver.
   --no-share-page         Publish to Quiver but skip share page creation.
-  --share-ttl <seconds>   Share page TTL. Default: 86400.
+  --share-ttl <seconds>   Share page TTL. Default: 604800 (7 days).
   --wait                  Wait for the GitHub Actions run to finish.
   -h, --help              Show this help.
 
