@@ -5275,6 +5275,9 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         authorId = author.id.value,
         authorName = author.displayName,
         authorHandle = author.handle,
+        authorDescription =
+            author.description?.takeIf { it.isNotBlank() }
+                ?: author.roleDescription?.takeIf { it.isNotBlank() },
         authorKind =
             when (author.kind) {
                 MemberKind.Agent -> "agent"

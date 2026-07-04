@@ -772,6 +772,9 @@ internal data class KuiklyThreadMessageItem(
     val authorId: String,
     val authorName: String,
     val authorHandle: String = "",
+    // Sender subtitle shown after the name, mirroring React's senderSubtitle
+    // (agent/member description; humans fall back to role description).
+    val authorDescription: String? = null,
     val authorKind: String = "",
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
@@ -2307,6 +2310,12 @@ private fun ThreadMessageVisualCard(
                         )
                         message.threadAuthorBadgeLabel()?.let { label ->
                             ThreadMessageAuthorBadge(label)
+                        }
+                        message.authorDescription?.let { description ->
+                            ThreadMessageAuthorSubtitle(
+                                description,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
                         }
                         Text(
                             text = timestampLabel,
@@ -6334,6 +6343,7 @@ internal fun threadVisualFixture(
                             id = "msg-agent-reply",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             authorAgentStatus = "online",
                             isOwn = false,
@@ -6455,6 +6465,7 @@ internal fun threadVisualFixture(
                             id = "msg_rich_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             authorAgentStatus = "online",
                             avatarLabel = "CI",
@@ -6556,6 +6567,7 @@ internal fun threadVisualFixture(
                             id = "msg-share-visual-a",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
                             timestampLabel = "06/27 09:20",
@@ -6621,6 +6633,7 @@ internal fun threadVisualFixture(
                             id = "msg_long_inline_code_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
                             timestampLabel = "06/25 05:55",
@@ -10734,6 +10747,12 @@ private fun ThreadMessageCard(
                                     authorBadgeLabel?.let { label ->
                                         ThreadMessageAuthorBadge(label)
                                     }
+                                    message.authorDescription?.let { description ->
+                                        ThreadMessageAuthorSubtitle(
+                                            description,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
                                     if (showTimestampInHeader) {
                                         ThreadMessageTimestampLabel(timestampLabel)
                                     }
@@ -12839,6 +12858,24 @@ private fun ThreadOriginCard(
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
+}
+
+// React parity: MessageItem's senderSubtitle — 12px mono at 40% black,
+// truncating flexibly between the name/badge and the timestamp.
+@Composable
+private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier = Modifier) {
+    Text(
+        text = description,
+        style =
+            SlockType.Caption.copy(
+                fontFamily = FontFamily.Monospace,
+                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+            ),
+        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
 }
 
 @Composable
