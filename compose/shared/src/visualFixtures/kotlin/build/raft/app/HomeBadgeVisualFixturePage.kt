@@ -202,6 +202,11 @@ internal fun HomeBadgeAaVisualFixtureScreen() {
             badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true) }
         )
         HomeBadgeFixtureRow(
+            title = "Native filled path",
+            detail = "final outer/inner fill paths; no stroke, no rotate",
+            badge = { NativeTiltedPathBadge(HomeBadgeFixtureServerName, supersample = 3, drawFilter = true, geometry = "filledPath") }
+        )
+        HomeBadgeFixtureRow(
             title = "Kuikly Image PNG 4x",
             detail = "painterResource pre-antialiased bitmap",
             badge = { ImageTiltedBadge(HomeBadgeFixtureServerName) }
