@@ -178,6 +178,28 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionPanelContentHeightReservesRoomForMultipleRows() {
+        assertEquals(
+            144.dp,
+            composerSuggestionPanelContentHeight(
+                itemCount = 3,
+                rowMinHeight = 38.dp
+            )
+        )
+    }
+
+    @Test
+    fun suggestionPanelContentHeightCapsAtPanelMaxHeight() {
+        assertEquals(
+            240.dp,
+            composerSuggestionPanelContentHeight(
+                itemCount = 7,
+                rowMinHeight = 38.dp
+            )
+        )
+    }
+
+    @Test
     fun suggestionRefreshRequestTracksOpenedMentionAndChannelPanels() {
         assertEquals(
             ThreadComposerSuggestionRefreshRequest.Member,
