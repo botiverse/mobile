@@ -10843,7 +10843,7 @@ private fun ThreadMessageCard(
                                             "message=${message.id.take(8)} bodyLen=${renderedBody.length} " +
                                             "bodyHash=${renderedBody.hashCode().toString(16)} context=$markdownTagContextSignature"
                                     )
-                                    key(markdownRenderSignature, markdownTagContextSignature) {
+                                    key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
                                         SlockMarkdownBody(
                                             body = renderedBody,
                                             textStyle = ThreadMessageBodyTextStyle,
