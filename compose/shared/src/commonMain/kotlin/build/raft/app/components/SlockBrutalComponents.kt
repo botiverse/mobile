@@ -694,7 +694,7 @@ internal fun SlockBrutalActionButton(
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha), RectangleShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
                     .slockSquareCorners()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
