@@ -724,27 +724,54 @@ internal fun SegmentedControl(
     ) {
         options.forEach { option ->
             val selected = option.value == selectedValue
-            SlockBrutalActionButton(
-                label = option.label,
-                leadingIcon = option.iconName,
-                trailingContent =
-                    option.count?.takeIf { it > 0 }?.let { count ->
-                        {
-                            Text(
-                                text = count.toString(),
-                                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
-                                color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
-                                maxLines = 1
-                            )
-                        }
-                    },
+            SegmentedControlItem(
+                option = option,
+                selected = selected,
                 enabled = enabled,
-                minWidth = 0.dp,
-                minHeight = 28.dp,
-                shadowOffset = if (selected) 2.dp else 0.dp,
-                backgroundColor = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
                 onClick = { onValueSelected(option.value) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SegmentedControlItem(
+    option: SegmentedControlOption,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .height(28.dp)
+                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled) { onClick() }
+                .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        option.iconName?.let { iconName ->
+            SlockLucideIcon(
+                name = iconName,
+                modifier = Modifier.size(13.dp),
+                color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
+            )
+        }
+        Text(
+            text = option.label,
+            style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        option.count?.takeIf { it > 0 }?.let { count ->
+            Text(
+                text = count.toString(),
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
+                maxLines = 1
             )
         }
     }
