@@ -664,7 +664,7 @@ internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
                 slockPageVisibleResumeTick,
                 initialSearchChannelId = pageData.params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).trim().takeIf { it.isNotBlank() },
                 initialSearchOpenFilterId = pageData.params.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID).trim().takeIf { it.isNotBlank() },
-                initialSearchFocusInput = pageData.params.optBoolean(HOME_SEARCH_FOCUS_INPUT, false)
+                initialSearchFocusInput = pageData.params.optBoolean(HOME_SEARCH_FOCUS_INPUT, true)
             )
         }
     }
@@ -11239,7 +11239,7 @@ private fun SharedHomeSearchToolbar(
             size = 38.dp,
             iconSize = 18.dp,
             background = SlockColor.BrandYellow,
-            onClick = onTitleClick
+            onClick = onTitleClick ?: onSubmit
         )
         SharedHomeSearchInput(
             query = query,
@@ -13439,8 +13439,9 @@ private fun Pager.closeHomeSecondaryPage() {
 }
 
 private fun Pager.openHomeSecondaryPage(destination: String, timeContext: AppShellThreadTimeContext?) {
+    val retainedDestination = retainedHomeSecondaryDestination(destination) ?: return
     val pageName =
-        when (retainedHomeSecondaryDestination(destination)) {
+        when (retainedDestination) {
             HomeDestinationActivity -> HOME_ACTIVITY_PAGE
             HomeDestinationSearch -> HOME_SEARCH_PAGE
             HomeDestinationSaved -> HOME_SAVED_PAGE
@@ -13449,7 +13450,10 @@ private fun Pager.openHomeSecondaryPage(destination: String, timeContext: AppShe
     val pageData =
         JSONObject().apply {
             put("pageName", pageName)
-            put("destination", destination)
+            put("destination", retainedDestination)
+            if (retainedDestination == HomeDestinationSearch) {
+                put(HOME_SEARCH_FOCUS_INPUT, true)
+            }
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
