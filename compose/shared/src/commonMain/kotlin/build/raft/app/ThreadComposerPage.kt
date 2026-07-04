@@ -79,7 +79,7 @@ private const val ThreadComposerAttachmentFileTileWidthDp = 128
 private const val ThreadComposerAttachmentRowGapDp = 8
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
-private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
+private val ThreadComposerDisabledSendBackground = SlockColor.EmptyStateGray
 private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
@@ -2400,7 +2400,7 @@ private fun ComposerSendButton(
             icon = icon,
             enabled = enabled,
             backgroundColor = SlockColor.AccentPink,
-            disabledBackgroundColor = SlockColor.AccentPink,
+            disabledBackgroundColor = threadComposerSendDisabledBackgroundColor(sending = true),
             disabledAlpha = 1f,
             disabledIconColor = "#FF000000",
             iconSpinning = true,
@@ -2413,7 +2413,7 @@ private fun ComposerSendButton(
         onClick = onClick,
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink,
-        disabledBackgroundColor = ThreadComposerDisabledSendBackground,
+        disabledBackgroundColor = threadComposerSendDisabledBackgroundColor(sending = false),
         disabledAlpha = 1f,
         disabledBorderColor = ThreadComposerDisabledSendBorder,
         disabledShadowColor = ThreadComposerDisabledSendShadow,
@@ -2423,6 +2423,13 @@ private fun ComposerSendButton(
         iconSize = ThreadComposerIconSize
     )
 }
+
+internal fun threadComposerSendDisabledBackgroundColor(sending: Boolean): Color =
+    if (sending) {
+        SlockColor.AccentPink
+    } else {
+        ThreadComposerDisabledSendBackground
+    }
 
 private enum class ComposerTextChipVariant {
     Pink,
