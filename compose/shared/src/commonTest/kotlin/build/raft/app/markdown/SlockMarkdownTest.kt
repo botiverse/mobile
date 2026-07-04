@@ -164,7 +164,7 @@ class SlockMarkdownTest {
 
         assertEquals(5, rendered.size)
         assertTrue(rendered[0].contains("方案正确"))
-        assertTrue(rendered[0].withoutSoftBreaks().contains("GET /messages/context/:id"))
+        assertTrue(rendered[0].contains("GET /messages/context/:id"))
         assertTrue(rendered[0].contains("channelId"))
         assertTrue(rendered[1].contains("KMP 改动干净"))
         assertTrue(rendered[2].contains("reply body 真正加载"))
@@ -277,12 +277,12 @@ class SlockMarkdownTest {
             )
 
         assertTrue(annotated.text.contains(shortCode))
-        assertTrue(annotated.text.withoutSoftBreaks().contains(longCode))
+        assertTrue(annotated.text.contains(longCode))
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
-        val inlineCodeSegments = annotated.slockInlineCodeMarkerTextSegments()
-        assertEquals(" $shortCode ", inlineCodeSegments[0])
-        assertEquals(" $longCode ", inlineCodeSegments[1].withoutSoftBreaks())
-        assertTrue(inlineCodeSegments[1].contains("\u200B"))
+        assertEquals(
+            listOf(" $shortCode ", " $longCode "),
+            annotated.slockInlineCodeMarkerTextSegments()
+        )
     }
 
     @Test
@@ -1265,7 +1265,4 @@ class SlockMarkdownTest {
         getStringAnnotations(slockInlineCodeAnnotationTag, start = 0, end = length).map { range ->
             text.substring(range.start, range.end)
         }
-
-    private fun String.withoutSoftBreaks(): String =
-        replace("\u200B", "")
 }
