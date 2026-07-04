@@ -125,8 +125,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
-          enableCrossOsArchive: true
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
 
       - name: Build kuikly fork into mavenLocal
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
