@@ -13,32 +13,32 @@
 
 ### P0 — 正确性 / 产品缺口
 
-1. **Notifications 链路（#102/#103）**：后台推送标题/正文仍降级为 "x unread"，未展示 sender+内容。相关：`react-kmp-native-alignment`、feature-map P0#5。
-2. **Killed-app 原生推送（服务端侧）**：三平台契约（FCM/APNs/OHOS，`mobile-killed-app-push-*-2026-07-01.md`）+ 汇总需求（`mobile-native-push-server-requirements-2026-07-02.md`）全部处于"等 server review"状态，未开工；客户端只落了 FCM SDK bootstrap。三层边界（target resolution / provider-neutral payload / provider delivery）是先决架构。
-3. **Status resolution 单源（#73）**：`resolveMemberDisplayState` 未建，颜色/脉冲双源 bug 仍在；需要全 status 表面消费审计。相关：members/realtime alignment docs。
-4. **Store 收敛 Phase 2/3（#386/#387/#388）+ Thread realtime 单入口**：ThreadPage 路由层仍持有 raw realtime listener（`thread-realtime-ingress-next-step-2026-06-27.md`），漏事件根因 #418 未闭环；`SharedRealtimeDomainEventOwner` 需扩 multi-sink。与 #native board 在审的 #191（pager-free SlockNativeModule）/#192（Provider 去 pager 依赖）同一主线。
-5. **前台回收敛（`mobile-foreground-reconciliation-spec-2026-06-29.md`）**：完全未实现——后台返回后 standalone Thread 不刷新、状态陈旧、房间不强制 re-join。用户可感知的正确性问题。
-6. **IM 主线集群（07-02/07-03 五份文档，全部是纯提案零代码）**：`SharedMessageLifecycleStore` 消息生命周期状态机（基石）→ media/notification/presence 投影 → composer baseline 契约 → 跨端 fixture matrix。见 `im-mainline-kmp-execution-plan-2026-07-03.md`。
+1. ~~Notifications 链路（#102/#103）title/body 降级~~ **复核后撤销（2026-07-04）**：`SystemNotifications.kt` 已按 sender+preview 构造标题/正文（DM=sender、频道=#channel + "sender: preview"），task103 系列已合。真正未做的是下一条的服务端推送。
+2. **Killed-app 原生推送（服务端侧）→ #native task #199**：三平台契约（FCM/APNs/OHOS，`mobile-killed-app-push-*-2026-07-01.md`）+ 汇总需求（`mobile-native-push-server-requirements-2026-07-02.md`）全部处于"等 server review"状态，未开工；客户端只落了 FCM SDK bootstrap。三层边界（target resolution / provider-neutral payload / provider delivery）是先决架构。
+3. **Status resolution 单源审计（原 #73）→ #native task #198**：已核实 `resolveMemberDisplayState` 不存在、7 个文件各自推导 status 颜色；但"颜色/脉冲双源 bug 仍在"出自老审计、未复现验证——任务按审计式推进：先复现确认，不成立即关。
+4. **Store 收敛 Phase 2/3（#386/#387/#388）+ Thread realtime 单入口 → #native task #196**：已核实 ThreadPage 路由层仍持有 raw realtime listener（`realtimeEvents.addListener` ~L2945），漏事件根因 #418 未闭环；`SharedRealtimeDomainEventOwner` 需扩 multi-sink。与 #native 在审的 #191/#192 同一主线。
+5. **前台回收敛（`mobile-foreground-reconciliation-spec-2026-06-29.md`）→ #native task #197**：已核实相关符号完全不存在——后台返回后 standalone Thread 不刷新、状态陈旧、房间不强制 re-join。用户可感知的正确性问题。
+6. **IM 主线集群（07-02/07-03 五份文档，全部是纯提案零代码）→ #native task #200（Phase 1 状态机）/ #201（Phase 2-4）**：`SharedMessageLifecycleStore`（基石）→ media/notification/presence 投影 → composer baseline 契约 → 跨端 fixture matrix。
 
 ### P1 — 体验 / 功能补齐
 
-7. **Settings**：路由化拆分 #345/#346/#347 未动工；老审计（`kmp-settings-*-audit`，自标 STALE）残留 Server mutations #39、Account save/改密 #38 —— 动工前需先复核是否已被后续 settings 工作覆盖 (?)。
-8. **Activity 动作矩阵**：per-item Done / Mark Read/Unread 入口、Load-more UI 未接（repository 有 `loadMore`）；stale-snapshot 覆盖已读的竞态、unread 角标 onResume 不刷新。
-9. **Thread/Home 首屏并行加载（`thread-home-api-parallel-loading-spec-2026-06-25.md`）**：首内容仍疑似阻塞在 sender-profile enrichment 上 (?)——需复核后决定。
-10. **File preview 文本/文档走服务端契约**：mp4 已上（Android+OHOS），typed `AttachmentPreviewData` union + `/attachments/:id/preview` 迁移（worktree B/C/F）未做。
-11. **Composer `BasicTextField` 迁移**：整份 spec 未动，OHOS 选区/触发正确性依赖它。
-12. **Reaction sprite atlas（#391/#397）**：素材/目录已入库但设备端渲染被 revert 两次，需要稳定的 source-rect 渲染原语再落。
+7. ~~Settings 路由化拆分 #345/#346/#347~~ **复核后撤销（2026-07-04）**：`SettingsStandaloneStore` / `StandaloneSettingsEnvironment` 已在 commonMain 落地。仅余老审计（`kmp-settings-*-audit`，自标 STALE）的 #38/#39 残留项待复核。
+8. ~~Activity 动作矩阵~~ **复核后撤销（2026-07-04）**：MarkRead / MarkUnread / MarkDone / LoadMore 均已在 `SharedInboxPanel.kt` 接线（含 load-more retry 行）。竞态/角标刷新如仍可复现另行开任务。
+9. ~~Thread/Home 首屏并行加载~~ **复核后撤销（2026-07-04）**：`withSenderProfiles` 已从代码中移除，spec 关注的阻塞点已被重构解决。
+10. **File preview 文本/文档走服务端契约 → #native task #203**：mp4 已上（Android+OHOS），typed `AttachmentPreviewData` union + `/attachments/:id/preview` 迁移（worktree B/C/F）未做。
+11. **Composer `BasicTextField` 迁移 → #native task #202**：整份 spec 未动，OHOS 选区/触发正确性依赖它。
+12. **Reaction sprite atlas（#391/#397）→ #native task #204**：素材/目录已入库但设备端渲染被 revert 两次，需要稳定的 source-rect 渲染原语再落。
 13. **Raft UI 组件对齐（活跃大集群）**：按视觉差异优先级 #283 surface/avatar 行 → #284 progress bar → #279 form/input → #278 menu/popover/select（部分已落）→ #277 segmented；对应 visual-testing board 上 #275-#321 一批在办；`slock-visual-testing validate` 缺 cli.mjs 待恢复。
 14. **Members 细节**：外部 agent 显示态、agent-detail activity 实时 #93、create-agent runtime 模型加载 #92、profile 底部按钮 #91、`screens.members.human.profile` fixture+安卓采集。
 15. **其他单点**：Search 多选 FROM #285（要服务端配合）；TaskBoard 多列视图；Saved 行右侧图标+菜单复核；Home cached-first visible 加载（缓存目前只在 Background 优先级读）。
 
 ### P2 / 平台与基建
 
-16. **Fork 产物远程化（`fork-artifact-github-packages-publishing-spec.md`）**：OHOS render 仍 `file:./libs/*.har`、SQLDelight 栈仍本地自动发布；CI 侧 mavenLocal 缓存（07-04 已由 CC-Wow2 落地）解决了速度，但可复现的远程发布 + `publish-fork-artifacts.yml` 仍未做。
-17. **OHOS**：HDS tabbar 官方材质（要升 SDK 6.1/API 23）；shared SQLDelight smoke DB（Android+OHOS 双驱动）；composer 换行菜单 Phase 2；widget 信息密度/圆角风格 #382；前台保活开关 #113。
+16. **Fork 产物远程化（`fork-artifact-github-packages-publishing-spec.md`）→ #native task #205**：OHOS render 仍 `file:./libs/*.har`、SQLDelight 栈仍本地自动发布；CI 侧 mavenLocal 缓存（07-04 已由 CC-Wow2 落地）解决了速度，但可复现的远程发布 + `publish-fork-artifacts.yml` 仍未做。
+17. **OHOS → #native task #206**：HDS tabbar 官方材质（要升 SDK 6.1/API 23）；shared SQLDelight smoke DB（Android+OHOS 双驱动）；composer 换行菜单 Phase 2；widget 信息密度/圆角风格 #382；前台保活开关 #113。
 18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；perf marker 缺口（modal/cache/icon-batch）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
-19. **未建产品面（owner 决策）**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
-20. **杂项**：Bugly 后续（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
+19. **未建产品面（owner 决策）→ #native task #208**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
+20. **杂项 → #native task #207**：Bugly 后续（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
 
 ### 活跃 task board 上、文档未覆盖的单点（2026-07-04 快照）
 
@@ -102,6 +102,10 @@ conversation-summary-boundary-spec-2026-06-27 为部分完成（Phase 3/4 未做
 | realtime-single-source-runtime-spec-2026-06-23 | 自标历史；以 realtime-alignment + 代码为准 |
 
 ---
+
+## 二点五、复核修正记录（2026-07-04 第二轮）
+
+按 @artin 要求对第一节结论逐条二次核实，修正 4 条过时判断（已在上文用删除线标注）：通知 title/body 降级（已修）、Settings 路由拆分（已落地）、Activity 动作矩阵（已接线）、Thread/Home 阻塞加载（已重构解决）。核实后仍成立的项已在 #native 建任务跟踪（#196-#208，assignee @CC-希乐）；已有活跃 task 的项（Raft UI #275-#321、members #91-#93 等）未重复建任务。
 
 ## 三、本次维护动作
 
