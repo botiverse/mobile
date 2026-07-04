@@ -200,6 +200,18 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
+        assertEquals(
+            102.dp,
+            composerSuggestionPanelContentHeight(
+                itemCount = 3,
+                rowMinHeight = 34.dp,
+                includeHeader = false
+            )
+        )
+    }
+
+    @Test
     fun suggestionRefreshRequestTracksOpenedMentionAndChannelPanels() {
         assertEquals(
             ThreadComposerSuggestionRefreshRequest.Member,

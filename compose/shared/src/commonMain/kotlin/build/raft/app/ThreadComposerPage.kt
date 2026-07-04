@@ -87,7 +87,7 @@ private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionOverlayGap = 6.dp
+private val ComposerSuggestionOverlayGap = 4.dp
 private const val ComposerSuggestionOverlayZIndex = 10f
 private val ComposerSuggestionHeaderEstimatedHeight = 30.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
@@ -96,7 +96,6 @@ private val ComposerSuggestionStatusRowMinHeight = 42.dp
 private val ComposerMemberSuggestionAvatarSize = 20.dp
 private val ComposerMemberSuggestionAvatarNameGap = 8.dp
 private val ComposerAgentActivityDotSize = 10.dp
-private val ComposerMemberSuggestionHandleWidth = 124.dp
 private val ComposerChannelSuggestionIconSize = 20.dp
 private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -1280,7 +1279,7 @@ private fun composerSuggestionOverlayInitialHeight(
             ThreadComposerSuggestionPanelState.MemberItems ->
                 ComposerSuggestionHeaderEstimatedHeight + ComposerMemberSuggestionRowMinHeight * memberCount.coerceAtLeast(1)
             ThreadComposerSuggestionPanelState.ChannelItems ->
-                ComposerSuggestionHeaderEstimatedHeight + ComposerChannelSuggestionRowMinHeight * channelCount.coerceAtLeast(1)
+                ComposerChannelSuggestionRowMinHeight * channelCount.coerceAtLeast(1)
             ThreadComposerSuggestionPanelState.MemberLoading,
             ThreadComposerSuggestionPanelState.MemberEmpty,
             ThreadComposerSuggestionPanelState.MemberError,
@@ -1296,9 +1295,11 @@ private fun composerSuggestionOverlayInitialHeight(
 
 internal fun composerSuggestionPanelContentHeight(
     itemCount: Int,
-    rowMinHeight: Dp
+    rowMinHeight: Dp,
+    includeHeader: Boolean = true
 ): Dp {
-    val estimated = ComposerSuggestionHeaderEstimatedHeight + rowMinHeight * itemCount.coerceAtLeast(1)
+    val headerHeight = if (includeHeader) ComposerSuggestionHeaderEstimatedHeight else 0.dp
+    val estimated = headerHeight + rowMinHeight * itemCount.coerceAtLeast(1)
     return if (estimated > ComposerSuggestionPanelMaxHeight) ComposerSuggestionPanelMaxHeight else estimated
 }
 
@@ -1347,12 +1348,13 @@ private fun ComposerSuggestionPanelContent(
 
         ThreadComposerSuggestionPanelState.ChannelItems -> {
             ComposerSuggestionPanel(
-                title = "CHANNELS",
+                title = null,
                 showTitleDivider = false,
                 panelHeight =
                     composerSuggestionPanelContentHeight(
                         itemCount = channelSuggestions.size,
-                        rowMinHeight = ComposerChannelSuggestionRowMinHeight
+                        rowMinHeight = ComposerChannelSuggestionRowMinHeight,
+                        includeHeader = false
                     ),
                 itemCount = channelSuggestions.size,
                 itemKey = { index -> "channel-$index-${channelSuggestions[index].name}" }
@@ -1368,21 +1370,21 @@ private fun ComposerSuggestionPanelContent(
 
         ThreadComposerSuggestionPanelState.ChannelLoading -> {
             ComposerSuggestionStatusPanel(
-                title = "CHANNELS",
+                title = null,
                 message = "Loading..."
             )
         }
 
         ThreadComposerSuggestionPanelState.ChannelEmpty -> {
             ComposerSuggestionStatusPanel(
-                title = "CHANNELS",
+                title = null,
                 message = "No matching channels"
             )
         }
 
         ThreadComposerSuggestionPanelState.ChannelError -> {
             ComposerSuggestionStatusPanel(
-                title = "CHANNELS",
+                title = null,
                 message = channelErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load channels"
             )
         }
@@ -1544,13 +1546,18 @@ private fun ComposerMemberSuggestionPanel(
 
 @Composable
 private fun ComposerSuggestionStatusPanel(
-    title: String,
+    title: String?,
     message: String
 ) {
     ComposerSuggestionPanel(
         title = title,
         showTitleDivider = false,
-        panelHeight = composerSuggestionPanelContentHeight(1, ComposerSuggestionStatusRowMinHeight),
+        panelHeight =
+            composerSuggestionPanelContentHeight(
+                itemCount = 1,
+                rowMinHeight = ComposerSuggestionStatusRowMinHeight,
+                includeHeader = title != null
+            ),
         itemCount = 1,
         itemKey = { "status-$message" }
     ) {
@@ -1697,24 +1704,14 @@ private fun ComposerMemberSuggestionRow(
                     )
                 }
             }
-            Box(
-                modifier = Modifier.width(ComposerMemberSuggestionHandleWidth),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "@${member.handle}",
-                        style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
-                        color = handleColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            Text(
+                text = "@${member.handle}",
+                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                color = handleColor,
+                modifier = Modifier.padding(start = 6.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -2127,7 +2124,7 @@ internal fun KuiklyPendingAttachmentItem.isComposerImageAttachment(): Boolean {
 
 @Composable
 private fun ComposerSuggestionPanel(
-    title: String,
+    title: String?,
     showTitleDivider: Boolean = true,
     panelHeight: Dp,
     itemCount: Int,
@@ -2141,11 +2138,13 @@ private fun ComposerSuggestionPanel(
         LazyColumn(
             modifier = Modifier.fillMaxWidth().height(panelHeight)
         ) {
-            item(key = "header-$title", contentType = "header") {
-                ComposerSuggestionHeader(
-                    text = title,
-                    bottomDivider = showTitleDivider
-                )
+            if (title != null) {
+                item(key = "header-$title", contentType = "header") {
+                    ComposerSuggestionHeader(
+                        text = title,
+                        bottomDivider = showTitleDivider
+                    )
+                }
             }
             items(itemCount, key = itemKey) { index ->
                 itemContent(index)
