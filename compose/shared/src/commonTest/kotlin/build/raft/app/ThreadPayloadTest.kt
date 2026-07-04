@@ -5168,8 +5168,11 @@ class ThreadPayloadTest {
         val contentPayload = loadingPayload.copy(status = "content", selectedTab = "chat")
 
         assertFalse(shouldStartThreadTasksJoin(loadingPayload, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksLoad(loadingPayload, taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertTrue(
             shouldStartThreadTasksJoin(
                 contentPayload.copy(selectedTab = "tasks"),

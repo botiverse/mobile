@@ -173,6 +173,7 @@ internal class SharedTasksViewModel(
         get() = uiState
 
     private var loadJob: Job? = null
+    private var loadJobPriority: DataRequestPriority? = null
     private var observeJob: Job? = null
     private var statusJob: Job? = null
     private var lastRefreshCompletedAt: TimeMark? = null
@@ -262,9 +263,11 @@ internal class SharedTasksViewModel(
                 "snapshotAgeMs=${snapshotAgeMs ?: -1L} filter=${selectedFilter?.name.orEmpty()}"
         )
         val forceRefresh = intent == SharedTasksRouteIntent.Refresh
+        val inFlight = loadJob?.isActive == true
+        val canUpgradeInFlight = inFlight && request.priority.canUpgradeTasksLoad(loadJobPriority)
         val skipReason =
             tasksRefreshSkipReason(
-                inFlight = loadJob?.isActive == true,
+                inFlight = inFlight && !canUpgradeInFlight,
                 hasSnapshot = hasSnapshot,
                 snapshotAgeMs = snapshotAgeMs,
                 staleWindowMs = staleWindowMs,
@@ -286,15 +289,29 @@ internal class SharedTasksViewModel(
             }
             null -> Unit
         }
+        if (canUpgradeInFlight) {
+            diagnosticsLogger(
+                "tasks_refresh_upgrade reason=$reason from=${loadJobPriority?.name.orEmpty()} " +
+                    "to=${request.priority.name} hasSnapshot=$hasSnapshot filter=${selectedFilter?.name.orEmpty()}"
+            )
+            loadJob?.cancel()
+        }
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
+        loadJobPriority = request.priority
         loadJob =
             viewModelScope.launch {
-                refreshTasks(
-                    request = request,
-                    selectedFilter = selectedFilter,
-                    reason = reason,
-                    mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot
-                )
+                try {
+                    refreshTasks(
+                        request = request,
+                        selectedFilter = selectedFilter,
+                        reason = reason,
+                        mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot
+                    )
+                } finally {
+                    if (loadJobPriority == request.priority) {
+                        loadJobPriority = null
+                    }
+                }
             }
     }
 
@@ -505,6 +522,9 @@ internal enum class TasksRefreshSkipReason {
     InFlight,
     FreshSnapshot
 }
+
+internal fun DataRequestPriority.canUpgradeTasksLoad(activePriority: DataRequestPriority?): Boolean =
+    activePriority == DataRequestPriority.Background && this != DataRequestPriority.Background
 
 private fun SharedTasksScope.tasksScopeDiagnostics(): String =
     when (this) {
