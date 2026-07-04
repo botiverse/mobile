@@ -34,7 +34,7 @@ The ranking below uses `pixelMismatchRatio` first, then manual side-by-side imag
 | 3 | `components.ui.progress-bar.states` | 36.52% | 75.6% | Android bars are too long for the same percentages and omit/right-hide the percentage labels. | Add a focused progress-bar parity task before using it in usage meters. |
 | 4 | `components.ui.textarea.states` | 42.53% | 87.8% | Difference is mostly text wrapping, height, padding, and font metrics rather than gross layout. | Include in form-field/input adoption; tune textarea min-height, padding, and line-height. |
 | 5 | `components.ui.slug-input.states` | 25.39% | 88.1% | Height/shadow/disabled border and prefix-cell proportions differ. | Include in form-field/input adoption. |
-| 6 | `components.ui.button.states` | 23.29% | 87.9% | Android buttons are slightly taller/wider; disabled state keeps black border/shadow while React disabled is flatter gray. | Tune button disabled chrome and size tokens. |
+| 6 | `components.ui.button.states` | 23.29% | 87.9% | Android buttons are slightly taller/wider; disabled action state should not be resolved by a generic gray foreground or by dimming the active fill. The accepted KMP direction is composer-style explicit disabled tokens: disabled surface, border, shadow, and foreground are configured separately. | Keep `SlockBrutalActionButton` on explicit disabled action tokens; do not regress to active-color alpha or generic gray disabled foreground. |
 | 7 | `components.ui.select.states` | 22.09% | 87.2% | Trigger height/shadow/disabled chrome differ; likely same root as button/input trigger tokens. | Keep in controlled select/menu task. |
 | 8 | `components.ui.selection-popover.states` | 20.04% | 86.5% | Popover is close enough structurally; remaining differences are trigger/input/list-row selected token. | Fix after selected row/input token work. |
 | 9 | `components.ui.form-field.states` | 17.53% | 90.7% | Mostly spacing and helper/error text metrics. | Lower priority than row/progress/input chrome. |
@@ -44,6 +44,26 @@ Excluded from component priority:
 
 - `components.ui.skeleton.states` has 61.93% mismatch, but side-by-side review shows the Android capture is vertically offset/cropped relative to React. Re-capture or fixture correction should happen before using it as style evidence.
 - `components.navigation.tabbar.states` is low mismatch at 4.55%; no urgent component-style work from this report.
+
+### Disabled Action Button Decision Update
+
+2026-07-05 follow-up: disabled submit/action buttons should follow the Thread
+Composer empty-send implementation model rather than the old
+`activeColor.copy(alpha = 0.50f)` pattern or a generic gray foreground. The KMP
+visual contract is:
+
+- Disabled action surface, border, shadow, and foreground are explicit tokens.
+- Ordinary unavailable submit actions use the explicit disabled-action surface
+  plus white disabled foreground.
+- Destructive unavailable actions use a destructive disabled-action surface, not
+  a red active-color alpha.
+- Busy/in-flight and brand/social states may preserve active or brand visuals
+  because they communicate progress or provider identity rather than ordinary
+  unavailability.
+
+This means visual-testing reviews should treat the explicit-token KMP fix as the
+appropriate direction even if the web/React source expresses comparable states as
+Tailwind `disabled:opacity-*` modifiers.
 
 ## Lowest Similarity Product Components
 
