@@ -171,12 +171,11 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           working-directory: ./compose
+          # The runner executes each script line as a separate command;
+          # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
-            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
-              :androidApp:connectedConnectedTestAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest \
-              || echo "connected test exited non-zero; pulling whatever was captured"
+            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true :androidApp:connectedConnectedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest || echo "connected test exited non-zero; pulling whatever was captured"
             mkdir -p ../visual-testing-results/android
             adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
 
