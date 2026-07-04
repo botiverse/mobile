@@ -1011,6 +1011,13 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadOlderAutoLoadStartsBeforeBoundaryIsVisible() {
+        assertFalse(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 9))
+        assertTrue(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 8))
+        assertTrue(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 0))
+    }
+
+    @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             0,

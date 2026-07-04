@@ -8752,7 +8752,7 @@ private fun ThreadMessagesList(
         if (focusedMessageTargetIndex >= 0) {
             return@LaunchedEffect
         }
-        if (!listState.isThreadItemVisible(latestItemIndex)) {
+        if (!initialBottomAnchorReady && !listState.isThreadItemVisible(latestItemIndex)) {
             listState.scrollToItem(latestItemIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@LaunchedEffect
@@ -9767,6 +9767,14 @@ private fun LazyListState.isThreadOlderAutoLoadThreshold(boundaryIndex: Int): Bo
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= boundaryIndex) return false
     val firstVisibleIndex = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return false
+    return shouldThreadAutoLoadOlderMessages(
+        boundaryIndex = boundaryIndex,
+        firstVisibleIndex = firstVisibleIndex
+    )
+}
+
+internal fun shouldThreadAutoLoadOlderMessages(boundaryIndex: Int, firstVisibleIndex: Int): Boolean {
+    if (boundaryIndex < 0 || firstVisibleIndex < 0) return false
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
 }
 
@@ -10018,7 +10026,7 @@ private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 private const val ThreadKeyboardBottomAnchorAttempts = 8
-private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
+private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
