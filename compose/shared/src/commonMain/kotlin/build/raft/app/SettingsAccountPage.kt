@@ -637,7 +637,7 @@ private fun SettingsConnectedAccountRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SlockCachedImage(
-                source = providerIconDataUri(account.provider),
+                source = providerIconDataUri(providerId),
                 contentDescription = account.provider,
                 modifier = Modifier.size(28.dp)
             )
@@ -830,11 +830,13 @@ private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean
     }
 }
 
+// React parity (SettingsPanel SocialProviderIcon): google gets the Google
+// logo, every other social provider falls back to the GitHub mark — never
+// the Google logo.
 private fun providerIconDataUri(provider: String): String =
     when {
-        provider.lowercase().contains("github") -> GitHubIconDataUri
         provider.lowercase().contains("google") -> GoogleIconDataUri
-        else -> GoogleIconDataUri
+        else -> GitHubIconDataUri
     }
 
 @Composable
@@ -848,8 +850,15 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
     }
 }
 
+// React parity: the web Connected accounts section lists only social auth
+// providers (enabledProviders = google/github). The email+password identity
+// is already represented by the Email field and the Change password row, so
+// a "password" provider row must never render here.
 internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(): List<KuiklySettingsConnectedAccount> =
-    this
+    filterNot { account ->
+        val resolvedId = account.providerId.ifBlank { account.provider }.lowercase()
+        resolvedId.startsWith("password") || resolvedId.startsWith("email")
+    }
 
 private fun connectedAccountStatusDetail(account: KuiklySettingsConnectedAccount, connected: Boolean): String =
     if (connected) {
