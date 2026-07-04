@@ -6817,8 +6817,10 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
         ?: parentChannelId.nonBlank()
 }
 
-private fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
-    memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
+    memberScopedMentions ||
+        surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
 
 internal fun RealtimeEvent.refreshesThreadMemberSuggestions(mentionChannelId: String?): Boolean =
     when (this) {
