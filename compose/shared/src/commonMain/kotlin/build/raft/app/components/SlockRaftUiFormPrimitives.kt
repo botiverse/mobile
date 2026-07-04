@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.SlockColor
+import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
@@ -186,7 +187,7 @@ internal fun SlockSlugInput(
     enabled: Boolean = true,
     fieldHeight: Dp = 42.dp
 ) {
-    val shadowOffset = 3.dp
+    val shadowOffset = SlockShadow.BrutalSmall
     val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.40f)
     val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.45f)
     val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f)

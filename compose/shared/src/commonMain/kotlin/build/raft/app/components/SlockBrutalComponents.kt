@@ -5,6 +5,7 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockMutableOffsetRef
+import build.raft.app.SlockShadow
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
@@ -427,11 +428,11 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
-        if ((focused || forceFocused) && enabled) 4.dp else 3.dp
+        if ((focused || forceFocused) && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
     } else {
         0.dp
     }
-    val reservedShadowOffset = if (showShadow) 4.dp else 0.dp
+    val reservedShadowOffset = if (showShadow) SlockShadow.Brutal else 0.dp
     Box(
         modifier =
             modifier
@@ -570,7 +571,7 @@ internal fun SlockBrutalSearchField(
     textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shadowOffset = if (focused && enabled) 4.dp else 3.dp
+    val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
     Box(
         modifier =
             modifier
@@ -664,7 +665,7 @@ internal fun SlockBrutalActionButton(
     minHeight: Dp = 40.dp,
     leadingIcon: SlockLucideIconName? = null,
     leadingIconSpinning: Boolean = leadingIcon == SlockLucideIconName.Loader || leadingIcon == SlockLucideIconName.LoaderCircle,
-    shadowOffset: Dp = 3.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
@@ -936,7 +937,7 @@ internal fun SlockBrutalIconButton(
     iconColor: String = "#FF000000",
     disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
-    shadowOffset: Dp = 3.dp,
+    shadowOffset: Dp = SlockShadow.BrutalSmall,
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
 ) {
@@ -973,7 +974,7 @@ internal fun SlockBrutalIconButton(
 @Composable
 internal fun SlockBrutalPanelShell(
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = 4.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
@@ -1003,7 +1004,7 @@ internal fun SlockBrutalPanelShell(
 internal fun SlockBrutalListShell(
     height: Dp,
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = 4.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     content: LazyListScope.() -> Unit
 ) {
     // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on

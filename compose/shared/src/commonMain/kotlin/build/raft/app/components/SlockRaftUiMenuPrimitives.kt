@@ -6,6 +6,7 @@ import build.raft.app.SlockFloatingDefaultViewportGap
 import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
@@ -257,7 +258,7 @@ internal fun SlockSelectTrigger(
     height: Dp = 42.dp,
     onClick: () -> Unit = {}
 ) {
-    val shadowOffset = 3.dp
+    val shadowOffset = SlockShadow.BrutalSmall
     val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.50f)
     val backgroundColor = if (enabled) SlockColor.SurfaceWhite else Color(0xFFF3F4F6)
     Box(modifier = modifier.fillMaxWidth().height(height + shadowOffset)) {
@@ -312,7 +313,7 @@ internal fun SlockRaftUiControlledSelectionPopover(
     width: Dp = 220.dp,
     rowHeight: Dp = 36.dp,
     emptyHeight: Dp = 44.dp,
-    shadowOffset: Dp = 3.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     horizontalOffset: Dp = 0.dp,
     verticalOffset: Dp = 8.dp,
     horizontalAutoFlip: Boolean = true,
@@ -394,7 +395,7 @@ internal fun SlockRaftUiControlledSelect(
     onClear: () -> Unit = {},
     onTriggerClick: () -> Unit = {}
 ) {
-    val shadowOffset = if (enabled) 3.dp else 0.dp
+    val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     SlockSelectTrigger(
@@ -485,7 +486,7 @@ internal fun SlockRaftUiControlledMenu(
     modifier: Modifier = Modifier,
     width: Dp = 200.dp,
     rowHeight: Dp = 40.dp,
-    shadowOffset: Dp = 4.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     horizontalOffset: Dp = 0.dp,
     verticalOffset: Dp = 16.dp,
     horizontalAutoFlip: Boolean = true,

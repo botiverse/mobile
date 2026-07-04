@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButtonDefaultTextStyle
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
@@ -44,6 +46,22 @@ class SlockDesignTokensTest {
         assertEquals("SpaceGrotesk-Medium", SlockType.Button.fontFamily.slockFontName())
         assertEquals("SpaceGrotesk-SemiBold", SlockType.PageTitle.fontFamily.slockFontName())
         assertEquals("SpaceGrotesk-Bold", SlockType.ButtonBold.fontFamily.slockFontName())
+    }
+
+    @Test
+    fun typographyMatchesReactComponentBaseline() {
+        assertEquals(14.sp, SlockType.Body.fontSize)
+        assertEquals(20.sp, SlockType.Body.lineHeight)
+        assertEquals(14.sp, SlockType.Input.fontSize)
+        assertEquals(20.sp, SlockType.Input.lineHeight)
+    }
+
+    @Test
+    fun brutalShadowTokensMatchReactCssScale() {
+        assertEquals(1.dp, SlockShadow.BrutalActive)
+        assertEquals(2.dp, SlockShadow.BrutalSmall)
+        assertEquals(4.dp, SlockShadow.Brutal)
+        assertEquals(6.dp, SlockShadow.BrutalLarge)
     }
 
     @Test

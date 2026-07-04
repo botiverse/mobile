@@ -66,6 +66,13 @@ internal object SlockSize {
     val BottomBarHeight = 53.dp
 }
 
+internal object SlockShadow {
+    val Brutal = 4.dp
+    val BrutalSmall = 2.dp
+    val BrutalLarge = 6.dp
+    val BrutalActive = 1.dp
+}
+
 // Kuikly serializes FontFamily as comma-joined font names WITHOUT weight info.
 // A single FontFamily with multiple weights would always pick the first entry.
 // We must use one FontFamily per weight and manually dispatch.
@@ -129,10 +136,10 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle =
 internal object SlockType {
     val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
     val SectionLabel = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
-    val Body = slockTextStyle(FontWeight.Normal, 16.sp, 22.sp, 0.sp)
+    val Body = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
     val Caption = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
     val Button = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
     val ButtonBold = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
     val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
-    val Input = slockTextStyle(FontWeight.Normal, 16.sp, 20.sp, 0.sp)
+    val Input = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
 }

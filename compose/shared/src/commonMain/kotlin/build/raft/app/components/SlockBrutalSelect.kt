@@ -4,6 +4,7 @@ import build.raft.app.Modal
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.withSlockFontWeight
@@ -63,7 +64,7 @@ internal fun SlockBrutalSelectField(
     var expanded by remember { mutableStateOf(false) }
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
-    val shadowOffset = if (enabled) 3.dp else 0.dp
+    val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
     // Track the trigger's root position so we can render the menu as a
     // full-screen overlay (`Modal { ... }`) anchored to it instead of
     // pushing content. Captured per member-id to handle list reuse.
@@ -175,7 +176,7 @@ private fun SlockBrutalSelectMenu(
     onSelect: (SlockBrutalSelectOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shadowOffset = 3.dp
+    val shadowOffset = SlockShadow.Brutal
     val listHeight = ((options.size * rowHeight.value) + SlockStroke.Default.value).dp.coerceAtMost(maxMenuHeight)
     Box(
         modifier =

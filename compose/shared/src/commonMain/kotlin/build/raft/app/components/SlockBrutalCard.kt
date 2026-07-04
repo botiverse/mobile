@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.SlockColor
+import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.slockSquareCorners
 import androidx.compose.runtime.Composable
@@ -51,7 +52,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 @Composable
 internal fun SlockBrutalCard(
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = 4.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     contentPadding: Dp = 14.dp,
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
     content: @Composable ColumnScope.() -> Unit
@@ -90,7 +91,7 @@ internal fun SlockBrutalPanel(
     minWidth: Dp,
     maxWidth: Dp,
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = 4.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     contentModifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {

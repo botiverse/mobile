@@ -6,6 +6,7 @@ import build.raft.app.SlockBrutalDropdownMenuSurface
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.withSlockFontWeight
@@ -97,7 +98,7 @@ internal fun SlockRaftUiButton(
         backgroundColor = variant.background,
         minHeight = if (size == SlockRaftUiBannerSize.Small) 28.dp else 32.dp,
         minWidth = 0.dp,
-        shadowOffset = if (variant == SlockRaftUiButtonVariant.Outline) 2.dp else 3.dp,
+        shadowOffset = if (variant == SlockRaftUiButtonVariant.Outline) SlockShadow.BrutalSmall else SlockShadow.Brutal,
         textStyle = SlockType.ButtonBold.copy(fontSize = if (size == SlockRaftUiBannerSize.Small) 12.sp else 14.sp, lineHeight = 14.sp)
     )
 }
@@ -601,7 +602,7 @@ internal fun SlockRaftUiMenuSurface(
     modifier: Modifier = Modifier,
     width: Dp? = 310.dp,
     rowHeight: Dp = 36.dp,
-    shadowOffset: Dp = 3.dp,
+    shadowOffset: Dp = SlockShadow.Brutal,
     showDividers: Boolean = false,
     onSelect: (String) -> Unit = {},
     onDismiss: () -> Unit = {}
