@@ -21,6 +21,7 @@ enum class SlockRequestPriority {
 const val SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS = 64
 const val SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS = 32
 const val SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS = 16
+const val SLOCK_SHARED_REQUEST_PRIORITY_GATE_ENABLED = false
 
 class SlockRequestTimeoutException(message: String) : Exception(message)
 
@@ -44,6 +45,7 @@ class SlockRequestScheduler(
     private val maxVisibleRequests: Int = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS,
     private val maxBackgroundRequests: Int = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS,
     private val requestTimeoutMillis: Long = 30_000,
+    private val priorityGateEnabled: Boolean = SLOCK_SHARED_REQUEST_PRIORITY_GATE_ENABLED,
     private val logger: (String) -> Unit = {}
 ) {
     private val mutex = Mutex()
@@ -59,13 +61,38 @@ class SlockRequestScheduler(
         reason: String? = null,
         block: suspend () -> T
     ): T =
-        when (priority) {
-            SlockRequestPriority.Foreground ->
-                runForegroundOrVisible(priority, key, reason, foregroundSemaphore, block)
-            SlockRequestPriority.Visible ->
-                runForegroundOrVisible(priority, key, reason, visibleSemaphore, block)
-            SlockRequestPriority.Background -> runBackground(priority, key, reason, block)
+        if (!priorityGateEnabled) {
+            runDirect(priority, key, reason, block)
+        } else {
+            when (priority) {
+                SlockRequestPriority.Foreground ->
+                    runForegroundOrVisible(priority, key, reason, foregroundSemaphore, block)
+                SlockRequestPriority.Visible ->
+                    runForegroundOrVisible(priority, key, reason, visibleSemaphore, block)
+                SlockRequestPriority.Background -> runBackground(priority, key, reason, block)
+            }
         }
+
+    private suspend fun <T> runDirect(
+        priority: SlockRequestPriority,
+        key: String?,
+        reason: String?,
+        block: suspend () -> T
+    ): T {
+        val startedAt = TimeSource.Monotonic.markNow()
+        logStart(priority, key, reason, queuedMs = 0)
+        try {
+            return runWithTimeout(priority, key, reason, block)
+        } finally {
+            logFinish(
+                priority = priority,
+                key = key,
+                reason = reason,
+                queuedMs = 0,
+                runningMs = startedAt.elapsedNow().inWholeMilliseconds
+            )
+        }
+    }
 
     private suspend fun <T> runForegroundOrVisible(
         priority: SlockRequestPriority,

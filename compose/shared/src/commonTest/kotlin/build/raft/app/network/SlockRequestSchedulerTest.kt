@@ -27,7 +27,8 @@ class SlockRequestSchedulerTest {
         val scheduler =
                 SlockRequestScheduler(
                         maxVisibleRequests = 1,
-                        requestTimeoutMillis = 50
+                        requestTimeoutMillis = 50,
+                        priorityGateEnabled = true
                 )
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -53,8 +54,39 @@ class SlockRequestSchedulerTest {
     }
 
     @Test
-    fun foregroundStartsBeforeQueuedBackgroundRequests() = runBlocking {
+    fun defaultDirectGateDoesNotDelayBackgroundBehindActiveForeground() = runBlocking {
         val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1)
+        val foregroundStarted = CompletableDeferred<Unit>()
+        val releaseForeground = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+
+        val foreground =
+                async {
+                    scheduler.run(SlockRequestPriority.Foreground, key = "fg") {
+                        events += "fg-start"
+                        foregroundStarted.complete(Unit)
+                        releaseForeground.await()
+                        events += "fg-end"
+                    }
+                }
+        foregroundStarted.await()
+
+        val background =
+                async {
+                    scheduler.run(SlockRequestPriority.Background, key = "bg") {
+                        events += "bg-start"
+                    }
+                }
+        background.await()
+        releaseForeground.complete(Unit)
+        foreground.await()
+
+        assertTrue(events.indexOf("bg-start") < events.indexOf("fg-end"))
+    }
+
+    @Test
+    fun foregroundStartsBeforeQueuedBackgroundRequests() = runBlocking {
+        val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1, priorityGateEnabled = true)
         val firstBackgroundStarted = CompletableDeferred<Unit>()
         val releaseFirstBackground = CompletableDeferred<Unit>()
         val events = mutableListOf<String>()
@@ -90,7 +122,7 @@ class SlockRequestSchedulerTest {
 
     @Test
     fun activeForegroundDelaysNewBackgroundStart() = runBlocking {
-        val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1)
+        val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1, priorityGateEnabled = true)
         val foregroundStarted = CompletableDeferred<Unit>()
         val releaseForeground = CompletableDeferred<Unit>()
         val events = mutableListOf<String>()
@@ -123,7 +155,12 @@ class SlockRequestSchedulerTest {
 
     @Test
     fun waitingForegroundStartsBeforeBackgroundRequests() = runBlocking {
-        val scheduler = SlockRequestScheduler(maxForegroundRequests = 1, maxBackgroundRequests = 1)
+        val scheduler =
+                SlockRequestScheduler(
+                        maxForegroundRequests = 1,
+                        maxBackgroundRequests = 1,
+                        priorityGateEnabled = true
+                )
         val firstForegroundStarted = CompletableDeferred<Unit>()
         val releaseFirstForeground = CompletableDeferred<Unit>()
         val secondForegroundStarted = CompletableDeferred<Unit>()
@@ -177,7 +214,7 @@ class SlockRequestSchedulerTest {
 
     @Test
     fun backgroundLaneHonorsConcurrencyLimit() = runBlocking {
-        val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1)
+        val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1, priorityGateEnabled = true)
         val mutex = Mutex()
         var active = 0
         var maxActive = 0
@@ -201,7 +238,7 @@ class SlockRequestSchedulerTest {
     }
 
     private suspend fun assertDefaultLaneLimit(priority: SlockRequestPriority, expectedLimit: Int) = coroutineScope {
-        val scheduler = SlockRequestScheduler(requestTimeoutMillis = 5_000)
+        val scheduler = SlockRequestScheduler(requestTimeoutMillis = 5_000, priorityGateEnabled = true)
         val releaseRequests = CompletableDeferred<Unit>()
         val reachedExpectedLimit = CompletableDeferred<Unit>()
         val mutex = Mutex()
