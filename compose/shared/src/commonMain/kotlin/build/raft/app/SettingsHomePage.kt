@@ -1310,30 +1310,71 @@ private val settingsVisualItems = listOf(
     )
 )
 
-private val settingsPageVisualPayload = KuiklySharedSettingsPayload(
-    instanceId = "visual-settings-page",
-    title = "Account",
-    detail = "Profile, email, password, connected accounts",
-    heroIconName = SlockLucideIconName.User,
-    heroLabel = "Artin",
-    sections = listOf(
-        KuiklySharedSettingsSection(
-            title = "Profile",
-            rows = listOf(
-                KuiklySharedSettingsRow("displayName", SlockLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = "Artin"),
-                KuiklySharedSettingsRow("email", SlockLucideIconName.Mail, "Email", "artin@slock.test", status = "Verified"),
-                KuiklySharedSettingsRow("avatar", SlockLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
-            )
-        ),
-        KuiklySharedSettingsSection(
-            title = "Session",
-            rows = listOf(
-                KuiklySharedSettingsRow("password", SlockLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
-                KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
+internal data class SettingsVisualFixtureValues(
+    val serverId: String = "visual-server",
+    val serverName: String = "Visual Server",
+    val serverSlug: String = "visual",
+    val serverPlan: String = "free",
+    val ownerId: String = "visual-user",
+    val ownerMemberId: String = "visual-human-1",
+    val ownerName: String = "artin",
+    val ownerDisplayName: String = "artin",
+    val ownerHandle: String = "@artin",
+    val ownerEmail: String = "artin@slock.ai",
+    val ownerAvatarLabel: String = "AR",
+    val ownerRole: String = "owner",
+    val ownerRoleLabel: String = "Owner",
+    val ownerDescription: String = "Owner",
+    val ownerEmailVerified: Boolean = true,
+    val designerEmail: String = "designer@slock.ai",
+    val memberJoinedAtIso: String = "2026-06-18T00:00:00.000Z",
+    val entityCreatedAtIso: String = "2026-06-18T00:00:00.000Z",
+    val recentActivityAtIso: String = "2026-06-19T12:24:00.000Z"
+) {
+    val ownerHandleBare: String get() = ownerHandle.removePrefix("@")
+    val ownerAdminDetail: String get() = "$ownerRoleLabel · $ownerEmail"
+}
+
+internal object SettingsVisualFixtureBridge {
+    var values: SettingsVisualFixtureValues = SettingsVisualFixtureValues()
+        private set
+
+    fun install(values: SettingsVisualFixtureValues) {
+        this.values = values
+    }
+}
+
+private val settingsVisualFixtureValues: SettingsVisualFixtureValues
+    get() = SettingsVisualFixtureBridge.values
+
+private val settingsPageVisualPayload: KuiklySharedSettingsPayload
+    get() {
+        val fixture = settingsVisualFixtureValues
+        return KuiklySharedSettingsPayload(
+            instanceId = "visual-settings-page",
+            title = "Account",
+            detail = "Profile, email, password, connected accounts",
+            heroIconName = SlockLucideIconName.User,
+            heroLabel = fixture.ownerDisplayName,
+            sections = listOf(
+                KuiklySharedSettingsSection(
+                    title = "Profile",
+                    rows = listOf(
+                        KuiklySharedSettingsRow("displayName", SlockLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = fixture.ownerDisplayName),
+                        KuiklySharedSettingsRow("email", SlockLucideIconName.Mail, "Email", fixture.ownerEmail, status = "Verified"),
+                        KuiklySharedSettingsRow("avatar", SlockLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
+                    )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Session",
+                    rows = listOf(
+                        KuiklySharedSettingsRow("password", SlockLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
+                        KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
+                    )
+                )
             )
         )
-    )
-)
+    }
 
 private val bottomTabBarSmokeItems = listOf(
     SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House),
@@ -14138,17 +14179,18 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
 
 @Composable
 private fun SettingsVisualAccountContent(variant: String = "account") {
+    val fixture = settingsVisualFixtureValues
     val connectedAccounts =
         when (variant) {
             "account-provider-linked" ->
                 listOf(
-                    KuiklySettingsConnectedAccount("password", "Email password", "artin@slock.test", "connected", canConnect = false),
-                    KuiklySettingsConnectedAccount("google", "Google", "artin@slock.test", "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
                     KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
             else ->
                 listOf(
-                    KuiklySettingsConnectedAccount("password", "Email password", "artin@slock.test", "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
                     KuiklySettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
                     KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
@@ -14159,11 +14201,11 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                 instanceId = "visual-settings-account-$variant",
                 profile =
                     settingsAccountSmokePayload.profile.copy(
-                        displayName = "Artin",
-                        handle = "artin",
-                        email = "artin@slock.test",
-                        verified = true,
-                        roleLabel = "Owner"
+                        displayName = fixture.ownerDisplayName,
+                        handle = fixture.ownerHandleBare,
+                        email = fixture.ownerEmail,
+                        verified = fixture.ownerEmailVerified,
+                        roleLabel = fixture.ownerRoleLabel
                     ),
                 connectedAccounts = connectedAccounts,
                 passwordExpanded = variant == "account-password-expanded" || variant == "account-error",
@@ -14183,9 +14225,9 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 private fun SettingsVisualServerFocusedContent(variant: String) {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
-    var inviteEmail by remember { mutableStateOf("new.member@slock.test") }
+    var inviteEmail by remember { mutableStateOf(settingsVisualFixtureValues.designerEmail) }
     var joinLinkMaxUses by remember { mutableStateOf("25") }
-    var joinLinkExpiresAt by remember { mutableStateOf("2026-07-01T09:00:00Z") }
+    var joinLinkExpiresAt by remember { mutableStateOf(settingsVisualFixtureValues.recentActivityAtIso) }
     var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
     var agreementTitle by remember { mutableStateOf(snapshot.agreement?.title.orEmpty()) }
     var agreementBody by remember { mutableStateOf(snapshot.agreement?.bodyMarkdown.orEmpty()) }
@@ -14471,12 +14513,13 @@ private fun SettingsVisualConnectedAppsContent() {
     )
 }
 
-private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
-    SettingsServerSnapshot(
+private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
+    val fixture = settingsVisualFixtureValues
+    return SettingsServerSnapshot(
         profile =
             build.raft.app.data.SettingsServerProfileSnapshot(
-                name = "Visual Server",
-                slug = "visual",
+                name = fixture.serverName,
+                slug = fixture.serverSlug,
                 hideHumansFromMembers = true,
                 canSave = true
             ),
@@ -14493,7 +14536,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
             ),
         admins =
             listOf(
-                SettingsServerAdminSnapshot("user_artin", "Artin", "Owner · artin@slock.test", "owner"),
+                SettingsServerAdminSnapshot(fixture.ownerId, fixture.ownerDisplayName, fixture.ownerAdminDetail, fixture.ownerRole),
                 SettingsServerAdminSnapshot("user_cindy", "Cindy", "Admin · onboarding", "admin"),
                 SettingsServerAdminSnapshot("user_qa", "QA Tester", "Member · validation", "member")
             ),
@@ -14504,8 +14547,8 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
             ),
         pendingInvites =
             listOf(
-                SettingsServerInviteSnapshot("invite_1", "designer@slock.test", "Artin", "2026-06-18T09:30:00Z"),
-                SettingsServerInviteSnapshot("invite_2", "qa@slock.test", "Cindy", "2026-06-19T02:15:00Z")
+                SettingsServerInviteSnapshot("invite_1", fixture.designerEmail, fixture.ownerDisplayName, fixture.entityCreatedAtIso),
+                SettingsServerInviteSnapshot("invite_2", "qa@slock.ai", "Cindy", fixture.recentActivityAtIso)
             ),
         joinLinks =
             listOf(
@@ -14515,7 +14558,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
                     url = "https://app.raft.build/join/design",
                     maxUsesLabel = "25 max",
                     usageLabel = "8 used",
-                    expiresAtLabel = "2026-07-01T09:00:00Z"
+                    expiresAtLabel = fixture.recentActivityAtIso
                 )
             ),
         agreement =
@@ -14550,6 +14593,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
                 detail = "Server messages can be translated on demand."
             )
     )
+}
 
 private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot {
     return SettingsBillingSnapshot(
@@ -14787,47 +14831,59 @@ private fun settingsVisualSelection(
                 )
     )
 
-private val homeSearchVisualServer = ServerSummary(
-    id = ServerId("srv_design"),
-    name = "Raft Design",
-    slug = "slock-design",
-    role = "owner",
-    plan = "pro",
-    unreadCount = 24
-)
-
-private val homeSearchVisualMember = MemberProfile(
-    id = MemberId("user_artin"),
-    displayName = "Artin",
-    handle = "artin",
-    kind = MemberKind.Human,
-    presence = Presence.Active
-)
-
-private val homeSearchVisualSession = StoredAuthSession(
-    user =
-        StoredAuthUser(
-            id = "user_artin",
-            email = "artin@slock.test",
-            name = "artin",
-            displayName = "Artin",
-            emailVerified = true
-        ),
-    accessToken = "visual-token",
-    refreshToken = "visual-refresh",
-    selectedServerId = "srv_design",
-    selectedServerSlug = "slock-design",
-    servers =
-        listOf(
-            StoredAuthServer(
-                id = "srv_design",
-                name = "Raft Design",
-                slug = "slock-design",
-                role = "owner",
-                plan = "pro"
-            )
+private val homeSearchVisualServer: ServerSummary
+    get() {
+        val fixture = settingsVisualFixtureValues
+        return ServerSummary(
+            id = ServerId(fixture.serverId),
+            name = fixture.serverName,
+            slug = fixture.serverSlug,
+            role = fixture.ownerRole,
+            plan = fixture.serverPlan,
+            unreadCount = 24
         )
-)
+    }
+
+private val homeSearchVisualMember: MemberProfile
+    get() {
+        val fixture = settingsVisualFixtureValues
+        return MemberProfile(
+            id = MemberId(fixture.ownerMemberId),
+            displayName = fixture.ownerDisplayName,
+            handle = fixture.ownerHandleBare,
+            kind = MemberKind.Human,
+            presence = Presence.Active
+        )
+    }
+
+private val homeSearchVisualSession: StoredAuthSession
+    get() {
+        val fixture = settingsVisualFixtureValues
+        return StoredAuthSession(
+            user =
+                StoredAuthUser(
+                    id = fixture.ownerId,
+                    email = fixture.ownerEmail,
+                    name = fixture.ownerName,
+                    displayName = fixture.ownerDisplayName,
+                    emailVerified = fixture.ownerEmailVerified
+                ),
+            accessToken = "visual-token",
+            refreshToken = "visual-refresh",
+            selectedServerId = fixture.serverId,
+            selectedServerSlug = fixture.serverSlug,
+            servers =
+                listOf(
+                    StoredAuthServer(
+                        id = fixture.serverId,
+                        name = fixture.serverName,
+                        slug = fixture.serverSlug,
+                        role = fixture.ownerRole,
+                        plan = fixture.serverPlan
+                    )
+                )
+        )
+    }
 
 private val homeSearchVisualChannels = listOf(
     ConversationSummary(

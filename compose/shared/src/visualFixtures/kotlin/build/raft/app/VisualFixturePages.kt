@@ -96,6 +96,7 @@ internal class ComposeBottomTabBarVisualPage : BasePager() {
 internal class ComposeSettingsRowVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
+        installSettingsVisualFixtureData()
         setContent { SettingsRowVisualContent() }
     }
 }
@@ -104,8 +105,35 @@ internal class ComposeSettingsRowVisualPage : BasePager() {
 internal class ComposeSettingsPageVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
+        installSettingsVisualFixtureData()
         setContent { SettingsPageVisualContent() }
     }
+}
+
+private fun installSettingsVisualFixtureData() {
+    SettingsVisualFixtureBridge.install(
+        SettingsVisualFixtureValues(
+            serverId = VisualFixtureData.Server.ID,
+            serverName = VisualFixtureData.Server.NAME,
+            serverSlug = VisualFixtureData.Server.SLUG,
+            serverPlan = VisualFixtureData.Server.PLAN,
+            ownerId = VisualFixtureData.Humans.Owner.ID,
+            ownerMemberId = VisualFixtureData.Humans.Owner.MEMBER_ID,
+            ownerName = VisualFixtureData.Humans.Owner.NAME,
+            ownerDisplayName = VisualFixtureData.Humans.Owner.DISPLAY_NAME,
+            ownerHandle = VisualFixtureData.Humans.Owner.HANDLE,
+            ownerEmail = VisualFixtureData.Humans.Owner.EMAIL,
+            ownerAvatarLabel = VisualFixtureData.Humans.Owner.AVATAR_LABEL,
+            ownerRole = VisualFixtureData.Humans.Owner.ROLE,
+            ownerRoleLabel = VisualFixtureData.Humans.Owner.ROLE_LABEL,
+            ownerDescription = VisualFixtureData.Humans.Owner.DESCRIPTION,
+            ownerEmailVerified = VisualFixtureData.Humans.Owner.EMAIL_VERIFIED,
+            designerEmail = VisualFixtureData.Humans.Designer.EMAIL,
+            memberJoinedAtIso = VisualFixtureData.Times.MEMBER_JOINED_AT_ISO,
+            entityCreatedAtIso = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
+            recentActivityAtIso = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO
+        )
+    )
 }
 
 @Page("compose_home_search_visual", supportInLocal = true)
