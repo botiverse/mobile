@@ -14368,7 +14368,7 @@ private fun SettingsVisualLanguageRegionContent() {
         state = ScreenLoadState.Content(snapshot),
         actionState = null,
         languageDraft = snapshot.browserLanguage.selectedKey,
-        displayDraft = if (snapshot.autoTranslation.enabled) "translated" else "original",
+        displayDraft = snapshot.translationDisplay.selectedKey,
         timezoneDraft = snapshot.timezone.selectedKey,
         timeFormatDraft = snapshot.timeFormat.selectedKey,
         bottomContentPadding = SlockSpacing.Lg,
