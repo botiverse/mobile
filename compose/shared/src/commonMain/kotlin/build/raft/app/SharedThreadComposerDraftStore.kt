@@ -54,6 +54,17 @@ internal data class SharedThreadComposerDraftRecord(
 
     fun matchesReplyThread(parentMessageId: String): Boolean =
         !isRootComposer && this.parentMessageId == parentMessageId
+
+    fun matchesReplyThreadIdentity(other: SharedThreadComposerDraftRecord): Boolean =
+        if (isRootComposer || other.isRootComposer) {
+            false
+        } else {
+            val parent = parentMessageId?.takeIf { it.isNotBlank() }
+            val otherParent = other.parentMessageId?.takeIf { it.isNotBlank() }
+            val mention = mentionChannelId?.takeIf { it.isNotBlank() }
+            val otherMention = other.mentionChannelId?.takeIf { it.isNotBlank() }
+            parent != null && parent == otherParent && mention != null && mention == otherMention
+        }
 }
 
 internal data class SharedThreadComposerDraftProjection(
@@ -115,6 +126,16 @@ internal class SharedThreadComposerDraftPersistence(
             asTask = store.getString(asTaskKey(key)) == "true",
             uploadedAttachments = readUploadedAttachments(key)
         )
+    }
+
+    fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? {
+        read(key)?.let { draft -> return key to draft }
+        val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer } ?: return null
+        return activeDraftRecords()
+            .filter { record -> record.key != key && record.matchesReplyThreadIdentity(currentRecord) }
+            .sortedBy { record -> record.key }
+            .mapNotNull { record -> read(record.key)?.let { draft -> record.key to draft } }
+            .firstOrNull()
     }
 
     fun save(
@@ -239,6 +260,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         SharedActiveDraftRecordsState.asStateFlow()
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
+    private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()
 
     init {
         refreshActiveDraftRecords(reason = "init")
@@ -251,29 +273,39 @@ internal class SharedThreadComposerDraftPersistSlice(
     ): SharedThreadComposerDraftState =
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
-                val stagedUploadedAttachments = consumeStagedUploadedAttachments(intent.draftKey)
-                val persistedDraft =
-                    intent.draftKey
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let(persistence::read)
+                val draftKey = intent.draftKey?.takeIf { it.isNotBlank() }
+                val stagedUploadedAttachments = consumeStagedUploadedAttachments(draftKey)
+                val restoredDraft =
+                    draftKey
+                        ?.let(persistence::readWithReplyFallback)
+                if (draftKey != null && restoredDraft != null && restoredDraft.first != draftKey) {
+                    fallbackDraftSourceKeyByCurrentKey[draftKey] = restoredDraft.first
+                }
                 val restored =
-                    if (persistedDraft == null) {
-                        reduced
+                    restoredDraft
+                        ?.second
+                        ?.let { persistedDraft ->
+                            reduced.copy(
+                                seedText = persistedDraft.text,
+                                seedAsTask = persistedDraft.asTask,
+                                uploadedAttachments = persistedDraft.uploadedAttachments
+                            )
+                        }
+                        ?: reduced
+                val withStagedAttachments =
+                    if (stagedUploadedAttachments.isEmpty()) {
+                        restored
                     } else {
-                        reduced.copy(
-                            seedText = persistedDraft.text,
-                            seedAsTask = persistedDraft.asTask,
-                            uploadedAttachments = persistedDraft.uploadedAttachments
+                        restored.copy(
+                            uploadedAttachments =
+                                (restored.uploadedAttachments + stagedUploadedAttachments)
+                                    .distinctBy { attachment -> attachment.id }
                         )
                     }
-                if (stagedUploadedAttachments.isEmpty()) {
-                    restored
+                if (withStagedAttachments.requiresComposerHostSync(reduced)) {
+                    withStagedAttachments.copy(syncNonce = reduced.syncNonce + 1)
                 } else {
-                    restored.copy(
-                        uploadedAttachments =
-                            (restored.uploadedAttachments + stagedUploadedAttachments)
-                                .distinctBy { attachment -> attachment.id }
-                    )
+                    withStagedAttachments
                 }
             }
             else -> reduced
@@ -285,6 +317,20 @@ internal class SharedThreadComposerDraftPersistSlice(
         next: SharedThreadComposerDraftState
     ) {
         when (intent) {
+            is SharedThreadComposerDraftIntent.Start ->
+                next.draftKey?.let { key ->
+                    val fallbackSourceKey = fallbackDraftSourceKeyByCurrentKey.remove(key)
+                    if (fallbackSourceKey != null && fallbackSourceKey != key) {
+                        persistence.save(
+                            key = key,
+                            text = next.seedText,
+                            asTask = next.seedAsTask,
+                            uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
+                        )
+                        persistence.clear(fallbackSourceKey)
+                        refreshActiveDraftRecords(reason = "StartFallbackRestore")
+                    }
+                }
             is SharedThreadComposerDraftIntent.Change,
             is SharedThreadComposerDraftIntent.InsertMention,
             is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
@@ -348,6 +394,13 @@ internal class SharedThreadComposerDraftPersistSlice(
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
+
+private fun SharedThreadComposerDraftState.requiresComposerHostSync(
+    previous: SharedThreadComposerDraftState
+): Boolean =
+    seedText != previous.seedText ||
+        seedAsTask != previous.seedAsTask ||
+        uploadedAttachments != previous.uploadedAttachments
 
 private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosticsLabel(): String =
     when (this) {
