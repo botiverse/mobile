@@ -94,7 +94,7 @@ class SlockAppShellTest {
             childHostAppShellPagerTabs("members", mountedTabs = setOf("home", "tasks", "members"))
         )
         assertEquals(
-            listOf("home", "tasks"),
+            listOf("home", "tasks", "settings"),
             childHostAppShellPagerTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
         )
         assertEquals(
@@ -110,13 +110,14 @@ class SlockAppShellTest {
         assertEquals("home", appShellActiveChildPagerTab("home"))
         assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
         assertEquals("members", appShellActiveChildPagerTab("members"))
-        assertNull(appShellActiveChildPagerTab("settings"))
+        assertEquals("settings", appShellActiveChildPagerTab("settings"))
         assertEquals("home", appShellActiveChildPagerTab("unknown"))
 
         assertEquals(0, appShellChildPagerTargetIndex("home", pagerTabs))
         assertEquals(1, appShellChildPagerTargetIndex("tasks", pagerTabs))
         assertEquals(2, appShellChildPagerTargetIndex("members", pagerTabs))
         assertNull(appShellChildPagerTargetIndex("settings", pagerTabs))
+        assertEquals(3, appShellChildPagerTargetIndex("settings", pagerTabs + "settings"))
         assertNull(appShellChildPagerTargetIndex("members", listOf("home", "tasks")))
     }
 

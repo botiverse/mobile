@@ -493,7 +493,7 @@ private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
-private val AppShellChildPageTabKeys = listOf("home", "tasks", "members")
+private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
