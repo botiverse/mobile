@@ -67,7 +67,10 @@ jobs:
       - name: Install playwright chromium
         run: pnpm --filter "@slock-ai/web" exec playwright install --with-deps chromium
 
+      # continue-on-error: single broken cases must surface as "missing" in the
+      # diff report instead of killing the whole pipeline.
       - name: Capture React visuals
+        continue-on-error: true
         env:
           CASE_FILTER: ${{ inputs.case_filter }}
         run: |
@@ -115,44 +118,33 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-api-35-x86_64
-
-      - name: Create AVD snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
+      # Pre-build outside the emulator step so boot timeout is not consumed
+      # by Gradle, and a compile failure is distinguishable from an emulator one.
+      - name: Build connected test APKs
+        working-directory: ./compose
+        run: |
+          ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
+            :androidApp:assembleConnectedTest :androidApp:assembleConnectedTestAndroidTest
 
       - name: Run visual capture connected test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           working-directory: ./compose
           script: |
             adb wait-for-device
             ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
               :androidApp:connectedConnectedTestAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest
+              -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest \
+              || echo "connected test exited non-zero; pulling whatever was captured"
             mkdir -p ../visual-testing-results/android
             adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
 

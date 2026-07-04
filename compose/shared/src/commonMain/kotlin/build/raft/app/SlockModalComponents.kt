@@ -49,7 +49,7 @@ internal fun SlockModalLayer(
     title: String,
     subtitle: String = "",
     onDismiss: () -> Unit,
-    overlayAlpha: Float = 0.58f,
+    overlayAlpha: Float = 0.60f,
     maxWidth: Dp = 384.dp,
     content: @Composable () -> Unit
 ) {
@@ -72,7 +72,7 @@ internal fun SlockUnifiedDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
-    overlayAlpha: Float = 0.36f,
+    overlayAlpha: Float = 0.60f,
     minWidth: Dp = 312.dp,
     maxWidth: Dp = 408.dp,
     outerPadding: Dp = SlockSpacing.Md,
@@ -88,7 +88,7 @@ internal fun SlockUnifiedDialog(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.ShadowBlack.copy(alpha = overlayAlpha))
+                    .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
                     .clickable(enabled = dismissEnabled, onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {

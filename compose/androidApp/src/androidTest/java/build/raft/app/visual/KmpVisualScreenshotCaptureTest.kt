@@ -1170,6 +1170,11 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // React baselines have no device status bar, so captures must not inherit
+    // the host/native top inset. Read by slockTopSafeAreaPadding().
+    private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
+        (pageData ?: JSONObject()).put("slockVisualZeroSafeArea", true)
+
     private fun captureKmpHomeCase(
         caseId: String,
         pageData: JSONObject,
@@ -1179,7 +1184,7 @@ class KmpVisualScreenshotCaptureTest {
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
-                .putExtra("pageData", pageData.toString())
+                .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { applyVisualFullscreen(it) }
@@ -1235,11 +1240,7 @@ class KmpVisualScreenshotCaptureTest {
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", pageName)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-                .apply {
-                    if (pageData != null) {
-                        putExtra("pageData", pageData.toString())
-                    }
-                }
+                .putExtra("pageData", withVisualCaptureParams(pageData).toString())
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()

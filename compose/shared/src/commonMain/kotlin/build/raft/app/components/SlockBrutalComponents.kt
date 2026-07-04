@@ -61,7 +61,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal data class SlockModalShellModel(
     val title: String,
     val subtitle: String = "",
-    val overlayAlpha: Float = 0.58f,
+    val overlayAlpha: Float = 0.60f,
     val maxWidth: Dp = 384.dp,
     val dismissIcon: SlockLucideIconName = SlockLucideIconName.X
 )

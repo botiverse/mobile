@@ -13989,19 +13989,19 @@ internal fun SettingsPageVisualContent() {
         return
     }
     val spec = settingsVisualSpec(variant)
-    val alignBillingRouteToReact = spec.variant == "billing"
+    // React baselines render settings pages flush to the viewport top; no host
+    // status-bar spacer or safe-area padding may leak into fixture captures.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(top = if (alignBillingRouteToReact) 0.dp else 48.dp)
     ) {
         SettingsDetailShell(
             title = spec.title,
             subtitle = spec.subtitle,
             iconName = spec.iconName,
-            applyTopSafeArea = !alignBillingRouteToReact,
+            applyTopSafeArea = false,
             onBack = {}
         ) {
             SettingsVisualPageBody(spec)
@@ -14041,7 +14041,11 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
         "account-error" ->
             SettingsVisualSpec(variant, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
         else ->
-            SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
+            if (variant.startsWith("administration")) {
+                SettingsVisualSpec("administration", "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
+            } else {
+                SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
+            }
     }
 
 @Composable

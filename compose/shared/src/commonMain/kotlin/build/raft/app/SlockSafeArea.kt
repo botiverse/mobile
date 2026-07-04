@@ -12,6 +12,9 @@ import com.tencent.kuikly.core.pager.Pager
 internal fun slockTopSafeAreaPadding(): Dp {
     val pageData = (LocalActivity.current.getPager() as Pager).pageData
     val params = pageData.params
+    // Visual-testing captures compare against React baselines that have no
+    // device status bar; the capture harness opts out of the top inset.
+    if (params.optBoolean("slockVisualZeroSafeArea", false)) return 0.dp
     val nativeInsetDp = resolveSlockSafeAreaDp(pageData.safeAreaInsets.top, pageData.statusBarHeight).dp
     val hostInsetDp =
         with(LocalDensity.current) {
