@@ -8080,8 +8080,9 @@ private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     if (parserCandidateCount == 0) {
         return emptyThreadMarkdownPreparsePlan()
     }
-    val priorityCandidates = orderedCandidates.take(ThreadMarkdownPriorityPreparseMessageCount)
-    val deferredCandidates = orderedCandidates.drop(priorityCandidates.size)
+    val priorityCandidates = orderedCandidates.threadMarkdownPriorityPreparseCandidates()
+    val priorityCandidateIds = priorityCandidates.mapTo(mutableSetOf()) { candidate -> candidate.id }
+    val deferredCandidates = orderedCandidates.filterNot { candidate -> candidate.id in priorityCandidateIds }
     return ThreadMarkdownPreparsePlan(
         key =
             orderedCandidates.joinToString(separator = "|") { candidate ->
@@ -8140,6 +8141,17 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(): List<
             }
         }
     return ordered.distinctBy { candidate -> candidate.id }
+}
+
+private fun List<ThreadMarkdownPreparseCandidate>.threadMarkdownPriorityPreparseCandidates(): List<ThreadMarkdownPreparseCandidate> {
+    val originCandidate = firstOrNull { candidate -> candidate.id.startsWith("origin:") }
+    val messageCandidates =
+        filterNot { candidate -> candidate.id.startsWith("origin:") }
+            .take(ThreadMarkdownPriorityPreparseMessageCount)
+    return buildList {
+        originCandidate?.let(::add)
+        addAll(messageCandidates)
+    }.distinctBy { candidate -> candidate.id }
 }
 
 private fun centeredThreadMessageIndexes(

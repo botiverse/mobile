@@ -303,12 +303,61 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun markdownPreparsePriority_alwaysIncludesOriginWithFocusedMessageNeighborhood() {
+        val messages = (0 until 10).map { index -> message("m$index") }
+        val slice =
+            payload(
+                originStatus = "content",
+                originMessage = message("origin"),
+                messages = messages
+            ).copy(focusedMessageId = "m5").timelineSlice()
+
+        assertEquals(
+            listOf("origin:origin", "m5", "m4", "m6", "m3"),
+            slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
     fun markdownPreparsePriority_usesLatestMessagesWhenFocusMissing() {
         val messages = (0 until 10).map { index -> message("m$index") }
         val slice = payload(messages = messages).copy(focusedMessageId = "missing").timelineSlice()
 
         assertEquals(
             listOf("m9", "m8", "m7", "m6"),
+            slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun markdownPreparsePriority_alwaysIncludesOriginWhenFocusMissing() {
+        val messages = (0 until 10).map { index -> message("m$index") }
+        val slice =
+            payload(
+                originStatus = "content",
+                originMessage = message("origin"),
+                messages = messages
+            ).copy(focusedMessageId = "missing").timelineSlice()
+
+        assertEquals(
+            listOf("origin:origin", "m9", "m8", "m7", "m6"),
+            slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun markdownPreparsePriority_includesOriginWhenOriginIsFocused() {
+        val messages = (0 until 5).map { index -> message("m$index") }
+        val slice =
+            payload(
+                originStatus = "content",
+                originMessage = message("origin"),
+                messages = messages
+            ).copy(focusedMessageId = "origin").timelineSlice()
+
+        assertEquals(-1, slice.focusedMessageListItemIndex())
+        assertEquals(
+            listOf("origin:origin", "m4", "m3", "m2", "m1"),
             slice.initialMarkdownPreparsePriorityCandidateIds(contentExtrasVisible = true)
         )
     }
