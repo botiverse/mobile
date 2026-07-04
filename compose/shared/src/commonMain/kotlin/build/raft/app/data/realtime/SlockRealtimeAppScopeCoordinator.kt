@@ -201,6 +201,16 @@ class SlockRealtimeAppScopeEngine {
     fun joinChannelDecisionForHost(channelIdValue: String, reason: String): SlockRealtimeAppScopeRoomCommandDecision =
         joinChannelDecision(ChannelId(channelIdValue), reason)
 
+    /**
+     * Host-facing reset for hosts that scope an engine instance to room-command
+     * bookkeeping only (iOS). Must be called wherever the host clears its own
+     * session state, so stale joined-set entries cannot suppress joins on the
+     * next session.
+     */
+    fun resetRoomStateForHost() {
+        state.resetForSessionEnd()
+    }
+
     fun roomCommandDecisionForHost(
         action: String,
         channelIdValue: String,
