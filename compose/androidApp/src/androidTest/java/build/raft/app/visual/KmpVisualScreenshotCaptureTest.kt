@@ -1184,11 +1184,7 @@ class KmpVisualScreenshotCaptureTest {
             Thread.sleep(2_500)
             scenario.onActivity { suppressVisualKeyboard(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val screenshot = captureActivityScreenshot(scenario, caseId)
-            validateCropBounds(caseId, screenshot, crop)
-            val cropped = screenshot.cropDp(crop)
-            val normalized = cropped.normalizeToDpPixels(context)
-            validateVisualBitmap(context, caseId, normalized, crop)
+            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1209,13 +1205,7 @@ class KmpVisualScreenshotCaptureTest {
             )
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
-            if (normalized !== cropped) {
-                normalized.recycle()
-            }
-            if (cropped !== screenshot) {
-                cropped.recycle()
-            }
-            screenshot.recycle()
+            normalized.recycle()
         }
     }
 
@@ -1241,11 +1231,7 @@ class KmpVisualScreenshotCaptureTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             scenario.onActivity { suppressVisualKeyboard(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val screenshot = captureActivityScreenshot(scenario, caseId)
-            validateCropBounds(caseId, screenshot, crop)
-            val cropped = screenshot.cropDp(crop)
-            val normalized = cropped.normalizeToDpPixels(context)
-            validateVisualBitmap(context, caseId, normalized, crop)
+            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1266,13 +1252,7 @@ class KmpVisualScreenshotCaptureTest {
             )
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
-            if (normalized !== cropped) {
-                normalized.recycle()
-            }
-            if (cropped !== screenshot) {
-                cropped.recycle()
-            }
-            screenshot.recycle()
+            normalized.recycle()
         }
     }
 
@@ -1327,6 +1307,64 @@ class KmpVisualScreenshotCaptureTest {
             ?: requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
                 "Unable to capture KMP visual screenshot for $caseId"
             }
+    }
+
+    private fun captureStableVisualBitmap(
+        context: Context,
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        caseId: String,
+        crop: VisualCrop
+    ): Bitmap {
+        val deadline = SystemClock.uptimeMillis() + STABLE_CAPTURE_TIMEOUT_MS
+        var lastBitmap: Bitmap? = null
+        var lastStats: VisualBitmapStats? = null
+        var lastProblems: List<String> = emptyList()
+
+        do {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            val screenshot = captureActivityScreenshot(scenario, caseId)
+            validateCropBounds(caseId, screenshot, crop)
+            val cropped = screenshot.cropDp(crop)
+            val normalized = cropped.normalizeToDpPixels(context)
+            val stats = normalized.visualStats()
+            val problems = visualValidationProblems(normalized, stats)
+            if (problems.isEmpty()) {
+                if (cropped !== screenshot && cropped !== normalized) {
+                    cropped.recycle()
+                }
+                if (screenshot !== normalized) {
+                    screenshot.recycle()
+                }
+                lastBitmap?.recycle()
+                return normalized
+            }
+
+            lastBitmap?.recycle()
+            lastBitmap = normalized
+            lastStats = stats
+            lastProblems = problems
+            if (cropped !== screenshot && cropped !== normalized) {
+                cropped.recycle()
+            }
+            if (screenshot !== normalized) {
+                screenshot.recycle()
+            }
+            Thread.sleep(STABLE_CAPTURE_RETRY_MS)
+        } while (SystemClock.uptimeMillis() < deadline)
+
+        val failureBitmap = requireNotNull(lastBitmap) {
+            "Unable to capture KMP visual screenshot for $caseId"
+        }
+        writeFailureArtifacts(
+            context = context,
+            caseId = caseId,
+            bitmap = failureBitmap,
+            crop = crop,
+            stats = requireNotNull(lastStats),
+            problems = lastProblems
+        )
+        failureBitmap.recycle()
+        throw AssertionError("$caseId visual capture failed validation after waiting for first frame: ${lastProblems.joinToString("; ")}")
     }
 
     private fun homeServerSwitcherPageData(): JSONObject {
@@ -1473,8 +1511,7 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun validateVisualBitmap(context: Context, caseId: String, bitmap: Bitmap, crop: VisualCrop) {
-        val stats = bitmap.visualStats()
+    private fun visualValidationProblems(bitmap: Bitmap, stats: VisualBitmapStats): List<String> {
         val problems = mutableListOf<String>()
         if (bitmap.width <= 1 || bitmap.height <= 1) {
             problems += "bitmap is too small: ${bitmap.width}x${bitmap.height}"
@@ -1485,10 +1522,7 @@ class KmpVisualScreenshotCaptureTest {
         if (stats.dominantRatio >= 0.985f) {
             problems += "bitmap is ${"%.2f".format(stats.dominantRatio * 100)}% one color"
         }
-        if (problems.isNotEmpty()) {
-            writeFailureArtifacts(context, caseId, bitmap, crop, stats, problems)
-            throw AssertionError("$caseId visual capture failed validation: ${problems.joinToString("; ")}")
-        }
+        return problems
     }
 
     private fun Bitmap.visualStats(): VisualBitmapStats {
@@ -2022,5 +2056,8 @@ class KmpVisualScreenshotCaptureTest {
         fun clearVisualOutputDirectory() {
             VisualAndroidArtifacts.resetPublicOutput()
         }
+
+        private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
+        private const val STABLE_CAPTURE_RETRY_MS = 750L
     }
 }
