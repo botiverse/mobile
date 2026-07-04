@@ -388,6 +388,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadDateDividerLabelAppearsOnlyWhenLocalDayChanges() {
+        val timeContext =
+            SlockTimeContext(
+                localOffsetMinutes = 0,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 4)
+            )
+        val julyOne =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "u-artin",
+                authorName = "Artin",
+                timestampLabel = "2026-07-01T09:00:00Z"
+            )
+        val julyOneLater = julyOne.copy(id = "m2", timestampLabel = "2026-07-01T10:00:00Z")
+        val julyThree = julyOne.copy(id = "m3", timestampLabel = "2026-07-03T10:00:00Z")
+        val julyFour = julyOne.copy(id = "m4", timestampLabel = "2026-07-04T10:00:00Z")
+
+        assertEquals("WEDNESDAY, JULY 1", threadDateDividerLabel(null, julyOne, timeContext))
+        assertEquals(null, threadDateDividerLabel(julyOne, julyOneLater, timeContext))
+        assertEquals("YESTERDAY", threadDateDividerLabel(julyOneLater, julyThree, timeContext))
+        assertEquals("TODAY", threadDateDividerLabel(julyThree, julyFour, timeContext))
+        assertEquals(null, threadDateDividerLabel(julyFour, julyFour.copy(id = "local", timestampLabel = "Now"), timeContext))
+    }
+
+    @Test
     fun markdownChannelLaunchPayloadResolvesChannelNameToIdentityOnlyRoute() {
         val payload =
             buildMarkdownChannelLaunchPayload(

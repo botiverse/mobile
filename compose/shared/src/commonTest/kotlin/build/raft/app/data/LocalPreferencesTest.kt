@@ -40,7 +40,7 @@ class LocalPreferencesTest {
 
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
-        assertEquals(false, snapshot.compactConsecutiveMessages)
+        assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
@@ -71,6 +71,8 @@ class LocalPreferencesTest {
         val restored = repository.getChatLayoutPreference()
         val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
         val disabledActivityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(false)
+        val disabledCompact = repository.setCompactConsecutiveMessages(false)
+        val restoredDisabledCompact = repository.getChatLayoutPreference()
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, navigation.largeScreenNavigation)
@@ -90,6 +92,8 @@ class LocalPreferencesTest {
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), restored.threadRowAffordances)
         assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
         assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
+        assertEquals(false, disabledCompact.compactConsecutiveMessages)
+        assertEquals(false, restoredDisabledCompact.compactConsecutiveMessages)
     }
 
     @Test
