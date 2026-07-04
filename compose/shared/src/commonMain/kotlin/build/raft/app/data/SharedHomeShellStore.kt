@@ -269,6 +269,8 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
         is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
+        is SharedHomeIntent.SetChannelSortMode -> "SetChannelSortMode:$mode"
+        is SharedHomeIntent.ReorderChannels -> "ReorderChannels:${channelOrder.size}"
         is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
         is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
