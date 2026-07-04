@@ -153,6 +153,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -5900,16 +5901,15 @@ private fun MembersAgentRuntimeConfigField(
 @OptIn(ExperimentalLayoutApi::class)
 private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
     val envVarNames = summary.membersRuntimeEnvVarNames()
+    val envVars = summary?.envVars.orEmpty()
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(
-            text = "Environment Variables",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+        SlockSectionEyebrow(
+            label = "Environment Variables",
+            fontSize = 11.sp,
+            lineHeight = 16.sp
         )
         if (envVarNames.isEmpty()) {
             Text(
@@ -5921,29 +5921,49 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         } else {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 envVarNames.forEach { name ->
                     Box(
                         modifier = Modifier
                             .background(SlockColor.SurfaceWhite)
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
+                            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
                     ) {
-                        Text(
-                            text = "$name=***",
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "$name=",
+                                style = SlockType.Caption.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                ),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = membersMaskedEnvValue(envVars[name]),
+                                style = SlockType.Caption.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                ),
+                                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
+private fun membersMaskedEnvValue(value: String?): String =
+    "•".repeat(value?.length?.coerceIn(1, 8) ?: 3)
 
 @Composable
 private fun MembersAgentRuntimeConfigDialog(
