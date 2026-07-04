@@ -59,6 +59,50 @@ class SharedKtorSlockNetworkClientTest {
     }
 
     @Test
+    fun requestPreservesSearchQueryThroughUrlEncoding() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val logs = mutableListOf<String>()
+        val httpClient =
+            HttpClient(
+                MockEngine { request ->
+                    requests += request
+                    respond(
+                        content = """{"results":[],"hasMore":false}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+            )
+        val client =
+            SharedKtorSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                warningLogger = logs::add,
+                foregroundHttpClient = httpClient,
+                visibleHttpClient = httpClient,
+                backgroundHttpClient = httpClient
+            )
+
+        val query = " do not C++ #tag/中文 "
+        val response =
+            client.request(
+                priority = DataRequestPriority.Visible,
+                path = "messages/search",
+                query = listOf("q" to query, "limit" to "30", "offset" to "0")
+            )
+
+        assertEquals(200, response.code)
+        val request = requests.single()
+        assertEquals("/api/messages/search", request.url.encodedPath)
+        assertEquals(query, request.url.parameters["q"])
+        assertEquals("30", request.url.parameters["limit"])
+        assertEquals("0", request.url.parameters["offset"])
+        assertEquals("q=%20do%20not%20C%2B%2B%20%23tag%2F%E4%B8%AD%E6%96%87%20&limit=30&offset=0", request.url.encodedQuery)
+        assertTrue(logs.any { it.contains("category=message_search") && it.contains("queryMeta=qLen=18;qWords=4;qFlags=space|plus|hash|nonAscii") })
+        assertTrue(logs.none { it.contains("do not") || it.contains("中文") })
+    }
+
+    @Test
     fun fileRefUploadUsesAppScopeResolverThenKtorRequest() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val httpClient =

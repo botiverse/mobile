@@ -74,6 +74,7 @@ internal class SharedKtorSlockNetworkClient(
             warningLogger(
                 "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
                     "queryKeys=${query.networkDiagnosticsQueryKeys()} " +
+                    "queryMeta=${query.networkDiagnosticsQueryMeta()} " +
                     "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
@@ -529,6 +530,25 @@ private fun List<Pair<String, String>>.networkDiagnosticsQueryKeys(): String =
     } else {
         joinToString(",") { it.first }
     }
+
+private fun List<Pair<String, String>>.networkDiagnosticsQueryMeta(): String {
+    val query = firstOrNull { it.first == "q" }?.second ?: return "none"
+    val trimmed = query.trim()
+    val wordCount =
+        trimmed
+            .split(Regex("\\s+"))
+            .count { it.isNotBlank() }
+    val flags =
+        buildList {
+            if (query.any { it.isWhitespace() }) add("space")
+            if ('+' in query) add("plus")
+            if ('#' in query) add("hash")
+            if (query.any { it.code > 127 }) add("nonAscii")
+        }
+            .ifEmpty { listOf("plain") }
+            .joinToString("|")
+    return "qLen=${trimmed.length};qWords=$wordCount;qFlags=$flags"
+}
 
 private fun HomeNetworkResponse.networkDiagnosticsResult(): String =
     when {
