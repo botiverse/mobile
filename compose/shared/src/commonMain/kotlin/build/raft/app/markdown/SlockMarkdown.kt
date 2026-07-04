@@ -602,20 +602,43 @@ internal fun slockMarkdownAnnotator(
         )
     }
     var consumedTagEndExclusive = -1
+    var consumedTagLabel: String? = null
+    var consumedTagRemainder: String? = null
     return markdownAnnotator(
         annotate = { markdownContent, child, _ ->
-            if (child.startOffset < consumedTagEndExclusive) {
-                return@markdownAnnotator true
-            }
-            if (child.type != MarkdownTokenTypes.TEXT ||
-                child.parent?.type == MarkdownElementTypes.CODE_SPAN
-            ) {
+            if (child.parent?.type == MarkdownElementTypes.CODE_SPAN) {
                 return@markdownAnnotator false
             }
 
             val nodeText = child.getTextInNode(markdownContent).toString()
+            val pendingTagRemainder = consumedTagRemainder
+            if (!pendingTagRemainder.isNullOrEmpty()) {
+                when {
+                    pendingTagRemainder.startsWith(nodeText) -> {
+                        consumedTagRemainder =
+                            pendingTagRemainder
+                                .drop(nodeText.length)
+                                .takeIf { it.isNotEmpty() }
+                        return@markdownAnnotator true
+                    }
+                    nodeText.startsWith(pendingTagRemainder) -> {
+                        append(nodeText.drop(pendingTagRemainder.length))
+                        consumedTagRemainder = null
+                        return@markdownAnnotator true
+                    }
+                }
+            }
+            if (child.type != MarkdownTokenTypes.TEXT) {
+                return@markdownAnnotator false
+            }
+
             val nodeStart = child.startOffset
             val nodeEndExclusive = nodeStart + nodeText.length
+            if (nodeStart < consumedTagEndExclusive &&
+                consumedTagLabel?.contains(nodeText.trim()) == true
+            ) {
+                return@markdownAnnotator true
+            }
             val nodeTokens = tokenPlan.tagTokensStartingInRange(nodeStart, nodeEndExclusive)
             val localNodeTokens =
                 if (nodeTokens.isEmpty()) {
@@ -645,8 +668,16 @@ internal fun slockMarkdownAnnotator(
                     } else {
                         token.range
                     }
-                val relativeStart = relativeRange.first
-                val relativeEndExclusive = (relativeRange.last + 1).coerceAtMost(nodeText.length)
+                val sourceStart = nodeText.indexOf(token.label, startIndex = cursor).takeIf { it >= 0 }
+                val relativeStart = sourceStart ?: relativeRange.first
+                var relativeEndExclusive =
+                    (sourceStart?.let { it + token.label.length } ?: (relativeRange.last + 1))
+                        .coerceAtMost(nodeText.length)
+                val tokenRemainder =
+                    token.label.drop((relativeEndExclusive - relativeStart).coerceAtLeast(0))
+                if (tokenRemainder.isNotEmpty() && nodeText.startsWith(tokenRemainder, relativeEndExclusive)) {
+                    relativeEndExclusive = (relativeEndExclusive + tokenRemainder.length).coerceAtMost(nodeText.length)
+                }
                 if (relativeStart < cursor || relativeStart !in nodeText.indices) return@forEach
                 if (relativeStart > cursor) {
                     append(nodeText.substring(cursor, relativeStart))
@@ -656,11 +687,20 @@ internal fun slockMarkdownAnnotator(
                     onOpenTag = onOpenTag,
                     resolveTagLabel = resolveTagLabel
                 )
-                consumedTagEndExclusive =
-                    maxOf(
-                        consumedTagEndExclusive,
-                        if (useDocumentOffsets) token.range.last + 1 else nodeStart + token.range.last + 1
-                    )
+                if (useDocumentOffsets) {
+                    consumedTagEndExclusive =
+                        maxOf(
+                            consumedTagEndExclusive,
+                            token.range.last + 1,
+                            token.range.first + token.label.length
+                        )
+                    consumedTagLabel = token.label
+                }
+                val consumedSource = nodeText.substring(relativeStart, relativeEndExclusive)
+                consumedTagRemainder =
+                    token.label
+                        .removePrefix(consumedSource)
+                        .takeIf { remainder -> remainder.isNotEmpty() && remainder != token.label }
                 cursor = relativeEndExclusive
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))

@@ -191,10 +191,12 @@ class SlockMarkdownTest {
             )
 
         assertEquals(2, rendered.size)
+        assertEquals("请看 #markdown专修", rendered[0].text)
         assertEquals(
             setOf("slock:5"),
             rendered[0].slockMarkdownClickableTags()
         )
+        assertEquals("继续看 #markdown专修:7933cf78 和 #50", rendered[1].text)
         assertEquals(
             setOf("slock:23", "slock:46"),
             rendered[1].slockMarkdownClickableTags()
