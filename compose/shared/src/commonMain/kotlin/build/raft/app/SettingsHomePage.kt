@@ -8523,22 +8523,26 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                 KuiklySharedSettingsSection(
                     title = "Actions",
                     rows =
-                        listOf(
-                            KuiklySharedSettingsRow(
-                                key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
-                                iconName = SlockLucideIconName.Download,
-                                title = "Check for update",
-                                detail = updateCheck?.detail.orEmpty().ifBlank { "Checks Quiver for a newer Android APK and opens the installer when available." },
-                                status =
-                                    when {
-                                        updateCheckBusy -> "Checking"
-                                        updateCheck?.statusLabel.orEmpty().isNotBlank() -> updateCheck?.statusLabel.orEmpty()
-                                        else -> "Check"
-                                    },
-                                enabled = updateCheck?.supported == true && !updateCheckBusy
-                            ),
-                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true)
-                        )
+                        buildList {
+                            if (updateCheck?.supported == true) {
+                                add(
+                                    KuiklySharedSettingsRow(
+                                        key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
+                                        iconName = SlockLucideIconName.Download,
+                                        title = "Check for update",
+                                        detail = updateCheck.detail.ifBlank { "Checks Quiver for a newer Android APK and opens the installer when available." },
+                                        status =
+                                            when {
+                                                updateCheckBusy -> "Checking"
+                                                updateCheck.statusLabel.isNotBlank() -> updateCheck.statusLabel
+                                                else -> "Check"
+                                            },
+                                        enabled = !updateCheckBusy
+                                    )
+                                )
+                            }
+                            add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
+                        }
                 )
             )
     )
