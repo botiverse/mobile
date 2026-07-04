@@ -339,6 +339,7 @@ internal class BridgeSettingsPlatformCapabilities(
                     }
                 }
             }
+        val updateCheckSupported = optBoolean("updateCheckSupported", false)
         return SharedSettingsDeveloperSnapshot(
             environmentKey = optString("environmentKey"),
             environmentLabel = optString("environmentLabel"),
@@ -348,9 +349,19 @@ internal class BridgeSettingsPlatformCapabilities(
             sharedSocketIoTransportEnabled = optBoolean("sharedSocketIoTransportEnabled", false),
             updateCheck =
                 SharedSettingsUpdateCheckSnapshot(
-                    supported = optBoolean("updateCheckSupported", false),
-                    statusLabel = optString("updateCheckStatusLabel").ifBlank { "Disabled" },
-                    detail = optString("updateCheckDetail").ifBlank { "This build does not expose in-app update checks." },
+                    supported = updateCheckSupported,
+                    statusLabel =
+                        optString("updateCheckStatusLabel").ifBlank {
+                            if (updateCheckSupported) "Check" else "Disabled"
+                        },
+                    detail =
+                        optString("updateCheckDetail").ifBlank {
+                            if (updateCheckSupported) {
+                                "Checks Quiver for a newer Android APK and opens the installer when available."
+                            } else {
+                                "This build does not expose in-app update checks."
+                            }
+                        },
                     actionLabel = optString("updateCheckActionLabel"),
                     updateAvailable = optBoolean("updateAvailable", false),
                     currentVersionLabel = optString("currentVersionLabel"),

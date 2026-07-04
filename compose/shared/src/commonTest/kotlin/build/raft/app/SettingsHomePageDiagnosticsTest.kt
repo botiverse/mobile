@@ -198,12 +198,36 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun aboutPayloadExplainsUnsupportedUpdateChecksAsDisabledBuildFeature() {
+    fun aboutPayloadUsesNeutralUpdateCopyBeforeHostCapabilityLoads() {
         val payload =
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
                 .toAboutPayload(
                     webUrl = "https://app.raft.build",
                     updateCheck = SharedSettingsUpdateCheckSnapshot()
+                )
+
+        val updateRow =
+            payload.sections
+                .first { it.title == "Actions" }
+                .rows
+                .first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
+
+        assertEquals("Check", updateRow.status)
+        assertEquals("Checks Quiver for a newer Android APK and opens the installer when available.", updateRow.detail)
+        assertFalse(updateRow.enabled)
+    }
+
+    @Test
+    fun aboutPayloadExplainsExplicitUnsupportedUpdateChecksAsDisabledBuildFeature() {
+        val payload =
+            SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
+                .toAboutPayload(
+                    webUrl = "https://app.raft.build",
+                    updateCheck =
+                        SharedSettingsUpdateCheckSnapshot(
+                            statusLabel = "Disabled",
+                            detail = "This build does not expose in-app update checks."
+                        )
                 )
 
         val updateRow =

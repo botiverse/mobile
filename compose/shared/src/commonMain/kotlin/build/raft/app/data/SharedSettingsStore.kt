@@ -157,8 +157,8 @@ data class SharedSettingsDeveloperSnapshot(
 
 data class SharedSettingsUpdateCheckSnapshot(
     val supported: Boolean = false,
-    val statusLabel: String = "Disabled",
-    val detail: String = "This build does not expose in-app update checks.",
+    val statusLabel: String = "",
+    val detail: String = "",
     val actionLabel: String = "",
     val updateAvailable: Boolean = false,
     val currentVersionLabel: String = "",
