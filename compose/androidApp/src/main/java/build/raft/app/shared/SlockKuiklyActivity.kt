@@ -423,11 +423,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     when (result) {
                         is SharedAuthResult.Success -> {
                             callback?.invoke(mapOf("code" to 200, "status" to "success"))
-                            Toast.makeText(
-                                    this@SlockKuiklyActivity,
-                                    "Signed in with Google",
-                                    Toast.LENGTH_SHORT
-                            ).show()
                             SlockKuiklyActivity.startAppShell(
                                     this@SlockKuiklyActivity,
                                     clearTask = true

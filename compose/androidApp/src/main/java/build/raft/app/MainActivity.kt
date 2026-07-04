@@ -94,10 +94,8 @@ class MainActivity : ComponentActivity() {
                     ).completeSocialLogin(provider = provider, code = code)
                 }
             when (result) {
-                is SharedAuthResult.Success -> {
-                    Toast.makeText(this@MainActivity, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                is SharedAuthResult.Success ->
                     openPostLoginDestination(result.data)
-                }
                 is SharedAuthResult.Failure ->
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
                 SharedAuthResult.Unauthenticated ->
@@ -146,7 +144,6 @@ class MainActivity : ComponentActivity() {
             when (result) {
                 is SharedAuthResult.Success -> {
                     pendingStore.clear()
-                    Toast.makeText(this@MainActivity, "Signed in with $providerName", Toast.LENGTH_SHORT).show()
                     openPostLoginDestination(result.data)
                 }
                 is SharedAuthResult.Failure -> {
