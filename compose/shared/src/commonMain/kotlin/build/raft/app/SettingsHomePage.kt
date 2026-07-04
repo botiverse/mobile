@@ -3743,27 +3743,16 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(enabled))
                     },
                     onSaveLanguage = {
-                        val selected = languageRegionLanguageDraft.takeIf { it.isNotBlank() }
-                        val request =
-                            if (selected == null || selected == "other") {
-                                SettingsLanguageRegionPreferenceUpdateRequest(
-                                    clearPreferredLanguage = true,
-                                    preferredTranslationDisplay = languageRegionDisplayDraft.takeIf { it.isNotBlank() }
-                                )
-                            } else {
-                                SettingsLanguageRegionPreferenceUpdateRequest(
-                                    preferredLanguage = selected,
-                                    preferredTranslationDisplay = languageRegionDisplayDraft.takeIf { it.isNotBlank() }
+                        currentLanguageRegionSnapshot?.let { snapshot ->
+                            buildSettingsLanguageRegionPreferenceUpdateRequest(
+                                snapshot = snapshot,
+                                languageDraft = languageRegionLanguageDraft,
+                                displayDraft = languageRegionDisplayDraft
+                            )?.let { request ->
+                                onSettingsIntent(
+                                    SharedSettingsIntent.UpdateLanguageRegionPreference(request)
                                 )
                             }
-                        onSettingsIntent(
-                            SharedSettingsIntent.UpdateLanguageRegionPreference(request)
-                        )
-                        // Switch app locale when Chinese is selected.
-                        if (selected == "zh") {
-                            onSettingsIntent(SharedSettingsIntent.SetLocale("zh-Hans"))
-                        } else if (selected == "en") {
-                            onSettingsIntent(SharedSettingsIntent.SetLocale("en"))
                         }
                     },
                     onSaveTime = {
@@ -4750,6 +4739,27 @@ private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
 
 private val LANGUAGE_REGION_TIME_ACTIONS =
     setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
+
+internal fun buildSettingsLanguageRegionPreferenceUpdateRequest(
+    snapshot: SettingsLanguageRegionSnapshot,
+    languageDraft: String,
+    displayDraft: String
+): SettingsLanguageRegionPreferenceUpdateRequest? {
+    val currentDisplay = snapshot.translationDisplay.selectedKey
+    val nextDisplay = displayDraft.ifBlank { currentDisplay }
+    val displayChanged = nextDisplay != currentDisplay
+    val currentLanguage = snapshot.browserLanguage.selectedKey
+    val nextLanguage = languageDraft.ifBlank { currentLanguage }
+    val languageChanged = nextDisplay == "translated" && nextLanguage != currentLanguage
+    if (!displayChanged && !languageChanged) return null
+    return SettingsLanguageRegionPreferenceUpdateRequest(
+        preferredLanguage = nextLanguage.takeIf { languageChanged && it != "other" },
+        clearPreferredLanguage = languageChanged && nextLanguage == "other",
+        preferredTranslationDisplay = nextDisplay.takeIf { displayChanged && it in SETTINGS_TRANSLATION_DISPLAY_KEYS }
+    )
+}
+
+private val SETTINGS_TRANSLATION_DISPLAY_KEYS = setOf("translated", "original")
 
 private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLabel(
     actions: Set<String>,

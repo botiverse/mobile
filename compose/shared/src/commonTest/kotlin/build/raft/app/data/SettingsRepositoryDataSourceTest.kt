@@ -287,6 +287,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(false, languageRegion.data.autoTranslation.enabled)
         assertEquals(true, languageRegion.data.autoTranslation.available)
         assertEquals("en", languageRegion.data.browserLanguage.selectedKey)
+        assertEquals(listOf("other", "en"), languageRegion.data.browserLanguage.options.map { it.key })
         assertEquals("Asia/Shanghai", languageRegion.data.timezone.selectedKey)
         assertEquals("12h", languageRegion.data.timeFormat.selectedKey)
     }
