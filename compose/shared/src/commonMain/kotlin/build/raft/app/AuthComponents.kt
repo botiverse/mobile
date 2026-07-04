@@ -390,20 +390,27 @@ internal fun AuthActionButton(
         AuthButtonTone.Black -> SlockColor.TextBlack
         AuthButtonTone.Disabled -> SlockColor.EmptyStateGray
     }
-    val contentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
-    val buttonBackground = if (enabled || preserveDisabledVisual) background else SlockColor.EmptyStateGray
+    val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
+    val disabledAlpha = 0.50f
+    val chromeAlpha = if (!enabled && preserveDisabledVisual) disabledAlpha else 1f
+    val contentColor = if (!enabled && preserveDisabledVisual) activeContentColor.copy(alpha = disabledAlpha) else activeContentColor
+    val buttonBackground = when {
+        enabled -> background
+        preserveDisabledVisual -> background.copy(alpha = disabledAlpha)
+        else -> SlockColor.EmptyStateGray
+    }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
     Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
-        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
+        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha)))
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(buttonBackground)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha))
                 .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center

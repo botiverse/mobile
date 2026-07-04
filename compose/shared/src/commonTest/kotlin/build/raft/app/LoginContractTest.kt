@@ -80,6 +80,51 @@ class LoginContractTest {
     }
 
     @Test
+    fun registerFormCanSubmitOnlyWhenTermsAndFieldsAreReady() {
+        assertEquals(
+            false,
+            canSubmitRegisterForm(
+                name = "Product UX Designer",
+                email = "new@slock.ai",
+                password = "password123",
+                termsAccepted = false,
+                formBusy = false
+            )
+        )
+        assertEquals(
+            false,
+            canSubmitRegisterForm(
+                name = "Product UX Designer",
+                email = "new@slock.ai",
+                password = "password123",
+                termsAccepted = true,
+                formBusy = true
+            )
+        )
+        assertEquals(
+            false,
+            canSubmitRegisterForm(
+                name = "Product UX Designer",
+                email = "new@slock.ai",
+                password = "password123",
+                termsAccepted = true,
+                formBusy = false,
+                emailFormatError = "Invalid email format"
+            )
+        )
+        assertEquals(
+            true,
+            canSubmitRegisterForm(
+                name = "Product UX Designer",
+                email = "new@slock.ai",
+                password = "password123",
+                termsAccepted = true,
+                formBusy = false
+            )
+        )
+    }
+
+    @Test
     fun currentDraftSubmitAlwaysForwardsSnapshotWhenNotBusy() {
         assertEquals(
             LoginDraftSubmitDecision.Forward(email = "a", password = "secret"),

@@ -6400,7 +6400,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                             enabled = deleteEnabled,
                             modifier = Modifier.width(112.dp),
                             backgroundColor = SlockColor.AccentRed,
-                            disabledBackgroundColor = Color(0xFFFDBDB7),
+                            disabledBackgroundColor = SlockColor.AccentRed.copy(alpha = 0.50f),
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,
@@ -6470,7 +6470,7 @@ private fun SettingsServerSlugInput(
                 modifier =
                     Modifier
                         .height(42.dp)
-                        .background(SlockColor.SurfaceCream)
+                        .background(SlockColor.BrandYellow.copy(alpha = 0.22f))
                         .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {

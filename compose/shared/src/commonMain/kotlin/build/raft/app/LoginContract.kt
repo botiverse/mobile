@@ -152,6 +152,25 @@ internal fun canSubmitLoginForm(
 ): Boolean =
     email.isNotBlank() && password.isNotBlank() && emailFormatError == null && !formBusy
 
+internal fun canSubmitRegisterForm(
+    name: String,
+    email: String,
+    password: String,
+    termsAccepted: Boolean,
+    formBusy: Boolean,
+    nameError: String? = null,
+    emailFormatError: String? = null,
+    passwordError: String? = null
+): Boolean =
+    name.isNotBlank() &&
+        email.isNotBlank() &&
+        password.isNotBlank() &&
+        termsAccepted &&
+        !formBusy &&
+        nameError == null &&
+        emailFormatError == null &&
+        passwordError == null
+
 internal sealed class LoginDraftSubmitDecision {
     data class Forward(val email: String, val password: String) : LoginDraftSubmitDecision()
     data object IgnoreBusy : LoginDraftSubmitDecision()

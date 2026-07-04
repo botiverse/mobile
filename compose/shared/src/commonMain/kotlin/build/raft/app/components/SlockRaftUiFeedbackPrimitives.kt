@@ -57,6 +57,8 @@ internal enum class SlockSkeletonVariant {
     Circle
 }
 
+internal const val SlockSpinnerActiveSweepAngle = 46f
+
 @Composable
 internal fun SlockAttentionDot(
     modifier: Modifier = Modifier,
@@ -263,7 +265,7 @@ internal fun SlockSpinner(
         drawArc(
             color = active,
             startAngle = -90f,
-            sweepAngle = 85f,
+            sweepAngle = SlockSpinnerActiveSweepAngle,
             useCenter = false,
             topLeft = Offset(inset, inset),
             size = arcSize,

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButtonDefaultTextStyle
+import build.raft.app.components.SlockSpinnerActiveSweepAngle
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
@@ -87,6 +88,11 @@ class SlockDesignTokensTest {
         assertEquals(SlockType.ButtonBold.fontFamily, defaultStyle.fontFamily)
         assertEquals(FontWeight.Normal, largeStyle.fontWeight)
         assertEquals(FontWeight.Normal, defaultStyle.fontWeight)
+    }
+
+    @Test
+    fun spinnerActiveArcMatchesReactRingTopCap() {
+        assertEquals(46f, SlockSpinnerActiveSweepAngle)
     }
 
     private fun Any?.slockFontName(): String? =

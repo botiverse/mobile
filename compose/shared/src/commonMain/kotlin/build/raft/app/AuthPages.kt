@@ -1083,9 +1083,27 @@ internal fun RegisterContent(
     var termsAccepted by remember { mutableStateOf(false) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
+    val canSubmit =
+        canSubmitRegisterForm(
+            name = name,
+            email = email,
+            password = password,
+            termsAccepted = termsAccepted,
+            formBusy = !formEnabled,
+            nameError = nameError,
+            emailFormatError = emailError,
+            passwordError = passwordError
+        )
+    val submitIfAllowed = {
+        if (canSubmit) {
+            onSubmit()
+        }
+    }
     AuthScaffold(
         onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
+        contentTopPadding = 40.dp,
+        contentScrollable = true,
+        topBarBrandImagePadding = 44.dp
     ) {
         AuthCenterMark()
         Text(
@@ -1100,7 +1118,6 @@ internal fun RegisterContent(
                 onNameChange,
                 "Name",
                 placeholder = "Letters, numbers, hyphens, underscores",
-                required = true,
                 enabled = formEnabled,
                 isError = !nameError.isNullOrBlank(),
                 errorText = nameError,
@@ -1112,7 +1129,6 @@ internal fun RegisterContent(
                 email,
                 onEmailChange,
                 "Email",
-                required = true,
                 enabled = formEnabled,
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
@@ -1125,21 +1141,20 @@ internal fun RegisterContent(
                 onPasswordChange,
                 "Password",
                 placeholder = "Min 8 characters",
-                required = true,
                 enabled = formEnabled,
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() })
+                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
             )
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)
             AuthActionButton(
                 text = if (submitting) "Creating account…" else "Create Account",
-                onClick = onSubmit,
+                onClick = submitIfAllowed,
                 tone = AuthButtonTone.Pink,
-                enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && emailError == null,
+                enabled = canSubmit,
                 loading = submitting,
                 preserveDisabledVisual = true,
                 variant = AuthActionButtonVariant.Large
