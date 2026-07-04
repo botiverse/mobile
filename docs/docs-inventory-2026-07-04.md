@@ -1,0 +1,111 @@
+# Docs 盘点与剩余工作清单 — 2026-07-04
+
+- 范围：`docs/` 全部 92 份文档，逐份判定状态，并从文档 + git log（06-26 以来 870 commits）+ 活跃 task board 交叉核对出剩余工作。
+- 基准：main `97d86040`（2026-07-04）。
+- 方式：状态结论均对照代码符号 / git log 验证过；个别未完全确证的项标 `(?)`。
+- Owner：@CC-希乐（task #106，#设置项专修）。下次刷新建议随 feature-map 节奏（约每 3 天或大批量合入后）。
+
+状态口径：**OPEN** 有明确未完成工作 / **CURRENT** 现行有效（契约、规范、runbook）/ **DONE** 所述工作已落地 / **STALE** 事实已漂移 / **SUPERSEDED** 被新文档或代码取代。
+
+---
+
+## 一、剩余工作总清单（按优先级合并去重）
+
+### P0 — 正确性 / 产品缺口
+
+1. **Notifications 链路（#102/#103）**：后台推送标题/正文仍降级为 "x unread"，未展示 sender+内容。相关：`react-kmp-native-alignment`、feature-map P0#5。
+2. **Killed-app 原生推送（服务端侧）**：三平台契约（FCM/APNs/OHOS，`mobile-killed-app-push-*-2026-07-01.md`）+ 汇总需求（`mobile-native-push-server-requirements-2026-07-02.md`）全部处于"等 server review"状态，未开工；客户端只落了 FCM SDK bootstrap。三层边界（target resolution / provider-neutral payload / provider delivery）是先决架构。
+3. **Status resolution 单源（#73）**：`resolveMemberDisplayState` 未建，颜色/脉冲双源 bug 仍在；需要全 status 表面消费审计。相关：members/realtime alignment docs。
+4. **Store 收敛 Phase 2/3（#386/#387/#388）+ Thread realtime 单入口**：ThreadPage 路由层仍持有 raw realtime listener（`thread-realtime-ingress-next-step-2026-06-27.md`），漏事件根因 #418 未闭环；`SharedRealtimeDomainEventOwner` 需扩 multi-sink。与 #native board 在审的 #191（pager-free SlockNativeModule）/#192（Provider 去 pager 依赖）同一主线。
+5. **前台回收敛（`mobile-foreground-reconciliation-spec-2026-06-29.md`）**：完全未实现——后台返回后 standalone Thread 不刷新、状态陈旧、房间不强制 re-join。用户可感知的正确性问题。
+6. **IM 主线集群（07-02/07-03 五份文档，全部是纯提案零代码）**：`SharedMessageLifecycleStore` 消息生命周期状态机（基石）→ media/notification/presence 投影 → composer baseline 契约 → 跨端 fixture matrix。见 `im-mainline-kmp-execution-plan-2026-07-03.md`。
+
+### P1 — 体验 / 功能补齐
+
+7. **Settings**：路由化拆分 #345/#346/#347 未动工；老审计（`kmp-settings-*-audit`，自标 STALE）残留 Server mutations #39、Account save/改密 #38 —— 动工前需先复核是否已被后续 settings 工作覆盖 (?)。
+8. **Activity 动作矩阵**：per-item Done / Mark Read/Unread 入口、Load-more UI 未接（repository 有 `loadMore`）；stale-snapshot 覆盖已读的竞态、unread 角标 onResume 不刷新。
+9. **Thread/Home 首屏并行加载（`thread-home-api-parallel-loading-spec-2026-06-25.md`）**：首内容仍疑似阻塞在 sender-profile enrichment 上 (?)——需复核后决定。
+10. **File preview 文本/文档走服务端契约**：mp4 已上（Android+OHOS），typed `AttachmentPreviewData` union + `/attachments/:id/preview` 迁移（worktree B/C/F）未做。
+11. **Composer `BasicTextField` 迁移**：整份 spec 未动，OHOS 选区/触发正确性依赖它。
+12. **Reaction sprite atlas（#391/#397）**：素材/目录已入库但设备端渲染被 revert 两次，需要稳定的 source-rect 渲染原语再落。
+13. **Raft UI 组件对齐（活跃大集群）**：按视觉差异优先级 #283 surface/avatar 行 → #284 progress bar → #279 form/input → #278 menu/popover/select（部分已落）→ #277 segmented；对应 visual-testing board 上 #275-#321 一批在办；`slock-visual-testing validate` 缺 cli.mjs 待恢复。
+14. **Members 细节**：外部 agent 显示态、agent-detail activity 实时 #93、create-agent runtime 模型加载 #92、profile 底部按钮 #91、`screens.members.human.profile` fixture+安卓采集。
+15. **其他单点**：Search 多选 FROM #285（要服务端配合）；TaskBoard 多列视图；Saved 行右侧图标+菜单复核；Home cached-first visible 加载（缓存目前只在 Background 优先级读）。
+
+### P2 / 平台与基建
+
+16. **Fork 产物远程化（`fork-artifact-github-packages-publishing-spec.md`）**：OHOS render 仍 `file:./libs/*.har`、SQLDelight 栈仍本地自动发布；CI 侧 mavenLocal 缓存（07-04 已由 CC-Wow2 落地）解决了速度，但可复现的远程发布 + `publish-fork-artifacts.yml` 仍未做。
+17. **OHOS**：HDS tabbar 官方材质（要升 SDK 6.1/API 23）；shared SQLDelight smoke DB（Android+OHOS 双驱动）；composer 换行菜单 Phase 2；widget 信息密度/圆角风格 #382；前台保活开关 #113。
+18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；perf marker 缺口（modal/cache/icon-batch）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
+19. **未建产品面（owner 决策）**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
+20. **杂项**：Bugly 后续（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
+
+### 活跃 task board 上、文档未覆盖的单点（2026-07-04 快照）
+
+#539 thread at 排序、#541 界面交互（对话流）；#342 图标清晰度、#356 channel 拖拽排序、#370 shared Socket.IO pilot、#388 粗体字重（首页）；#43 thread draft 缓存+铅笔标识、#44 mention 候选 loading（输入框）；#48 预加载渲染为空（markdown）；#176 iOS native tabbar、#193 圆角来源、#194 头像缓存（native）；大屏 #12 响应式 spec。
+
+---
+
+## 二、92 份文档状态表
+
+### OPEN — 有明确未完成工作（22）
+
+| 文档 | 摘要/剩余 |
+| --- | --- |
+| bugly-capability-audit-2026-06-24 | OHOS user-context、feedback/upload 拆分、Android uniqueId |
+| composer-basictextfield-migration-spec | 整体未实施（OHOS 正确性依赖） |
+| fork-artifact-github-packages-publishing-spec | OHOS HAR/SQLDelight 远程发布 + workflow 未落 |
+| im-composer-baseline-contract-2026-07-03 | send-operation 生命周期/typed 状态未建 |
+| im-core-cross-platform-fixture-matrix-2026-07-03 | case id 与各层测试未建 |
+| im-mainline-kmp-execution-plan-2026-07-03 | Phase 0-4 全未执行（索引文档） |
+| im-media-notification-presence-contract-2026-07-03 | 三个投影类型均未建 |
+| im-message-lifecycle-state-machine-2026-07-03 | `SharedMessageLifecycleStore` 未建（IM 集群基石） |
+| im-shortcomings-kmp-analysis-2026-07-02 | 7 项优先级由上述文档承载 |
+| kmp-settings-action-wiring-audit | #38/#39 slices 待复核后收尾 |
+| kuikly-host-alignment-audit | 窗口处理/adapter 决策/host error surface |
+| kuikly-profiler-surface-audit-spec | per-surface 审计报告未产出 |
+| kuikly-route-ui-layer-audit-matrix | #137 设备证据、#139 代码审计 |
+| mobile-file-preview-mp4-text-spec-2026-06-24（+06-26-update） | 文本/文档服务端契约（worktree B/C/F） |
+| mobile-foreground-reconciliation-spec-2026-06-29 | 全部未实现 |
+| mobile-killed-app-push-{android,ios,ohos}-server-contract-2026-07-01 | 服务端三平台契约等 review/开工 |
+| mobile-native-push-server-requirements-2026-07-02 | 三层推送边界（Phase 1 起步点） |
+| mobile-webview-server-contract-2026-07-02 | 等 server/API owner 签认 |
+| ohos-hds-tabbar-material-plan | 依赖 SDK 6.1/API 23 |
+| ohos-sqldelight-fork | shared smoke DB 未建 |
+| thread-realtime-ingress-next-step-2026-06-27 | Thread raw listener 未移除（multi-sink） |
+| realtime-session-owner-boundary-spec | RealtimeBridgeManager 抽取、房间引用计数 |
+
+### OPEN — 对齐审计类（gap 清单部分闭合，剩余项见第一节）（9）
+
+react-kmp-{activity, auth, home, members, native, saved, search, settings, tasks, thread, visual-testing}-alignment-2026-06-26 中除 realtime 外均属此类；realtime-alignment 已自我更新为现行快照（CURRENT）。thread-home-api-parallel-loading-spec-2026-06-25 待复核 (?)。
+
+### CURRENT — 现行有效的契约/规范/runbook（约 24）
+
+android-emulator-setup、android-quiver-release-practices-2026-07-02、android-realtime-code-path-2026-06-27（含 SSOT 清理尾巴）、android-release-lane-pi-perfprofiler（含 sign/R8 backlog）、commit-signoff-policy、common-sqldelight-schema-review、kmp-capability-parity-release-checklist、kmp-network-threading-model、kuikly-bridge-module-contract、kuikly-overlay-coordinate-contract、kuikly-route-realtime-performance-checklist、kuikly-performance-attribution-tooling（含 marker 缺口）、mobile-device-automation、mobile-native-push-notification-analysis-2026-06-25、new-agent-landing、ohos-kmp-commonmain-compatibility、ohos-screenshot-capture、raft-ui-kmp-component-library-audit-2026-07-03、raft-ui-kmp-product-gap-plan-2026-07-03、raft-ui-kmp-visual-similarity-priority-2026-07-03、react-kmp-realtime-alignment-2026-06-26、realtime-event-contract-2026-06-23、shared-mvi-foundation、slock-app-state-first-principles、visual-testing-android-provider。
+
+### DONE — 所述工作已落地（约 20）
+
+agent-detail-permissions-tab-spec-2026-06-25、android-ui-shared-migration-audit（尾巴：icons bridge 待删）、composer-system-newline-menu-spec（OHOS Phase 2 除外）、conversation-summary-minimal-migration-spec-2026-07-03（Phase 3-5 尾巴）、diagnostics-deep-link-intent-spec-2026-06-26、ios-kmp-p0-host-bridge-spec-2026-06-27、killed-app-launcher-badge-spec-2026-06-24（Android v1；服务端另列）、kmp-shared-button-component-audit、kmp-thread-react-fetch-alignment-plan-2026-06-21、kuikly-pager-boundary-thread-spec、markdown-inline-token-registry-spec、markdown-richtext-inline-code-plan（iOS/OHOS 视觉对齐 deferred）、member-agent-app-logins-parity-spec-2026-06-24、mobile-message-seq-gap-sync-spec-2026-06-25（验证尾巴）、realtime-read-state-sync-spec-2026-06-23（客户端侧）、spec-android-app-merge-into-kmp、thread-action-card-confirm-execution-spec、thread-channel-kind-data-flow-2026-06-25（reducer 清理尾巴）、thread-channel-tasks-reuse-spec、thread-system-message-rendering-spec、visual-testing-build-gating-spec-2026-06-26。
+
+conversation-summary-boundary-spec-2026-06-27 为部分完成（Phase 3/4 未做）。
+
+### STALE / SUPERSEDED — 已过时或被取代（7）
+
+| 文档 | 处置 |
+| --- | --- |
+| react-kmp-feature-map-2026-06-20 | 被 06-26 版取代（已加横幅） |
+| react-kmp-feature-map-2026-06-26 | 仍是权威 gap 图，但 P0/P1 多项已落——已加 07-04 状态附录；建议尽快重跑 fresh scan |
+| kmp-thread-capability-parity-audit | 文内自标 superseded（06-27） |
+| kmp-home-capability-parity-audit | 自标历史快照；cached-first 项转入第一节 P1 |
+| kmp-settings-capability-parity-audit | 自标历史快照；#38/#39 转入第一节 P1 |
+| thread-first-open-performance-attribution | 调查快照，工件已失效；结论是否落地未验证 |
+| realtime-single-source-runtime-spec-2026-06-23 | 自标历史；以 realtime-alignment + 代码为准 |
+
+---
+
+## 三、本次维护动作
+
+1. 新增本文档（92 份全量状态 + 剩余工作合并清单）。
+2. `react-kmp-feature-map-2026-06-26.md` 顶部加"2026-07-04 状态附录"：P0 中 translation（#105, 7dead569）/ avatar #417 / realtime 漏事件 #406/#407/#414 已落地标记；仍开放项与本清单第一节对齐。
+3. `react-kmp-feature-map-2026-06-20.md` 顶部加 superseded 横幅。
+4. 未逐份改写其余 STALE 文档（它们多数已自标历史快照）；处置以本表为准。

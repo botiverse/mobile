@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-07-04)**: 本文档已被 [react-kmp-feature-map-2026-06-26.md](react-kmp-feature-map-2026-06-26.md) 的 fresh scan 取代，仅作历史保留。最新状态见 [docs-inventory-2026-07-04.md](docs-inventory-2026-07-04.md)。
+
 # React vs KMP 功能大图
 
 日期：2026-06-19

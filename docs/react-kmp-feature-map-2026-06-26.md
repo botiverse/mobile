@@ -5,6 +5,20 @@
 主仓 main HEAD：`6a890a94 fix(activity): share activity store across shells` (54 commits ahead of upstream/main)
 React source: third_party/slock-source HEAD detached `46f889b6f fix(search): support multiple sender filters`
 
+## 2026-07-04 状态附录 (task #106, @CC-希乐)
+
+本图仍是权威 gap 地图，但自 06-26 以来 main 已推进 870+ commits，P0/P1 多项已落地。逐项核对结论与合并后的剩余工作清单见 [docs-inventory-2026-07-04.md](docs-inventory-2026-07-04.md)。要点：
+
+- P0 已落地：Message-level translation parity（task #105，`7dead569`，含全局 SharedMessageTranslationStore + 手动 Translate 菜单）；Avatar 渲染 #417；Realtime 漏事件/thread 渲染 #406/#407/#414；Store 收敛 Phase 1（member store mutations 集中化等）。
+- P0 仍开放：Notifications 链路 #102/#103（title/body 降级）；Status resolution 单源 #73；Store 收敛 Phase 2/3 #387/#388（Thread raw realtime listener 未移除）。
+- P1 已落地：Members Permissions tab #89；Activity 实时刷新+scroll-to-top #319；Task 状态 patch/cache write。
+- P1 仍开放：Settings 路由化拆分 #345/#346/#347；Members per-call-site 审计；External agent display-state；Home/Search/Saved visual parity（优先级已被 raft-ui-kmp-visual-similarity-priority-2026-07-03.md 重排）。
+- P2 基本全部未动（Owner onboarding / Release Notes / Announcements / Reminders / Markdown 扩展等）。
+
+建议：下一次 fresh scan 直接产出新日期版本并将本文件标记 superseded。
+
+---
+
 ## TL;DR
 
 - 12 slice 拆片扫描 (per 09:38 plan)
