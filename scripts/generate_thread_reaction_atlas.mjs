@@ -60,7 +60,7 @@ const LOCALIZED_LABELS = {
 };
 
 const CELL_DP = 24;
-const PIXEL_RATIO = 3;
+const PIXEL_RATIO = 4;
 const CELL_PX = CELL_DP * PIXEL_RATIO;
 
 const atlas = {
