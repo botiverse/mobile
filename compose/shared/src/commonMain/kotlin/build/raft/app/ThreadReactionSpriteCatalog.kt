@@ -31,7 +31,10 @@ internal data class ThreadReactionSprite(
     val name: String,
     val value: String,
     val rect: ThreadReactionSpriteRect,
-    val labels: Map<String, String>
+    val labels: Map<String, String>,
+    // Alternate wire values that resolve to this sprite (e.g. "❤" for "❤️"),
+    // mirroring the canonical web reactions.json aliases.
+    val aliases: List<String> = emptyList()
 ) {
     fun label(localeTag: String = "en"): String {
         var candidate = localeTag
@@ -53,7 +56,18 @@ internal data class ThreadReactionSpriteCatalog(
     val atlas: ThreadReactionAtlas,
     val reactions: List<ThreadReactionSprite>
 ) {
-    private val reactionsByValue: Map<String, ThreadReactionSprite> = reactions.associateBy { it.value }
+    private val reactionsByValue: Map<String, ThreadReactionSprite> =
+        buildMap {
+            reactions.forEach { sprite ->
+                put(sprite.value, sprite)
+                // No putIfAbsent: it is JVM-only and breaks iOS/OHOS Kotlin/Native.
+                sprite.aliases.forEach { alias ->
+                    if (alias !in this) {
+                        put(alias, sprite)
+                    }
+                }
+            }
+        }
 
     fun resolve(value: String): ThreadReactionSprite? = reactionsByValue[value]
 
@@ -98,53 +112,54 @@ internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     resource = ThreadReactionSpriteAtlasResource,
     atlas = ThreadReactionAtlas(
         imageName = "reaction_atlas_v1.png",
-        width = 504,
-        height = 72,
-        pixelRatio = 3,
+        width = 672,
+        height = 96,
+        pixelRatio = 4,
         defaultDisplaySizeDp = 18
     ),
     reactions = listOf(
         ThreadReactionSprite(
             name = "thumbs_up",
             value = "👍",
-            rect = ThreadReactionSpriteRect(x = 0, y = 0, width = 72, height = 72),
+            rect = ThreadReactionSpriteRect(x = 0, y = 0, width = 96, height = 96),
             labels = mapOf("en" to "Thumbs up", "zh-Hans" to "点赞", "zh-Hant" to "讚")
         ),
         ThreadReactionSprite(
             name = "heart",
             value = "❤️",
-            rect = ThreadReactionSpriteRect(x = 72, y = 0, width = 72, height = 72),
-            labels = mapOf("en" to "Heart", "zh-Hans" to "爱心", "zh-Hant" to "愛心")
+            rect = ThreadReactionSpriteRect(x = 96, y = 0, width = 96, height = 96),
+            labels = mapOf("en" to "Heart", "zh-Hans" to "爱心", "zh-Hant" to "愛心"),
+            aliases = listOf("❤")
         ),
         ThreadReactionSprite(
-            name = "party",
+            name = "party_popper",
             value = "🎉",
-            rect = ThreadReactionSpriteRect(x = 144, y = 0, width = 72, height = 72),
-            labels = mapOf("en" to "Celebrate", "zh-Hans" to "庆祝", "zh-Hant" to "慶祝")
+            rect = ThreadReactionSpriteRect(x = 192, y = 0, width = 96, height = 96),
+            labels = mapOf("en" to "Party popper", "zh-Hans" to "庆祝", "zh-Hant" to "慶祝")
         ),
         ThreadReactionSprite(
             name = "eyes",
             value = "👀",
-            rect = ThreadReactionSpriteRect(x = 216, y = 0, width = 72, height = 72),
+            rect = ThreadReactionSpriteRect(x = 288, y = 0, width = 96, height = 96),
             labels = mapOf("en" to "Eyes", "zh-Hans" to "关注", "zh-Hant" to "關注")
         ),
         ThreadReactionSprite(
             name = "fire",
             value = "🔥",
-            rect = ThreadReactionSpriteRect(x = 288, y = 0, width = 72, height = 72),
+            rect = ThreadReactionSpriteRect(x = 384, y = 0, width = 96, height = 96),
             labels = mapOf("en" to "Fire", "zh-Hans" to "火", "zh-Hant" to "火")
         ),
         ThreadReactionSprite(
-            name = "laugh",
+            name = "joy",
             value = "😂",
-            rect = ThreadReactionSpriteRect(x = 360, y = 0, width = 72, height = 72),
-            labels = mapOf("en" to "Laugh", "zh-Hans" to "大笑", "zh-Hant" to "大笑")
+            rect = ThreadReactionSpriteRect(x = 480, y = 0, width = 96, height = 96),
+            labels = mapOf("en" to "Face with tears of joy", "zh-Hans" to "大笑", "zh-Hant" to "大笑")
         ),
         ThreadReactionSprite(
-            name = "done",
+            name = "check_mark",
             value = "✅",
-            rect = ThreadReactionSpriteRect(x = 432, y = 0, width = 72, height = 72),
-            labels = mapOf("en" to "Done", "zh-Hans" to "完成", "zh-Hant" to "完成")
+            rect = ThreadReactionSpriteRect(x = 576, y = 0, width = 96, height = 96),
+            labels = mapOf("en" to "Check mark", "zh-Hans" to "完成", "zh-Hant" to "完成")
         )
     )
 )
