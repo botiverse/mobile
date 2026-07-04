@@ -155,7 +155,7 @@ jobs:
       # The registry's kuikly-open artifacts lag the fork (e.g. missing
       # nativeDispatchCapture); local builds shadow them via mavenLocal, so CI
       # must do the same from the pinned third_party/kuikly-ui submodule.
-      # Cache key is shared with kmp-resource-generator-ci.yml — keep in sync.
+      # Cache key is shared with test.yml — keep in sync.
       - name: Resolve kuikly fork submodule sha
         id: kuikly-fork
         run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
