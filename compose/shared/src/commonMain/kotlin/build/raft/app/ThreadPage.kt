@@ -1867,12 +1867,17 @@ internal fun ThreadMessageVisualScreen() {
                 knownMentionNames = knownMarkdownMentionNames
             )
         }
+    val visualReplyMetadataByParentId =
+        remember(payload) {
+            payload.toThreadReplyMetadataMap()
+        }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
             messages.forEach { selectedMessage ->
                 ThreadMessageCard(
                     message = selectedMessage,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
                     highlightedMentions = highlightedMentions,
                     shareSelectionActive = true,
                     selectedForShare = true,
@@ -1881,6 +1886,7 @@ internal fun ThreadMessageVisualScreen() {
                     showReplyAction = payload.showReplyActions,
                     taskOpenEnabled = payload.showTaskOpenActions,
                     taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    showReactionAddAction = payload.showReactionActions,
                     timestampLabel = payload.formatTimestampLabel(selectedMessage.timestampLabel),
                     onShowActions = {},
                     onOpenMember = {},
@@ -1968,6 +1974,7 @@ internal fun ThreadMessageVisualScreen() {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
+                replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                 highlightedMentions = highlightedMentions,
                 alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                 showReplyAction = payload.showReplyActions,
@@ -1981,6 +1988,7 @@ internal fun ThreadMessageVisualScreen() {
                     },
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
+                showReactionAddAction = payload.showReactionActions,
                 isMarkdownTagValid = isMarkdownTagValid,
                 markdownTagContextSignature = markdownTagContextSignature,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
@@ -6243,11 +6251,12 @@ internal fun threadVisualFixture(
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
                 showModeTabs = false,
-                showReplyActions = false,
+                showReplyActions = true,
                 alignOwnMessagesRight = true,
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("product"),
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -6255,15 +6264,19 @@ internal fun threadVisualFixture(
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorKind = "agent",
+                            authorAgentStatus = "online",
                             isOwn = false,
                             avatarLabel = "CI",
                             timestampLabel = "06/22 10:30",
                             messageType = "Chat",
-                            body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                            body = "Captured the Android visual artifact for #product:f8e569cb with @artin and queued React parity.",
                             threadChannelId = "thread-msg-agent-reply",
+                            replyCount = 5,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply-agent-visual-2",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false)
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = false)
                                 )
                         )
                     ),
@@ -6372,6 +6385,7 @@ internal fun threadVisualFixture(
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorKind = "agent",
+                            authorAgentStatus = "online",
                             avatarLabel = "CI",
                             timestampLabel = "06/22 23:30",
                             messageType = "Chat",
@@ -9327,6 +9341,7 @@ private fun ThreadMessagesList(
                                     taskStatusMenuAnchor = anchor
                                 },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
@@ -10438,6 +10453,7 @@ private fun ThreadMessageCard(
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
     showInlineSaveAction: Boolean = false,
+    showReactionAddAction: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
@@ -10480,6 +10496,7 @@ private fun ThreadMessageCard(
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
+                ?: message.threadAuthorAgentStatusIndicatorState()
         } else {
             null
         }
@@ -10744,6 +10761,7 @@ private fun ThreadMessageCard(
                                     onOpenTask = onOpenTask,
                                     onShowActions = onShowActions,
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                    showReactionAddAction = showReactionAddAction,
                                     onToggleReaction = onToggleReaction
                                 )
                             }
@@ -11382,6 +11400,15 @@ internal data class ThreadAgentStatusLookup(
     }
 }
 
+internal fun KuiklyThreadMessageItem.threadAuthorAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
+    if (!showsAgentStatusIndicator()) return null
+    val status = AgentStatus.fromWireValue(authorAgentStatus) ?: return null
+    return slockAgentStatusIndicatorState(
+        status = status,
+        presence = status.presence
+    )
+}
+
 private fun SharedServerMembersState.recordThreadAgentStatuses(
     serverId: String?,
     statusByMemberId: MutableMap<String, AgentStatus>
@@ -11557,13 +11584,15 @@ private fun ThreadMessageFooterMeta(
     onOpenTask: (String) -> Unit,
     onShowActions: (Offset) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
+    showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
-    if (!hasTask && !hasReplies && !hasReactions) return
+    val showReactionAddChip = showReactionAddAction && (hasReplies || hasReactions)
+    if (!hasTask && !hasReplies && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -11627,6 +11656,9 @@ private fun ThreadMessageFooterMeta(
                     )
                 }
             }
+        }
+        if (showReactionAddChip) {
+            ThreadReactionAddChip(onClick = onShowActions)
         }
     }
 }
@@ -12681,6 +12713,7 @@ private fun ThreadOriginCard(
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                            showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),

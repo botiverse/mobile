@@ -409,8 +409,8 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.BrandYellow, selfMentionStyle.background)
         assertEquals(null, selfMentionStyle.textDecoration)
         assertEquals(SlockMarkdownTagFontSize, selfMentionStyle.fontSize)
-        assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
-        assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
+        assertEquals(null, ordinaryMentionStyle.textDecoration)
+        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), ordinaryMentionStyle.background)
         assertEquals(SlockMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
     }
 
@@ -440,6 +440,7 @@ class SlockMarkdownTest {
         assertEquals(
             listOf(
                 SlockMarkdownTagChromeKind.SelfMention.wireValue,
+                SlockMarkdownTagChromeKind.Mention.wireValue,
                 SlockMarkdownTagChromeKind.Channel.wireValue,
                 SlockMarkdownTagChromeKind.Thread.wireValue,
                 SlockMarkdownTagChromeKind.Task.wireValue
@@ -454,7 +455,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun ordinaryMentionBeforeTaskReferenceKeepsCompactUnderlineAndVisibleText() {
+    fun ordinaryMentionBeforeTaskReferenceUsesMentionChipAndVisibleText() {
         val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
         val validator =
             validThreadMarkdownTags(
@@ -473,7 +474,10 @@ class SlockMarkdownTest {
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
         assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
-        assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
+        assertEquals(
+            listOf(SlockMarkdownTagChromeKind.Mention.wireValue, SlockMarkdownTagChromeKind.Task.wireValue),
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
