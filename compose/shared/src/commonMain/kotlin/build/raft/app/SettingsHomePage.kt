@@ -6459,6 +6459,9 @@ private fun SettingsServerDeleteWarningBanner(
     serverName: String?,
     text: String? = null
 ) {
+    val message = remember(serverName, text) {
+        settingsServerDeleteWarningBannerText(serverName = serverName, text = text)
+    }
     Row(
         modifier =
             Modifier
@@ -6475,11 +6478,33 @@ private fun SettingsServerDeleteWarningBanner(
             color = "#FF000000"
         )
         Text(
-            text ?: "This will permanently delete ${serverName ?: "this server"} and all its data (agents, channels, messages). This cannot be undone.",
+            message,
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+internal fun settingsServerDeleteWarningBannerText(
+    serverName: String?,
+    text: String? = null
+): AnnotatedString {
+    if (text != null) return AnnotatedString(text)
+    val resolvedName = serverName ?: "this server"
+    val prefix = "This will permanently delete "
+    val suffix = " and all its data (agents, channels, messages). This cannot be undone."
+    return buildAnnotatedString {
+        append(prefix)
+        append(resolvedName)
+        append(suffix)
+        if (serverName != null) {
+            addStyle(
+                slockSpanStyleForWeight(FontWeight.Bold),
+                start = prefix.length,
+                end = prefix.length + resolvedName.length
+            )
+        }
     }
 }
 
