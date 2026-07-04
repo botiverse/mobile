@@ -186,6 +186,85 @@ class SharedRealtimeDomainEventOwnerTest {
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
     }
 
+    @Test
+    fun activeThreadSinkReceivesDomainEventsAndHeartbeatsButNotBlankServer() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val delivered = mutableListOf<RealtimeEventRecord>()
+        owner.registerActiveThreadSink { serverId, event ->
+            delivered += RealtimeEventRecord(serverId, event)
+        }
+        val dm = DirectMessageCreated(ChannelId("dm-1"))
+        val heartbeat = Heartbeat(seq = 5L)
+
+        owner.accept("", dm)
+        owner.accept("server-1", dm, source = "app_shell")
+        owner.accept("server-1", heartbeat, source = "app_shell")
+
+        assertEquals(
+            listOf(
+                RealtimeEventRecord("server-1", dm),
+                RealtimeEventRecord("server-1", heartbeat)
+            ),
+            delivered
+        )
+    }
+
+    @Test
+    fun activeThreadSinkSkipsDuplicateEventsViaSharedDedupLedger() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val delivered = mutableListOf<RealtimeEventRecord>()
+        owner.registerActiveThreadSink { serverId, event ->
+            delivered += RealtimeEventRecord(serverId, event)
+        }
+        val dm = DirectMessageCreated(ChannelId("dm-1"))
+
+        owner.accept("server-1", dm, source = "app_shell")
+        owner.accept("server-1", dm, source = "thread_route")
+
+        assertEquals(listOf(RealtimeEventRecord("server-1", dm)), delivered)
+    }
+
+    @Test
+    fun unregisteredActiveThreadSinkStopsReceivingWhileOthersContinue() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val first = mutableListOf<RealtimeEventRecord>()
+        val second = mutableListOf<RealtimeEventRecord>()
+        val firstSink =
+            RealtimeActiveThreadSink { serverId, event -> first += RealtimeEventRecord(serverId, event) }
+        val secondSink =
+            RealtimeActiveThreadSink { serverId, event -> second += RealtimeEventRecord(serverId, event) }
+        owner.registerActiveThreadSink(firstSink)
+        owner.registerActiveThreadSink(secondSink)
+
+        val dmOne = DirectMessageCreated(ChannelId("dm-1"))
+        owner.accept("server-1", dmOne)
+        owner.unregisterActiveThreadSink(firstSink)
+        val dmTwo = DirectMessageCreated(ChannelId("dm-2"))
+        owner.accept("server-1", dmTwo)
+
+        assertEquals(listOf(RealtimeEventRecord("server-1", dmOne)), first)
+        assertEquals(
+            listOf(
+                RealtimeEventRecord("server-1", dmOne),
+                RealtimeEventRecord("server-1", dmTwo)
+            ),
+            second
+        )
+    }
+
+    @Test
+    fun activeThreadSinkDeliveryDoesNotRequireRegisteredDomainSinks() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val delivered = mutableListOf<RealtimeEventRecord>()
+        owner.registerActiveThreadSink { serverId, event ->
+            delivered += RealtimeEventRecord(serverId, event)
+        }
+
+        owner.accept("server-1", Heartbeat(seq = 1L))
+
+        assertEquals(1, delivered.size)
+    }
+
     private data class RealtimeEventRecord(
         val serverId: String,
         val event: Any

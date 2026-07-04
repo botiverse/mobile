@@ -288,6 +288,8 @@ internal class SlockSharedStoreProvider private constructor(
 internal interface RealtimeDomainEventOwner {
     fun registerSinks(sinks: RealtimeDomainEventSinks)
     fun unregisterSinks(sinks: RealtimeDomainEventSinks)
+    fun registerActiveThreadSink(sink: RealtimeActiveThreadSink)
+    fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink)
     fun accept(serverId: String, event: RealtimeEvent, source: String = "unknown")
 }
 
@@ -301,10 +303,23 @@ internal data class RealtimeDomainEventSinks(
     val log: (String) -> Unit = {}
 )
 
+/**
+ * Per-route sink for standalone Thread pagers. Registered while a Thread
+ * route is mounted; the owner tees every accepted event (including
+ * Heartbeat, which Thread needs for seq-gap recovery) into each registered
+ * sink after dedup. Thread routes no longer decode raw realtime payloads
+ * themselves, so the owner's dedup ledger is the single ingress decision
+ * point for shell and thread consumers alike.
+ */
+internal fun interface RealtimeActiveThreadSink {
+    fun deliver(serverId: String, event: RealtimeEvent)
+}
+
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
+    private val activeThreadSinks = mutableListOf<RealtimeActiveThreadSink>()
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
 
@@ -318,6 +333,16 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
+    override fun registerActiveThreadSink(sink: RealtimeActiveThreadSink) {
+        if (sink !in activeThreadSinks) {
+            activeThreadSinks.add(sink)
+        }
+    }
+
+    override fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink) {
+        activeThreadSinks.remove(sink)
+    }
+
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
         val key = event.realtimeDomainKey(resolvedServerId)
@@ -325,6 +350,10 @@ internal class SharedRealtimeDomainEventOwner(
             sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
             return
         }
+        // Tee to Thread routes before the Heartbeat early-return: Thread
+        // consumes Heartbeat seq for realtime gap recovery. Snapshot the list
+        // so a sink unregistering during delivery cannot corrupt iteration.
+        activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
         if (event is Heartbeat) {
             sinks?.log?.invoke("realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat")
             return

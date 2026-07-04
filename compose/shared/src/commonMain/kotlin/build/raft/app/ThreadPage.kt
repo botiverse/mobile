@@ -44,7 +44,6 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
-import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeRoutePolicy
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
@@ -75,6 +74,7 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
+import build.raft.app.data.RealtimeActiveThreadSink
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -2397,8 +2397,8 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val notifyModule = remember(pager) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
-    val realtimeEventMapper = remember { RealtimeEventMapper() }
     val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
+    val realtimeDomainEventOwner = remember(bridge) { SlockSharedStoreRegistry.get(bridge).realtimeDomainEventOwner }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val initialRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -2960,27 +2960,34 @@ internal fun SharedThreadRouteContent(
             }
         }
     )
-    DisposableEffect(realtimeEvents, realtimeEventMapper, authStore, coroutineScope, bridge, active) {
+    // Pager lifecycle notifications are Thread-pager-local and stay on the raw
+    // listener; realtime domain events arrive through the shared
+    // SharedRealtimeDomainEventOwner sink below so the owner's dedup ledger is
+    // the single ingress decision point (#196, replaces per-route raw decode).
+    DisposableEffect(realtimeEvents, active) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
-                if (eventData.optString("action") == ThreadLifecycleAction) {
-                    val event = eventData.optString("event")
-                    val pageName = eventData.optString("pageName")
-                    if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
-                        if (threadLifecycleSeen && active) {
-                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                        } else {
-                            threadLifecycleSeen = true
-                        }
-                    }
+                if (eventData.optString("action") != ThreadLifecycleAction) {
                     return@addListener
                 }
+                val event = eventData.optString("event")
+                val pageName = eventData.optString("pageName")
+                if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
+                    if (threadLifecycleSeen && active) {
+                        threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                    } else {
+                        threadLifecycleSeen = true
+                    }
+                }
+            }
+        onDispose { realtimeEvents.removeListener(callbackRef) }
+    }
+    DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
+        val sink =
+            RealtimeActiveThreadSink { serverId, event ->
                 coroutineScope.launch {
-                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
-                    val session = authStore.readSession()
-                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, session) ?: return@launch
                     val currentSessionServerId =
-                        session
+                        authStore.readSession()
                             ?.currentServerId
                             ?.takeIf { it.isNotBlank() }
                             ?: return@launch
@@ -2989,7 +2996,8 @@ internal fun SharedThreadRouteContent(
                     latestThreadRealtimeEventHandler(event)
                 }
             }
-        onDispose { realtimeEvents.removeListener(callbackRef) }
+        realtimeDomainEventOwner.registerActiveThreadSink(sink)
+        onDispose { realtimeDomainEventOwner.unregisterActiveThreadSink(sink) }
     }
     LaunchedEffect(threadTimelineKey, taskChannelId?.value, payload.status) {
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
