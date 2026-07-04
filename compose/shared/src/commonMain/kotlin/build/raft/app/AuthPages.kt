@@ -1024,7 +1024,7 @@ internal fun LoginContent(
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,
-                preserveDisabledVisual = true
+                preserveDisabledVisual = submitting
             )
             if (visibleSocialProviders.isNotEmpty()) {
                 AuthDivider()
@@ -1156,7 +1156,7 @@ internal fun RegisterContent(
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,
-                preserveDisabledVisual = true,
+                preserveDisabledVisual = submitting,
                 variant = AuthActionButtonVariant.Large
             )
             AuthInlineAction("Already have an account?", "Sign In") { onBackToSignIn() }
@@ -1219,7 +1219,7 @@ internal fun ForgotPasswordContent(
                 tone = AuthButtonTone.Pink,
                 enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
-                preserveDisabledVisual = true
+                preserveDisabledVisual = sending
             )
             AuthTextLink("Back to Sign In") { onBackToSignIn() }
         }
@@ -1264,7 +1264,7 @@ private fun AuthLegalAcceptanceContent(
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit && accepted && !submitting,
                 loading = submitting,
-                preserveDisabledVisual = true,
+                preserveDisabledVisual = submitting,
                 variant = AuthActionButtonVariant.Large
             )
             AuthTextLink("Back to Sign In") { onBackToSignIn() }
