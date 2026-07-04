@@ -46,7 +46,9 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -87,6 +89,7 @@ private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
 private val ComposerSuggestionOverlayGap = 6.dp
 private const val ComposerSuggestionOverlayZIndex = 10f
+private val ComposerSuggestionHeaderEstimatedHeight = 30.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerSuggestionStatusRowMinHeight = 42.dp
@@ -1213,6 +1216,18 @@ private fun BoxScope.ComposerSuggestionOverlay(
     onChannelClick: (KuiklyComposerChannelItem) -> Unit
 ) {
     if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
+    val density = LocalDensity.current
+    val estimatedPanelHeight =
+        remember(panelState, memberSuggestions.size, channelSuggestions.size) {
+            composerSuggestionOverlayInitialHeight(
+                panelState = panelState,
+                memberCount = memberSuggestions.size,
+                channelCount = channelSuggestions.size
+            )
+        }
+    var measuredPanelHeight by remember(panelState, memberSuggestions.size, channelSuggestions.size) {
+        mutableStateOf(estimatedPanelHeight)
+    }
     Box(
         modifier =
             Modifier
@@ -1223,30 +1238,55 @@ private fun BoxScope.ComposerSuggestionOverlay(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(ComposerSuggestionPanelMaxHeight)
                     .align(Alignment.TopCenter)
-                    .absoluteOffset(y = -(ComposerSuggestionPanelMaxHeight + ComposerSuggestionOverlayGap))
+                    .absoluteOffset(y = -(measuredPanelHeight + ComposerSuggestionOverlayGap))
+                    .onGloballyPositioned { coordinates ->
+                        val nextHeight =
+                            with(density) {
+                                coordinates.size.height.toDp()
+                            }
+                        if (nextHeight > 0.dp && nextHeight != measuredPanelHeight) {
+                            measuredPanelHeight = nextHeight
+                        }
+                    }
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-            ) {
-                ComposerSuggestionPanelContent(
-                    panelState = panelState,
-                    surface = surface,
-                    memberSuggestions = memberSuggestions,
-                    memberErrorCode = memberErrorCode,
-                    channelSuggestions = channelSuggestions,
-                    channelErrorCode = channelErrorCode,
-                    agentStatusResolver = agentStatusResolver,
-                    onMemberClick = onMemberClick,
-                    onChannelClick = onChannelClick
-                )
-            }
+            ComposerSuggestionPanelContent(
+                panelState = panelState,
+                surface = surface,
+                memberSuggestions = memberSuggestions,
+                memberErrorCode = memberErrorCode,
+                channelSuggestions = channelSuggestions,
+                channelErrorCode = channelErrorCode,
+                agentStatusResolver = agentStatusResolver,
+                onMemberClick = onMemberClick,
+                onChannelClick = onChannelClick
+            )
         }
     }
+}
+
+private fun composerSuggestionOverlayInitialHeight(
+    panelState: ThreadComposerSuggestionPanelState,
+    memberCount: Int,
+    channelCount: Int
+): Dp {
+    val estimated =
+        when (panelState) {
+            ThreadComposerSuggestionPanelState.MemberItems ->
+                ComposerSuggestionHeaderEstimatedHeight + ComposerMemberSuggestionRowMinHeight * memberCount.coerceAtLeast(1)
+            ThreadComposerSuggestionPanelState.ChannelItems ->
+                ComposerSuggestionHeaderEstimatedHeight + ComposerChannelSuggestionRowMinHeight * channelCount.coerceAtLeast(1)
+            ThreadComposerSuggestionPanelState.MemberLoading,
+            ThreadComposerSuggestionPanelState.MemberEmpty,
+            ThreadComposerSuggestionPanelState.MemberError,
+            ThreadComposerSuggestionPanelState.ChannelLoading,
+            ThreadComposerSuggestionPanelState.ChannelEmpty,
+            ThreadComposerSuggestionPanelState.ChannelError ->
+                ComposerSuggestionHeaderEstimatedHeight + ComposerSuggestionStatusRowMinHeight
+            ThreadComposerSuggestionPanelState.Hidden ->
+                0.dp
+        }
+    return if (estimated > ComposerSuggestionPanelMaxHeight) ComposerSuggestionPanelMaxHeight else estimated
 }
 
 @Composable
