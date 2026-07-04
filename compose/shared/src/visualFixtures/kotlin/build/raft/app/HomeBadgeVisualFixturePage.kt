@@ -114,6 +114,16 @@ internal fun HomeBadgeVisualFixtureScreen() {
             badge = { ImageTiltedBadge(HomeBadgeFixtureServerName) }
         )
         HomeBadgeFixtureRow(
+            title = "Kuikly Image SVG path",
+            detail = "painterResource common SVG asset",
+            badge = { SvgAssetTiltedBadge(HomeBadgeFixtureServerName) }
+        )
+        HomeBadgeFixtureRow(
+            title = "Raft logo cached SVG",
+            detail = "auth brand path: SlockCachedImage assets://",
+            badge = { RaftLogoSvgPipeline() }
+        )
+        HomeBadgeFixtureRow(
             title = "Path star diagnostic",
             detail = "control: vector path sanity check",
             badge = { VectorStarDiagnostic() }
@@ -517,6 +527,47 @@ private fun ImageTiltedBadge(text: String) {
 }
 
 @Composable
+private fun SvgAssetTiltedBadge(text: String) {
+    Box(modifier = Modifier.padding(end = HomeBadgeFixtureShadowOffset, bottom = HomeBadgeFixtureShadowOffset)) {
+        Box(modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight)) {
+            Image(
+                painter = painterResource(HomeBadgeChromeSvgResource),
+                contentDescription = null,
+                modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureImageHeight),
+                contentScale = ContentScale.FillBounds
+            )
+            HomeBadgeFixtureForeground(
+                text = text,
+                modifier =
+                    Modifier
+                        .width(HomeBadgeFixtureBadgeWidth)
+                        .height(HomeBadgeFixtureBadgeHeight)
+                        .padding(horizontal = 12.dp),
+                chevronModifier = Modifier
+            )
+        }
+    }
+}
+
+@Composable
+private fun RaftLogoSvgPipeline() {
+    Box(
+        modifier =
+            Modifier
+                .width(HomeBadgeFixtureImageWidth)
+                .height(HomeBadgeFixtureBadgeHeight),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        SlockCachedImage(
+            source = "assets://lucide/raft-logo.svg",
+            contentDescription = null,
+            modifier = Modifier.width(HomeBadgeFixtureImageWidth).height(HomeBadgeFixtureBadgeHeight),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
 private fun VectorStarDiagnostic() {
     Canvas(modifier = Modifier.size(68.dp)) {
         val strokeWidth = SlockStroke.Default.toPx()
@@ -723,4 +774,9 @@ private val HomeBadgeFixtureGuideBg = Color(0xFFF2F2F2)
 @OptIn(InternalResourceApi::class)
 private val HomeBadgeChromeImageResource by lazy(LazyThreadSafetyMode.NONE) {
     DrawableResource(ImageUri.commonAssets("home_badge/home_badge_chrome_4x.png").toUrl(""))
+}
+
+@OptIn(InternalResourceApi::class)
+private val HomeBadgeChromeSvgResource by lazy(LazyThreadSafetyMode.NONE) {
+    DrawableResource(ImageUri.commonAssets("home_badge/home_badge_chrome.svg").toUrl(""))
 }
