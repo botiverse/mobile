@@ -77,14 +77,14 @@ internal data class KuiklySettingsAccountPayload(
     val profile: KuiklySettingsAccountProfile = KuiklySettingsAccountProfile(),
     val connectedAccounts: List<KuiklySettingsConnectedAccount> = emptyList(),
     val profileSectionTitle: String = "Profile",
-    val displayNameLabel: String = "Display name",
+    val displayNameLabel: String = "Display Name",
     val displayNamePlaceholder: String = "Your public name",
     val handleLabel: String = "Handle",
     val handlePlaceholder: String = "@handle",
     val emailLabel: String = "Email",
     val emailPlaceholder: String = "you@example.com",
     val verifiedLabel: String = "Verified",
-    val saveChangesLabel: String = "Save changes",
+    val saveChangesLabel: String = "Save Profile",
     val cancelLabel: String = "Cancel",
     val connectedAccountsTitle: String = "Connected accounts",
     val connectedLabel: String = "Connected",
@@ -94,9 +94,9 @@ internal data class KuiklySettingsAccountPayload(
     val avatarInProgress: Boolean = false,
     val avatarErrorCode: String? = null,
     val logoutTitle: String = "Log out",
-    val logoutDetail: String = "Sign out of this device. Your account and data stay; you can sign back in any time.",
+    val logoutDetail: String = "Sign out of this browser. Your account and data stay; you can sign back in any time.",
     val logoutLabel: String = "Log out",
-    val logoutConfirmMessage: String = "Sign out of this device? Your account and data are kept; you can log back in any time.",
+    val logoutConfirmMessage: String = "Sign out of this browser? Your account and data are kept; you can log back in any time.",
     val logoutConfirmLabel: String = "Log out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
@@ -282,7 +282,7 @@ private fun SettingsAccountSectionHeader(title: String) {
     ) {
         SlockLucideIcon(SlockLucideIconName.User, color = "#FF737373", modifier = Modifier.size(14.dp))
         Text(
-            title.uppercase(),
+            title,
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
@@ -344,12 +344,7 @@ private fun SettingsAccountProfileCard(
         )
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
         SettingsProfileSaveButton(
-            text =
-                when {
-                    payload.saveInProgress -> "Saving"
-                    payload.saveErrorCode != null -> "Retry"
-                    else -> payload.saveChangesLabel
-                },
+            text = payload.profileSaveButtonLabel(),
             enabled = payload.canEditProfile && !payload.saveInProgress,
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
@@ -493,6 +488,13 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
         textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
     )
 }
+
+private fun KuiklySettingsAccountPayload.profileSaveButtonLabel(): String =
+    when {
+        saveInProgress -> "Saving"
+        saveErrorCode != null -> "Retry"
+        else -> saveChangesLabel
+    }
 
 @Composable
 private fun SettingsAccountHardShadowCard(content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit) {
@@ -643,7 +645,13 @@ private fun SettingsConnectedAccountRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(account.identifier, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    connectedAccountStatusDetail(account, connected),
+                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             if (account.canConnect && !connected) {
                 SettingsProviderConnectButton(
@@ -682,7 +690,7 @@ private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, 
 private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle("SESSION", SlockLucideIconName.LogOut)
+        SettingsAccountSectionTitle("Session", SlockLucideIconName.LogOut)
         SettingsAccountHardShadowCard {
             Text(
                 payload.logoutTitle,
@@ -837,25 +845,14 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
 }
 
 internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(): List<KuiklySettingsConnectedAccount> =
-    filterNot { it.isPasswordCredentialProvider() || it.isHiddenMobileAccountProvider() }
+    this
 
-private fun KuiklySettingsConnectedAccount.isHiddenMobileAccountProvider(): Boolean {
-    val providerIdValue = providerId.trim().lowercase()
-    val providerValue = provider.trim().lowercase()
-    return providerIdValue == "google" ||
-        providerIdValue == "github" ||
-        providerValue == "google" ||
-        providerValue == "github"
-}
-
-private fun KuiklySettingsConnectedAccount.isPasswordCredentialProvider(): Boolean {
-    val providerIdValue = providerId.trim().lowercase()
-    val providerValue = provider.trim().lowercase()
-    return providerIdValue == "password" ||
-        providerIdValue == "email_password" ||
-        providerValue == "email password" ||
-        providerValue.contains("password")
-}
+private fun connectedAccountStatusDetail(account: KuiklySettingsConnectedAccount, connected: Boolean): String =
+    if (connected) {
+        account.identifier.takeIf { it.isNotBlank() }?.let { "Connected as $it" } ?: "Connected"
+    } else {
+        "Not connected"
+    }
 
 private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, SlockLucideIconName?> =
     when (status) {

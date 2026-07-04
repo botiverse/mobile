@@ -3450,7 +3450,7 @@ private fun SettingsAppShellContent(
     }
     LaunchedEffect(
         currentLanguageRegionSnapshot?.browserLanguage?.selectedKey,
-        currentLanguageRegionSnapshot?.autoTranslation?.enabled,
+        currentLanguageRegionSnapshot?.translationDisplay?.selectedKey,
         currentLanguageRegionSnapshot?.timezone?.selectedKey,
         currentLanguageRegionSnapshot?.timeFormat?.selectedKey
     ) {
@@ -4562,40 +4562,50 @@ private fun SettingsLanguagePreferenceCard(
     val displayBusy = actionState?.action == LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY && actionState.inProgress
     val busy = languageBusy || displayBusy
     val currentDisplay = snapshot.translationDisplay.selectedKey
-    val dirty = languageDraft != snapshot.browserLanguage.selectedKey || displayDraft != currentDisplay
-    // Auto-save on draft change with debounce.
-    LaunchedEffect(languageDraft, displayDraft) {
-        if (!dirty) return@LaunchedEffect
-        delay(400)
-        onSubmit()
-    }
+    val selectedDisplay = displayDraft.ifBlank { currentDisplay }
+    val languageDirty = selectedDisplay == "translated" && languageDraft != snapshot.browserLanguage.selectedKey
+    val displayDirty = selectedDisplay != currentDisplay
+    val dirty = languageDirty || displayDirty
+    val canSave =
+        !busy &&
+            dirty &&
+            ((languageDirty && snapshot.browserLanguage.available) || (displayDirty && snapshot.translationDisplay.available))
+    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS, "Save")
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
-        SettingsFormDetailText("Choose your preferred language and whether messages display translated or original text.")
-        SlockBrutalSectionLabel(label = "Preferred language")
-        SlockBrutalSelectField(
-            options = snapshot.browserLanguage.toSelectOptions(),
-            selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
-            selectedLabel = snapshot.browserLanguage.labelFor(languageDraft),
-            onSelect = { onLanguageDraftChange(it.id) },
-            enabled = snapshot.browserLanguage.available && !busy
-        )
         SlockBrutalSectionLabel(label = "Message display")
+        SettingsFormDetailText("Translated asks for translated text when this server supports it. Original keeps messages in their source language.")
         SegmentedControl(
-            selectedValue = displayDraft.ifBlank { currentDisplay },
+            selectedValue = selectedDisplay,
             options =
                 listOf(
                     SegmentedControlOption("translated", "Translated", SlockLucideIconName.Languages),
                     SegmentedControlOption("original", "Original", SlockLucideIconName.FileText)
                 ),
             onValueSelected = onDisplayDraftChange,
-            enabled = snapshot.autoTranslation.available && !busy
+            enabled = snapshot.translationDisplay.available && !busy
         )
-        if (!snapshot.autoTranslation.available) {
-            SettingsFormDetailText(snapshot.autoTranslation.detail)
+        if (!snapshot.translationDisplay.available) {
+            SettingsFormDetailText(snapshot.translationDisplay.detail)
+        }
+        if (selectedDisplay == "translated") {
+            SlockBrutalSectionLabel(label = "Preferred language")
+            SettingsFormDetailText("Your account language preference. Message translation uses it in servers where an owner or admin has turned translation on.")
+            SlockBrutalSelectField(
+                options = snapshot.browserLanguage.toSelectOptions(),
+                selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
+                selectedLabel = snapshot.browserLanguage.labelFor(languageDraft),
+                onSelect = { onLanguageDraftChange(it.id) },
+                enabled = snapshot.browserLanguage.available && !busy
+            )
         }
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
+        SettingsLanguageRegionSaveButton(
+            label = saveLabel,
+            enabled = canSave,
+            onClick = onSubmit
+        )
     }
 }
 
@@ -4613,15 +4623,11 @@ private fun SettingsDateTimePreferenceCard(
     val timeFormatBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIME_FORMAT && actionState.inProgress
     val busy = timezoneBusy || timeFormatBusy
     val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
-    // Auto-save on draft change with debounce.
-    LaunchedEffect(timezoneDraft, timeFormatDraft) {
-        if (!dirty) return@LaunchedEffect
-        delay(400)
-        onSubmit()
-    }
+    val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
+    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS, "Save")
     SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = "Date & Time") {
-        SettingsFormDetailText("Timezone and time format affect timestamps across channels, threads, and Settings.")
         SlockBrutalSectionLabel(label = "Timezone")
+        SettingsFormDetailText("Used for local timestamps and scheduling defaults.")
         SlockBrutalSelectField(
             options = snapshot.timezone.toSelectOptions(),
             selectedId = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
@@ -4630,6 +4636,7 @@ private fun SettingsDateTimePreferenceCard(
             enabled = snapshot.timezone.available && !busy
         )
         SlockBrutalSectionLabel(label = "Time format")
+        SettingsFormDetailText("Display only. Does not affect agent behavior.")
         SegmentedControl(
             selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
             options =
@@ -4643,7 +4650,45 @@ private fun SettingsDateTimePreferenceCard(
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
+        SettingsLanguageRegionSaveButton(
+            label = saveLabel,
+            enabled = canSave,
+            onClick = onSubmit
+        )
     }
+}
+
+private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
+    setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION)
+
+private val LANGUAGE_REGION_TIME_ACTIONS =
+    setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
+
+private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLabel(
+    actions: Set<String>,
+    fallback: String
+): String =
+    when {
+        this == null || action !in actions -> fallback
+        inProgress -> "Saving"
+        errorCode != null -> "Retry"
+        else -> "Saved"
+    }
+
+@Composable
+private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+    SlockBrutalActionButton(
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        leadingIcon = SlockLucideIconName.Save,
+        backgroundColor = SlockColor.AccentPink,
+        disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+        minWidth = 0.dp,
+        minHeight = 34.dp,
+        shadowOffset = 3.dp,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+    )
 }
 
 @Composable
