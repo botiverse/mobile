@@ -310,9 +310,41 @@ jobs:
           npm install -g @oranix/quiver-cli@0.1.0
           quiver --version
 
+      - name: Generate changelog from git history
+        id: generate-changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Range: previous build's provenance source_commit (authenticated
+          # builds API) .. HEAD. Falls back to the last 15 subjects when the
+          # previous commit is unknown or unreachable.
+          QUIVER_API_BASE="${QUIVER_API:-https://quiver.oranix.io}"
+          APP_ID="$(curl -fsS -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+            "${QUIVER_API_BASE}/api/apps" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='${QUIVER_APP_SLUG}'), ''))" \
+            2>/dev/null || true)"
+          PREV_COMMIT=""
+          if [ -n "${APP_ID}" ]; then
+            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+              "${QUIVER_API_BASE}/api/apps/${APP_ID}/builds" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); bs=d.get('builds') or []; p=(bs[0].get('provenance_json') if bs else None); p=json.loads(p) if isinstance(p,str) else (p or {}); print(p.get('source_commit') or '')" \
+              2>/dev/null || true)"
+          fi
+          echo "previous release commit: '${PREV_COMMIT:-none}'"
+          if [ -n "${PREV_COMMIT}" ] && git cat-file -e "${PREV_COMMIT}^{commit}" 2>/dev/null; then
+            git log --no-merges --pretty='- %s' "${PREV_COMMIT}..HEAD" | head -n 40 > changelog.txt
+          fi
+          if [ ! -s changelog.txt ]; then
+            git log --no-merges --pretty='- %s' -15 > changelog.txt
+          fi
+          echo "---- changelog ----"
+          cat changelog.txt
+
       - name: Build metadata + publish APK + (optional) mapping/symbols
         id: publish-quiver-release
         shell: bash
+        env:
+          SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
         run: |
           set -euo pipefail
           # The release helper handles metadata.json generation, channel

@@ -282,6 +282,9 @@ QUIVER_ARGS=(
   --build-time "${BUILD_TIME}"
   --metadata "${METADATA_PATH}"
 )
+if [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
+  QUIVER_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
+fi
 if [ -f "${MAPPING_PATH}" ]; then
   QUIVER_ARGS+=(--mapping "${MAPPING_PATH}")
 fi
