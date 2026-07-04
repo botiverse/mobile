@@ -285,6 +285,9 @@ QUIVER_ARGS=(
 if [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
   QUIVER_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
 fi
+if [ "${SLOCK_QUIVER_DRAFT:-0}" = "1" ]; then
+  QUIVER_ARGS+=(--draft)
+fi
 if [ -f "${MAPPING_PATH}" ]; then
   QUIVER_ARGS+=(--mapping "${MAPPING_PATH}")
 fi
