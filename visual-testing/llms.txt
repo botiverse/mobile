@@ -1,9 +1,9 @@
 # Slock Visual Testing
 
-Generated: 2026-07-04 20:35:39 UTC
-Latest run: 0458783-20260704203528
-Latest commit: 0458783-20260704203528
-Commit subject: Merge remote-tracking branch 'origin/main'
+Generated: 2026-07-04 22:07:28 UTC
+Latest run: 0baa579-20260704220716
+Latest commit: 0baa579-20260704220716
+Commit subject: fix(visual): align message share selection toolbar
 Providers: react vs android
 Summary: total 82, same 0, pass 0, basic-pass 1, different 79, missing 2
 AI analysis: ready 0 / total 82, pending 82
@@ -104,6 +104,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, report runs/0baa579-20260704220716/report.html
 - 0458783-20260704203528: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0458783-20260704203528/component-matrix.json, report runs/0458783-20260704203528/report.html
 - 963d46cb1-20260703121500: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/963d46cb1-20260703121500/component-matrix.json, report runs/963d46cb1-20260703121500/report.html
 - b120ed975-20260703092044: react vs android, total 52, pass 0, basic-pass 0, different 0, matrix runs/b120ed975-20260703092044/component-matrix.json, report runs/b120ed975-20260703092044/report.html
