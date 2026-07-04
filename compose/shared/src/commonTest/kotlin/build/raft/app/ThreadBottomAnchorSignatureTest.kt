@@ -216,6 +216,29 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedMessageAnchorRequestKeyChangesForRepeatedOpenIntentNonce() {
+        val sharedContent = listOf(message("m1"), message("m2"), message("m3"))
+        val slice = payload(messages = sharedContent).copy(focusedMessageId = "m2").timelineSlice()
+
+        val first =
+            focusedMessageAnchorRequestKey(
+                messageId = "m2",
+                requestNonce = 1,
+                targetSignature = slice.focusedMessageTargetSignature(),
+                lazyItemCount = 5
+            )
+        val second =
+            focusedMessageAnchorRequestKey(
+                messageId = "m2",
+                requestNonce = 2,
+                targetSignature = slice.focusedMessageTargetSignature(),
+                lazyItemCount = 5
+            )
+
+        assertNotEquals(first, second)
+    }
+
+    @Test
     fun focusedThreadListItemIndex_mapsOriginButDoesNotScrollToIt() {
         val slice =
             payload(
