@@ -107,8 +107,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -119,20 +117,26 @@ import kotlin.test.assertTrue
 /**
  * Thread-safe append/snapshot log buffer for tests that run stores on
  * multi-threaded dispatchers. commonTest compiles for native targets too, so
- * JVM types like CopyOnWriteArrayList are off-limits (#214).
+ * JVM types like CopyOnWriteArrayList are off-limits, and the OHOS toolchain
+ * (Kotlin 2.0.x) predates kotlin.concurrent.atomics — an unlimited Channel is
+ * the portable thread-safe append primitive (#214). `any` drains newly
+ * arrived entries into a snapshot list owned by the single polling thread.
  */
-@OptIn(ExperimentalAtomicApi::class)
 private class ConcurrentTestLogBuffer {
-    private val entries = AtomicReference<List<String>>(emptyList())
+    private val incoming = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val seen = mutableListOf<String>()
 
     fun add(entry: String) {
-        while (true) {
-            val current = entries.load()
-            if (entries.compareAndSet(current, current + entry)) return
-        }
+        incoming.trySend(entry)
     }
 
-    fun any(predicate: (String) -> Boolean): Boolean = entries.load().any(predicate)
+    fun any(predicate: (String) -> Boolean): Boolean {
+        while (true) {
+            val next = incoming.tryReceive().getOrNull() ?: break
+            seen += next
+        }
+        return seen.any(predicate)
+    }
 }
 
 class SharedThreadStoreTest {
