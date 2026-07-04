@@ -328,6 +328,16 @@ private fun String?.toMembersAgentDetailTabOrNull(): MembersAgentDetailTab? {
     }
 }
 
+internal fun membersInitialAgentDetailTabForLaunch(
+    explicitInitialTab: String?,
+    agentPanelTabOrder: List<String>,
+    selectedMemberKind: MemberKind?
+): MembersAgentDetailTab? {
+    if (selectedMemberKind != MemberKind.Agent) return explicitInitialTab.toMembersAgentDetailTabOrNull()
+    return explicitInitialTab.toMembersAgentDetailTabOrNull()
+        ?: agentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }
+}
+
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
@@ -2141,17 +2151,24 @@ internal fun KuiklyMembersPayload.toMemberDetailPageData(
 ): JSONObject? {
     val selected = memberId.trim().takeIf { it.isNotBlank() } ?: return null
     val selectedMember = members.firstOrNull { it.id.value == selected }
+    val memberKind = selectedMemberKind ?: selectedMember?.kind
+    val launchInitialAgentTab =
+        membersInitialAgentDetailTabForLaunch(
+            explicitInitialTab = initialAgentTab,
+            agentPanelTabOrder = agentPanelTabOrder,
+            selectedMemberKind = memberKind
+        )
     return JSONObject().apply {
         put("pageName", MEMBER_DETAIL_PAGE)
         put("instanceId", "members-detail-${instanceId.ifBlank { "members" }}-$selected")
         put("memberId", selected)
-        (selectedMemberKind ?: selectedMember?.kind)?.let {
+        memberKind?.let {
             put("memberKind", it.toMemberDetailKindWireValue())
         }
         selectedMember?.serverId?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
             put("sourceServerId", it)
         }
-        initialAgentTab?.let { put("initialAgentTab", it) }
+        launchInitialAgentTab?.let { put("initialAgentTab", it.serverOrderKey) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }

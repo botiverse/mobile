@@ -204,6 +204,30 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentDetailPageDataDefaultsInitialTabFromServerOrder() {
+        val payload =
+            KuiklyMembersPayload(
+                instanceId = "members-server-1",
+                title = "Members",
+                members = listOf(
+                    MemberProfile(
+                        id = MemberId("agent-cindy"),
+                        displayName = "Cindy",
+                        handle = "cindy",
+                        kind = MemberKind.Agent
+                    )
+                ),
+                agentPanelTabOrder = listOf("activity", "profile")
+            )
+
+        val pageData = payload.toMemberDetailPageData("agent-cindy", MemberKind.Agent)!!
+
+        assertEquals("agent", pageData.optString("memberKind"))
+        assertEquals("activity", pageData.optString("initialAgentTab"))
+        assertEquals(listOf("activity", "profile"), pageData.toKuiklyMemberDetailPayload().agentPanelTabOrder)
+    }
+
+    @Test
     fun memberDetailPageDataCarriesSourceServerIdentityWithoutProfileContent() {
         val payload =
             KuiklyMembersPayload(
