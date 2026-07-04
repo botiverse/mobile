@@ -1313,7 +1313,16 @@ private class SlockKuiklyImageAdapter(
                     .onSuccess { drawable ->
                         callback(drawable)
                     }
-                    .onFailure {
+                    .onFailure { throwable ->
+                        // Bundled asset paths carry no user data, so log the path itself:
+                        // a missing/broken packaged asset is otherwise invisible (task #335
+                        // reaction atlas debugging on artin's device hit exactly this).
+                        SlockDiagnosticsLogger.record(
+                                "SlockImageLoad",
+                                "source=assets status=failed type=${throwable::class.java.simpleName} " +
+                                        "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
+                                        "message=${throwable.message}"
+                        )
                         callback(null)
                     }
         }
