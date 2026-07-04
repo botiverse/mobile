@@ -1,6 +1,7 @@
 package build.raft.app
 
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
@@ -122,6 +123,9 @@ private fun slockTextStyle(
 
 internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle =
     copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = FontWeight.Normal)
+
+internal fun slockSpanStyleForWeight(fontWeight: FontWeight): SpanStyle =
+    SpanStyle(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = FontWeight.Normal)
 
 internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle =
     when {

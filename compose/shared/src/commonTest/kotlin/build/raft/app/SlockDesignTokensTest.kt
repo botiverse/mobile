@@ -41,6 +41,14 @@ class SlockDesignTokensTest {
     }
 
     @Test
+    fun slockSpanWeightsResolveToFontFilesWithoutSyntheticWeight() {
+        val bold = slockSpanStyleForWeight(FontWeight.Bold)
+
+        assertEquals(SlockType.ButtonBold.fontFamily, bold.fontFamily)
+        assertEquals(FontWeight.Normal, bold.fontWeight)
+    }
+
+    @Test
     fun slockFontFamiliesUseIosRegisteredPostScriptNames() {
         assertEquals("SpaceGrotesk-Regular", SlockType.Body.fontFamily.slockFontName())
         assertEquals("SpaceGrotesk-Medium", SlockType.Button.fontFamily.slockFontName())

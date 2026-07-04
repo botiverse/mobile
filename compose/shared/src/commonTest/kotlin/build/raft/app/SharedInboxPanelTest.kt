@@ -18,6 +18,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -316,6 +317,28 @@ class SharedInboxPanelTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun activityPreviewSenderSpanUsesSlockBoldFontWithoutSyntheticWeight() {
+        val item =
+            InboxItem(
+                key = "activity-1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                lastMessagePreview = "Latest update",
+                lastMessageSenderName = "Artin"
+            )
+
+        val annotated = item.primaryActivityPreviewText().toAnnotatedString()
+        val senderSpan = annotated.spanStyles.single()
+
+        assertEquals("Artin: Latest update", annotated.text)
+        assertEquals(0, senderSpan.start)
+        assertEquals("Artin: ".length, senderSpan.end)
+        assertEquals(SlockType.ButtonBold.fontFamily, senderSpan.item.fontFamily)
+        assertEquals(FontWeight.Normal, senderSpan.item.fontWeight)
     }
 
     @Test

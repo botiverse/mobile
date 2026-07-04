@@ -74,7 +74,6 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -1150,7 +1149,7 @@ internal data class ActivityPreviewText(
     fun toAnnotatedString(): AnnotatedString =
         buildAnnotatedString {
             if (!senderName.isNullOrBlank()) {
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                withStyle(slockSpanStyleForWeight(FontWeight.Bold)) {
                     append(senderName)
                     append(": ")
                 }
