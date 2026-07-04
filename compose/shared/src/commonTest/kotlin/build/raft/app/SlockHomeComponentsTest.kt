@@ -632,23 +632,33 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun channelDragStateMovesActiveIdByRowThreshold() {
-        val state =
-            SlockChannelOrderDragState(
-                activeId = "channel-a",
-                startIndex = 0,
-                initialOrder = listOf("channel-a", "channel-b", "channel-c"),
-                totalDragY = 0f,
-                previewOrder = listOf("channel-a", "channel-b", "channel-c"),
-                rowOffsetPx = 0f
+    fun resolveSortTargetIndexPicksRowUnderPointer() {
+        val rows =
+            listOf(
+                SlockSortRowBounds(index = 0, top = 0f, size = 32f),
+                SlockSortRowBounds(index = 1, top = 34f, size = 32f),
+                SlockSortRowBounds(index = 2, top = 68f, size = 32f),
             )
 
-        val moved = state.dragBy(deltaY = 70f, rowStepPx = 32f, fallbackOrder = emptyList())
+        assertEquals(0, resolveSortTargetIndex(10f, rows, lastIndex = 2))
+        assertEquals(1, resolveSortTargetIndex(45f, rows, lastIndex = 2))
+        assertEquals(2, resolveSortTargetIndex(80f, rows, lastIndex = 2))
+    }
 
-        assertEquals(listOf("channel-b", "channel-c", "channel-a"), moved.previewOrder)
-        // Finger-follow contract: the dragged row's offset from its stable slot
-        // is the raw accumulated drag distance.
-        assertEquals(70f, moved.rowOffsetPx)
+    @Test
+    fun resolveSortTargetIndexClampsBeyondVisibleRows() {
+        // Visible window is only indices 3..4 (list scrolled); pointer above the
+        // first visible row clamps to it, below the last clamps to it, and the
+        // result never exceeds lastIndex.
+        val rows =
+            listOf(
+                SlockSortRowBounds(index = 3, top = 0f, size = 32f),
+                SlockSortRowBounds(index = 4, top = 34f, size = 32f),
+            )
+
+        assertEquals(3, resolveSortTargetIndex(-50f, rows, lastIndex = 9))
+        assertEquals(4, resolveSortTargetIndex(500f, rows, lastIndex = 9))
+        assertEquals(0, resolveSortTargetIndex(10f, emptyList(), lastIndex = 9))
     }
 
     @Test
