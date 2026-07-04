@@ -11385,15 +11385,12 @@ private fun ThreadReactionAddChip(onClick: (Offset) -> Unit) {
 private fun ThreadReactionAddChipChrome() {
     Box(
         modifier = Modifier
-            .background(SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Sm))
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+            .height(20.dp)
+            .background(Color(0xFFEEEDE6), RoundedCornerShape(SlockRadius.Sm))
+            .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "+",
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack
-        )
+        SlockLucideIcon(SlockLucideIconName.Plus, modifier = Modifier.size(13.dp), color = "#FF000000")
     }
 }
 
@@ -11732,7 +11729,7 @@ private fun ThreadMessageFooterMeta(
     val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
-    val showReactionAddChip = showReactionAddAction && (hasReplies || hasReactions)
+    val showReactionAddChip = showReactionAddAction && hasReactions
     if (!hasTask && !hasReplies && !hasReactions && !showReactionAddChip) return
 
     Row(
