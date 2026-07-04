@@ -4686,6 +4686,7 @@ private fun SettingsLanguagePreferenceCard(
         SettingsLanguageRegionSaveButton(
             label = saveLabel,
             enabled = canSave,
+            preserveActiveDisabledVisual = busy,
             onClick = onSubmit
         )
     }
@@ -4735,6 +4736,7 @@ private fun SettingsDateTimePreferenceCard(
         SettingsLanguageRegionSaveButton(
             label = saveLabel,
             enabled = canSave,
+            preserveActiveDisabledVisual = busy,
             onClick = onSubmit
         )
     }
@@ -4757,15 +4759,34 @@ private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLab
         else -> "Saved"
     }
 
+internal fun settingsFormSubmitDisabledBackgroundColor(
+    activeColor: Color,
+    preserveActiveDisabledVisual: Boolean
+): Color =
+    if (preserveActiveDisabledVisual) {
+        activeColor.copy(alpha = 0.50f)
+    } else {
+        SlockColor.EmptyStateGray
+    }
+
 @Composable
-private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun SettingsLanguageRegionSaveButton(
+    label: String,
+    enabled: Boolean,
+    preserveActiveDisabledVisual: Boolean,
+    onClick: () -> Unit
+) {
     SlockBrutalActionButton(
         label = label,
         onClick = onClick,
         enabled = enabled,
         leadingIcon = SlockLucideIconName.Save,
         backgroundColor = SlockColor.AccentPink,
-        disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+        disabledBackgroundColor =
+            settingsFormSubmitDisabledBackgroundColor(
+                activeColor = SlockColor.AccentPink,
+                preserveActiveDisabledVisual = preserveActiveDisabledVisual
+            ),
         minWidth = 0.dp,
         minHeight = 34.dp,
         shadowOffset = 3.dp,
@@ -6194,7 +6215,11 @@ private fun SettingsServerProfileFormCard(
                 enabled = enabled,
                 leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.AccentPink,
-                disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+                disabledBackgroundColor =
+                    settingsFormSubmitDisabledBackgroundColor(
+                        activeColor = SlockColor.AccentPink,
+                        preserveActiveDisabledVisual = busy
+                    ),
                 minWidth = 0.dp,
                 minHeight = 34.dp,
                 shadowOffset = 3.dp,
@@ -6441,7 +6466,11 @@ private fun SettingsServerDeleteConfirmationDialog(
                             enabled = deleteEnabled,
                             modifier = Modifier.width(112.dp),
                             backgroundColor = SlockColor.AccentRed,
-                            disabledBackgroundColor = SlockColor.AccentRed.copy(alpha = 0.50f),
+                            disabledBackgroundColor =
+                                settingsFormSubmitDisabledBackgroundColor(
+                                    activeColor = SlockColor.AccentRed,
+                                    preserveActiveDisabledVisual = deleteBusy
+                                ),
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,
