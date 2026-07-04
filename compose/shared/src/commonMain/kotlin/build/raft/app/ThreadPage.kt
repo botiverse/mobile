@@ -4847,6 +4847,14 @@ internal fun SharedThreadRouteContent(
                     bridge.log("thread_composer_channel_suggestions_refresh reason=panel_open")
                     membersStore?.dispatch(SharedMembersIntent.RefreshChannelSuggestions)
                 }
+                "staleChangeIgnored" -> {
+                    bridge.log(
+                        "thread_composer_stale_change_ignored instanceId=$composerInstanceId " +
+                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
+                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
+                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                }
                 "change" -> {
                     bridge.log(
                         "thread_composer_change instanceId=$composerInstanceId " +

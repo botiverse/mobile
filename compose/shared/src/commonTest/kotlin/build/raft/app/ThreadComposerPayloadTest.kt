@@ -186,6 +186,98 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun staleCallbackGuardIgnoresPreSyncBlankEchoAfterDraftRestore() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 4,
+                previousLocalText = "",
+                previousLocalAsTask = false,
+                restoredText = "saved reply",
+                restoredAsTask = false
+            )
+
+        assertTrue(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = guard,
+                syncNonce = 4,
+                nextText = "",
+                nextAsTask = false,
+                localText = "saved reply",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardDoesNotIgnoreRealDeleteAfterRestoredValueIsAccepted() {
+        assertFalse(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = null,
+                syncNonce = 4,
+                nextText = "",
+                nextAsTask = false,
+                localText = "saved reply",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardDoesNotArmForBlankHostSeedOrUnchangedLocalValue() {
+        assertNull(
+            threadComposerStaleCallbackGuard(
+                syncNonce = 4,
+                previousLocalText = "old text",
+                previousLocalAsTask = false,
+                restoredText = "",
+                restoredAsTask = false
+            )
+        )
+        assertNull(
+            threadComposerStaleCallbackGuard(
+                syncNonce = 4,
+                previousLocalText = "saved reply",
+                previousLocalAsTask = false,
+                restoredText = "saved reply",
+                restoredAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardDoesNotIgnoreTypingOrWrongSyncNonce() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 4,
+                previousLocalText = "",
+                previousLocalAsTask = false,
+                restoredText = "saved reply",
+                restoredAsTask = false
+            )
+
+        assertFalse(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = guard,
+                syncNonce = 4,
+                nextText = "saved reply plus",
+                nextAsTask = false,
+                localText = "saved reply",
+                localAsTask = false
+            )
+        )
+        assertFalse(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = guard,
+                syncNonce = 5,
+                nextText = "",
+                nextAsTask = false,
+                localText = "saved reply",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
     fun buildsThreadSurfaceComposerPayloadFromTypedProps() {
         val payload =
             buildThreadSurfaceComposerPayload(

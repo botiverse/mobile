@@ -387,6 +387,48 @@ data class SharedThreadComposerFlowState(
         copy(liveDraftText = value, liveDraftAsTask = asTask)
 }
 
+internal data class ThreadComposerStaleCallbackGuard(
+    val syncNonce: Int,
+    val previousLocalText: String,
+    val previousLocalAsTask: Boolean,
+    val restoredText: String,
+    val restoredAsTask: Boolean
+)
+
+internal fun threadComposerStaleCallbackGuard(
+    syncNonce: Int,
+    previousLocalText: String,
+    previousLocalAsTask: Boolean,
+    restoredText: String,
+    restoredAsTask: Boolean
+): ThreadComposerStaleCallbackGuard? {
+    if (restoredText.isBlank()) return null
+    if (previousLocalText == restoredText && previousLocalAsTask == restoredAsTask) return null
+    return ThreadComposerStaleCallbackGuard(
+        syncNonce = syncNonce,
+        previousLocalText = previousLocalText,
+        previousLocalAsTask = previousLocalAsTask,
+        restoredText = restoredText,
+        restoredAsTask = restoredAsTask
+    )
+}
+
+internal fun shouldIgnoreThreadComposerStaleCallback(
+    guard: ThreadComposerStaleCallbackGuard?,
+    syncNonce: Int,
+    nextText: String,
+    nextAsTask: Boolean,
+    localText: String,
+    localAsTask: Boolean
+): Boolean =
+    guard != null &&
+        guard.syncNonce == syncNonce &&
+        guard.restoredText.isNotBlank() &&
+        localText == guard.restoredText &&
+        localAsTask == guard.restoredAsTask &&
+        nextText == guard.previousLocalText &&
+        nextAsTask == guard.previousLocalAsTask
+
 @Serializable
 data class SharedThreadComposerAttachment(
     val id: String,
@@ -890,12 +932,25 @@ internal fun ThreadComposerContent(
     var asTask by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.seedAsTask) }
     var focused by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
+    var lastAcceptedLocalText by remember(state.instanceId) { mutableStateOf(state.seedText) }
+    var lastAcceptedLocalAsTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
+    var staleCallbackGuard by remember(state.instanceId) { mutableStateOf<ThreadComposerStaleCallbackGuard?>(null) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
+        staleCallbackGuard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = state.syncNonce,
+                previousLocalText = lastAcceptedLocalText,
+                previousLocalAsTask = lastAcceptedLocalAsTask,
+                restoredText = state.seedText,
+                restoredAsTask = state.seedAsTask
+            )
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
         asTask = state.seedAsTask
         focused = state.suggestionsOpen
+        lastAcceptedLocalText = state.seedText
+        lastAcceptedLocalAsTask = state.seedAsTask
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -968,6 +1023,9 @@ internal fun ThreadComposerContent(
             (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
 
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
+        lastAcceptedLocalText = nextText
+        lastAcceptedLocalAsTask = nextAsTask
+        staleCallbackGuard = null
         onEvent("change", nextText, nextAsTask, null)
     }
 
@@ -1074,6 +1132,20 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             // Ignore stale platform callbacks from the pre-sync local value.
+                            if (
+                                shouldIgnoreThreadComposerStaleCallback(
+                                    guard = staleCallbackGuard,
+                                    syncNonce = state.syncNonce,
+                                    nextText = next.text,
+                                    nextAsTask = asTask,
+                                    localText = fieldValue.text,
+                                    localAsTask = asTask
+                                )
+                            ) {
+                                staleCallbackGuard = null
+                                onEvent("staleChangeIgnored", next.text, asTask, null)
+                                return@TextField
+                            }
                             if (next.text == fieldValue.text && next.text != state.seedText) {
                                 return@TextField
                             }
@@ -1156,6 +1228,8 @@ internal fun ThreadComposerContent(
                                         .clickable(enabled = composerEnabled) {
                                             val newValue = !asTask
                                             asTask = newValue
+                                            lastAcceptedLocalAsTask = newValue
+                                            staleCallbackGuard = null
                                             onEvent("toggleAsTask", null, newValue, null)
                                         }
                                         .heightIn(min = 18.dp),
@@ -1166,6 +1240,8 @@ internal fun ThreadComposerContent(
                                         checked = asTask,
                                         onCheckedChange = { checked ->
                                             asTask = checked
+                                            lastAcceptedLocalAsTask = checked
+                                            staleCallbackGuard = null
                                             onEvent("toggleAsTask", null, checked, null)
                                         },
                                         enabled = composerEnabled,
@@ -1186,6 +1262,9 @@ internal fun ThreadComposerContent(
                                 onEvent("send", null, null, null)
                                 fieldValue = TextFieldValue("")
                                 asTask = false
+                                lastAcceptedLocalText = ""
+                                lastAcceptedLocalAsTask = false
+                                staleCallbackGuard = null
                             }
                         }
                     }
