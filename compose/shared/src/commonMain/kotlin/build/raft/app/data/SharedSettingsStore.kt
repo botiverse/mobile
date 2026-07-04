@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockLucideIconName
+import build.raft.app.model.MemberId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -694,9 +695,22 @@ class SharedSettingsDataSource(
         (settingsRepository as? SettingsServerManagementRepository)?.updateServerMemberRole(request)
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> =
-        (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
-            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+        val result =
+            (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (result is DataResult.Content && result.data.success) {
+            val serverId = sessionStore.readSession()?.currentServerId?.trim().orEmpty()
+            val cleanMemberId = memberId.trim()
+            if (serverId.isNotBlank() && cleanMemberId.isNotBlank()) {
+                serverMembersStore?.removeMember(
+                    serverId = ServerId(serverId),
+                    memberId = MemberId(cleanMemberId)
+                )
+            }
+        }
+        return result
+    }
 
     suspend fun updateSystemChannelVisibility(
         allChannelId: String,
