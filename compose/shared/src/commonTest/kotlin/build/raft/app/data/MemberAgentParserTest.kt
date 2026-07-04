@@ -291,12 +291,32 @@ class MemberAgentParserTest {
         assertEquals("2026-06-01T00:00:00.000Z", profile.joinedAt)
         assertEquals("active", profile.membershipStatus)
         assertEquals("Owner", profile.roleDescription)
+        assertEquals("owner", profile.serverRole)
         val agent = profile.createdAgents.single()
         assertEquals("agent-1", agent.id.value)
         assertEquals("Builder", agent.displayName)
         assertEquals("claude", agent.runtime)
         assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals("Working", agent.statusLabel)
+    }
+
+    @Test
+    fun agentProfilePreservesServerRole() {
+        val profile = parseSharedAgentProfile(
+            """
+            {
+              "id": "agent-1",
+              "name": "builder",
+              "displayName": "Builder",
+              "runtime": "codex",
+              "role": "Admin"
+            }
+            """.trimIndent()
+        )
+
+        assertNotNull(profile)
+        assertEquals("admin", profile.serverRole)
+        assertEquals("codex", profile.roleDescription)
     }
 
     @Test

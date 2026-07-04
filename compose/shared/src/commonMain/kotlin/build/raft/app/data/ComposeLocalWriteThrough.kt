@@ -726,6 +726,7 @@ private fun MemberProfile.withStableRealtimeFieldsFrom(previous: MemberProfile):
         handle = resolvedHandle,
         description = description ?: previous.description,
         roleDescription = roleDescription ?: previous.roleDescription,
+        serverRole = serverRole ?: previous.serverRole,
         avatarUrl = avatarUrl ?: previous.avatarUrl,
         gravatarHash = gravatarHash ?: previous.gravatarHash,
         avatar = avatar ?: previous.avatar,

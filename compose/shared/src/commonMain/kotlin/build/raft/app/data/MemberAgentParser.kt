@@ -93,6 +93,7 @@ private data class WireAgent(
     val gravatarHash: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
+    val role: String? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
@@ -622,6 +623,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = role?.toSettingsLabel(),
+        serverRole = role?.normalizedServerRoleOrNull(),
         email = email?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash,
@@ -647,6 +649,7 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = role?.toSettingsLabel(),
+        serverRole = role?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
@@ -669,6 +672,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = runtime,
+        serverRole = role?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
@@ -694,6 +698,9 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
 
 private fun String?.toServerIdOrNull(): ServerId? =
     this?.takeIf { it.isNotBlank() }?.let(::ServerId)
+
+private fun String?.normalizedServerRoleOrNull(): String? =
+    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
 
 private fun MemberProfile.withSourceServer(
     serverId: ServerId,

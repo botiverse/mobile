@@ -1433,6 +1433,7 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         handle = handle.takeIf { it.isNotBlank() } ?: seed.handle,
         description = description ?: seed.description,
         roleDescription = roleDescription ?: seed.roleDescription,
+        serverRole = serverRole ?: seed.serverRole,
         email = email ?: seed.email,
         avatarUrl = avatarUrl ?: seed.avatarUrl,
         gravatarHash = gravatarHash ?: seed.gravatarHash,

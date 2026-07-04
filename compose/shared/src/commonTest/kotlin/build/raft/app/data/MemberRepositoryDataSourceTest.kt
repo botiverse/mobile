@@ -173,6 +173,30 @@ class MemberRepositoryDataSourceTest {
                 )
             )
         )
+        assertEquals(
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"role":"admin"}""",
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Noel Bot",
+                    description = null,
+                    serverRole = " Admin ",
+                    includeServerRole = true
+                )
+            )
+        )
+        assertEquals(
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"role":null}""",
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Noel Bot",
+                    description = null,
+                    serverRole = " ",
+                    includeServerRole = true
+                )
+            )
+        )
     }
 
     private class FakeMemberNetworkClient : SlockNetworkClient {

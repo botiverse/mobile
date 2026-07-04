@@ -641,6 +641,8 @@ data class AgentProfileUpdateRequest(
     val description: String?,
     val avatarUrl: String? = null,
     val includeAvatarUrl: Boolean = false,
+    val serverRole: String? = null,
+    val includeServerRole: Boolean = false,
     val runtimeConfig: build.raft.app.model.RuntimeConfig? = null,
     val includeRuntimeConfig: Boolean = false,
     val runtimeResetMode: AgentResetMode? = null

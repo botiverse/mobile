@@ -391,6 +391,7 @@ data class AgentDetailSummary(
     val name: String,
     val displayName: String? = null,
     val description: String? = null,
+    val serverRole: String? = null,
     val status: String? = null,
     val runtime: String? = null,
     val model: String? = null,

@@ -7860,6 +7860,7 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
         kind = MemberKind.Agent,
         description = summary?.description?.takeIf { it.isNotBlank() },
         roleDescription = summary?.runtime?.takeIf { it.isNotBlank() },
+        serverRole = summary?.serverRole?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),

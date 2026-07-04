@@ -798,6 +798,14 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     put("avatarUrl", avatarUrl)
                 }
             }
+            if (request.includeServerRole) {
+                val role = request.serverRole?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                if (role == null) {
+                    put("role", JsonNull)
+                } else {
+                    put("role", role)
+                }
+            }
             if (request.includeRuntimeConfig) {
                 val runtimeConfig = request.runtimeConfig
                 if (runtimeConfig == null) {
@@ -870,6 +878,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         name = name,
         displayName = displayName,
         description = description,
+        serverRole = serverRole,
         status = status,
         runtime = runtime,
         model = model,
