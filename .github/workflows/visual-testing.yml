@@ -115,22 +115,25 @@ jobs:
       # The registry's kuikly-open artifacts lag the fork (e.g. missing
       # nativeDispatchCapture); local builds shadow them via mavenLocal, so CI
       # must do the same from the pinned third_party/kuikly-ui submodule.
-      - name: Resolve kuikly fork submodule
+      # Cache key is shared with kmp-resource-generator-ci.yml — keep in sync.
+      - name: Resolve kuikly fork submodule sha
         id: kuikly-fork
-        run: |
-          git submodule update --init --depth 1 third_party/kuikly-ui
-          echo "sha=$(git -C third_party/kuikly-ui rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
 
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-${{ steps.kuikly-fork.outputs.sha }}
+          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
+          enableCrossOsArchive: true
 
       - name: Build kuikly fork into mavenLocal
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
-        run: bash scripts/build_kuikly_fork.sh --android-only
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          bash scripts/build_kuikly_fork.sh --android-only
 
       - name: Enable KVM
         run: |

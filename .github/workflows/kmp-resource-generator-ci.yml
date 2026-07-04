@@ -66,7 +66,22 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
+      # Cache key is shared with visual-testing.yml — keep in sync.
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
+          enableCrossOsArchive: true
+
       - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git submodule sync third_party/kuikly-ui
@@ -105,7 +120,22 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
+      # Cache key is shared with visual-testing.yml — keep in sync.
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
+          enableCrossOsArchive: true
+
       - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git submodule sync third_party/kuikly-ui
@@ -168,7 +198,22 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
+      # OHOS artifact set differs from the android one — separate cache key.
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ steps.kuikly-fork.outputs.sha }}
+          enableCrossOsArchive: true
+
       - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git submodule sync third_party/kuikly-ui
