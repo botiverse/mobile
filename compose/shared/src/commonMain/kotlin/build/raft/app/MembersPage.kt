@@ -7787,7 +7787,8 @@ private fun MemberProfile.toSlockAgentStatusIndicatorState(
     return SlockAgentStatusIndicatorState(
         status = display.status,
         color = display.color,
-        pulsing = display.pulsing
+        pulsing = display.pulsing,
+        label = display.status?.label ?: presence.name
     )
 }
 
