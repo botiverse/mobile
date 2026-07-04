@@ -298,23 +298,22 @@ class SharedMembersParserTest {
         assertEquals(
             listOf(
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Permissions,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,
-                MembersAgentDetailTab.Apps,
-                MembersAgentDetailTab.Activity
+                MembersAgentDetailTab.Apps
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
         )
         assertEquals(
             listOf(
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,
-                MembersAgentDetailTab.Apps,
-                MembersAgentDetailTab.Activity
+                MembersAgentDetailTab.Apps
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true)
         )

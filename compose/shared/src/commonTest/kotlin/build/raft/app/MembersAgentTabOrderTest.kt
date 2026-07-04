@@ -17,12 +17,33 @@ class MembersAgentTabOrderTest {
         assertEquals(
             listOf(
                 MembersAgentDetailTab.Activity,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Apps,
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Permissions,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace
+            ),
+            ordered
+        )
+    }
+
+    @Test
+    fun mapsLegacyDmsOrderKeyToChatTab() {
+        val visibleTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
+
+        val ordered = membersOrderedAgentTabs(
+            visibleTabs = visibleTabs,
+            storedOrder = listOf("dms", "permissions", "profile")
+        )
+
+        assertEquals(
+            listOf(
+                MembersAgentDetailTab.Chat,
+                MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Reminders,
+                MembersAgentDetailTab.Workspace,
+                MembersAgentDetailTab.Apps
             ),
             ordered
         )
@@ -33,7 +54,7 @@ class MembersAgentTabOrderTest {
         val wireKeys =
             listOf(
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Apps,
                 MembersAgentDetailTab.Activity
             ).toMembersAgentPanelTabOrderWireKeys()
@@ -46,7 +67,7 @@ class MembersAgentTabOrderTest {
         val tabs =
             listOf(
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Activity
             )
@@ -56,7 +77,7 @@ class MembersAgentTabOrderTest {
                 MembersAgentDetailTab.Profile,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Activity,
-                MembersAgentDetailTab.Dms
+                MembersAgentDetailTab.Chat
             ),
             tabs.membersMoveTab(fromIndex = 1, toIndex = 3)
         )
@@ -64,7 +85,7 @@ class MembersAgentTabOrderTest {
 
     @Test
     fun invalidMoveReturnsOriginalTabList() {
-        val tabs = listOf(MembersAgentDetailTab.Profile, MembersAgentDetailTab.Dms)
+        val tabs = listOf(MembersAgentDetailTab.Profile, MembersAgentDetailTab.Chat)
 
         assertSame(tabs, tabs.membersMoveTab(fromIndex = -1, toIndex = 1))
         assertSame(tabs, tabs.membersMoveTab(fromIndex = 0, toIndex = 2))
@@ -77,12 +98,12 @@ class MembersAgentTabOrderTest {
             listOf(
                 MembersAgentDetailTab.Activity,
                 MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Apps
             )
 
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Profile))
-        assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Dms))
+        assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Chat))
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
     }
 }
