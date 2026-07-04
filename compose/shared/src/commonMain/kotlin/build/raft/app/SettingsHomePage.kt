@@ -2992,7 +2992,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                                         )
                                                     )
                                                 }
-                                                bridge.toast(update.statusLabel.ifBlank { "Update download started" })
                                                 update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
                                                 homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
                                             }
@@ -10269,9 +10268,7 @@ private fun SharedHomeScreen(
                             notification.targetId?.startsWith("https://") == true -> {
                             notification.targetId?.let(bridge::openUrl)
                         }
-                        else -> {
-                            bridge.toast("Notification opened")
-                        }
+                        else -> Unit
                     }
                 },
                 onNotificationDismiss = { notification ->
