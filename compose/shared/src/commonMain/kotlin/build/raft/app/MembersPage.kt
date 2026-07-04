@@ -204,19 +204,17 @@ internal enum class MembersAgentDetailTab(
     val privateSurface: Boolean = true
 ) {
     Profile("Profile", SlockLucideIconName.Bot, privateSurface = false),
-    Permissions("Permissions", SlockLucideIconName.ShieldCheck),
-    Dms("Agent DMs", SlockLucideIconName.MessageSquare),
+    Activity("Activity", SlockLucideIconName.Activity),
+    Chat("Chat", SlockLucideIconName.MessageSquare),
     Reminders("Reminders", SlockLucideIconName.BellRing),
     Workspace("Workspace", SlockLucideIconName.FolderOpen),
-    Apps("Apps", SlockLucideIconName.Link2),
-    Activity("Activity", SlockLucideIconName.Activity)
+    Apps("Apps", SlockLucideIconName.Link2)
 }
 
 internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
             tab == MembersAgentDetailTab.Profile -> true
-            tab == MembersAgentDetailTab.Permissions && deleted -> false
             else -> canViewPrivateSurfaces
         }
     }
@@ -238,14 +236,13 @@ internal fun membersOrderedAgentTabs(
 private val MembersAgentDetailTab.persistedOrderKey: String
     get() =
         when (this) {
-            MembersAgentDetailTab.Dms -> "dms"
+            MembersAgentDetailTab.Chat -> "chat"
             else -> name.lowercase()
         }
 
 internal val MembersAgentDetailTab.serverOrderKey: String
     get() =
         when (this) {
-            MembersAgentDetailTab.Dms -> "chat"
             MembersAgentDetailTab.Apps -> "integrations"
             else -> name.lowercase()
         }
@@ -280,7 +277,7 @@ private fun String.toMembersAgentTabOrderKey(): String =
         .replace("-", "_")
         .let { key ->
             when (key) {
-                "chat", "channels", "agent_dms", "agentdms", "dm", "direct_messages", "directmessages" -> "dms"
+                "dms", "chat", "channels", "agent_dms", "agentdms", "dm", "direct_messages", "directmessages" -> "chat"
                 "integrations", "connected_apps", "connectedapps", "app_logins", "applogins" -> "apps"
                 else -> key
             }
@@ -2959,8 +2956,10 @@ private fun MembersDetailContent(
                 agentStatusIndicatorState = agentStatusIndicatorState,
                 memberAvatarResolver = memberAvatarResolver,
                 onRequestManagementMenu = { anchor ->
-                    managementMenuAnchor = anchor
-                    managementMenuOpen = true
+                    if (anchor != null) {
+                        managementMenuAnchor = anchor
+                        managementMenuOpen = true
+                    }
                 }
             )
             if (runtimeErrorText != null) {
@@ -3074,17 +3073,7 @@ private fun MembersDetailContent(
                                         timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
-                                MembersAgentDetailTab.Permissions ->
-                                    MembersAgentPermissionsTab(
-                                        member = member,
-                                        detail = detail,
-                                        canManage = canManage,
-                                        agentsApiClient = agentsApiClient,
-                                        initialScopeSet = initialAgentScopeSet,
-                                        onUnavailableAction = onUnavailableAction,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Dms ->
+                                MembersAgentDetailTab.Chat ->
                                     MembersAgentDmsTab(
                                         detail = detail,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -3306,7 +3295,7 @@ private fun MembersDetailHeader(
     onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
-    onRequestManagementMenu: (Offset) -> Unit
+    onRequestManagementMenu: (Offset?) -> Unit
 ) {
     val summary = detail?.summary
     val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
@@ -3390,7 +3379,9 @@ private fun MembersDetailHeader(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Menu,
                     onClick = {
-                        onRequestManagementMenu(threeDotButtonAnchor.value)
+                        onRequestManagementMenu(
+                            threeDotButtonAnchor.value.takeIf { threeDotButtonAnchor.hasValue }
+                        )
                     },
                     size = MembersActionSize,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -3918,8 +3909,7 @@ private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDet
                 MembersAgentDetailTab.Profile,
                 MembersAgentDetailTab.Activity,
                 MembersAgentDetailTab.Apps -> 98.dp
-                MembersAgentDetailTab.Dms -> 112.dp
-                MembersAgentDetailTab.Permissions,
+                MembersAgentDetailTab.Chat -> 98.dp
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace -> 126.dp
             }
@@ -3943,7 +3933,7 @@ private fun MembersAgentDetailStateNotice(
         }
     val privateMessage =
         if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
-            "Profile is public. Permissions, Agent DMs, Reminders, Workspace, Apps, and Activity are hidden for this account."
+            "Profile is public. Activity, Chat, Reminders, Workspace, and Apps are hidden for this account."
         } else {
             null
         }

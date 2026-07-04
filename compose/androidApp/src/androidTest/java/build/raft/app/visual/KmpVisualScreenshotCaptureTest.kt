@@ -815,18 +815,10 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersAgentDetailPermissionsScreen() {
+    fun captureMembersAgentDetailChatScreen() {
         captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.permissions",
-            tab = "permissions"
-        )
-    }
-
-    @Test
-    fun captureMembersAgentDetailDmsScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.dms",
-            tab = "dms"
+            caseId = "screens.members.agent-detail.chat",
+            tab = "chat"
         )
     }
 
@@ -850,7 +842,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureMembersAgentDetailAppsScreen() {
         captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.apps",
-            tab = "apps"
+            tab = "integrations"
         )
     }
 
@@ -1416,12 +1408,11 @@ class KmpVisualScreenshotCaptureTest {
                     "agentPanelTabOrder",
                     JSONArray()
                         .put("profile")
-                        .put("permissions")
-                        .put("dms")
+                        .put("activity")
+                        .put("chat")
                         .put("reminders")
                         .put("workspace")
-                        .put("apps")
-                        .put("activity")
+                        .put("integrations")
                 )
         initialAgentTab?.let { payload.put("initialAgentTab", it) }
         return JSONObject()
