@@ -9266,110 +9266,129 @@ private fun ThreadMessagesList(
                     }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                 val captureShareBounds = shareSelectionCaptureActive && message.id in selectedShareMessageIds
-                Box(
-                    modifier =
-                        Modifier
-                            .then(
-                                if (firstViewportProbeActive) {
-                                    Modifier.onGloballyPositioned {
-                                        firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
+                val dateDividerLabel =
+                    remember(
+                        previousMessage?.timestampLabel,
+                        message.timestampLabel,
+                        renderConfig.timeContext.localOffsetMinutes,
+                        renderConfig.timeContext.todayEpochDay,
+                        renderConfig.timeContext.nowEpochMillis
+                    ) {
+                        threadDateDividerLabel(
+                            previous = previousMessage,
+                            next = message,
+                            timeContext = renderConfig.timeContext
+                        )
+                    }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    dateDividerLabel?.let { label ->
+                        ThreadDateDivider(label)
+                    }
+                    Box(
+                        modifier =
+                            Modifier
+                                .then(
+                                    if (firstViewportProbeActive) {
+                                        Modifier.onGloballyPositioned {
+                                            firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
+                                        }
+                                    } else {
+                                        Modifier
                                     }
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .then(
-                                if (captureShareBounds) {
-                                    Modifier.onGloballyPositioned { coordinates ->
-                                        val pos = coordinates.positionInRoot()
-                                        onShareSelectionBounds(
-                                            message.id,
-                                            ThreadShareCaptureRect(
-                                                x = pos.x,
-                                                y = pos.y,
-                                                width = coordinates.size.width.toFloat(),
-                                                height = coordinates.size.height.toFloat()
+                                )
+                                .then(
+                                    if (captureShareBounds) {
+                                        Modifier.onGloballyPositioned { coordinates ->
+                                            val pos = coordinates.positionInRoot()
+                                            onShareSelectionBounds(
+                                                message.id,
+                                                ThreadShareCaptureRect(
+                                                    x = pos.x,
+                                                    y = pos.y,
+                                                    width = coordinates.size.width.toFloat(),
+                                                    height = coordinates.size.height.toFloat()
+                                                )
                                             )
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                    ) {
+                        if (!captureShareBounds) {
+                            SideEffect {
+                                onShareSelectionBounds(message.id, null)
+                            }
+                        }
+                        if (isSystemMessage && actionCard == null) {
+                            ThreadSystemMessageRow(
+                                message = displayMessage,
+                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
+                            )
+                        } else {
+                            ThreadMessageCard(
+                                message = displayMessage,
+                                replyMetadata = replyMetadata,
+                                hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
+                                actionCard = actionCard,
+                                messageIndex = absoluteMessageIndex,
+                                diagnosticsLogger = diagnosticsLogger,
+                                highlightedMentions = highlightedMentions,
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
+                                shareSelectionActive = shareSelectionActive,
+                                selectedForShare = message.id in selectedShareMessageIds,
+                                onToggleShareSelection = { onToggleShareSelection(message.id) },
+                                showSaveAction = !captureShareBounds,
+                                showInlineSaveAction = renderPayload.showInlineSaveAction,
+                                isMessageListScrolling = listState.isScrollInProgress,
+                                alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
+                                suppressRepeatedAuthor = suppressRepeatedAuthor,
+                                showReplyAction = renderPayload.showReplyActions,
+                                resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                markdownTagContextSignature = markdownTagContextSignature,
+                                taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
+                                taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
+                                captureLongPressAnchor = captureMessageAnchors,
+                                isMarkdownTagValid = isMarkdownTagValid,
+                                onShowActions = { anchor ->
+                                    if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
+                                        actionMenuAnchor = anchor
+                                        actionMessageId = message.id
+                                        diagnosticsLogger(
+                                            "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
                                         )
                                     }
-                                } else {
-                                    Modifier
-                                }
+                                },
+                                onOpenMember = onOpenMember,
+                                onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                                onOpenTaskStatusMenu = { anchor ->
+                                    taskStatusMenuMessageId = message.id
+                                    taskStatusMenuAnchor = anchor
+                                },
+                                onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
+                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
+                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
+                                onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                                onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
+                                onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                                attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
+                                pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                currentServerSlug = currentServerSlug,
+                                onOpenMarkdownTag = onOpenMarkdownTag,
+                                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                onMentionAuthor = onMentionAuthor,
+                                richContentEnabled = isRichContentEnabled
                             )
-                ) {
-                    if (!captureShareBounds) {
-                        SideEffect {
-                            onShareSelectionBounds(message.id, null)
                         }
-                    }
-                    if (isSystemMessage && actionCard == null) {
-                        ThreadSystemMessageRow(
-                            message = displayMessage,
-                            timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
-                        )
-                    } else {
-                        ThreadMessageCard(
-                            message = displayMessage,
-                            replyMetadata = replyMetadata,
-                            hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
-                            actionCard = actionCard,
-                            messageIndex = absoluteMessageIndex,
-                            diagnosticsLogger = diagnosticsLogger,
-                            highlightedMentions = highlightedMentions,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
-                            shareSelectionActive = shareSelectionActive,
-                            selectedForShare = message.id in selectedShareMessageIds,
-                            onToggleShareSelection = { onToggleShareSelection(message.id) },
-                            showSaveAction = !captureShareBounds,
-                            showInlineSaveAction = renderPayload.showInlineSaveAction,
-                            isMessageListScrolling = listState.isScrollInProgress,
-                            alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
-                            compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                            suppressRepeatedAuthor = suppressRepeatedAuthor,
-                            showReplyAction = renderPayload.showReplyActions,
-                            resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                            markdownTagContextSignature = markdownTagContextSignature,
-                            taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                            taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                            captureLongPressAnchor = captureMessageAnchors,
-                            isMarkdownTagValid = isMarkdownTagValid,
-                            onShowActions = { anchor ->
-                                if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
-                                    actionMenuAnchor = anchor
-                                    actionMessageId = message.id
-                                    diagnosticsLogger(
-                                        "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                                    )
-                                }
-                            },
-                            onOpenMember = onOpenMember,
-                            onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onOpenTaskStatusMenu = { anchor ->
-                                taskStatusMenuMessageId = message.id
-                                taskStatusMenuAnchor = anchor
-                            },
-                            onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                            onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
-                            onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                            timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
-                            compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
-                            onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                            attachmentCommentsEnabled = attachmentCommentsEnabled,
-                            onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
-                            onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                            attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
-                            pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
-                            onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                            currentServerSlug = currentServerSlug,
-                            onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl,
-                            onMentionAuthor = onMentionAuthor,
-                            richContentEnabled = isRichContentEnabled
-                        )
                     }
                 }
             }
@@ -10411,6 +10430,25 @@ private fun ThreadHistoryStatusRow(
 }
 
 @Composable
+private fun ThreadDateDivider(label: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
+        Text(
+            text = label,
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
+    }
+}
+
+@Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
@@ -11412,6 +11450,21 @@ internal fun shouldSuppressCompactThreadAuthor(
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
 
+internal fun threadDateDividerLabel(
+    previous: KuiklyThreadMessageItem?,
+    next: KuiklyThreadMessageItem,
+    timeContext: SlockTimeContext
+): String? {
+    val localOffsetMinutes = timeContext.localOffsetMinutes
+    val nextEpochDay = next.threadMessageLocalEpochDayOrNull(localOffsetMinutes) ?: return null
+    val previousEpochDay = previous?.threadMessageLocalEpochDayOrNull(localOffsetMinutes)
+    if (previousEpochDay == nextEpochDay) return null
+    val todayEpochDay =
+        timeContext.todayEpochDay
+            ?: timeContext.nowEpochMillis?.let { threadLocalEpochDay(it, localOffsetMinutes) }
+    return threadDateDividerLabel(nextEpochDay, todayEpochDay)
+}
+
 private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
     next: KuiklyThreadMessageItem,
     localOffsetMinutes: Int
@@ -11434,6 +11487,9 @@ private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
 private fun KuiklyThreadMessageItem.parseThreadMessageEpochMillisOrNull(localOffsetMinutes: Int): Long? =
     parseSlockTimestampEpochMillisOrNull(timestampLabel, localOffsetMinutes)
 
+private fun KuiklyThreadMessageItem.threadMessageLocalEpochDayOrNull(localOffsetMinutes: Int): Long? =
+    parseThreadMessageEpochMillisOrNull(localOffsetMinutes)?.let { threadLocalEpochDay(it, localOffsetMinutes) }
+
 private fun KuiklyThreadMessageItem.authorIdentityKey(): String =
     authorId.takeIf { it.isNotBlank() }
         ?: authorHandle.takeIf { it.isNotBlank() }
@@ -11448,6 +11504,49 @@ private fun threadFloorDiv(value: Long, divisor: Long): Long {
     val remainder = value % divisor
     return if (remainder != 0L && ((remainder < 0) != (divisor < 0))) quotient - 1 else quotient
 }
+
+private fun threadFloorMod(value: Long, divisor: Long): Long =
+    value - threadFloorDiv(value, divisor) * divisor
+
+private fun threadDateDividerLabel(epochDay: Long, todayEpochDay: Long?): String =
+    when {
+        todayEpochDay != null && epochDay == todayEpochDay -> "TODAY"
+        todayEpochDay != null && epochDay == todayEpochDay - 1L -> "YESTERDAY"
+        else -> {
+            val date = threadCivilDateFromEpochDay(epochDay)
+            "${ThreadWeekdayNames[threadWeekdayIndex(epochDay)]}, ${ThreadMonthNames[date.month - 1]} ${date.day}"
+        }
+    }
+
+private data class ThreadCivilDate(
+    val year: Int,
+    val month: Int,
+    val day: Int
+)
+
+private fun threadCivilDateFromEpochDay(epochDay: Long): ThreadCivilDate {
+    val zeroDay = epochDay + 719_468L
+    val era = threadFloorDiv(zeroDay, 146_097L)
+    val dayOfEra = zeroDay - era * 146_097L
+    val yearOfEra =
+        (dayOfEra - dayOfEra / 1_460L + dayOfEra / 36_524L - dayOfEra / 146_096L) / 365L
+    val year = yearOfEra + era * 400L
+    val dayOfYear = dayOfEra - (365L * yearOfEra + yearOfEra / 4L - yearOfEra / 100L)
+    val monthPrime = (5L * dayOfYear + 2L) / 153L
+    val day = dayOfYear - (153L * monthPrime + 2L) / 5L + 1L
+    val month = monthPrime + if (monthPrime < 10L) 3L else -9L
+    val adjustedYear = year + if (month <= 2L) 1L else 0L
+    return ThreadCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
+}
+
+private fun threadWeekdayIndex(epochDay: Long): Int =
+    threadFloorMod(epochDay + 4L, 7L).toInt()
+
+private val ThreadWeekdayNames =
+    listOf("SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY")
+
+private val ThreadMonthNames =
+    listOf("JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER")
 
 private const val ThreadMillisPerMinute = 60_000L
 private const val ThreadMillisPerDay = 86_400_000L

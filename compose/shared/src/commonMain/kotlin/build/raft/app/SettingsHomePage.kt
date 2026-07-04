@@ -253,6 +253,7 @@ import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSelectionOptionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
+import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.SettingsPlanUsageSnapshot
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionSnapshot
@@ -8139,6 +8140,13 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 title = "My message alignment",
                                 fallbackStatus = "Unsupported",
                                 actionState = actionState
+                            ),
+                            mobile.compactConsecutiveMessages.toMobileToggleRow(
+                                key = MOBILE_ACTION_COMPACT_MESSAGES,
+                                iconName = SlockLucideIconName.MessageSquare,
+                                title = "Compact consecutive messages",
+                                fallbackStatus = "Unsupported",
+                                actionState = actionState
                             )
                         )
                 )
@@ -8344,6 +8352,24 @@ private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
         enabled = available && nextOption != null && actionState?.inProgress != true
     )
 }
+
+private fun SettingsMobileToggleSnapshot.toMobileToggleRow(
+    key: String,
+    iconName: SlockLucideIconName,
+    title: String,
+    fallbackStatus: String,
+    actionState: build.raft.app.data.SharedSettingsActionState?
+): KuiklySharedSettingsRow =
+    KuiklySharedSettingsRow(
+        key = key,
+        iconName = iconName,
+        title = title,
+        detail = detail,
+        value = (!enabled).toString(),
+        status = actionState.statusFor(key, statusLabel.ifBlank { fallbackStatus }),
+        enabled = available && actionState?.inProgress != true,
+        toggleValue = enabled
+    )
 
 private fun SettingsServerAdminSnapshot.normalizedRole(): String =
     role.normalizedServerRole()
