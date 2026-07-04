@@ -2132,7 +2132,12 @@ private fun ComposerSuggestionPanel(
     itemContent: @Composable (Int) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack).background(SlockColor.SurfaceWhite),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(panelHeight)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         LazyColumn(
