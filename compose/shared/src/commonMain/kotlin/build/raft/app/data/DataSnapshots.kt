@@ -1227,6 +1227,7 @@ data class PendingMentionAction(
     val channelName: String? = null,
     val targetType: String = "unknown",
     val targetHandle: String = "",
+    val targetAvatarUrl: String? = null,
     val reason: String = "",
     val availableActions: List<String> = emptyList(),
     val expiresAt: String? = null

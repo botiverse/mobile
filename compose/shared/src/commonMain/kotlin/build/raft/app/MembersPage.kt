@@ -3202,8 +3202,7 @@ private fun MembersDetailContent(
         activePendingConfirmation?.let { action ->
             SlockBrutalModalLayer(
                 model = SlockModalShellModel(
-                    title = "Confirm ${action.label}",
-                    subtitle = "${action.label} ${member.displayName}. This uses the real agent management API."
+                    title = membersLifecycleConfirmTitle(action)
                 ),
                 onDismiss = {
                     if (sharedAgentDetailStore != null) {
@@ -3532,6 +3531,28 @@ private fun MembersDetailActions(
     }
 }
 
+// Mirrors React ConfirmDialog usage in AgentDetailPanel: title matches the
+// action button label, message is user-facing copy, warning banner shows the
+// message only (never repeats the title), and the confirm button carries the
+// action label with warning/destructive color.
+private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction): String =
+    when (action) {
+        MembersAgentLifecycleAction.Stop -> "Stop Agent"
+        MembersAgentLifecycleAction.Delete -> "Delete Agent"
+        else -> action.label
+    }
+
+private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, agentName: String): String =
+    when (action) {
+        MembersAgentLifecycleAction.Stop ->
+            "Are you sure you want to stop \"$agentName\"? The agent will stop processing messages."
+        MembersAgentLifecycleAction.Delete ->
+            "Are you sure you want to delete \"$agentName\"? This will remove all associated data and cannot be undone."
+        MembersAgentLifecycleAction.UnassignMachine ->
+            "Are you sure you want to unassign the machine from \"$agentName\"?"
+        else -> "Are you sure you want to ${action.label.lowercase()} \"$agentName\"?"
+    }
+
 @Composable
 private fun MembersLifecycleConfirmation(
     action: MembersAgentLifecycleAction,
@@ -3540,37 +3561,45 @@ private fun MembersLifecycleConfirmation(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val accent = if (action.destructive) SlockColor.AccentRed else SlockColor.AccentOrange
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceCream)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Text(
-            text = "Confirm ${action.label}",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
-        )
-        Text(
-            text = "${action.label} ${agentName}. This uses the real agent management API.",
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(accent.copy(alpha = 0.2f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.Top
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.TriangleAlert,
+                modifier = Modifier.size(16.dp),
+                color = SlockColor.TextBlackArgb
+            )
+            Text(
+                text = membersLifecycleConfirmMessage(action, agentName),
+                style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+        ) {
             SlockBrutalActionButton(
                 label = "Cancel",
-                leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
-                modifier = Modifier.weight(1f),
                 onClick = onCancel
             )
             SlockBrutalActionButton(
-                label = "Confirm",
-                leadingIcon = SlockLucideIconName.Check,
+                label = membersLifecycleConfirmTitle(action),
                 enabled = !busy,
-                modifier = Modifier.weight(1f),
+                backgroundColor = accent,
+                leadingIcon = if (busy) SlockLucideIconName.Loader else null,
                 onClick = onConfirm
             )
         }

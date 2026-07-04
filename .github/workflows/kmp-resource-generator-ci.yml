@@ -77,8 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
-          enableCrossOsArchive: true
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
 
       - name: Publish Kuikly fork artifacts
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
@@ -131,8 +130,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-${{ steps.kuikly-fork.outputs.sha }}
-          enableCrossOsArchive: true
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
 
       - name: Publish Kuikly fork artifacts
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
@@ -209,8 +207,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-ohos-${{ steps.kuikly-fork.outputs.sha }}
-          enableCrossOsArchive: true
+          key: kuikly-fork-mavenlocal-ohos-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
 
       - name: Publish Kuikly fork artifacts
         if: steps.kuikly-cache.outputs.cache-hit != 'true'

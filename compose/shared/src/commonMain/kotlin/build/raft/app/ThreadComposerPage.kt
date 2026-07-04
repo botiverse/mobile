@@ -317,6 +317,7 @@ internal data class KuiklyPendingMentionActionItem(
     val channelName: String? = null,
     val targetType: String = "unknown",
     val targetHandle: String = "",
+    val targetAvatarUrl: String? = null,
     val reason: String = "",
     val availableActions: List<String> = emptyList(),
     val expiresAt: String? = null
@@ -1449,6 +1450,9 @@ internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
 private fun KuiklyPendingMentionActionItem.targetInitial(): String =
     targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
 
+internal fun KuiklyPendingMentionActionItem.targetAvatarWireValue(): String? =
+    targetAvatarUrl?.takeIf { it.isNotBlank() }
+
 internal fun KuiklyPendingMentionActionItem.matchingTargetSuggestion(
     suggestions: List<KuiklyComposerMemberItem>
 ): KuiklyComposerMemberItem? {
@@ -1780,6 +1784,7 @@ private fun PendingMentionActionRow(
             ?: targetSuggestion?.displayName
                 ?.takeIf { it.isNotBlank() }
             ?: action.targetInitial()
+    val targetAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue
     val canInvite = action.supportsMentionAction("invite")
     val canNotify = action.supportsMentionAction("notify")
     Column(
@@ -1793,7 +1798,7 @@ private fun PendingMentionActionRow(
         ) {
             SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
             SlockAvatar(
-                avatarWireValue = targetSuggestion?.avatarWireValue,
+                avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
                 borderWidth = SlockStroke.Default,
