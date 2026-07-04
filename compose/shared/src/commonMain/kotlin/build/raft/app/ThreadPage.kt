@@ -1823,82 +1823,6 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
     }
 }
 
-@Page("compose_markdown_rerender_visual", supportInLocal = true)
-internal class ComposeMarkdownRerenderVisualPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { MarkdownRerenderVisualScreen() }
-    }
-}
-
-@Composable
-internal fun MarkdownRerenderVisualScreen() {
-    val messages =
-        remember {
-            (0 until 18).map { index ->
-                KuiklyThreadMessageItem(
-                    id = "markdown-rerender-row-$index",
-                    authorId = "agent-kmp",
-                    authorName = "KMP",
-                    authorKind = "agent",
-                    authorHandle = "KMP-专家",
-                    avatarLabel = "KM",
-                    timestampLabel = "07/04 12:${index.toString().padStart(2, '0')}",
-                    messageType = "Chat",
-                    body =
-                        "Row $index keeps #markdown专修 and highlighted @artin visible " +
-                            "through initial markdown parse and LazyColumn row reuse."
-                )
-            }
-        }
-    val highlightedMentions = remember { setOf("artin") }
-    val knownMarkdownChannelNames = remember { setOf("markdown专修") }
-    val knownMarkdownMentionNames = remember { setOf("artin", "KMP-专家") }
-    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
-        }
-    val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames) {
-            threadMarkdownTagContextSignature(
-                highlightedMentions = highlightedMentions,
-                knownChannelNames = knownMarkdownChannelNames,
-                knownMentionNames = knownMarkdownMentionNames
-            )
-        }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        beyondBoundsItemCount = ThreadMessagesMaxBeyondBoundsItemCount
-    ) {
-        messages.forEach { message ->
-            item(key = message.id) {
-                ThreadMessageCard(
-                    message = message,
-                    highlightedMentions = highlightedMentions,
-                    isMarkdownTagValid = isMarkdownTagValid,
-                    markdownTagContextSignature = markdownTagContextSignature,
-                    timestampLabel = message.timestampLabel,
-                    showReplyAction = false,
-                    taskOpenEnabled = false,
-                    taskStatusActionsEnabled = false,
-                    onShowActions = {},
-                    onOpenMember = {},
-                    onOpenThread = {},
-                    onOpenTask = {},
-                    onOpenTaskStatusMenu = {},
-                    onToggleReaction = {},
-                    onToggleSaved = {},
-                    onOpenAttachment = {},
-                    onOpenMarkdownTag = {},
-                    onOpenMarkdownUrl = {},
-                    outerPadding = 0.dp
-                )
-            }
-        }
-    }
-}
-
 @Composable
 internal fun ThreadMessageVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -2103,6 +2027,7 @@ internal fun ThreadHeaderVisualScreen() {
     Box(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
+            applyTopSafeArea = false,
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = { _, _, _ -> },
@@ -7588,6 +7513,7 @@ private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    applyTopSafeArea: Boolean = true,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
@@ -7595,7 +7521,7 @@ private fun ThreadPageHeader(
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
