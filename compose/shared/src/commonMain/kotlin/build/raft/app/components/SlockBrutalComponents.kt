@@ -81,6 +81,19 @@ internal data class SegmentedControlOption(
     val count: Int? = null
 )
 
+internal val SlockDisabledActionBackground = Color(0xFFFFD8E5)
+internal val SlockDisabledDestructiveActionBackground = Color(0xFFFFE5E5)
+internal val SlockDisabledActionBorder = Color(0xFFB3B3B3)
+internal val SlockDisabledActionShadow = Color(0xFFB8B8B8)
+internal val SlockDisabledActionContent = SlockColor.SurfaceWhite
+internal const val SlockDisabledActionContentArgb = SlockColor.SurfaceWhiteArgb
+
+internal fun slockDisabledActionBackgroundFor(activeColor: Color): Color =
+    when (activeColor) {
+        SlockColor.AccentRed -> SlockDisabledDestructiveActionBackground
+        else -> SlockDisabledActionBackground
+    }
+
 internal enum class SlockAnchorPlacement {
     Tap,
     BottomStart,
@@ -634,6 +647,8 @@ private fun SlockBrutalActionButtonInnerContent(
     leadingIconSpinning: Boolean,
     textStyle: TextStyle,
     enabled: Boolean,
+    disabledContentColor: Color,
+    disabledIconColor: String,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
@@ -641,12 +656,17 @@ private fun SlockBrutalActionButtonInnerContent(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leadingIcon != null) {
-            SlockLucideIcon(leadingIcon, modifier = Modifier.size(12.dp), color = "#FF000000", spinning = leadingIconSpinning)
+            SlockLucideIcon(
+                leadingIcon,
+                modifier = Modifier.size(12.dp),
+                color = if (enabled) SlockColor.TextBlackArgb else disabledIconColor,
+                spinning = leadingIconSpinning
+            )
         }
         Text(
             text = label,
             style = textStyle,
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.40f),
+            color = if (enabled) SlockColor.TextBlack else disabledContentColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -662,6 +682,10 @@ internal fun SlockBrutalActionButton(
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
     disabledBackgroundColor: Color = SlockColor.SurfaceCream,
+    disabledBorderColor: Color = SlockColor.BorderBlack,
+    disabledShadowColor: Color = SlockColor.ShadowBlack.copy(alpha = 0.40f),
+    disabledContentColor: Color = SlockColor.TextBlack.copy(alpha = 0.40f),
+    disabledIconColor: String = SlockColor.TextBlackArgb,
     minWidth: Dp = 82.dp,
     minHeight: Dp = 40.dp,
     leadingIcon: SlockLucideIconName? = null,
@@ -670,7 +694,8 @@ internal fun SlockBrutalActionButton(
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    val chromeAlpha = if (enabled) 1f else 0.40f
+    val shadowColor = if (enabled) SlockColor.ShadowBlack else disabledShadowColor
+    val borderColor = if (enabled) SlockColor.BorderBlack else disabledBorderColor
     Box(
         modifier =
             modifier
@@ -682,7 +707,7 @@ internal fun SlockBrutalActionButton(
                 Modifier
                     .matchParentSize()
                     .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha), RectangleShape)
+                    .background(shadowColor, RectangleShape)
                     .slockSquareCorners()
         )
         SlockAnchorButton(
@@ -694,7 +719,7 @@ internal fun SlockBrutalActionButton(
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
+                    .border(SlockStroke.Default, borderColor, RectangleShape)
                     .slockSquareCorners()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
@@ -704,6 +729,8 @@ internal fun SlockBrutalActionButton(
                 leadingIconSpinning = leadingIconSpinning,
                 textStyle = textStyle,
                 enabled = enabled,
+                disabledContentColor = disabledContentColor,
+                disabledIconColor = disabledIconColor,
                 trailingContent = trailingContent
             )
         }

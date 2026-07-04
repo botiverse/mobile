@@ -14,6 +14,10 @@ import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockDisabledActionBorder
+import build.raft.app.components.SlockDisabledActionContent
+import build.raft.app.components.SlockDisabledActionContentArgb
+import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.SlockRaftUiSelectField
 import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.SharedHomeSearchInput
@@ -22,6 +26,7 @@ import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.ComposeLocalWriteThrough
@@ -4765,7 +4770,11 @@ private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, on
         enabled = enabled,
         leadingIcon = SlockLucideIconName.Save,
         backgroundColor = SlockColor.AccentPink,
-        disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+        disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentPink),
+        disabledBorderColor = SlockDisabledActionBorder,
+        disabledShadowColor = SlockDisabledActionShadow,
+        disabledContentColor = SlockDisabledActionContent,
+        disabledIconColor = SlockDisabledActionContentArgb,
         minWidth = 0.dp,
         minHeight = 34.dp,
         shadowOffset = 3.dp,
@@ -6194,7 +6203,11 @@ private fun SettingsServerProfileFormCard(
                 enabled = enabled,
                 leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.AccentPink,
-                disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+                disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentPink),
+                disabledBorderColor = SlockDisabledActionBorder,
+                disabledShadowColor = SlockDisabledActionShadow,
+                disabledContentColor = SlockDisabledActionContent,
+                disabledIconColor = SlockDisabledActionContentArgb,
                 minWidth = 0.dp,
                 minHeight = 34.dp,
                 shadowOffset = 3.dp,
@@ -6441,7 +6454,11 @@ private fun SettingsServerDeleteConfirmationDialog(
                             enabled = deleteEnabled,
                             modifier = Modifier.width(112.dp),
                             backgroundColor = SlockColor.AccentRed,
-                            disabledBackgroundColor = SlockColor.AccentRed.copy(alpha = 0.50f),
+                            disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentRed),
+                            disabledBorderColor = SlockDisabledActionBorder,
+                            disabledShadowColor = SlockDisabledActionShadow,
+                            disabledContentColor = SlockDisabledActionContent,
+                            disabledIconColor = SlockDisabledActionContentArgb,
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,

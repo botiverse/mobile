@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.components.SlockDisabledActionBorder
+import build.raft.app.components.SlockDisabledActionContent
+import build.raft.app.components.SlockDisabledActionShadow
+import build.raft.app.components.slockDisabledActionBackgroundFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -393,11 +397,25 @@ internal fun AuthActionButton(
     val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     val disabledAlpha = 0.50f
     val chromeAlpha = if (!enabled && preserveDisabledVisual) disabledAlpha else 1f
-    val contentColor = if (!enabled && preserveDisabledVisual) activeContentColor.copy(alpha = disabledAlpha) else activeContentColor
+    val contentColor = when {
+        enabled -> activeContentColor
+        preserveDisabledVisual -> activeContentColor.copy(alpha = disabledAlpha)
+        else -> SlockDisabledActionContent
+    }
     val buttonBackground = when {
         enabled -> background
         preserveDisabledVisual -> background.copy(alpha = disabledAlpha)
-        else -> SlockColor.EmptyStateGray
+        else -> slockDisabledActionBackgroundFor(background)
+    }
+    val borderColor = when {
+        enabled -> SlockColor.BorderBlack
+        preserveDisabledVisual -> SlockColor.BorderBlack.copy(alpha = chromeAlpha)
+        else -> SlockDisabledActionBorder
+    }
+    val shadowColor = when {
+        enabled -> SlockColor.ShadowBlack
+        preserveDisabledVisual -> SlockColor.ShadowBlack.copy(alpha = chromeAlpha)
+        else -> SlockDisabledActionShadow
     }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
@@ -405,12 +423,12 @@ internal fun AuthActionButton(
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
     Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
-        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha)))
+        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(shadowColor))
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(buttonBackground)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha))
+                .border(SlockStroke.Default, borderColor)
                 .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center

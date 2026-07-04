@@ -30,6 +30,7 @@ internal object SlockColor {
     val ShadowBlack = Color(0xFF141111)
 
     const val BrandYellowArgb = "#FFFFD440"
+    const val SurfaceWhiteArgb = "#FFFFFFFF"
     const val TextBlackArgb = "#FF000000"
     const val TextMutedGrayArgb = "#FF737373"
     const val BorderBlackArgb = "#FF000000"
