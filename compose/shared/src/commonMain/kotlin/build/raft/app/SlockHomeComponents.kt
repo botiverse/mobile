@@ -120,7 +120,6 @@ private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
-private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
 private val DirectMessageStatusDotSize = SlockStatusIndicatorTokens.InlineSize
@@ -2489,28 +2488,16 @@ private fun SlockSidebarSortOverlay(
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val rowStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
-    val edgeScrollZonePx = with(density) { 48.dp.toPx() }
     val listState = rememberLazyListState()
     // While a row is dragged the LazyColumn item order stays FIXED: reordering
     // items mid-gesture moves the composable to a new slot, which restarts its
     // pointerInput and kills the drag stream (Kuikly LazyColumn contract).
     // The dragged row follows the finger via offset; other rows shift by the
     // delta between their stable index and their preview index. The reorder is
-    // committed on drop.
-    fun edgeAutoScroll(active: SlockChannelOrderDragState): Float {
-        val info = listState.layoutInfo
-        val draggedInfo = info.visibleItemsInfo.firstOrNull { it.key == "sort-${active.activeId}" } ?: return 0f
-        val visualTop = draggedInfo.offset + active.rowOffsetPx
-        val visualBottom = visualTop + draggedInfo.size
-        val scrollDelta =
-            when {
-                visualTop < info.viewportStartOffset + edgeScrollZonePx -> -EdgeAutoScrollStepPx
-                visualBottom > info.viewportEndOffset - edgeScrollZonePx -> EdgeAutoScrollStepPx
-                else -> 0f
-            }
-        if (scrollDelta != 0f) listState.dispatchRawDelta(scrollDelta)
-        return scrollDelta
-    }
+    // committed on drop. No drag-edge auto-scroll: the overlay list is a bounded
+    // modal (max 420dp) and folding scroll deltas back into the drag inverted
+    // direction on device (task #356). Long sections that exceed the modal are a
+    // separate follow-up.
     SlockUnifiedDialog(
         title = title,
         onDismiss = onDismiss,
@@ -2561,16 +2548,7 @@ private fun SlockSidebarSortOverlay(
                             )
                     },
                     onDragMove = { deltaY ->
-                        val moved = dragState?.dragBy(deltaY = deltaY, rowStepPx = rowStepPx, fallbackOrder = order)
-                        if (moved != null) {
-                            val scrolled = edgeAutoScroll(moved)
-                            dragState =
-                                if (scrolled != 0f) {
-                                    moved.dragBy(deltaY = scrolled, rowStepPx = rowStepPx, fallbackOrder = order)
-                                } else {
-                                    moved
-                                }
-                        }
+                        dragState = dragState?.dragBy(deltaY = deltaY, rowStepPx = rowStepPx, fallbackOrder = order)
                     },
                     onDragEnd = {
                         val ended = dragState
