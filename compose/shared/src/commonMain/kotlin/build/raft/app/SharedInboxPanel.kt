@@ -589,7 +589,7 @@ private fun SharedActivityList(
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
-                        onOpenMessage(item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.LatestActivity))
+                        onOpenMessage(item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow))
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
                     onOpenMenu = { anchor ->
@@ -1338,7 +1338,7 @@ internal data class HomeMessageOpenRequest(
 
 internal enum class HomeMessageAnchorPolicy {
     FirstUnread,
-    LatestActivity
+    ActivityRow
 }
 
 /**
@@ -1375,7 +1375,26 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
 internal fun InboxItem.resolveInboxAnchorMessageId(policy: HomeMessageAnchorPolicy): MessageId? =
     when (policy) {
         HomeMessageAnchorPolicy.FirstUnread -> resolveInboxAnchorMessageId()
-        HomeMessageAnchorPolicy.LatestActivity -> latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId
+        HomeMessageAnchorPolicy.ActivityRow -> resolveActivityRowAnchorMessageId()
+    }
+
+internal fun InboxItem.resolveActivityRowAnchorMessageId(): MessageId? =
+    when (kind) {
+        InboxItemKind.Thread ->
+            if (unreadCount > 0) {
+                firstUnreadMessageId ?: latestActivityMessageId
+            } else {
+                latestActivityMessageId
+            }
+        InboxItemKind.MentionAction -> lastMessageId
+        InboxItemKind.DirectMessage,
+        InboxItemKind.Channel,
+        InboxItemKind.System ->
+            if (unreadCount > 0) {
+                firstUnreadMessageId ?: lastMessageId
+            } else {
+                lastMessageId
+            }
     }
 
 internal fun InboxItem.toHomeMessageOpenRequest(
