@@ -2885,6 +2885,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         latestReadySession != null
                     ) {
                         refreshVisibleAppShellRoute("app_lifecycle_$event")
+                        sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                     }
                     return@addListener
                 }

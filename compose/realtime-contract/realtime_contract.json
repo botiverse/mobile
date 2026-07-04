@@ -5,7 +5,8 @@
   },
   "roomActions": {
     "joinChannel": "joinChannel",
-    "leaveChannel": "leaveChannel"
+    "leaveChannel": "leaveChannel",
+    "rejoinChannel": "rejoinChannel"
   },
   "payloadKeys": {
     "action": "action",

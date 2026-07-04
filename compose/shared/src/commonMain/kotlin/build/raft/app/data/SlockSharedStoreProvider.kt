@@ -44,6 +44,7 @@ internal class SlockSharedStoreProvider private constructor(
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val messageTranslationStore: SharedMessageTranslationStore,
+    val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
@@ -222,6 +223,16 @@ internal class SlockSharedStoreProvider private constructor(
                     warningLogger = { message -> bridge.log("shared_network $message") },
                     platformFileResolver = platformFileResolver
                 )
+            val serverMembersStore =
+                SharedServerMembersStore(
+                    memberRepository =
+                        RealMemberRepository(
+                            sessionStore = authStore,
+                            networkClient = networkClient,
+                            logger = { message -> bridge.log("shared_server_members_repository $message") }
+                        ),
+                    logger = { message -> bridge.log(message) }
+                )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
@@ -236,16 +247,7 @@ internal class SlockSharedStoreProvider private constructor(
                 ),
                 agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
                 tasksDataStore = tasksDataStore,
-                serverMembersStore =
-                    SharedServerMembersStore(
-                        memberRepository =
-                            RealMemberRepository(
-                                sessionStore = authStore,
-                                networkClient = networkClient,
-                                logger = { message -> bridge.log("shared_server_members_repository $message") }
-                            ),
-                        logger = { message -> bridge.log(message) }
-                    ),
+                serverMembersStore = serverMembersStore,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
@@ -276,6 +278,19 @@ internal class SlockSharedStoreProvider private constructor(
                             KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
                         },
                         diagnosticsLogger = { message -> bridge.log("shared_message_translation $message") }
+                    ),
+                foregroundReconciler =
+                    SharedForegroundReconciler(
+                        authStore = authStore,
+                        refreshMembers = { serverId ->
+                            serverMembersStore.refreshMembers(
+                                serverId = serverId,
+                                priority = DataRequestPriority.Background,
+                                force = true
+                            )
+                        },
+                        scope = CoroutineScope(SupervisorJob()),
+                        diagnosticsLogger = { message -> bridge.log("shared_foreground_reconcile $message") }
                     ),
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),

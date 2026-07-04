@@ -2399,6 +2399,7 @@ internal fun SharedThreadRouteContent(
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
     val realtimeDomainEventOwner = remember(bridge) { SlockSharedStoreRegistry.get(bridge).realtimeDomainEventOwner }
+    val foregroundReconciler = remember(bridge) { SlockSharedStoreRegistry.get(bridge).foregroundReconciler }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val initialRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -2964,6 +2965,9 @@ internal fun SharedThreadRouteContent(
     // listener; realtime domain events arrive through the shared
     // SharedRealtimeDomainEventOwner sink below so the owner's dedup ledger is
     // the single ingress decision point (#196, replaces per-route raw decode).
+    val latestForegroundRejoinRoomIds by rememberUpdatedState(
+        (payload.activeRealtimeRoomIds() + listOfNotNull(resolvedAuxiliaryThreadId)).distinct()
+    )
     DisposableEffect(realtimeEvents, active) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
@@ -2975,6 +2979,13 @@ internal fun SharedThreadRouteContent(
                 if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
                     if (threadLifecycleSeen && active) {
                         threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                        // Foreground reconciliation: local joined-room state may
+                        // be stale after background/reconnect — force re-emit
+                        // join:channel for the visible thread rooms (server-side
+                        // join is idempotent), and schedule the coalesced
+                        // per-server member/status refresh.
+                        realtimeEvents.rejoinChannels(latestForegroundRejoinRoomIds)
+                        foregroundReconciler.onForeground("thread_$event")
                     } else {
                         threadLifecycleSeen = true
                     }

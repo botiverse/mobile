@@ -377,4 +377,49 @@ class SlockRealtimeAppScopePolicyTest {
             isAppInForeground: Boolean
         ) = Unit
     }
+    @Test
+    fun rejoinChannelForcesEmitWhileKeepingJoinedSetConsistent() {
+        val engine = SlockRealtimeAppScopeEngine()
+        engine.connectDecisionForHost(
+            serverIdValue = "server-1",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected
+        )
+
+        val join = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val rejoin =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionRejoinChannel,
+                "channel-1",
+                "foreground_reconcile"
+            )
+        val duplicatePlainJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val rejoinWhenNeverJoined =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionRejoinChannel,
+                "channel-2",
+                "foreground_reconcile"
+            )
+        val leaveAfterRejoin =
+            engine.roomCommandDecisionForHost(
+                SlockRealtimeNotifyContract.ActionLeaveChannel,
+                "channel-1",
+                "notify"
+            )
+
+        assertTrue(join.shouldEmit)
+        // Force path re-emits join:channel even though the local set says joined.
+        assertTrue(rejoin.shouldEmit)
+        assertEquals(RealtimeSocketEvents.JoinChannel, rejoin.eventName)
+        assertEquals("channel-1", rejoin.payload)
+        // Joined-set stays idempotent: a plain join after force rejoin still dedupes.
+        assertFalse(duplicatePlainJoin.shouldEmit)
+        // Rejoin also covers rooms the local set never saw (fresh join).
+        assertTrue(rejoinWhenNeverJoined.shouldEmit)
+        // And leave semantics are unaffected by a prior force rejoin.
+        assertTrue(leaveAfterRejoin.shouldEmit)
+    }
+
 }
