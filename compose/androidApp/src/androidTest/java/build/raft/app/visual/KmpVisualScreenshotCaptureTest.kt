@@ -730,7 +730,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.members.create-agent.dialog",
             pageName = "compose_create_agent_dialog_visual",
-            pageData = createAgentDialogPageData(runtime = "codex"),
+            pageData = createAgentDialogPageData(runtime = "codex", errorMessage = "Failed to create agent"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -1387,7 +1387,8 @@ class KmpVisualScreenshotCaptureTest {
         providerApiUrl: String = "",
         providerApiKey: String = "",
         advancedOpen: Boolean = false,
-        command: String = ""
+        command: String = "",
+        errorMessage: String = ""
     ): JSONObject =
         JSONObject()
             .put("runtime", runtime)
@@ -1396,6 +1397,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("providerApiKey", providerApiKey)
             .put("advancedOpen", advancedOpen)
             .put("command", command)
+            .put("errorMessage", errorMessage)
 
     private fun memberDetailVisualPageData(
         instanceId: String,
