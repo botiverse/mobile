@@ -12,14 +12,13 @@
     .hero { border: 2px solid #141111; background: #fff; padding: 18px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
     .hero h2 { margin: 0 0 8px; font-size: 22px; }
     .hero p { margin: 0 0 14px; color: #514946; }
-    .primary { display: inline-block; border: 2px solid #141111; background: #FFD440; color: #141111; padding: 10px 14px; box-shadow: 3px 3px 0 #141111; text-decoration: none; margin-right: 8px; margin-bottom: 8px; }
-    .secondary { background: #fff; }
+    .primary { display: inline-block; border: 2px solid #141111; background: #FFD440; color: #141111; padding: 10px 14px; box-shadow: 3px 3px 0 #141111; text-decoration: none; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
     .runMeta { color: #514946; margin: 0 0 14px; }
     .downloads { border: 2px solid #141111; background: #fff; padding: 12px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
     .downloads h2 { margin: 0 0 8px; font-size: 18px; }
     .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
-    .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; display: inline-block; }
+    .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; }
     table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 4px 4px 0 #141111; }
     th, td { border: 2px solid #141111; padding: 10px; text-align: left; vertical-align: top; }
     th { background: #FFD440; }
@@ -31,17 +30,17 @@
     <h1>Slock Visual Testing</h1>
     <section class="hero">
       <h2>最新视觉对比</h2>
-      <p><code>2dc6a891c-latest</code> · react vs android</p>
-      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-03T09:58:09.029Z" data-timestamp="2026-07-03T09:58:09.029Z" title="2026-07-03T09:58:09.029Z">2026-07-03 09:58:09 UTC</time></p>
-      <a class="primary" href="latest/">查看详情</a>
-      <a class="primary secondary" href="latest/raft-ui/">Raft UI 快速入口</a>
+      <p><code>0458783-20260704203528</code> · react vs android</p>
+      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-04T20:35:39.102Z" data-timestamp="2026-07-04T20:35:39.102Z" title="2026-07-04T20:35:39.102Z">2026-07-04 20:35:39 UTC</time></p>
+      <a class="primary" href="runs/0458783-20260704203528/">查看详情</a>
       <div class="meta">
         <span class="pill">Total 82</span>
         <span class="pill">Pass 0</span>
-        <span class="pill">Basic pass 3</span>
-        <span class="pill">Different 78</span>
-        <span class="pill">Missing 1</span>
-        <span class="pill">Components Parity 52/55 active</span><span class="pill">Screens Parity 11/26 active</span>
+        <span class="pill">Basic pass 1</span>
+        <span class="pill">Different 79</span>
+        <span class="pill">Missing 2</span>
+        <span class="pill">AI 0/82 ready</span>
+        <span class="pill">Components Parity 72/75 active</span><span class="pill">Screens Parity 11/26 active</span>
       </div>
     </section>
     <section class="downloads">
@@ -52,18 +51,18 @@
         <a class="pill" href="llms.txt">llms.txt</a>
         <a class="pill" href="latest/component-matrix.json">coverage matrix JSON</a>
         <a class="pill" href="latest/metadata.json">latest metadata</a>
-        <a class="pill" href="latest/raft-ui/">Raft UI report</a>
+        <a class="pill" href="latest/raft-ui/">Raft UI 快速入口</a>
       </div>
     </section>
     <h2>历史记录</h2>
     <table>
       <thead><tr><th>Commit</th><th>Generated</th><th>Providers</th><th>Diff Summary</th><th>Action</th></tr></thead>
       <tbody><tr>
-    <td><code>latest</code><br/>fix(visual): align raft ui primitive parity</td>
-    <td><time class="localizedTime" datetime="2026-07-03T09:58:09.029Z" data-timestamp="2026-07-03T09:58:09.029Z" title="2026-07-03T09:58:09.029Z">2026-07-03 09:58:09 UTC</time></td>
+    <td><code>0458783-20260704203528</code><br/>Merge remote-tracking branch 'origin/main'</td>
+    <td><time class="localizedTime" datetime="2026-07-04T20:35:39.102Z" data-timestamp="2026-07-04T20:35:39.102Z" title="2026-07-04T20:35:39.102Z">2026-07-04 20:35:39 UTC</time></td>
     <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 3<br/>Different 78<br/>Missing 1</td>
-    <td><a href="latest/">查看详情</a><br/><a href="latest/raft-ui/">Raft UI</a></td>
+    <td>Total 82<br/>Pass 0<br/>Basic pass 1<br/>Different 79<br/>Missing 2</td>
+    <td><a href="runs/0458783-20260704203528/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>963d46cb1-20260703121500</code><br/>Merge branch 'ad3/task293-visual-row-checkbox'</td>
@@ -73,32 +72,46 @@
     <td><a href="runs/963d46cb1-20260703121500/">查看详情</a></td>
   </tr>
 <tr>
+    <td><code>b120ed975-20260703092044</code><br/>fix(visual): align raft ui primitive parity</td>
+    <td><time class="localizedTime" datetime="2026-07-03T09:20:45.010Z" data-timestamp="2026-07-03T09:20:45.010Z" title="2026-07-03T09:20:45.010Z">2026-07-03 09:20:45 UTC</time></td>
+    <td>react vs android</td>
+    <td>Total 52<br/>Pass 0<br/>Basic pass 0<br/>Different 0<br/>Missing 52</td>
+    <td><a href="runs/b120ed975-20260703092044/">查看详情</a></td>
+  </tr>
+<tr>
+    <td><code>48631ed3f-20260703075006</code><br/>fix(home): refresh update notices periodically</td>
+    <td><time class="localizedTime" datetime="2026-07-03T07:50:06.654Z" data-timestamp="2026-07-03T07:50:06.654Z" title="2026-07-03T07:50:06.654Z">2026-07-03 07:50:06 UTC</time></td>
+    <td>react vs android</td>
+    <td>Total 82<br/>Pass 0<br/>Basic pass 3<br/>Different 78<br/>Missing 1</td>
+    <td><a href="runs/48631ed3f-20260703075006/">查看详情</a></td>
+  </tr>
+<tr>
     <td><code>c153932a6-20260703042704</code><br/>test(visual): add raft ui controlled open coverage</td>
     <td><time class="localizedTime" datetime="2026-07-03T04:27:31.027Z" data-timestamp="2026-07-03T04:27:31.027Z" title="2026-07-03T04:27:31.027Z">2026-07-03 04:27:31 UTC</time></td>
     <td>react vs android</td>
     <td>Total 104<br/>Pass 0<br/>Basic pass 3<br/>Different 100<br/>Missing 1</td>
-    <td><a href="runs/c153932a6-20260703042704/">查看详情</a><br/><a href="latest/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/c153932a6-20260703042704/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>695c99afb-20260702214109</code><br/>test(visual): add raft ui interaction states</td>
     <td><time class="localizedTime" datetime="2026-07-02T21:41:37.377Z" data-timestamp="2026-07-02T21:41:37.377Z" title="2026-07-02T21:41:37.377Z">2026-07-02 21:41:37 UTC</time></td>
     <td>react vs android</td>
     <td>Total 104<br/>Pass 0<br/>Basic pass 3<br/>Different 100<br/>Missing 1</td>
-    <td><a href="runs/695c99afb-20260702214109/">查看详情</a><br/><a href="runs/695c99afb-20260702214109/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/695c99afb-20260702214109/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>695c99afb-20260702202831</code><br/>test(visual): add raft ui interaction states</td>
     <td><time class="localizedTime" datetime="2026-07-02T20:28:59.301Z" data-timestamp="2026-07-02T20:28:59.301Z" title="2026-07-02T20:28:59.301Z">2026-07-02 20:28:59 UTC</time></td>
     <td>react vs android</td>
     <td>Total 103<br/>Pass 0<br/>Basic pass 3<br/>Different 99<br/>Missing 1</td>
-    <td><a href="runs/695c99afb-20260702202831/">查看详情</a><br/><a href="runs/695c99afb-20260702202831/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/695c99afb-20260702202831/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>b1d7a3d01-20260702184638</code><br/>test(visual): add raft ui wip library cases</td>
     <td><time class="localizedTime" datetime="2026-07-02T18:47:05.118Z" data-timestamp="2026-07-02T18:47:05.118Z" title="2026-07-02T18:47:05.118Z">2026-07-02 18:47:05 UTC</time></td>
     <td>react vs android</td>
     <td>Total 102<br/>Pass 0<br/>Basic pass 3<br/>Different 98<br/>Missing 1</td>
-    <td><a href="runs/b1d7a3d01-20260702184638/">查看详情</a><br/><a href="runs/b1d7a3d01-20260702184638/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/b1d7a3d01-20260702184638/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701181253</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
@@ -112,70 +125,81 @@
     <td><time class="localizedTime" datetime="2026-07-01T18:12:43.459Z" data-timestamp="2026-07-01T18:12:43.459Z" title="2026-07-01T18:12:43.459Z">2026-07-01 18:12:43 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701181139/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701181139/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701181139/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T18:11:29.039Z" data-timestamp="2026-07-01T18:11:29.039Z" title="2026-07-01T18:11:29.039Z">2026-07-01 18:11:29 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad/">查看详情</a><br/><a href="runs/1c6dce5ad/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701173710</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:37:32.552Z" data-timestamp="2026-07-01T17:37:32.552Z" title="2026-07-01T17:37:32.552Z">2026-07-01 17:37:32 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173710/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701173710/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701173710/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701173638</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:37:03.870Z" data-timestamp="2026-07-01T17:37:03.870Z" title="2026-07-01T17:37:03.870Z">2026-07-01 17:37:03 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173638/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701173638/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701173638/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701173402</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:34:22.633Z" data-timestamp="2026-07-01T17:34:22.633Z" title="2026-07-01T17:34:22.633Z">2026-07-01 17:34:22 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173402/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701173402/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701173402/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701173330</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:33:55.302Z" data-timestamp="2026-07-01T17:33:55.302Z" title="2026-07-01T17:33:55.302Z">2026-07-01 17:33:55 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173330/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701173330/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701173330/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701172140</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:22:00.657Z" data-timestamp="2026-07-01T17:22:00.657Z" title="2026-07-01T17:22:00.657Z">2026-07-01 17:22:00 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701172140/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701172140/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701172140/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701172109</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:21:28.669Z" data-timestamp="2026-07-01T17:21:28.669Z" title="2026-07-01T17:21:28.669Z">2026-07-01 17:21:28 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701172109/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701172109/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701172109/">查看详情</a></td>
   </tr>
 <tr>
     <td><code>1c6dce5ad-20260701171619</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
     <td><time class="localizedTime" datetime="2026-07-01T17:16:39.939Z" data-timestamp="2026-07-01T17:16:39.939Z" title="2026-07-01T17:16:39.939Z">2026-07-01 17:16:39 UTC</time></td>
     <td>react vs android</td>
     <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701171619/">查看详情</a><br/><a href="runs/1c6dce5ad-20260701171619/raft-ui/">Raft UI</a></td>
+    <td><a href="runs/1c6dce5ad-20260701171619/">查看详情</a></td>
   </tr></tbody>
     </table>
   </main>
   <script>
     (() => {
-      const formatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" });
-      for (const node of document.querySelectorAll("time.localizedTime[data-timestamp]")) { const date = new Date(node.dataset.timestamp); if (!Number.isNaN(date.getTime())) node.textContent = formatter.format(date); }
+      const formatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      });
+      for (const node of document.querySelectorAll("time.localizedTime[data-timestamp]")) {
+        const date = new Date(node.dataset.timestamp);
+        if (!Number.isNaN(date.getTime())) node.textContent = formatter.format(date);
+      }
     })();
   </script>
 </body>

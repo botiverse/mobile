@@ -3,7 +3,7 @@
   "providerType": "android-kuikly-shared-page",
   "source": "kmp-shared",
   "caseId": "components.members.agent-lifecycle-actions",
-  "image": "/data/user/0/build.raft.app/files/visual-testing/android/components.members.agent-lifecycle-actions.png",
+  "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.agent-lifecycle-actions.png",
   "viewport": { "width": 390, "height": 844, "density": 1 },
   "systemBars": "hidden",
   "crop": {
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 943,
-      "dominantRatio": 0.83426905
+      "uniqueColors": 1001,
+      "dominantRatio": 0.87256956
     }
   },
-  "capturedAt": "1782925640037"
+  "capturedAt": "1783197151196"
 }

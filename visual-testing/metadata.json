@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-03T12:16:43.994Z",
-  "runId": "963d46cb1-20260703121500",
-  "commit": "963d46cb1-20260703121500",
-  "commitSubject": "Merge branch 'ad3/task293-visual-row-checkbox'",
+  "generatedAt": "2026-07-04T20:35:39.102Z",
+  "runId": "0458783-20260704203528",
+  "commit": "0458783-20260704203528",
+  "commitSubject": "Merge remote-tracking branch 'origin/main'",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -10,24 +10,24 @@
     "total": 82,
     "same": 0,
     "pass": 0,
-    "basic-pass": 3,
-    "different": 78,
-    "missing": 1
+    "basic-pass": 1,
+    "different": 79,
+    "missing": 2
   },
   "analysisSummary": {
     "total": 82,
-    "ready": 1,
-    "pending": 81
+    "ready": 0,
+    "pending": 82
   },
   "componentMatrixSummary": {
-    "total": 81,
-    "active": 63,
+    "total": 101,
+    "active": 83,
     "pending": 16,
     "skipped": 2,
     "captureTypes": {
       "component-fixture": {
-        "total": 55,
-        "active": 52,
+        "total": 75,
+        "active": 72,
         "pending": 2,
         "skipped": 1
       },
@@ -40,16 +40,16 @@
     },
     "providers": {
       "react": {
-        "active": 64,
+        "active": 84,
         "pending": 13,
         "unsupported": 0,
-        "total": 77
+        "total": 97
       },
       "android": {
-        "active": 62,
+        "active": 82,
         "pending": 15,
         "unsupported": 0,
-        "total": 77
+        "total": 97
       },
       "harmony": {
         "active": 0,
@@ -138,8 +138,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8719132082694858,
-        "pixelPerfectSimilarity": 0.03310851865354235,
+        "rgbSimilarity": 0.8847428590263721,
+        "pixelPerfectSimilarity": 0.0030228460323247055,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -195,8 +195,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8349681701173498,
-        "pixelPerfectSimilarity": 0.6936596184226516,
+        "rgbSimilarity": 0.8546177673889267,
+        "pixelPerfectSimilarity": 0.7125956981407219,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
@@ -254,8 +254,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9327632190316885,
-        "pixelPerfectSimilarity": 0.9032689269656095,
+        "rgbSimilarity": 0.9319383068170358,
+        "pixelPerfectSimilarity": 0.8964303074492648,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
     },
@@ -313,8 +313,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9292163772788249,
-        "pixelPerfectSimilarity": 0.8943371004982379,
+        "rgbSimilarity": 0.9276620266124032,
+        "pixelPerfectSimilarity": 0.8856057844209503,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
     },
@@ -365,11 +365,11 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "basic-pass",
+        "status": "different",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.41% > 96%",
-        "rgbSimilarity": 0.9106903331673323,
-        "pixelPerfectSimilarity": 0.964148134645765,
+        "acceptance": "",
+        "rgbSimilarity": 0.9247940489437704,
+        "pixelPerfectSimilarity": 0.958789038765342,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.deleted-human.side-by-side.png"
       }
     },
@@ -423,8 +423,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8942926723929692,
-        "pixelPerfectSimilarity": 0.7510686615014694,
+        "rgbSimilarity": 0.8898715025733837,
+        "pixelPerfectSimilarity": 0.7282557069492682,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -526,9 +526,845 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9492669397325184,
-        "pixelPerfectSimilarity": 0.9126291165390692,
+        "rgbSimilarity": 0.9340334041017131,
+        "pixelPerfectSimilarity": 0.8616873253129177,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.attention-dot.states",
+      "title": "Raft UI Attention Dot",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/AttentionDot"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.attention-dot.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockAttentionDot"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_attention_dot_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9686675839926614,
+        "pixelPerfectSimilarity": 0.9340277777777778,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.attention-dot.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.avatar-list-row.states",
+      "title": "Raft UI Avatar List Row",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/AvatarListRow",
+            "components/ui/AvatarSlot",
+            "components/ui/SurfaceListItem"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.avatar-list-row.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockAvatarListRow",
+            "build.raft.app.components.SlockSurfaceListItem"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_avatar_list_row_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8584611947443043,
+        "pixelPerfectSimilarity": 0.7100563909774437,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.avatar-list-row.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.badge.states",
+      "title": "Raft UI Badge",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Badge",
+            "components/ui/BadgeButton"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.badge.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockBrutalBadge",
+            "build.raft.app.components.SlockBrutalBadgeButton"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_badge_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9657332209941354,
+        "pixelPerfectSimilarity": 0.922673531655225,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.badge.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.button.states",
+      "title": "Raft UI Button",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Button"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.button.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockBrutalActionButton"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_button_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9135589445654814,
+        "pixelPerfectSimilarity": 0.8238791423001949,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.button.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.check-marker.states",
+      "title": "Raft UI Check Marker",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/CheckMarker"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.check-marker.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockCheckMarker"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_check_marker_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9429024972562124,
+        "pixelPerfectSimilarity": 0.8953373015873016,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.check-marker.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.checkbox.states",
+      "title": "Raft UI Checkbox",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Checkbox",
+            "components/ui/CheckMarker"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.checkbox.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockCheckbox"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_checkbox_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9562080499988996,
+        "pixelPerfectSimilarity": 0.8973506999822789,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.checkbox.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.form-field.states",
+      "title": "Raft UI Form Field",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/FormField"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.form-field.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockFormField",
+            "build.raft.app.components.SlockBrutalInputField"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_form_field_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8653637178039699,
+        "pixelPerfectSimilarity": 0.8128441541810731,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.menu-item.states",
+      "title": "Raft UI Menu Item",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/MenuItem"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.menu-item.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockMenuItemRow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_menu_item_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8931500244967738,
+        "pixelPerfectSimilarity": 0.8727239500265817,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.menu-item.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.progress-bar.states",
+      "title": "Raft UI Progress Bar",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/ProgressBar"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.progress-bar.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockProgressBar"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_progress_bar_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8711601461310146,
+        "pixelPerfectSimilarity": 0.777824938690813,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.progress-bar.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.section-eyebrow.states",
+      "title": "Raft UI Section Eyebrow",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/SectionEyebrow"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.section-eyebrow.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSectionEyebrow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_section_eyebrow_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.966987896947066,
+        "pixelPerfectSimilarity": 0.9083714721586575,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-eyebrow.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.section-header.states",
+      "title": "Raft UI Section Header",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/SectionHeader",
+            "components/ui/SectionEyebrow"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.section-header.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSectionHeader",
+            "build.raft.app.components.SlockSectionEyebrow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_section_header_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9274556712637207,
+        "pixelPerfectSimilarity": 0.8945042530568846,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-header.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.segmented-control.states",
+      "title": "Raft UI Segmented Control",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "raft-ui/SegmentedControl",
+            "raft-ui/SegmentedControlItem",
+            "raft-ui/SegmentedControlLabel",
+            "raft-ui/SegmentedControlCount"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.segmented-control.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SegmentedControl"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_segmented_control_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9454363429907385,
+        "pixelPerfectSimilarity": 0.8974780701754386,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.segmented-control.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.select.states",
+      "title": "Raft UI Select",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/Select",
+            "components/ui/SelectionPopover"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.select.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSelectTrigger",
+            "build.raft.app.components.SlockSelectionPopover"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_select_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9232051165354673,
+        "pixelPerfectSimilarity": 0.8842014830891662,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.select.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.selection-popover.states",
+      "title": "Raft UI Selection Popover",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/SelectionPopover"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.selection-popover.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSelectionPopover"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_selection_popover_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8896136340609447,
+        "pixelPerfectSimilarity": 0.82175345771837,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.selection-popover.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.skeleton.states",
+      "title": "Raft UI Skeleton",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Skeleton",
+            "components/ui/SkeletonRow"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.skeleton.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSkeleton",
+            "build.raft.app.components.SlockSkeletonRow"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_skeleton_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9798871689026488,
+        "pixelPerfectSimilarity": 0.5496491228070175,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.slug-input.states",
+      "title": "Raft UI Slug Input",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/SlugInput"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.slug-input.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSlugInput"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_slug_input_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9134038621680045,
+        "pixelPerfectSimilarity": 0.763972773463714,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.spinner.states",
+      "title": "Raft UI Spinner",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Spinner"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.spinner.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSpinner"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_spinner_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9797823095676104,
+        "pixelPerfectSimilarity": 0.9504830917874396,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.spinner.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.status-dot.states",
+      "title": "Raft UI Status Dot",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/StatusDot"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.status-dot.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockStatusDot"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_status_dot_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9838658643387858,
+        "pixelPerfectSimilarity": 0.9584922451055174,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.surface-list-item.states",
+      "title": "Raft UI Surface List Item",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/SurfaceListItem"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.surface-list-item.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockSurfaceListItem"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_surface_list_item_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.938163239504828,
+        "pixelPerfectSimilarity": 0.7449874686716792,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.surface-list-item.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.ui.textarea.states",
+      "title": "Raft UI Textarea",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/ui/Textarea"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.textarea.states.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.components.SlockBrutalTextarea"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiPrimitiveVisualFixtures.kt",
+          "fixture": "compose_ui_textarea_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9044565958287357,
+        "pixelPerfectSimilarity": 0.6126218323586745,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.textarea.states.side-by-side.png"
       }
     },
     {
@@ -548,8 +1384,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8406981566069736,
-        "pixelPerfectSimilarity": 0.7143121886012881,
+        "rgbSimilarity": 0.8334470353135259,
+        "pixelPerfectSimilarity": 0.7079110462996719,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-custom-provider-dialog.side-by-side.png"
       }
     },
@@ -570,8 +1406,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8321508541845626,
-        "pixelPerfectSimilarity": 0.7063312674687082,
+        "rgbSimilarity": 0.8325102558543083,
+        "pixelPerfectSimilarity": 0.7065591201847126,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -669,8 +1505,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8725530329090699,
-        "pixelPerfectSimilarity": 0.7895614035087719,
+        "rgbSimilarity": 0.8540518671406166,
+        "pixelPerfectSimilarity": 0.7666374269005848,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.as-task-selected.side-by-side.png"
       }
     },
@@ -725,8 +1561,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.802104188166496,
-        "pixelPerfectSimilarity": 0.602202119883041,
+        "rgbSimilarity": 0.8166707158009463,
+        "pixelPerfectSimilarity": 0.6326571637426901,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png"
       }
     },
@@ -780,8 +1616,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9245489813859268,
-        "pixelPerfectSimilarity": 0.8321052631578948,
+        "rgbSimilarity": 0.9082531437526271,
+        "pixelPerfectSimilarity": 0.8163157894736842,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png"
       }
     },
@@ -838,8 +1674,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8418974491825556,
-        "pixelPerfectSimilarity": 0.7205003248862898,
+        "rgbSimilarity": 0.8656681544901468,
+        "pixelPerfectSimilarity": 0.7522200563136235,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.file-previews.side-by-side.png"
       }
     },
@@ -896,8 +1732,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8719554615579606,
-        "pixelPerfectSimilarity": 0.8580896686159845,
+        "rgbSimilarity": 0.8753797772087012,
+        "pixelPerfectSimilarity": 0.8834091401342863,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.image-preview.side-by-side.png"
       }
     },
@@ -954,8 +1790,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8289276841340845,
-        "pixelPerfectSimilarity": 0.730391081871345,
+        "rgbSimilarity": 0.8574834092993964,
+        "pixelPerfectSimilarity": 0.7640625,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"
       }
     },
@@ -1009,8 +1845,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8425182127431872,
-        "pixelPerfectSimilarity": 0.7475730994152047,
+        "rgbSimilarity": 0.8605585368650379,
+        "pixelPerfectSimilarity": 0.7696783625730994,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.states.side-by-side.png"
       }
     },
@@ -1061,11 +1897,11 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "basic-pass",
+        "status": "different",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.79% > 96%",
-        "rgbSimilarity": 0.9211233387104693,
-        "pixelPerfectSimilarity": 0.9679244136590108,
+        "acceptance": "",
+        "rgbSimilarity": 0.9166452534754858,
+        "pixelPerfectSimilarity": 0.9561763276218253,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -1164,8 +2000,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8769152852538187,
-        "pixelPerfectSimilarity": 0.7540557783448779,
+        "rgbSimilarity": 0.8962907245776138,
+        "pixelPerfectSimilarity": 0.7963999270871309,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.auth.register.inputs.side-by-side.png"
       }
     },
@@ -1222,8 +2058,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7192963471299276,
-        "pixelPerfectSimilarity": 0.28028010693887473,
+        "rgbSimilarity": 0.9036698524348398,
+        "pixelPerfectSimilarity": 0.8354599586827075,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.add-panel.side-by-side.png"
       }
     },
@@ -1280,8 +2116,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7488132477450077,
-        "pixelPerfectSimilarity": 0.21966824644549762,
+        "rgbSimilarity": 0.9073357375517697,
+        "pixelPerfectSimilarity": 0.8270962449872402,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.panel.side-by-side.png"
       }
     },
@@ -1337,8 +2173,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7488279097432902,
-        "pixelPerfectSimilarity": 0.3950692672256653,
+        "rgbSimilarity": 0.8939819163376386,
+        "pixelPerfectSimilarity": 0.8310639202819298,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png"
       }
     },
@@ -1398,8 +2234,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8860772847150553,
-        "pixelPerfectSimilarity": 0.7795132993774759,
+        "rgbSimilarity": 0.9156884383634609,
+        "pixelPerfectSimilarity": 0.8185153744576495,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -1457,8 +2293,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7724203021834437,
-        "pixelPerfectSimilarity": 0.4442398833394094,
+        "rgbSimilarity": 0.8577909028883722,
+        "pixelPerfectSimilarity": 0.730778344877871,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.create-channel.dialog.side-by-side.png"
       }
     },
@@ -1512,8 +2348,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9317667709527223,
-        "pixelPerfectSimilarity": 0.8690059545509783,
+        "rgbSimilarity": 0.9505627118186369,
+        "pixelPerfectSimilarity": 0.8938449386316685,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png"
       }
     },
@@ -1573,8 +2409,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9346871474490569,
-        "pixelPerfectSimilarity": 0.8677136389360498,
+        "rgbSimilarity": 0.9379212455906092,
+        "pixelPerfectSimilarity": 0.8727881531786456,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png"
       }
     },
@@ -1631,8 +2467,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8846751525172996,
-        "pixelPerfectSimilarity": 0.3958166241341597,
+        "rgbSimilarity": 0.8956747855701837,
+        "pixelPerfectSimilarity": 0.349046056628995,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -1692,8 +2528,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8977758755302141,
-        "pixelPerfectSimilarity": 0.7406701907886742,
+        "rgbSimilarity": 0.901845831377411,
+        "pixelPerfectSimilarity": 0.7501853202090168,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -1749,9 +2585,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 97.46% > 96%",
-        "rgbSimilarity": 0.9888487232702454,
-        "pixelPerfectSimilarity": 0.9746475877992465,
+        "acceptance": "basic pass: pixel perfect 98.77% > 96%",
+        "rgbSimilarity": 0.9952822236360012,
+        "pixelPerfectSimilarity": 0.9877324097703245,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.titlebar.states.side-by-side.png"
       }
     },
@@ -1811,8 +2647,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8822007256339405,
-        "pixelPerfectSimilarity": 0.7689482318629238,
+        "rgbSimilarity": 0.8995349858661678,
+        "pixelPerfectSimilarity": 0.7850072912869122,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -1872,8 +2708,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8373376517131652,
-        "pixelPerfectSimilarity": 0.7183710049823794,
+        "rgbSimilarity": 0.8408696051029795,
+        "pixelPerfectSimilarity": 0.7290922347794385,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -1925,8 +2761,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9782102035126847,
-        "pixelPerfectSimilarity": 0.9549914934986025,
+        "rgbSimilarity": 0.9786611513402703,
+        "pixelPerfectSimilarity": 0.9571940697533114,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.navigation.tabbar.states.side-by-side.png"
       }
     },
@@ -1983,8 +2819,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8782845897300965,
-        "pixelPerfectSimilarity": 0.7049003524122007,
+        "rgbSimilarity": 0.8827706334285808,
+        "pixelPerfectSimilarity": 0.6806173289585612,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.error-state.side-by-side.png"
       }
     },
@@ -2041,8 +2877,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8669971652938697,
-        "pixelPerfectSimilarity": 0.7134433102442581,
+        "rgbSimilarity": 0.8898003235806631,
+        "pixelPerfectSimilarity": 0.7840533479159072,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.page.side-by-side.png"
       }
     },
@@ -2099,8 +2935,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8769695132073269,
-        "pixelPerfectSimilarity": 0.7457589014461052,
+        "rgbSimilarity": 0.8630630037083918,
+        "pixelPerfectSimilarity": 0.748052618787216,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.password-expanded.side-by-side.png"
       }
     },
@@ -2157,8 +2993,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8669971652938697,
-        "pixelPerfectSimilarity": 0.7134433102442581,
+        "rgbSimilarity": 0.8910576933005279,
+        "pixelPerfectSimilarity": 0.7851743832786486,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.provider-linked.side-by-side.png"
       }
     },
@@ -2215,8 +3051,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.admins.side-by-side.png"
       }
     },
@@ -2273,8 +3109,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.invites.side-by-side.png"
       }
     },
@@ -2331,8 +3167,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.join-links.side-by-side.png"
       }
     },
@@ -2389,8 +3225,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.member-permissions.side-by-side.png"
       }
     },
@@ -2447,8 +3283,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.onboarding.side-by-side.png"
       }
     },
@@ -2505,8 +3341,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png"
       }
     },
@@ -2563,8 +3399,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8551289557019396,
-        "pixelPerfectSimilarity": 0.6847338680277069,
+        "rgbSimilarity": 0.8788263649122406,
+        "pixelPerfectSimilarity": 0.7515828168671771,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.translation.side-by-side.png"
       }
     },
@@ -2622,8 +3458,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9219792110954632,
-        "pixelPerfectSimilarity": 0.7993468222141208,
+        "rgbSimilarity": 0.9298721959719992,
+        "pixelPerfectSimilarity": 0.8030015797788309,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -2680,8 +3516,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8907086090400811,
-        "pixelPerfectSimilarity": 0.7606331267468708,
+        "rgbSimilarity": 0.9012655068913782,
+        "pixelPerfectSimilarity": 0.8075647101713452,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.billing.page.side-by-side.png"
       }
     },
@@ -2738,8 +3574,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8288243355834545,
-        "pixelPerfectSimilarity": 0.6312613926358002,
+        "rgbSimilarity": 0.8213379233493462,
+        "pixelPerfectSimilarity": 0.6103141329444647,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.connected-apps.page.side-by-side.png"
       }
     },
@@ -2796,8 +3632,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8745073933490426,
-        "pixelPerfectSimilarity": 0.8011696439421558,
+        "rgbSimilarity": 0.874563479865967,
+        "pixelPerfectSimilarity": 0.7858579414266618,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.language-region.page.side-by-side.png"
       }
     },
@@ -2854,8 +3690,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8968681539938872,
-        "pixelPerfectSimilarity": 0.8097308299914935,
+        "rgbSimilarity": 0.9109419858193218,
+        "pixelPerfectSimilarity": 0.8302527646129542,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
       }
     },
@@ -2911,8 +3747,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8669971652938697,
-        "pixelPerfectSimilarity": 0.7134433102442581,
+        "rgbSimilarity": 0.8898003235806631,
+        "pixelPerfectSimilarity": 0.7840533479159072,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.page.states.side-by-side.png"
       }
     },
@@ -2969,8 +3805,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9024954508882619,
-        "pixelPerfectSimilarity": 0.8418732531291773,
+        "rgbSimilarity": 0.8925157004916906,
+        "pixelPerfectSimilarity": 0.7736176935229068,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.server.profile.side-by-side.png"
       }
     },
@@ -3027,8 +3863,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9015015362270268,
-        "pixelPerfectSimilarity": 0.7949572649572649,
+        "rgbSimilarity": 0.912157365510307,
+        "pixelPerfectSimilarity": 0.8288675213675214,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.files.list.side-by-side.png"
       }
     },
@@ -3082,12 +3918,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8197390671524418,
+        "pixelPerfectSimilarity": 0.8942465753424658,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
       }
     },
     {
@@ -3343,8 +4179,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9616398366370492,
-        "pixelPerfectSimilarity": 0.9258202697776158,
+        "rgbSimilarity": 0.9463097271962609,
+        "pixelPerfectSimilarity": 0.8747356908494349,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
     },
@@ -3401,8 +4237,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9165036293611707,
-        "pixelPerfectSimilarity": 0.8626716490460566,
+        "rgbSimilarity": 0.9106786297781545,
+        "pixelPerfectSimilarity": 0.8651932191031717,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -3456,12 +4292,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
-        "rawStatus": "different",
+        "status": "missing",
+        "rawStatus": "missing",
         "acceptance": "",
-        "rgbSimilarity": 0.9720569331957686,
-        "pixelPerfectSimilarity": 0.9434925264309151,
-        "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.dms.side-by-side.png"
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -3514,12 +4350,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
-        "rawStatus": "different",
+        "status": "missing",
+        "rawStatus": "missing",
         "acceptance": "",
-        "rgbSimilarity": 0.9316884571303305,
-        "pixelPerfectSimilarity": 0.8651354964151172,
-        "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.permissions.side-by-side.png"
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -3575,8 +4411,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9327909624578108,
-        "pixelPerfectSimilarity": 0.8746020172560457,
+        "rgbSimilarity": 0.8997468462006929,
+        "pixelPerfectSimilarity": 0.7847399441001337,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -3633,8 +4469,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9712956410335836,
-        "pixelPerfectSimilarity": 0.9481559120184713,
+        "rgbSimilarity": 0.968307337274441,
+        "pixelPerfectSimilarity": 0.9393395309272087,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"
       }
     },
@@ -3691,8 +4527,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9739824326052372,
-        "pixelPerfectSimilarity": 0.9542836310608822,
+        "rgbSimilarity": 0.9701178916902363,
+        "pixelPerfectSimilarity": 0.9414236237695953,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
     },
@@ -3749,8 +4585,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9494244172331924,
-        "pixelPerfectSimilarity": 0.8889111678211205,
+        "rgbSimilarity": 0.9456157285290345,
+        "pixelPerfectSimilarity": 0.8807540405881638,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.human.profile.side-by-side.png"
       }
     },
@@ -3925,8 +4761,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9126372259115373,
-        "pixelPerfectSimilarity": 0.7201877506379876,
+        "rgbSimilarity": 0.9244639951010029,
+        "pixelPerfectSimilarity": 0.7334761210353627,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computer-detail.side-by-side.png"
       }
     },
@@ -3981,8 +4817,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9354026648938834,
-        "pixelPerfectSimilarity": 0.9078563616478308,
+        "rgbSimilarity": 0.955323989684179,
+        "pixelPerfectSimilarity": 0.9327348401992952,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computers.side-by-side.png"
       }
     },
@@ -4040,8 +4876,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8750426635601513,
-        "pixelPerfectSimilarity": 0.21480738850407097,
+        "rgbSimilarity": 0.8606016185392571,
+        "pixelPerfectSimilarity": 0.1685441730465427,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.server-danger-modal.side-by-side.png"
       }
     },

@@ -3,7 +3,7 @@
   "providerType": "android-kuikly-shared-page",
   "source": "kmp-shared",
   "caseId": "components.home.saved.results",
-  "image": "/data/user/0/build.raft.app/files/visual-testing/android/components.home.saved.results.png",
+  "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.home.saved.results.png",
   "viewport": { "width": 342, "height": 620, "density": 1 },
   "systemBars": "hidden",
   "crop": {
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 303,
-      "dominantRatio": 0.8889785
+      "uniqueColors": 286,
+      "dominantRatio": 0.8986889
     }
   },
-  "capturedAt": "1782925714722"
+  "capturedAt": "1783197144094"
 }

@@ -3,7 +3,7 @@
   "providerType": "android-kuikly-shared-page",
   "source": "kmp-shared",
   "caseId": "components.auth.register.inputs",
-  "image": "/data/user/0/build.raft.app/files/visual-testing/android/components.auth.register.inputs.png",
+  "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.auth.register.inputs.png",
   "viewport": { "width": 390, "height": 844, "density": 1 },
   "systemBars": "hidden",
   "crop": {
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 961,
-      "dominantRatio": 0.77486634
+      "uniqueColors": 577,
+      "dominantRatio": 0.7943918
     }
   },
-  "capturedAt": "1782925647993"
+  "capturedAt": "1783197070334"
 }

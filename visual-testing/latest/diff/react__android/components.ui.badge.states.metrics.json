@@ -5,10 +5,10 @@
   "currentHeight": 92,
   "comparisonWidth": 342,
   "comparisonHeight": 92,
-  "rgbSimilarity": 0.9063754572089027,
-  "pixelPerfectSimilarity": 0.8474764810577168,
-  "pixelMismatchRatio": 0.15252351894228325,
-  "compositor": "node-direct-rgba",
+  "rgbSimilarity": 0.9657332209941354,
+  "pixelPerfectSimilarity": 0.922673531655225,
+  "pixelMismatchRatio": 0.07732646834477497,
+  "compositor": "sharp",
   "displayMode": "preserve-provider-raw-size",
-  "metricMode": "rgb-min-overlap-direct-threshold-8"
+  "metricMode": "rgb-resize-pixel-pad-no-crop"
 }

@@ -5,7 +5,7 @@
   "image": "visual-testing-results/react/components.ui.segmented-control.states.png",
   "viewport": {
     "width": 390,
-    "height": 844,
+    "height": 760,
     "density": 3
   },
   "selector": "[data-visual-case='components.ui.segmented-control.states']",
@@ -26,5 +26,5 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-07-02T08:43:58.076Z"
+  "capturedAt": "2026-07-04T20:12:22.275Z"
 }

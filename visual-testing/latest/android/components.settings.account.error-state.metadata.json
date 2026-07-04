@@ -3,7 +3,7 @@
   "providerType": "android-kuikly-shared-page",
   "source": "kmp-shared",
   "caseId": "components.settings.account.error-state",
-  "image": "/data/user/0/build.raft.app/files/visual-testing/android/components.settings.account.error-state.png",
+  "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.account.error-state.png",
   "viewport": { "width": 390, "height": 844, "density": 1 },
   "systemBars": "hidden",
   "crop": {
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 1124,
-      "dominantRatio": 0.8159375
+      "uniqueColors": 1595,
+      "dominantRatio": 0.7647375
     }
   },
-  "capturedAt": "1782925493632"
+  "capturedAt": "1783196899366"
 }

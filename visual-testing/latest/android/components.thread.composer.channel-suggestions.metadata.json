@@ -3,7 +3,7 @@
   "providerType": "android-kuikly-shared-page",
   "source": "kmp-shared",
   "caseId": "components.thread.composer.channel-suggestions",
-  "image": "/data/user/0/build.raft.app/files/visual-testing/android/components.thread.composer.channel-suggestions.png",
+  "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.composer.channel-suggestions.png",
   "viewport": { "width": 342, "height": 320, "density": 1 },
   "systemBars": "hidden",
   "crop": {
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 648,
-      "dominantRatio": 0.7838907
+      "uniqueColors": 635,
+      "dominantRatio": 0.8168403
     }
   },
-  "capturedAt": "1782925717041"
+  "capturedAt": "1783197128291"
 }
