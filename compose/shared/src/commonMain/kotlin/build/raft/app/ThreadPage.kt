@@ -174,9 +174,7 @@ import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -12426,7 +12424,7 @@ private fun ThreadQuickReactionGlyph(
         emoji = emoji,
         detail = "reason=no_manifest_match"
     )
-    ThreadLegacyQuickReactionGlyph(emoji = emoji, modifier = modifier)
+    ThreadTextReactionGlyph(emoji = emoji, modifier = modifier)
 }
 
 @Composable
@@ -12442,7 +12440,7 @@ private fun ThreadReactionSpriteGlyph(
             emoji = sprite.value,
             detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
         )
-        ThreadLegacyQuickReactionGlyph(emoji = sprite.value, modifier = modifier)
+        ThreadTextReactionGlyph(emoji = sprite.value, modifier = modifier)
         return
     }
     ThreadReactionGlyphDiagnosticLog(
@@ -12474,254 +12472,23 @@ private fun ThreadReactionGlyphDiagnosticLog(
 }
 
 @Composable
-private fun ThreadLegacyQuickReactionGlyph(
+private fun ThreadTextReactionGlyph(
     emoji: String,
     modifier: Modifier = Modifier
 ) {
-    if (!threadHasCustomReactionGlyph(emoji)) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text(
-                text = emoji,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
-                    fontSize = if (emoji.length > 1) 10.sp else 13.sp,
-                    lineHeight = 12.sp
-                ),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Visible
-            )
-        }
-        return
-    }
-    Canvas(modifier = modifier) {
-        val unit = size.width / 24f
-        fun scaledSize(width: Float, height: Float) = Size(width * unit, height * unit)
-        fun scaledOffset(x: Float, y: Float) = Offset(x * unit, y * unit)
-        fun path(block: Path.() -> Unit): Path = Path().apply(block)
-        fun Path.m(x: Float, y: Float) = moveTo(x * unit, y * unit)
-        fun Path.l(x: Float, y: Float) = lineTo(x * unit, y * unit)
-        fun Path.c(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) =
-            cubicTo(x1 * unit, y1 * unit, x2 * unit, y2 * unit, x3 * unit, y3 * unit)
-        val ink = SlockColor.ShadowBlack
-        val yellow = SlockColor.BrandYellow
-        val cream = Color(0xFFFFF8E7)
-        val blueGray = Color(0xFF8FC4D9)
-        val red = SlockColor.AccentRed
-        val cyan = SlockColor.AccentCyan
-        val orange = SlockColor.AccentOrange
-        val lavender = SlockColor.AccentLavender
-        val stroke2 = Stroke(width = 2f * unit)
-        val stroke15 = Stroke(width = 1.5f * unit)
-
-        when (emoji) {
-            "👍" -> {
-                val hand = path {
-                    m(8f, 10f)
-                    l(11f, 10f)
-                    l(12.3f, 4.8f)
-                    c(12.5f, 4f, 13.3f, 3.5f, 14.1f, 3.7f)
-                    c(15.1f, 3.9f, 15.7f, 4.9f, 15.4f, 5.9f)
-                    l(14.5f, 10f)
-                    l(19f, 10f)
-                    c(20.1f, 10f, 21f, 10.9f, 21f, 12f)
-                    l(21f, 13.2f)
-                    c(21f, 13.6f, 20.9f, 14f, 20.7f, 14.3f)
-                    l(18.8f, 20f)
-                    c(18.5f, 20.6f, 17.8f, 21f, 17.1f, 21f)
-                    l(8f, 21f)
-                    l(8f, 10f)
-                    close()
-                }
-                val highlight = path {
-                    m(13.2f, 5.3f)
-                    c(13.4f, 4.6f, 14.1f, 4.2f, 14.8f, 4.5f)
-                    c(14.9f, 4.6f, 15f, 4.6f, 15.1f, 4.7f)
-                    c(14.5f, 4.7f, 14.1f, 5.1f, 13.9f, 5.7f)
-                    l(13f, 9f)
-                    l(11.8f, 9f)
-                    l(13.2f, 5.3f)
-                    close()
-                }
-                drawPath(hand, yellow, style = Fill)
-                drawPath(highlight, cream, style = Fill)
-                drawRect(blueGray, topLeft = scaledOffset(3f, 10f), size = scaledSize(5f, 11f))
-                drawPath(hand, ink, style = stroke2)
-                drawRect(ink, topLeft = scaledOffset(3f, 10f), size = scaledSize(5f, 11f), style = stroke2)
-            }
-            "❤️", "❤" -> {
-                val heart = path {
-                    m(12f, 21f)
-                    l(4.4f, 13.4f)
-                    c(2.3f, 11.3f, 2.2f, 8f, 4.1f, 6.1f)
-                    c(5.8f, 4.4f, 8.4f, 4.5f, 10f, 6.1f)
-                    l(12f, 8.1f)
-                    l(14f, 6.1f)
-                    c(15.6f, 4.5f, 18.2f, 4.4f, 19.9f, 6.1f)
-                    c(21.8f, 8f, 21.7f, 11.3f, 19.6f, 13.4f)
-                    l(12f, 21f)
-                    close()
-                }
-                val highlight = path {
-                    m(6.1f, 7.2f)
-                    c(6.9f, 6.4f, 8.1f, 6.4f, 9f, 7.1f)
-                    l(6f, 10.1f)
-                    c(5.5f, 9.2f, 5.6f, 7.9f, 6.1f, 7.2f)
-                    close()
-                }
-                drawPath(heart, red, style = Fill)
-                drawPath(highlight, cream, style = Fill)
-                drawPath(heart, ink, style = stroke2)
-            }
-            "🎉" -> {
-                val cone = path {
-                    m(4f, 20f)
-                    l(8.5f, 8.5f)
-                    l(16f, 16f)
-                    l(4f, 20f)
-                    close()
-                }
-                val stripe = path {
-                    m(6.8f, 12.2f)
-                    l(11.8f, 17.2f)
-                    l(8.3f, 18.3f)
-                    l(5.7f, 15.4f)
-                    close()
-                }
-                val confettiLines = path {
-                    m(14f, 5f)
-                    l(17f, 5f)
-                    m(18f, 9f)
-                    l(20.3f, 6.7f)
-                    m(19f, 13f)
-                    l(21.5f, 13f)
-                }
-                drawPath(cone, lavender, style = Fill)
-                drawPath(stripe, yellow, style = Fill)
-                drawPath(cone, ink, style = stroke2)
-                drawPath(confettiLines, ink, style = stroke2)
-                drawRect(red, topLeft = scaledOffset(18f, 3f), size = scaledSize(2.5f, 2.5f))
-                drawRect(cyan, topLeft = scaledOffset(13f, 6f), size = scaledSize(2.5f, 2.5f))
-            }
-            "👀" -> {
-                val leftEye = path {
-                    m(3f, 11f)
-                    c(3f, 7.9f, 5.2f, 6f, 7.8f, 6f)
-                    c(10.4f, 6f, 12.6f, 7.9f, 12.6f, 11f)
-                    c(12.6f, 14.1f, 10.4f, 16f, 7.8f, 16f)
-                    c(5.2f, 16f, 3f, 14.1f, 3f, 11f)
-                    close()
-                }
-                val rightEye = path {
-                    m(11.4f, 11f)
-                    c(11.4f, 7.9f, 13.6f, 6f, 16.2f, 6f)
-                    c(18.8f, 6f, 21f, 7.9f, 21f, 11f)
-                    c(21f, 14.1f, 18.8f, 16f, 16.2f, 16f)
-                    c(13.6f, 16f, 11.4f, 14.1f, 11.4f, 11f)
-                    close()
-                }
-                drawPath(leftEye, cyan, style = Fill)
-                drawPath(rightEye, cyan, style = Fill)
-                drawRect(cream, topLeft = scaledOffset(5.2f, 9.2f), size = scaledSize(2f, 2f))
-                drawRect(cream, topLeft = scaledOffset(13.6f, 9.2f), size = scaledSize(2f, 2f))
-                drawRect(ink, topLeft = scaledOffset(7.8f, 8.8f), size = scaledSize(2.8f, 4.6f))
-                drawRect(ink, topLeft = scaledOffset(16.2f, 8.8f), size = scaledSize(2.8f, 4.6f))
-                drawPath(leftEye, ink, style = stroke2)
-                drawPath(rightEye, ink, style = stroke2)
-            }
-            "🔥" -> {
-                val flame = path {
-                    m(12f, 22f)
-                    c(7.6f, 22f, 4.4f, 19f, 4.4f, 14.9f)
-                    c(4.4f, 11.8f, 6.3f, 9.5f, 8.5f, 7.8f)
-                    c(8.8f, 9.8f, 9.7f, 11f, 10.8f, 11.7f)
-                    c(10.5f, 8.4f, 11.8f, 5.4f, 14.9f, 3f)
-                    c(15.4f, 6f, 17f, 7.7f, 18.3f, 9.3f)
-                    c(19.4f, 10.7f, 19.6f, 12.2f, 19.6f, 14.4f)
-                    c(19.6f, 18.8f, 16.5f, 22f, 12f, 22f)
-                    close()
-                }
-                val core = path {
-                    m(12.1f, 19.8f)
-                    c(9.9f, 19.8f, 8.3f, 18.4f, 8.3f, 16.3f)
-                    c(8.3f, 14.8f, 9.2f, 13.6f, 10.4f, 12.7f)
-                    c(10.6f, 13.7f, 11f, 14.4f, 11.7f, 14.7f)
-                    c(11.8f, 12.9f, 12.5f, 11.5f, 14f, 10.3f)
-                    c(14.3f, 11.8f, 15f, 12.7f, 15.7f, 13.5f)
-                    c(16.3f, 14.2f, 16.5f, 14.9f, 16.5f, 16f)
-                    c(16.5f, 18.3f, 14.8f, 19.8f, 12.1f, 19.8f)
-                    close()
-                }
-                drawPath(flame, orange, style = Fill)
-                drawPath(core, yellow, style = Fill)
-                drawPath(flame, ink, style = stroke2)
-                drawPath(core, ink, style = stroke15)
-            }
-            "😂" -> {
-                val smile = path {
-                    m(8f, 16f)
-                    c(9f, 17.2f, 10.2f, 17.8f, 12f, 17.8f)
-                    c(13.8f, 17.8f, 15f, 17.2f, 16f, 16f)
-                }
-                drawRect(yellow, topLeft = scaledOffset(4f, 5f), size = scaledSize(16f, 14f))
-                drawRect(ink, topLeft = scaledOffset(7f, 9f), size = scaledSize(3.2f, 2.4f))
-                drawRect(ink, topLeft = scaledOffset(13.8f, 9f), size = scaledSize(3.2f, 2.4f))
-                drawRect(ink, topLeft = scaledOffset(8f, 14f), size = scaledSize(8f, 2f))
-                drawRect(cyan, topLeft = scaledOffset(3.5f, 12f), size = scaledSize(3f, 5f))
-                drawRect(cyan, topLeft = scaledOffset(17.5f, 12f), size = scaledSize(3f, 5f))
-                drawRect(ink, topLeft = scaledOffset(4f, 5f), size = scaledSize(16f, 14f), style = stroke2)
-                drawPath(smile, ink, style = stroke15)
-            }
-            "✅", "☑", "☑️", "✔", "✔️", "✓" -> {
-                val box = path {
-                    m(5f, 4f)
-                    l(19f, 4f)
-                    c(19.6f, 4f, 20f, 4.4f, 20f, 5f)
-                    l(20f, 19f)
-                    c(20f, 19.6f, 19.6f, 20f, 19f, 20f)
-                    l(5f, 20f)
-                    c(4.4f, 20f, 4f, 19.6f, 4f, 19f)
-                    l(4f, 5f)
-                    c(4f, 4.4f, 4.4f, 4f, 5f, 4f)
-                    close()
-                }
-                val check = path {
-                    m(7f, 12.2f)
-                    l(10.3f, 15.6f)
-                    l(17.3f, 8.4f)
-                }
-                val highlight = path {
-                    m(6f, 5.5f)
-                    l(12f, 5.5f)
-                    l(6f, 11.5f)
-                    close()
-                }
-                drawPath(box, SlockColor.AccentLime, style = Fill)
-                drawPath(highlight, cream, style = Fill)
-                drawPath(box, ink, style = stroke2)
-                drawPath(check, ink, style = Stroke(width = 2.6f * unit))
-            }
-            else -> Unit
-        }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Text(
+            text = emoji,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                fontSize = if (emoji.length > 1) 10.sp else 13.sp,
+                lineHeight = 12.sp
+            ),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Visible
+        )
     }
 }
-
-private fun threadHasCustomReactionGlyph(emoji: String): Boolean =
-    when (emoji) {
-        "👍",
-        "❤️",
-        "❤",
-        "🎉",
-        "👀",
-        "🔥",
-        "😂",
-        "✅",
-        "☑",
-        "☑️",
-        "✔",
-        "✔️",
-        "✓" -> true
-        else -> false
-    }
 
 @Composable
 private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
