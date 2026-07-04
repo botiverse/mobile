@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.absoluteOffset
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -55,6 +56,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -83,6 +85,8 @@ private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
+private val ComposerSuggestionOverlayGap = 6.dp
+private const val ComposerSuggestionOverlayZIndex = 10f
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
 private val ComposerSuggestionStatusRowMinHeight = 42.dp
@@ -1036,76 +1040,6 @@ internal fun ThreadComposerContent(
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
                 )
             }
-            when (suggestionPanelState) {
-                ThreadComposerSuggestionPanelState.MemberItems -> {
-                    ComposerMemberSuggestionPanel(
-                        title = surface.memberSuggestionTitle(),
-                        members = filteredMemberSuggestions,
-                        agentStatusResolver = agentStatusResolver,
-                        onClick = { applyMemberSuggestion(it) }
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.MemberLoading -> {
-                    ComposerSuggestionStatusPanel(
-                        title = surface.memberSuggestionTitle(),
-                        message = "Loading..."
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.MemberEmpty -> {
-                    ComposerSuggestionStatusPanel(
-                        title = surface.memberSuggestionTitle(),
-                        message = "No matching members"
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.MemberError -> {
-                    ComposerSuggestionStatusPanel(
-                        title = surface.memberSuggestionTitle(),
-                        message = state.memberSuggestionsErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load members"
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.ChannelItems -> {
-                    ComposerSuggestionPanel(
-                        title = "CHANNELS",
-                        showTitleDivider = false,
-                        itemCount = filteredChannelSuggestions.size,
-                        itemKey = { index -> "channel-$index-${filteredChannelSuggestions[index].name}" }
-                    ) { index ->
-                        val channel = filteredChannelSuggestions[index]
-                        ComposerChannelSuggestionRow(
-                            channel = channel,
-                            selected = index == 0,
-                            onClick = { applyChannelSuggestion(channel) }
-                        )
-                    }
-                }
-
-                ThreadComposerSuggestionPanelState.ChannelLoading -> {
-                    ComposerSuggestionStatusPanel(
-                        title = "CHANNELS",
-                        message = "Loading..."
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.ChannelEmpty -> {
-                    ComposerSuggestionStatusPanel(
-                        title = "CHANNELS",
-                        message = "No matching channels"
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.ChannelError -> {
-                    ComposerSuggestionStatusPanel(
-                        title = "CHANNELS",
-                        message = state.channelSuggestionsErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load channels"
-                    )
-                }
-
-                ThreadComposerSuggestionPanelState.Hidden -> Unit
-            }
             Box(
                 modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
             ) {
@@ -1239,9 +1173,153 @@ internal fun ThreadComposerContent(
                         }
                     }
                 }
+                ComposerSuggestionOverlay(
+                    panelState = suggestionPanelState,
+                    surface = surface,
+                    memberSuggestions = filteredMemberSuggestions,
+                    memberErrorCode = state.memberSuggestionsErrorCode,
+                    channelSuggestions = filteredChannelSuggestions,
+                    channelErrorCode = state.channelSuggestionsErrorCode,
+                    agentStatusResolver = agentStatusResolver,
+                    onMemberClick = { applyMemberSuggestion(it) },
+                    onChannelClick = { applyChannelSuggestion(it) }
+                )
             }
         }
     }
+    }
+}
+
+@Composable
+private fun BoxScope.ComposerSuggestionOverlay(
+    panelState: ThreadComposerSuggestionPanelState,
+    surface: ThreadComposerSurface,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
+    memberErrorCode: String?,
+    channelSuggestions: List<KuiklyComposerChannelItem>,
+    channelErrorCode: String?,
+    agentStatusResolver: SlockAgentStatusResolver,
+    onMemberClick: (KuiklyComposerMemberItem) -> Unit,
+    onChannelClick: (KuiklyComposerChannelItem) -> Unit
+) {
+    if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
+    Box(
+        modifier =
+            Modifier
+                .matchParentSize()
+                .zIndex(ComposerSuggestionOverlayZIndex)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(ComposerSuggestionPanelMaxHeight)
+                    .align(Alignment.TopCenter)
+                    .absoluteOffset(y = -(ComposerSuggestionPanelMaxHeight + ComposerSuggestionOverlayGap))
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+            ) {
+                ComposerSuggestionPanelContent(
+                    panelState = panelState,
+                    surface = surface,
+                    memberSuggestions = memberSuggestions,
+                    memberErrorCode = memberErrorCode,
+                    channelSuggestions = channelSuggestions,
+                    channelErrorCode = channelErrorCode,
+                    agentStatusResolver = agentStatusResolver,
+                    onMemberClick = onMemberClick,
+                    onChannelClick = onChannelClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerSuggestionPanelContent(
+    panelState: ThreadComposerSuggestionPanelState,
+    surface: ThreadComposerSurface,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
+    memberErrorCode: String?,
+    channelSuggestions: List<KuiklyComposerChannelItem>,
+    channelErrorCode: String?,
+    agentStatusResolver: SlockAgentStatusResolver,
+    onMemberClick: (KuiklyComposerMemberItem) -> Unit,
+    onChannelClick: (KuiklyComposerChannelItem) -> Unit
+) {
+    when (panelState) {
+        ThreadComposerSuggestionPanelState.MemberItems -> {
+            ComposerMemberSuggestionPanel(
+                title = surface.memberSuggestionTitle(),
+                members = memberSuggestions,
+                agentStatusResolver = agentStatusResolver,
+                onClick = onMemberClick
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.MemberLoading -> {
+            ComposerSuggestionStatusPanel(
+                title = surface.memberSuggestionTitle(),
+                message = "Loading..."
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.MemberEmpty -> {
+            ComposerSuggestionStatusPanel(
+                title = surface.memberSuggestionTitle(),
+                message = "No matching members"
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.MemberError -> {
+            ComposerSuggestionStatusPanel(
+                title = surface.memberSuggestionTitle(),
+                message = memberErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load members"
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.ChannelItems -> {
+            ComposerSuggestionPanel(
+                title = "CHANNELS",
+                showTitleDivider = false,
+                itemCount = channelSuggestions.size,
+                itemKey = { index -> "channel-$index-${channelSuggestions[index].name}" }
+            ) { index ->
+                val channel = channelSuggestions[index]
+                ComposerChannelSuggestionRow(
+                    channel = channel,
+                    selected = index == 0,
+                    onClick = { onChannelClick(channel) }
+                )
+            }
+        }
+
+        ThreadComposerSuggestionPanelState.ChannelLoading -> {
+            ComposerSuggestionStatusPanel(
+                title = "CHANNELS",
+                message = "Loading..."
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.ChannelEmpty -> {
+            ComposerSuggestionStatusPanel(
+                title = "CHANNELS",
+                message = "No matching channels"
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.ChannelError -> {
+            ComposerSuggestionStatusPanel(
+                title = "CHANNELS",
+                message = channelErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load channels"
+            )
+        }
+
+        ThreadComposerSuggestionPanelState.Hidden -> Unit
     }
 }
 
