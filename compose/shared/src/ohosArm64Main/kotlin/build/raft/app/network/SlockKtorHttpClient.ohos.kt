@@ -16,6 +16,10 @@ internal actual fun createSlockKtorHttpClient(
     config: HttpClientConfig
 ): HttpClient =
     HttpClient(CIO) {
+        engine {
+            maxConnectionsCount = priority.maxConnectionsCount()
+        }
+
         install(HttpTimeout) {
             requestTimeoutMillis = config.timeout.requestTimeoutMillis
             connectTimeoutMillis = config.timeout.connectTimeoutMillis
@@ -41,4 +45,11 @@ internal actual fun createSlockKtorHttpClient(
                 }
             }
         }
+    }
+
+private fun SlockRequestPriority.maxConnectionsCount(): Int =
+    when (this) {
+        SlockRequestPriority.Foreground -> SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS
+        SlockRequestPriority.Visible -> SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS
+        SlockRequestPriority.Background -> SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS
     }
