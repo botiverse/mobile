@@ -927,7 +927,12 @@ internal fun MembersPageContent() {
             }
         }
     LaunchedEffect(agentPanelTabOrderStore, serverId, payload.agentPanelTabOrder) {
-        agentPanelTabOrderStore.bindServer(serverId, payload.agentPanelTabOrder)
+        agentPanelTabOrderStore.bindServer(
+            serverId = serverId,
+            initialOrder = payload.agentPanelTabOrder,
+            source = "members_page_bind_payload",
+            logger = { message -> bridge.log(message) }
+        )
     }
     LaunchedEffect(
         settingsRepository,
@@ -939,7 +944,12 @@ internal fun MembersPageContent() {
         if (serverId.trim().isBlank()) return@LaunchedEffect
         if (agentPanelTabOrderState.serverId == serverId && agentPanelTabOrderState.loaded) return@LaunchedEffect
         loadAgentPanelTabOrderForMembersPage()?.let { order ->
-            agentPanelTabOrderStore.applyLoaded(serverId, order)
+            agentPanelTabOrderStore.applyLoaded(
+                serverId = serverId,
+                order = order,
+                source = "members_page_sidebar_order_get",
+                logger = { message -> bridge.log(message) }
+            )
         }
     }
     val serverMembersEntry by remember(sharedStores.serverMembersStore, serverId) {
@@ -1168,7 +1178,14 @@ internal fun MembersPageContent() {
                 val launchPayload =
                     if (member.kind == MemberKind.Agent && (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)) {
                         loadAgentPanelTabOrderForMembersPage()
-                            ?.also { order -> agentPanelTabOrderStore.applyLoaded(serverId, order) }
+                            ?.also { order ->
+                                agentPanelTabOrderStore.applyLoaded(
+                                    serverId = serverId,
+                                    order = order,
+                                    source = "members_detail_open_preload",
+                                    logger = { message -> bridge.log(message) }
+                                )
+                            }
                             ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
                             ?: membersPayload
                     } else {
@@ -1618,7 +1635,12 @@ private fun MemberDetailPageContent() {
             else -> null
         }
     LaunchedEffect(provider.agentPanelTabOrderStore, statusLookupServerId, payload.agentPanelTabOrder) {
-        provider.agentPanelTabOrderStore.bindServer(statusLookupServerId, payload.agentPanelTabOrder)
+        provider.agentPanelTabOrderStore.bindServer(
+            serverId = statusLookupServerId,
+            initialOrder = payload.agentPanelTabOrder,
+            source = "member_detail_bind_payload",
+            logger = { message -> bridge.log(message) }
+        )
     }
     val agentPanelTabOrder =
         if (agentPanelTabOrderState.serverId == statusLookupServerId) {
@@ -1671,14 +1693,36 @@ private fun MemberDetailPageContent() {
             return@LaunchedEffect
         }
         when (val result = provider.loadAgentPanelTabOrder()) {
-            is DataResult.Content -> provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, result.data)
-            is DataResult.Empty -> provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
+            is DataResult.Content ->
+                provider.agentPanelTabOrderStore.applyLoaded(
+                    serverId = statusLookupServerId,
+                    order = result.data,
+                    source = "member_detail_sidebar_order_get",
+                    logger = { message -> bridge.log(message) }
+                )
+            is DataResult.Empty ->
+                provider.agentPanelTabOrderStore.applyLoaded(
+                    serverId = statusLookupServerId,
+                    order = emptyList(),
+                    source = "member_detail_sidebar_order_empty",
+                    logger = { message -> bridge.log(message) }
+                )
             is DataResult.Error -> {
-                provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
+                provider.agentPanelTabOrderStore.applyLoaded(
+                    serverId = statusLookupServerId,
+                    order = emptyList(),
+                    source = "member_detail_sidebar_order_error_fallback",
+                    logger = { message -> bridge.log(message) }
+                )
                 bridge.log("member_detail_agent_tab_order_load_failed code=${result.error.code}")
             }
             is DataResult.NoPermission -> {
-                provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
+                provider.agentPanelTabOrderStore.applyLoaded(
+                    serverId = statusLookupServerId,
+                    order = emptyList(),
+                    source = "member_detail_sidebar_order_blocked_fallback",
+                    logger = { message -> bridge.log(message) }
+                )
                 bridge.log("member_detail_agent_tab_order_load_blocked code=${result.blocker.code}")
             }
         }
@@ -1816,21 +1860,46 @@ private fun MemberDetailPageContent() {
                         val previousOrder = agentPanelTabOrder
                         val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
                         if (nextOrder != previousOrder) {
-                            provider.agentPanelTabOrderStore.applyOptimistic(statusLookupServerId, nextOrder)
+                            provider.agentPanelTabOrderStore.applyOptimistic(
+                                serverId = statusLookupServerId,
+                                order = nextOrder,
+                                source = "member_detail_user_reorder_optimistic",
+                                logger = { message -> bridge.log(message) }
+                            )
                             routeScope.launch {
                                 when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
                                     is DataResult.Content ->
-                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, result.data)
+                                        provider.agentPanelTabOrderStore.applyLoaded(
+                                            serverId = statusLookupServerId,
+                                            order = result.data,
+                                            source = "member_detail_user_reorder_save_success",
+                                            logger = { message -> bridge.log(message) }
+                                        )
                                     is DataResult.Empty -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
+                                        provider.agentPanelTabOrderStore.applyLoaded(
+                                            serverId = statusLookupServerId,
+                                            order = previousOrder,
+                                            source = "member_detail_user_reorder_save_empty_rollback",
+                                            logger = { message -> bridge.log(message) }
+                                        )
                                         bridge.toast("Unable to save tab order")
                                     }
                                     is DataResult.Error -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
+                                        provider.agentPanelTabOrderStore.applyLoaded(
+                                            serverId = statusLookupServerId,
+                                            order = previousOrder,
+                                            source = "member_detail_user_reorder_save_error_rollback",
+                                            logger = { message -> bridge.log(message) }
+                                        )
                                         bridge.toast("Failed to save tab order: ${result.error.code}")
                                     }
                                     is DataResult.NoPermission -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, previousOrder)
+                                        provider.agentPanelTabOrderStore.applyLoaded(
+                                            serverId = statusLookupServerId,
+                                            order = previousOrder,
+                                            source = "member_detail_user_reorder_save_blocked_rollback",
+                                            logger = { message -> bridge.log(message) }
+                                        )
                                         bridge.toast("You do not have permission to update tab order.")
                                     }
                                 }

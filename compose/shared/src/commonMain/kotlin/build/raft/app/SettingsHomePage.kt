@@ -9686,7 +9686,11 @@ private fun SharedMembersScreen(
         }
     }
     LaunchedEffect(agentPanelTabOrderStore, currentServerId) {
-        agentPanelTabOrderStore.bindServer(currentServerId)
+        agentPanelTabOrderStore.bindServer(
+            serverId = currentServerId,
+            source = "shared_members_bind_server",
+            logger = { message -> bridge.log(message) }
+        )
     }
     LaunchedEffect(
         settingsServerManagementRepository,
@@ -9698,7 +9702,12 @@ private fun SharedMembersScreen(
         if (currentServerId.isNullOrBlank()) return@LaunchedEffect
         if (agentPanelTabOrderState.serverId == currentServerId && agentPanelTabOrderState.loaded) return@LaunchedEffect
         loadAgentPanelTabOrderForSharedMembers()?.let { order ->
-            agentPanelTabOrderStore.applyLoaded(currentServerId, order)
+            agentPanelTabOrderStore.applyLoaded(
+                serverId = currentServerId,
+                order = order,
+                source = "shared_members_sidebar_order_get",
+                logger = { message -> bridge.log(message) }
+            )
         }
     }
 
@@ -9935,7 +9944,14 @@ private fun SharedMembersScreen(
                                     (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
                             ) {
                                 loadAgentPanelTabOrderForSharedMembers()
-                                    ?.also { order -> agentPanelTabOrderStore.applyLoaded(serverId, order) }
+                                    ?.also { order ->
+                                        agentPanelTabOrderStore.applyLoaded(
+                                            serverId = serverId,
+                                            order = order,
+                                            source = "shared_members_detail_open_preload",
+                                            logger = { message -> bridge.log(message) }
+                                        )
+                                    }
                                     ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
                                     ?: membersPayload
                             } else {
