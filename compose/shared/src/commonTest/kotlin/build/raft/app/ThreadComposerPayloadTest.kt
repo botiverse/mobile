@@ -439,6 +439,41 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun pendingMentionActionUsesServerAvatarForUsersAndAgents() {
+        val agentAction =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "@outside",
+                targetAvatarUrl = "https://cdn.slock.ai/avatars/agents/outside.webp"
+            )
+        val userAction =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-2",
+                targetType = "user",
+                targetHandle = "@outside",
+                targetAvatarUrl = "https://cdn.slock.ai/avatars/agents/outside.webp"
+            )
+        val blankAgentAction =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-3",
+                targetType = "agent",
+                targetHandle = "@outside",
+                targetAvatarUrl = ""
+            )
+
+        assertEquals(
+            "https://cdn.slock.ai/avatars/agents/outside.webp",
+            agentAction.targetAvatarWireValue()
+        )
+        assertEquals(
+            "https://cdn.slock.ai/avatars/agents/outside.webp",
+            userAction.targetAvatarWireValue()
+        )
+        assertNull(blankAgentAction.targetAvatarWireValue())
+    }
+
+    @Test
     fun mentionScopeChannelLabelUsesDisplayNameInsteadOfRawIdentity() {
         assertEquals(
             "#对话流专修",

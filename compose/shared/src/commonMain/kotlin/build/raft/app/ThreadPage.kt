@@ -6778,6 +6778,7 @@ internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPend
         channelName = channelName,
         targetType = targetType,
         targetHandle = targetHandle,
+        targetAvatarUrl = targetAvatarUrl,
         reason = reason,
         availableActions = availableActions,
         expiresAt = expiresAt

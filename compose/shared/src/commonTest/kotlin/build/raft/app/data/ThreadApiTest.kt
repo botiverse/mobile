@@ -239,9 +239,21 @@ class ThreadApiTest {
                               "channelName": "对话流专修",
                               "targetType": "agent",
                               "targetHandle": "outside",
+                              "targetAvatarUrl": "https://cdn.slock.ai/avatars/agents/outside.webp",
                               "reason": "not_member",
                               "availableActions": ["add", "notify"],
                               "expiresAt": "2026-06-21T00:00:00Z"
+                            },
+                            {
+                              "resolutionId": "res-2",
+                              "messageId": "m3",
+                              "channelId": "channel-1",
+                              "channelName": "对话流专修",
+                              "targetType": "agent",
+                              "targetHandle": "blank-avatar",
+                              "targetAvatarUrl": "   ",
+                              "reason": "not_member",
+                              "availableActions": ["notify"]
                             }
                           ]
                         }
@@ -253,14 +265,17 @@ class ThreadApiTest {
 
         val page = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data
         assertEquals("m3", page.messages.single().id)
-        val pending = page.pendingMentionActions.single()
+        assertEquals(2, page.pendingMentionActions.size)
+        val pending = page.pendingMentionActions.first()
         assertEquals("res-1", pending.resolutionId)
         assertEquals("m3", pending.messageId?.value)
         assertEquals("channel-1", pending.channelId?.value)
         assertEquals("对话流专修", pending.channelName)
         assertEquals("agent", pending.targetType)
         assertEquals("outside", pending.targetHandle)
+        assertEquals("https://cdn.slock.ai/avatars/agents/outside.webp", pending.targetAvatarUrl)
         assertEquals(listOf("add", "notify"), pending.availableActions)
+        assertEquals(null, page.pendingMentionActions[1].targetAvatarUrl)
     }
 
     @Test
