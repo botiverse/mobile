@@ -27,7 +27,6 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.absoluteOffset
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -46,9 +45,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -58,7 +55,6 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -87,8 +83,6 @@ private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionOverlayGap = 4.dp
-private const val ComposerSuggestionOverlayZIndex = 10f
 private val ComposerSuggestionHeaderEstimatedHeight = 30.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
@@ -1111,6 +1105,17 @@ internal fun ThreadComposerContent(
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
                 )
             }
+            ComposerSuggestionSlot(
+                panelState = suggestionPanelState,
+                surface = surface,
+                memberSuggestions = filteredMemberSuggestions,
+                memberErrorCode = state.memberSuggestionsErrorCode,
+                channelSuggestions = filteredChannelSuggestions,
+                channelErrorCode = state.channelSuggestionsErrorCode,
+                agentStatusResolver = agentStatusResolver,
+                onMemberClick = { applyMemberSuggestion(it) },
+                onChannelClick = { applyChannelSuggestion(it) }
+            )
             Box(
                 modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
             ) {
@@ -1269,17 +1274,6 @@ internal fun ThreadComposerContent(
                         }
                     }
                 }
-                ComposerSuggestionOverlay(
-                    panelState = suggestionPanelState,
-                    surface = surface,
-                    memberSuggestions = filteredMemberSuggestions,
-                    memberErrorCode = state.memberSuggestionsErrorCode,
-                    channelSuggestions = filteredChannelSuggestions,
-                    channelErrorCode = state.channelSuggestionsErrorCode,
-                    agentStatusResolver = agentStatusResolver,
-                    onMemberClick = { applyMemberSuggestion(it) },
-                    onChannelClick = { applyChannelSuggestion(it) }
-                )
             }
         }
     }
@@ -1287,7 +1281,7 @@ internal fun ThreadComposerContent(
 }
 
 @Composable
-private fun BoxScope.ComposerSuggestionOverlay(
+private fun ComposerSuggestionSlot(
     panelState: ThreadComposerSuggestionPanelState,
     surface: ThreadComposerSurface,
     memberSuggestions: List<KuiklyComposerMemberItem>,
@@ -1299,56 +1293,36 @@ private fun BoxScope.ComposerSuggestionOverlay(
     onChannelClick: (KuiklyComposerChannelItem) -> Unit
 ) {
     if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
-    val density = LocalDensity.current
-    val estimatedPanelHeight =
+    val slotHeight =
         remember(panelState, memberSuggestions.size, channelSuggestions.size) {
-            composerSuggestionOverlayInitialHeight(
+            composerSuggestionPanelSlotHeight(
                 panelState = panelState,
                 memberCount = memberSuggestions.size,
                 channelCount = channelSuggestions.size
             )
         }
-    var measuredPanelHeight by remember(panelState, memberSuggestions.size, channelSuggestions.size) {
-        mutableStateOf(estimatedPanelHeight)
-    }
     Box(
         modifier =
             Modifier
-                .matchParentSize()
-                .zIndex(ComposerSuggestionOverlayZIndex)
+                .fillMaxWidth()
+                .height(slotHeight)
+                .padding(end = 2.dp)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .absoluteOffset(y = -(measuredPanelHeight + ComposerSuggestionOverlayGap))
-                    .onGloballyPositioned { coordinates ->
-                        val nextHeight =
-                            with(density) {
-                                coordinates.size.height.toDp()
-                            }
-                        if (nextHeight > 0.dp && nextHeight != measuredPanelHeight) {
-                            measuredPanelHeight = nextHeight
-                        }
-                    }
-        ) {
-            ComposerSuggestionPanelContent(
-                panelState = panelState,
-                surface = surface,
-                memberSuggestions = memberSuggestions,
-                memberErrorCode = memberErrorCode,
-                channelSuggestions = channelSuggestions,
-                channelErrorCode = channelErrorCode,
-                agentStatusResolver = agentStatusResolver,
-                onMemberClick = onMemberClick,
-                onChannelClick = onChannelClick
-            )
-        }
+        ComposerSuggestionPanelContent(
+            panelState = panelState,
+            surface = surface,
+            memberSuggestions = memberSuggestions,
+            memberErrorCode = memberErrorCode,
+            channelSuggestions = channelSuggestions,
+            channelErrorCode = channelErrorCode,
+            agentStatusResolver = agentStatusResolver,
+            onMemberClick = onMemberClick,
+            onChannelClick = onChannelClick
+        )
     }
 }
 
-private fun composerSuggestionOverlayInitialHeight(
+internal fun composerSuggestionPanelSlotHeight(
     panelState: ThreadComposerSuggestionPanelState,
     memberCount: Int,
     channelCount: Int

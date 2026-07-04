@@ -200,6 +200,18 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionPanelSlotHeightMatchesMemberPanelHeight() {
+        assertEquals(
+            240.dp,
+            composerSuggestionPanelSlotHeight(
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 6,
+                channelCount = 0
+            )
+        )
+    }
+
+    @Test
     fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
         assertEquals(
             102.dp,
