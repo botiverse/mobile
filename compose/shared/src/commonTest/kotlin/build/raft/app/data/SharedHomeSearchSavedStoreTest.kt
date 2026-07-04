@@ -718,11 +718,7 @@ class SharedHomeSearchSavedStoreTest {
         )
 
     @Test
-    fun savedSearchThreadItemResolveAnchorMessageId3LevelChain() {
-        // 反例 11 regression: saved store's `savedMessageIdOrNull` must use the shared
-        // 3-level anchor chain (`resolveInboxAnchorMessageId`) and never fall back to
-        // `parentMessageId` for Thread items. Mirrors SharedInboxPanel regression so the
-        // saved inbox surface and the main inbox surface share the same anchor contract.
+    fun savedSearchThreadItemResolveAnchorMessageIdUsesReplyActivityOnly() {
         val threadOnlyLatest =
             InboxItem(
                 key = "thread-saved-latest",
@@ -737,13 +733,21 @@ class SharedHomeSearchSavedStoreTest {
             )
         assertEquals(MessageId("latest-reply"), threadOnlyLatest.savedMessageIdOrNull())
 
+        val threadStaleUnread =
+            threadOnlyLatest.copy(
+                key = "thread-saved-stale-unread",
+                firstUnreadMessageId = MessageId("stale-unread-reply"),
+                unreadCount = 0
+            )
+        assertEquals(MessageId("latest-reply"), threadStaleUnread.savedMessageIdOrNull())
+
         val threadOnlyLast =
             threadOnlyLatest.copy(
                 key = "thread-saved-last",
                 latestActivityMessageId = null,
                 lastMessageId = MessageId("last-reply")
             )
-        assertEquals(MessageId("last-reply"), threadOnlyLast.savedMessageIdOrNull())
+        assertEquals(null, threadOnlyLast.savedMessageIdOrNull())
 
         val threadNoneButParent =
             threadOnlyLatest.copy(

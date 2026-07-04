@@ -589,7 +589,7 @@ private fun SharedActivityList(
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
-                        onOpenMessage(item.toHomeMessageOpenRequest(HomeMessageAnchorPolicy.ActivityRow))
+                        onOpenMessage(item.toHomeMessageOpenRequest())
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
                     onOpenMenu = { anchor ->
@@ -1336,11 +1336,6 @@ internal data class HomeMessageOpenRequest(
     val originFallback: ThreadLaunchOriginFallback? = null
 )
 
-internal enum class HomeMessageAnchorPolicy {
-    FirstUnread,
-    ActivityRow
-}
-
 /**
  * Per-kind stream channel id resolver. Replaces the prior silent fallback
  * `if (kind == Thread) threadChannelId else threadChannelId ?: channelId` (反例 1 in #280 audit).
@@ -1360,25 +1355,13 @@ internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
     }
 
 /**
- * 3-level anchor chain used by [InboxItem.toHomeMessageOpenRequest] and Saved store anchor
- * resolution. Thread items must NOT fall back to `parentMessageId` — that field is the parent
- * channel origin, not a thread reply id; mixing it in would silently degrade the reply-stream
- * anchor (regression covered by `appShellActivityThreadItemShowsLatestReplyAsAnchorWhenUnreadIsEmpty`
- * and `SharedInboxPanelTest.inboxPanelThreadItemAnchor3LevelChain`).
- *
- * Replaces the prior 4-level chain `firstUnreadMessageId ?: latestActivityMessageId
- * ?: lastMessageId ?: parentMessageId` (反例 11 in #280 audit).
+ * Open anchor used by Activity, Search, and Saved rows. This mirrors React's row-open
+ * contract: `firstUnreadMessageId` is only an anchor while the row is actually unread.
+ * Thread rows focus reply ids (`firstUnreadMessageId` / `latestActivityMessageId`) and
+ * must not fall back to `lastMessageId` or `parentMessageId`, both of which can describe
+ * the parent/origin rather than a thread reply.
  */
 internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
-    firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId
-
-internal fun InboxItem.resolveInboxAnchorMessageId(policy: HomeMessageAnchorPolicy): MessageId? =
-    when (policy) {
-        HomeMessageAnchorPolicy.FirstUnread -> resolveInboxAnchorMessageId()
-        HomeMessageAnchorPolicy.ActivityRow -> resolveActivityRowAnchorMessageId()
-    }
-
-internal fun InboxItem.resolveActivityRowAnchorMessageId(): MessageId? =
     when (kind) {
         InboxItemKind.Thread ->
             if (unreadCount > 0) {
@@ -1397,12 +1380,10 @@ internal fun InboxItem.resolveActivityRowAnchorMessageId(): MessageId? =
             }
     }
 
-internal fun InboxItem.toHomeMessageOpenRequest(
-    anchorPolicy: HomeMessageAnchorPolicy = HomeMessageAnchorPolicy.FirstUnread
-): HomeMessageOpenRequest =
+internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversationIdentity = toThreadLaunchConversationIdentity(),
-        anchorMessageId = resolveInboxAnchorMessageId(anchorPolicy)?.value?.takeIf { it.isNotBlank() },
+        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
         originFallback = toThreadLaunchOriginFallback()
     )
 
