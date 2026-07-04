@@ -3894,37 +3894,6 @@ internal fun SharedThreadRouteContent(
         refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
-    fun patchComposerMemberSuggestionsAfterMembershipMutation(
-        member: KuiklyThreadMemberItem?,
-        inMentionChannel: Boolean
-    ): Boolean {
-        val store = serverMembersStore ?: return false
-        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return false
-        val profile = member?.toMemberProfile() ?: return false
-        return store.patchMentionChannelMemberSuggestion(
-            serverId = serverId,
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions,
-            member = profile,
-            inMentionChannel = inMentionChannel
-        )
-    }
-
-    fun removeComposerMemberSuggestionsAfterMembershipMutation(
-        memberId: String,
-        memberKind: MemberKind?
-    ): Boolean {
-        val store = serverMembersStore ?: return false
-        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return false
-        return store.removeMentionChannelMemberSuggestion(
-            serverId = serverId,
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions,
-            memberId = memberId,
-            memberKind = memberKind
-        )
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
@@ -4518,10 +4487,6 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
                             is DataResult.Content -> {
-                                val addedMember = result.data.members.firstOrNull { it.id == itemId }
-                                if (!patchComposerMemberSuggestionsAfterMembershipMutation(addedMember, inMentionChannel = true)) {
-                                    refreshComposerMemberSuggestionsAfterMembershipMutation()
-                                }
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,
@@ -4564,9 +4529,6 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
                             is DataResult.Content -> {
-                                if (!removeComposerMemberSuggestionsAfterMembershipMutation(itemId, member?.threadMemberKind())) {
-                                    refreshComposerMemberSuggestionsAfterMembershipMutation()
-                                }
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
                                         membersCount = result.data.membersCount,

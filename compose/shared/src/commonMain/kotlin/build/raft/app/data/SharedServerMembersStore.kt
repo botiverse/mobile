@@ -389,6 +389,137 @@ class SharedServerMembersStore(
         return true
     }
 
+    suspend fun deleteAgent(
+        serverId: ServerId,
+        agentId: MemberId,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<AgentLifecycleActionResult> {
+        val result =
+            try {
+                memberRepository.deleteAgent(priority, agentId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger("shared_server_members_delete_agent_result agentId=${agentId.value} result=exception type=${throwable::class.simpleName}")
+                return DataResult.Error(ScreenError(code = "agent_delete_exception", retryable = true))
+            }
+        if (result is DataResult.Content && result.data.success) {
+            removeMember(serverId = serverId, memberId = agentId, memberKind = MemberKind.Agent)
+            refreshMembersBestEffort(serverId, reason = "agent_delete")
+        }
+        return result
+    }
+
+    suspend fun updateAgentProfile(
+        serverId: ServerId,
+        request: AgentProfileUpdateRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<MemberProfile> {
+        val result =
+            try {
+                memberRepository.updateAgentProfile(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger("shared_server_members_update_agent_profile_result agentId=${request.agentId.value} result=exception type=${throwable::class.simpleName}")
+                return DataResult.Error(ScreenError(code = "agent_profile_update_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            seedProfiles(serverId, listOf(result.data))
+        }
+        return result
+    }
+
+    suspend fun uploadAgentAvatar(
+        serverId: ServerId,
+        request: AgentAvatarUploadRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<MemberProfile> {
+        val result =
+            try {
+                memberRepository.uploadAgentAvatar(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger("shared_server_members_upload_agent_avatar_result agentId=${request.agentId.value} result=exception type=${throwable::class.simpleName}")
+                return DataResult.Error(ScreenError(code = "agent_avatar_upload_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            seedProfiles(serverId, listOf(result.data))
+        }
+        return result
+    }
+
+    suspend fun addChannelMember(
+        serverId: ServerId,
+        request: AddChannelMemberRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> {
+        val serverKey = serverId.value.trim()
+        val channelKey = request.channelId.value.trim()
+        val result =
+            try {
+                memberRepository.addChannelMember(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger(
+                    "shared_server_channel_member_add_result serverId=$serverKey channelId=$channelKey " +
+                        "memberId=${request.memberId.value} result=exception type=${throwable::class.simpleName}"
+                )
+                return DataResult.Error(ScreenError(code = "channel_member_add_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            val member =
+                result.data.member
+                    ?: _state.value.memberProfile(serverId, request.memberId.value)
+            if (member != null) {
+                patchChannelMemberSlice(serverKey, channelKey, member, inMentionChannel = true)
+                patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
+            }
+            refreshChannelMembersBestEffort(serverId, request.channelId, reason = "channel_member_add")
+        }
+        return result
+    }
+
+    suspend fun removeChannelMember(
+        serverId: ServerId,
+        request: RemoveChannelMemberRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> {
+        val serverKey = serverId.value.trim()
+        val channelKey = request.channelId.value.trim()
+        val result =
+            try {
+                memberRepository.removeChannelMember(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger(
+                    "shared_server_channel_member_remove_result serverId=$serverKey channelId=$channelKey " +
+                        "memberId=${request.memberId.value} result=exception type=${throwable::class.simpleName}"
+                )
+                return DataResult.Error(ScreenError(code = "channel_member_remove_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            patchChannelMemberSlice(
+                serverKey = serverKey,
+                channelKey = channelKey,
+                memberId = request.memberId.value,
+                memberKind = request.kind,
+                inMentionChannel = false
+            )
+            removeMentionChannelMemberSuggestionSlices(
+                serverKey = serverKey,
+                channelKey = channelKey,
+                memberId = request.memberId.value,
+                memberKind = request.kind
+            )
+            refreshChannelMembersBestEffort(serverId, request.channelId, reason = "channel_member_remove")
+        }
+        return result
+    }
+
     fun applyPresence(event: MemberPresenceUpdated) {
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
@@ -939,6 +1070,63 @@ class SharedServerMembersStore(
         }
     }
 
+    private suspend fun refreshMembersBestEffort(
+        serverId: ServerId,
+        reason: String
+    ) {
+        val serverKey = serverId.value.trim()
+        if (serverKey.isBlank()) return
+        val result =
+            runCatchingPreservingCancellation {
+                refreshMembers(serverId, DataRequestPriority.Background, force = true)
+            }.getOrElse { throwable ->
+                logger("shared_server_members_refresh_after_mutation reason=$reason serverId=$serverKey result=exception type=${throwable::class.simpleName}")
+                return
+            }
+        when (result) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error ->
+                logger("shared_server_members_refresh_after_mutation reason=$reason serverId=$serverKey result=error code=${result.error.code}")
+            is DataResult.NoPermission ->
+                logger("shared_server_members_refresh_after_mutation reason=$reason serverId=$serverKey result=no_permission code=${result.blocker.code}")
+        }
+    }
+
+    private suspend fun refreshChannelMembersBestEffort(
+        serverId: ServerId,
+        channelId: ChannelId,
+        reason: String
+    ) {
+        val serverKey = serverId.value.trim()
+        val channelKey = channelId.value.trim()
+        if (serverKey.isBlank() || channelKey.isBlank()) return
+        val result =
+            runCatchingPreservingCancellation {
+                loadChannelMembers(serverId, channelId, DataRequestPriority.Background, force = true)
+            }.getOrElse { throwable ->
+                logger(
+                    "shared_server_channel_members_refresh_after_mutation reason=$reason serverId=$serverKey " +
+                        "channelId=$channelKey result=exception type=${throwable::class.simpleName}"
+                )
+                return
+            }
+        when (result) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error ->
+                logger(
+                    "shared_server_channel_members_refresh_after_mutation reason=$reason serverId=$serverKey " +
+                        "channelId=$channelKey result=error code=${result.error.code}"
+                )
+            is DataResult.NoPermission ->
+                logger(
+                    "shared_server_channel_members_refresh_after_mutation reason=$reason serverId=$serverKey " +
+                        "channelId=$channelKey result=no_permission code=${result.blocker.code}"
+                )
+        }
+    }
+
     private fun loadedMemberSuggestionSlice(
         scope: SharedMembersMentionScope,
         suggestions: List<SharedMembersMemberSuggestion>,
@@ -957,6 +1145,87 @@ class SharedServerMembersStore(
             status = SharedMembersLoadStatus.Loaded,
             errorCode = null
         )
+    }
+
+    private fun patchMentionChannelMemberSuggestionSlices(
+        serverKey: String,
+        channelKey: String,
+        member: MemberProfile,
+        inMentionChannel: Boolean
+    ) {
+        val memberKey = member.id.value.trim()
+        if (serverKey.isBlank() || channelKey.isBlank() || memberKey.isBlank()) return
+        val suggestion =
+            listOf(member)
+                .toServerMembersMemberSuggestions(localServerId = serverKey, inMentionChannel = inMentionChannel)
+                .firstOrNull()
+                ?: return
+        val current = _state.value
+        var changed = false
+        val nextSlices =
+            current.memberSuggestionSlices.mapValues { (scope, slice) ->
+                if (scope.serverId != serverKey || scope.mentionChannelId != channelKey) {
+                    slice
+                } else {
+                    val nextSuggestions =
+                        slice.suggestions.patchMemberSuggestion(
+                            suggestion = suggestion,
+                            memberScopedMentions = scope.memberScopedMentions,
+                            inMentionChannel = inMentionChannel
+                        )
+                    if (nextSuggestions != slice.suggestions) {
+                        changed = true
+                        slice.copy(
+                            suggestions = nextSuggestions,
+                            status = SharedMembersLoadStatus.Loaded,
+                            errorCode = null
+                        )
+                    } else {
+                        slice
+                    }
+                }
+            }
+        if (changed) {
+            _state.value = current.copy(memberSuggestionSlices = nextSlices)
+        }
+    }
+
+    private fun removeMentionChannelMemberSuggestionSlices(
+        serverKey: String,
+        channelKey: String,
+        memberId: String,
+        memberKind: MemberKind?
+    ) {
+        val memberKey = memberId.trim()
+        if (serverKey.isBlank() || channelKey.isBlank() || memberKey.isBlank()) return
+        val current = _state.value
+        var changed = false
+        val nextSlices =
+            current.memberSuggestionSlices.mapValues { (scope, slice) ->
+                if (scope.serverId != serverKey || scope.mentionChannelId != channelKey) {
+                    slice
+                } else {
+                    val nextSuggestions =
+                        slice.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
+                            memberId = memberKey,
+                            memberKind = memberKind,
+                            remove = scope.memberScopedMentions
+                        )
+                    if (nextSuggestions != slice.suggestions) {
+                        changed = true
+                        slice.copy(
+                            suggestions = nextSuggestions,
+                            status = SharedMembersLoadStatus.Loaded,
+                            errorCode = null
+                        )
+                    } else {
+                        slice
+                    }
+                }
+            }
+        if (changed) {
+            _state.value = current.copy(memberSuggestionSlices = nextSlices)
+        }
     }
 
     private fun setMemberSuggestionFailure(
