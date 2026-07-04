@@ -74,9 +74,23 @@ jobs:
         env:
           CASE_FILTER: ${{ inputs.case_filter }}
         run: |
-          ARGS=""
-          if [ -n "$CASE_FILTER" ]; then ARGS="--case $CASE_FILTER"; fi
-          node packages/visual-testing/src/cli.mjs capture --providers react $ARGS
+          if [ -z "$CASE_FILTER" ]; then
+            node packages/visual-testing/src/cli.mjs capture --providers react
+            exit $?
+          fi
+
+          status=0
+          IFS=',' read -ra CASES <<< "$CASE_FILTER"
+          for CASE_ID in "${CASES[@]}"; do
+            CASE_ID="$(echo "$CASE_ID" | xargs)"
+            if [ -z "$CASE_ID" ]; then
+              continue
+            fi
+            if ! node packages/visual-testing/src/cli.mjs capture --providers react --case "$CASE_ID"; then
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Upload react results
         uses: actions/upload-artifact@v4
