@@ -143,6 +143,15 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun visibleTasksLoadCanUpgradeBackgroundRefresh() {
+        assertTrue(DataRequestPriority.Visible.canUpgradeTasksLoad(DataRequestPriority.Background))
+        assertTrue(DataRequestPriority.Foreground.canUpgradeTasksLoad(DataRequestPriority.Background))
+        assertFalse(DataRequestPriority.Background.canUpgradeTasksLoad(DataRequestPriority.Visible))
+        assertFalse(DataRequestPriority.Visible.canUpgradeTasksLoad(DataRequestPriority.Visible))
+        assertFalse(DataRequestPriority.Visible.canUpgradeTasksLoad(null))
+    }
+
+    @Test
     fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
         val serverId = ServerId("server-1")
         val local = InMemorySharedTasksLocalDataSource()

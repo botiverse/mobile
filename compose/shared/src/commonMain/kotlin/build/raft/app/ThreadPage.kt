@@ -1385,10 +1385,16 @@ internal fun shouldStartThreadTasksJoin(
     startedThreadId: String?,
     taskChannelId: ChannelId?
 ): Boolean =
+    shouldStartThreadTasksLoad(payload, taskChannelId) &&
+        startedThreadId != taskChannelId?.value
+
+internal fun shouldStartThreadTasksLoad(
+    payload: KuiklyThreadScreenPayload,
+    taskChannelId: ChannelId?
+): Boolean =
     taskChannelId != null &&
         payload.status == "content" &&
         payload.supportsChannelTasks() &&
-        startedThreadId != taskChannelId.value &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
@@ -7051,6 +7057,25 @@ private fun ThreadPageContent(
             selectedTab = KuiklyThreadTab.Chat
             onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
         }
+    }
+    var visibleTasksStartThreadId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(selectedTab, taskChannelId?.value, payload.status, tasksViewModel) {
+        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
+        tasksViewModel ?: return@LaunchedEffect
+        if (selectedTab != KuiklyThreadTab.Tasks) {
+            return@LaunchedEffect
+        }
+        if (visibleTasksStartThreadId == resolvedTaskChannelId.value) {
+            return@LaunchedEffect
+        }
+        if (!shouldStartThreadTasksLoad(payload, resolvedTaskChannelId)) {
+            return@LaunchedEffect
+        }
+        visibleTasksStartThreadId = resolvedTaskChannelId.value
+        diagnosticsLogger(
+            "thread_tasks_join_start threadId=${payload.sourceThreadId.orEmpty()} reason=selected_tasks_tab"
+        )
+        onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
