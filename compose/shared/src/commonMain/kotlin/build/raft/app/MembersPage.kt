@@ -15,6 +15,8 @@ import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.SlockRaftUiSelectField
+import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
@@ -208,6 +210,33 @@ internal enum class MembersAgentDetailTab(
     Workspace("Workspace", SlockLucideIconName.FolderOpen),
     Apps("Apps", SlockLucideIconName.Link2)
 }
+
+internal enum class MembersAgentServerRole(
+    val wireValue: String,
+    val label: String,
+    val backgroundColor: Color
+) {
+    Admin("admin", "Admin", SlockColor.AccentPink),
+    Member("member", "Member", SlockColor.AccentLavender)
+}
+
+internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
+    when (this?.trim()?.lowercase()) {
+        MembersAgentServerRole.Admin.wireValue -> MembersAgentServerRole.Admin
+        MembersAgentServerRole.Member.wireValue -> MembersAgentServerRole.Member
+        else -> null
+    }
+
+internal fun membersAgentServerRoleOptions(
+    selectedRole: MembersAgentServerRole?
+): List<SlockRaftUiSelectionOption> =
+    MembersAgentServerRole.entries.map { role ->
+        SlockRaftUiSelectionOption(
+            id = role.wireValue,
+            label = role.label,
+            selected = role == selectedRole
+        )
+    }
 
 internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
@@ -4197,6 +4226,26 @@ private fun MembersHumanRoleChip(
 }
 
 @Composable
+private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
+    val label = role?.label ?: "No role"
+    val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
+    Box(
+        modifier = Modifier
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(backgroundColor)
+            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun MembersHumanCreatedAgentsSection(
     member: MemberProfile,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
@@ -4692,6 +4741,16 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
+    val currentServerRole =
+        member.serverRole.toMembersAgentServerRoleOrNull()
+            ?: summary?.serverRole.toMembersAgentServerRoleOrNull()
+    val canEditServerRole = canEdit && currentServerRole != null
+    var editingServerRole by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
+    var draftServerRole by remember(member.id.value, currentServerRole?.wireValue) {
+        mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
+    }
+    var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
+    var serverRoleError by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf<String?>(null) }
     var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
@@ -4850,6 +4909,54 @@ private fun MembersAgentProfileTab(
             if (!storeBackedProfileEdit) {
                 localSavingRole = false
             }
+        }
+    }
+
+    fun saveServerRole() {
+        val callback = onUpdateAgentProfile
+        if (!canEditServerRole || (agentDetailActions == null && callback == null) || savingServerRole) {
+            onUnavailableAction("Agent role editing is not available.")
+            return
+        }
+        val next = draftServerRole
+        if (next == currentServerRole) {
+            editingServerRole = false
+            serverRoleError = null
+            return
+        }
+        scope.launch {
+            savingServerRole = true
+            serverRoleError = null
+            val result =
+                try {
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = member.displayName,
+                        description = member.description?.takeIf { it.isNotBlank() },
+                        serverRole = next.wireValue,
+                        includeServerRole = true
+                    )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_server_role_save_failed"))
+                }
+            when (result) {
+                is DataResult.Content,
+                is DataResult.Empty -> {
+                    editingServerRole = false
+                }
+                is DataResult.NoPermission ->
+                    serverRoleError = "No permission: ${result.blocker.code}"
+                is DataResult.Error ->
+                    serverRoleError = "Save failed: ${result.error.code}"
+            }
+            savingServerRole = false
         }
     }
 
@@ -5141,6 +5248,89 @@ private fun MembersAgentProfileTab(
         ) {
             MembersDetailSectionDivider()
             MembersDetailSectionTitle("INFO")
+            // Role row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Role",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.width(86.dp)
+                )
+                if (editingServerRole) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    ) {
+                        Box(modifier = Modifier.width(160.dp)) {
+                            SlockRaftUiSelectField(
+                                options = membersAgentServerRoleOptions(draftServerRole),
+                                selectedId = draftServerRole.wireValue,
+                                selectedLabel = draftServerRole.label,
+                                title = "Role",
+                                enabled = !savingServerRole,
+                                triggerHeight = 32.dp,
+                                rowHeight = 34.dp,
+                                onSelect = { option ->
+                                    draftServerRole =
+                                        option.id.toMembersAgentServerRoleOrNull()
+                                            ?: draftServerRole
+                                    serverRoleError = null
+                                }
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SlockBrutalActionButton(
+                                label = if (savingServerRole) "Saving\u2026" else "Save",
+                                onClick = { saveServerRole() },
+                                enabled = !savingServerRole,
+                                backgroundColor = SlockColor.BrandYellow
+                            )
+                            SlockBrutalActionButton(
+                                label = "Cancel",
+                                onClick = {
+                                    draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                    serverRoleError = null
+                                    editingServerRole = false
+                                },
+                                enabled = !savingServerRole,
+                                backgroundColor = SlockColor.SurfaceWhite
+                            )
+                        }
+                        if (serverRoleError != null) {
+                            Text(
+                                text = serverRoleError.orEmpty(),
+                                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                                    .withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.AccentRed
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MembersAgentServerRoleChip(currentServerRole)
+                        if (canEditServerRole) {
+                            MembersProfilePencilButton(
+                                onClick = {
+                                    draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                    serverRoleError = null
+                                    editingServerRole = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
             // Computer row
             Row(
                 modifier = Modifier.fillMaxWidth(),
