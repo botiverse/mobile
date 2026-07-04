@@ -1466,13 +1466,8 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
     }
 }
 
-internal fun childHostAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
-    val activeTab = retainedAppShellSelectedTab(selectedTab)
-    return retainedAppShellTabOrder(activeTab).filter { tab ->
-        tab == activeTab ||
-            (tab in AppShellChildPageTabKeys && tab in mountedTabs)
-    }
-}
+internal fun childHostAppShellComposedTabs(selectedTab: String): List<String> =
+    activeOnlyAppShellComposedTabs(selectedTab)
 
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
@@ -1576,12 +1571,11 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 private fun AppShellTabs(
     selectedTab: String,
     childHostShellId: String,
-    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        childHostAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
+        childHostAppShellComposedTabs(activeTab).forEach { tab ->
             key("app-shell-$tab") {
                 if (tab in AppShellChildPageTabKeys) {
                     SlockAppShellChildTabHost(
@@ -3261,8 +3255,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     AppShellTabs(
                         selectedTab = selectedTab,
-                        childHostShellId = childTabShellId,
-                        mountedTabs = retainedAppShellTabs
+                        childHostShellId = childTabShellId
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
