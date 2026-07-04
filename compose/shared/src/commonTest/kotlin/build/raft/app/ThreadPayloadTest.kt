@@ -3375,6 +3375,7 @@ class ThreadPayloadTest {
         assertEquals(null, launch.parentChannelId)
         assertEquals(null, launch.parentMessageId)
         assertEquals("message-focus", launch.focusedMessageId)
+        assertTrue(launch.focusedMessageRequestNonce > 0)
         assertEquals(480, launch.localOffsetMinutes)
         assertEquals(20593, launch.todayEpochDay)
         assertEquals(true, launch.alignOwnMessagesRight)
@@ -3391,6 +3392,7 @@ class ThreadPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
         assertEquals("channel-1", initialPayload.sourceThreadId)
         assertEquals("message-focus", initialPayload.focusedMessageId)
+        assertEquals(launch.focusedMessageRequestNonce, initialPayload.focusedMessageRequestNonce)
         assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
         assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
@@ -3406,6 +3408,41 @@ class ThreadPayloadTest {
         assertEquals(null, composer.mentionChannelId)
         assertEquals(null, composer.parentMessageId)
         assertEquals(true, composer.showAsTaskToggle)
+    }
+
+    @Test
+    fun standaloneFocusedChannelLaunchesUseFreshFocusIntentNonce() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "visual-testing"
+            )
+
+        val first =
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
+                conversation,
+                timeContext = null,
+                anchorMessageId = "message-focus"
+            )
+        val second =
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
+                conversation,
+                timeContext = null,
+                anchorMessageId = "message-focus"
+            )
+        val plain =
+            buildStandaloneConversationThreadLaunchPayloadFromSummary(
+                conversation,
+                timeContext = null
+            )
+
+        assertEquals("message-focus", first.focusedMessageId)
+        assertEquals("message-focus", second.focusedMessageId)
+        assertTrue(first.focusedMessageRequestNonce > 0)
+        assertTrue(second.focusedMessageRequestNonce > first.focusedMessageRequestNonce)
+        assertEquals(0, plain.focusedMessageRequestNonce)
     }
 
     @Test

@@ -13708,6 +13708,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         }
     val parentChannelId = if (isReplyThread) conversation.threadParentChannelId() else null
     val parentMessageId = if (isReplyThread) conversation.threadParentMessageId() else null
+    val focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() }
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
@@ -13725,7 +13726,13 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         parentSurfaceKind = if (isReplyThread) conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
-        focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
+        focusedMessageId = focusedMessageId,
+        focusedMessageRequestNonce =
+            if (focusedMessageId != null) {
+                nextThreadFocusedMessageRequestNonce()
+            } else {
+                0
+            },
         selectedTab = "chat",
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
@@ -13771,6 +13778,12 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
         originParentMessageId = parentMessageId,
         focusedMessageId = focusedMessageId,
+        focusedMessageRequestNonce =
+            if (focusedMessageId != null) {
+                nextThreadFocusedMessageRequestNonce()
+            } else {
+                0
+            },
         selectedTab = "chat",
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
