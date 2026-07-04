@@ -1,5 +1,11 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import com.tencent.kuikly.compose.profiler.RecompositionReport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -437,6 +443,36 @@ class SharedSettingsStoreTest {
             repository.calls
         )
         scope.cancel()
+    }
+
+    @Test
+    fun removeServerMemberEvictsSharedServerMembersStoreOnSuccess() = runBlocking {
+        val repository = FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot()))
+        val membersStore = SharedServerMembersStore(FakeSettingsMemberRepository())
+        membersStore.seed(
+            MemberSnapshot(
+                settingsServer("server-1"),
+                listOf(
+                    settingsMember("admin-1", "Admin"),
+                    settingsMember("member-2", "Member")
+                )
+            )
+        )
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                settingsRepository = repository,
+                serverMembersStore = membersStore
+            )
+
+        val result = dataSource.removeServerMember("member-2")
+
+        assertIs<DataResult.Content<SettingsServerActionResult>>(result)
+        assertEquals(listOf("removeServerMember:member-2"), repository.calls)
+        assertEquals(
+            listOf("admin-1"),
+            membersStore.currentServerMembers(ServerId("server-1")).map { it.id.value }
+        )
     }
 
     @Test
@@ -3349,4 +3385,122 @@ class SharedSettingsStoreTest {
         assertEquals(homeBefore.data.subtitle, homeAfter.data.subtitle)
         scope.cancel()
     }
+
+    private class FakeSettingsMemberRepository : MemberRepository {
+        override suspend fun getMembers(
+            priority: DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> =
+            DataResult.Content(MemberSnapshot(settingsServer(serverId.value), emptyList()))
+
+        override suspend fun getMemberProfile(
+            priority: DataRequestPriority,
+            memberId: MemberId,
+            serverId: ServerId?
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun updateAgentProfile(
+            priority: DataRequestPriority,
+            request: AgentProfileUpdateRequest
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun uploadAgentAvatar(
+            priority: DataRequestPriority,
+            request: AgentAvatarUploadRequest
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun getAgentDetail(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDetailSnapshot> = error("unused")
+
+        override suspend fun getAgentDirectMessages(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDmSnapshot> = error("unused")
+
+        override suspend fun getAgentReminders(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentReminderSnapshot> = error("unused")
+
+        override suspend fun getAgentActivity(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentActivitySnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaces(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceSnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaceTree(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceTreeSnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaceChildren(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            dirPath: String
+        ): DataResult<AgentWorkspaceChildrenSnapshot> = error("unused")
+
+        override suspend fun readAgentWorkspaceFile(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            path: String
+        ): DataResult<AgentWorkspaceFilePreviewSnapshot> = error("unused")
+
+        override suspend fun getAgentSkills(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentSkillsSnapshot> = error("unused")
+
+        override suspend fun startAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun stopAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun resetAgent(
+            priority: DataRequestPriority,
+            request: AgentResetRequest
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun deleteAgent(
+            priority: DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun assignAgentMachine(
+            priority: DataRequestPriority,
+            request: AgentMachineAssignmentRequest
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> =
+            DataResult.Content(ChannelMemberSnapshot(channelId, emptyList()))
+
+        override suspend fun addChannelMember(
+            priority: DataRequestPriority,
+            request: AddChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = error("unused")
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = error("unused")
+    }
 }
+
+private fun settingsServer(id: String): ServerSummary =
+    ServerSummary(id = ServerId(id), name = "Workspace", slug = "workspace")
+
+private fun settingsMember(id: String, name: String): MemberProfile =
+    MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
