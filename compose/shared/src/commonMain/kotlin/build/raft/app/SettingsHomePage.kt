@@ -10943,11 +10943,9 @@ private fun SharedCreateChannelMemberRow(
     val avatarWireValue = member.avatarWireValueForAvatarSlot()
     val statusColor =
         if (member.kind == MemberKind.Agent) {
-            when (member.presence) {
-                Presence.Active -> SlockColor.AccentLime
-                Presence.Away -> SlockColor.BrandYellow
-                Presence.Offline -> SlockColor.EmptyStateGray
-            }
+            // Same resolver as every other agent dot: agentStatus wins over
+            // raw presence so a Working agent is yellow here too (#198).
+            slockAgentStatusIndicatorState(status = member.agentStatus, presence = member.presence).color
         } else {
             null
         }

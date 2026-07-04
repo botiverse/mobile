@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.map
 internal data class SlockAgentStatusIndicatorState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean
+    val pulsing: Boolean,
+    val label: String
 )
 
 internal typealias SlockAgentStatusResolver = (String?) -> Flow<SlockAgentStatusIndicatorState?>
@@ -78,7 +79,11 @@ internal fun slockAgentStatusIndicatorState(
                         Presence.Offline -> SlockColor.EmptyStateGray
                     }
             },
-        pulsing = status == AgentStatus.Working || status == AgentStatus.Thinking
+        pulsing = status == AgentStatus.Working || status == AgentStatus.Thinking,
+        // Label derives from the same resolved status as color/pulse so a dot
+        // can never disagree with the text beside it (React
+        // resolveAgentDisplayState parity, #198/#73).
+        label = status?.label ?: presence.name
     )
 
 internal fun slockAgentStatusIndicatorState(

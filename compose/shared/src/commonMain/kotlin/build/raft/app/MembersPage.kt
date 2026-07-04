@@ -3467,9 +3467,13 @@ private fun MembersDetailSummary(
         if (deleted) {
             "Deleted"
         } else {
-            summary?.activityDetail?.takeIf { it.isNotBlank() }
-                ?: summary?.activity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
-                ?: member.detailStatusLabel
+            membersLiveAgentStatusLabel(
+                indicatorState = agentStatusIndicatorState,
+                summaryStatus = summary?.status,
+                summaryActivity = summary?.activity,
+                summaryActivityDetail = summary?.activityDetail,
+                fallback = member.detailStatusLabel
+            )
         }
     Row(
         modifier = modifier
@@ -4561,10 +4565,11 @@ private fun MembersAgentProfileHeader(
     onUploadAvatar: suspend () -> DataResult<MemberProfile>,
     onUnavailableAction: (String) -> Unit
 ) {
-    val statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
-    val statusLabel = membersAgentStatusLabel(
-        status = statusDisplayState.status,
+    val statusLabel = membersLiveAgentStatusLabel(
+        indicatorState = agentStatusIndicatorState,
+        summaryStatus = summary?.status,
         summaryActivity = summary?.activity,
+        summaryActivityDetail = null,
         fallback = member.detailStatusLabel
     )
     val scope = rememberCoroutineScope()
@@ -7782,7 +7787,8 @@ private fun MemberProfile.toSlockAgentStatusIndicatorState(
     return SlockAgentStatusIndicatorState(
         status = display.status,
         color = display.color,
-        pulsing = display.pulsing
+        pulsing = display.pulsing,
+        label = display.status?.label ?: presence.name
     )
 }
 
@@ -7830,6 +7836,39 @@ internal fun membersAgentStatusLabel(
     status?.label
         ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
         ?: fallback
+
+/**
+ * Status label that can never disagree with the live status dot (#198/#73).
+ *
+ * When a live indicator state exists, the label derives from the same
+ * resolved status the dot renders; the richer summary activity/detail text is
+ * shown only while the summary agrees with the live status — a stale
+ * AgentDetailSummary (refreshed on navigation) must not caption a live dot
+ * with an outdated state (e.g. green Online dot labelled "Working").
+ */
+internal fun membersLiveAgentStatusLabel(
+    indicatorState: SlockAgentStatusIndicatorState?,
+    summaryStatus: String?,
+    summaryActivity: String?,
+    summaryActivityDetail: String?,
+    fallback: String
+): String {
+    val liveStatus = indicatorState?.status
+    if (liveStatus == null) {
+        return summaryActivityDetail?.takeIf { it.isNotBlank() }
+            ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
+            ?: indicatorState?.label
+            ?: fallback
+    }
+    val summaryResolved =
+        AgentStatus.fromWireValue(summaryActivity) ?: AgentStatus.fromWireValue(summaryStatus)
+    if (summaryResolved == liveStatus) {
+        return summaryActivityDetail?.takeIf { it.isNotBlank() }
+            ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
+            ?: liveStatus.label
+    }
+    return liveStatus.label
+}
 
 private fun MemberProfile.membersAgentRuntimeErrorText(
     detail: AgentDetailSnapshot?,
