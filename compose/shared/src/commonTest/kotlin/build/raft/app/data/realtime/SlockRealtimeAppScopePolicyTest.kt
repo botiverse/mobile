@@ -422,4 +422,19 @@ class SlockRealtimeAppScopePolicyTest {
         assertTrue(leaveAfterRejoin.shouldEmit)
     }
 
+    @Test
+    fun resetRoomStateForHostClearsJoinedSetForNextSession() {
+        val engine = SlockRealtimeAppScopeEngine()
+
+        val firstJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
+        engine.resetRoomStateForHost()
+        val joinAfterReset = engine.joinChannelDecisionForHost("channel-1", "notify")
+        val duplicateAfterReset = engine.joinChannelDecisionForHost("channel-1", "notify")
+
+        assertTrue(firstJoin.shouldEmit)
+        // Without the reset this would be skipped as already_joined.
+        assertTrue(joinAfterReset.shouldEmit)
+        assertFalse(duplicateAfterReset.shouldEmit)
+    }
+
 }
