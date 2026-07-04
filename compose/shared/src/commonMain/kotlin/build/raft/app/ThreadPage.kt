@@ -7011,6 +7011,11 @@ private fun ThreadPageContent(
             taskChannelId
                 ?: ChannelId(threadInstanceKey)
         }
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
     val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
@@ -7152,6 +7157,7 @@ private fun ThreadPageContent(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
                         openTaskEnabled = payload.showTaskOpenActions,
+                        draftProjection = draftProjection,
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onIntent = onTasksIntent
                     )
@@ -13329,6 +13335,7 @@ private fun ThreadTasksTab(
     tasksViewModel: SharedTasksViewModel?,
     channelId: ChannelId,
     openTaskEnabled: Boolean,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onOpenTask: (String) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -13345,6 +13352,7 @@ private fun ThreadTasksTab(
         showHeader = false,
         showChannelFilter = false,
         createTasksChannelId = channelId,
+        draftProjection = draftProjection,
         onOpenTask = if (openTaskEnabled) {
             { task -> onOpenTask(task.id.value) }
         } else {

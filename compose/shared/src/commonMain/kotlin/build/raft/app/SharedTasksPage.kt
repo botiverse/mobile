@@ -91,6 +91,7 @@ internal fun SharedTasksScreen(
     modifier: Modifier = Modifier,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
@@ -102,6 +103,7 @@ internal fun SharedTasksScreen(
         showChannelFilter = true,
         onOpenTask = onOpenTask,
         bottomContentPadding = bottomContentPadding,
+        draftProjection = draftProjection,
         initialListPosition = initialListPosition,
         onListPositionSnapshot = onListPositionSnapshot
     )
@@ -119,6 +121,7 @@ internal fun SharedTasksPanel(
     createTasksChannelId: ChannelId? = null,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
@@ -165,6 +168,7 @@ internal fun SharedTasksPanel(
                     onOpenTask = onOpenTask,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
+                    draftProjection = draftProjection,
                     initialListPosition = initialListPosition,
                     onListPositionSnapshot = onListPositionSnapshot
                 )
@@ -309,6 +313,7 @@ private fun SharedTasksLoadedBody(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
     bottomContentPadding: Dp,
+    draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
 ) {
@@ -323,6 +328,7 @@ private fun SharedTasksLoadedBody(
             onIntent = onIntent,
             defaultViewMode = defaultTasksViewMode(maxWidth),
             bottomContentPadding = bottomContentPadding,
+            draftProjection = draftProjection,
             initialListPosition = initialListPosition,
             onListPositionSnapshot = onListPositionSnapshot
         )
@@ -340,6 +346,7 @@ private fun SharedTasksLoadedBodyContent(
     onIntent: (SharedTasksRouteIntent) -> Unit,
     defaultViewMode: TasksViewMode,
     bottomContentPadding: Dp,
+    draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
 ) {
@@ -550,7 +557,8 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
-                                    bottomContentPadding = bottomContentPadding
+                                    bottomContentPadding = bottomContentPadding,
+                                    draftProjection = draftProjection
                                 )
                             }
                         }
@@ -619,6 +627,7 @@ private fun SharedTasksLoadedBodyContent(
                                             SharedTaskCard(
                                                 task = task,
                                                 updating = state.statusUpdatingTaskId == task.id.value,
+                                                hasDraft = draftProjection.hasDraftForTask(task),
                                                 captureLongPressAnchor = !listModeListState.isScrollInProgress,
                                                 onClick = { onOpenTask?.invoke(task) },
                                                 onStatusBadgeClick = { anchor ->
@@ -961,7 +970,8 @@ private fun SharedTasksBoardColumn(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
     onLongPressTask: (TaskSummary, Offset) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    draftProjection: SharedThreadComposerDraftProjection
 ) {
     val columnListState = rememberLazyListState()
     var columnListRoot by remember { mutableStateOf(Offset.Zero) }
@@ -1016,6 +1026,7 @@ private fun SharedTasksBoardColumn(
                         SharedTaskCard(
                             task = task,
                             updating = updatingTaskId == task.id.value,
+                            hasDraft = draftProjection.hasDraftForTask(task),
                             captureLongPressAnchor = !columnListState.isScrollInProgress,
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, taskMenuAnchor(anchor)) },
@@ -1062,6 +1073,7 @@ private fun BoardSectionHeader(
 private fun SharedTaskCard(
     task: TaskSummary,
     updating: Boolean,
+    hasDraft: Boolean,
     captureLongPressAnchor: Boolean = true,
     onClick: () -> Unit,
     onStatusBadgeClick: (Offset) -> Unit,
@@ -1131,6 +1143,13 @@ private fun SharedTaskCard(
                         style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
+                    )
+                }
+                if (hasDraft) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.Pencil,
+                        modifier = Modifier.size(13.dp),
+                        color = SlockColor.TextMutedGrayArgb
                     )
                 }
                 Spacer(Modifier.weight(1f))

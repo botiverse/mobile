@@ -159,6 +159,11 @@ internal fun SharedHomeActivityScreen(
             )
         }
     val state by activityStore.state.collectAsState()
+    val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
@@ -177,6 +182,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         modifier = modifier
     )
@@ -197,6 +203,7 @@ internal fun SharedHomeActivityScreen(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -210,6 +217,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         modifier = modifier
     )
@@ -227,6 +235,7 @@ internal fun SharedHomeActivityPanel(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -245,6 +254,7 @@ internal fun SharedHomeActivityPanel(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            draftProjection = draftProjection,
             onTitleClick = onTitleClick,
             modifier = modifier
         )
@@ -262,6 +272,7 @@ private fun SharedActivityPanelContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
@@ -290,6 +301,7 @@ private fun SharedActivityPanelContent(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            draftProjection = draftProjection,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -304,6 +316,7 @@ private fun SharedActivityBodyContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    draftProjection: SharedThreadComposerDraftProjection,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -355,7 +368,9 @@ private fun SharedActivityBodyContent(
                 )
             else ->
                 SharedActivityList(
-                    snapshot = snapshot,
+                    snapshot = remember(snapshot, draftProjection) {
+                        snapshot.withComposerDraftProjection(draftProjection)
+                    },
                     senderProfiles = state.senderProfiles,
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
@@ -828,6 +843,12 @@ private fun SharedActivityFooter(
                         textColor = SlockColor.SurfaceWhite,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
+                SharedActivityFooterSlot.Draft ->
+                    SlockLucideIcon(
+                        SlockLucideIconName.Pencil,
+                        modifier = Modifier.size(12.dp).align(Alignment.CenterVertically),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
             }
         }
     }
@@ -1157,7 +1178,8 @@ internal enum class SharedActivityFooterSlot {
     Replies,
     Task,
     Mention,
-    New
+    New,
+    Draft
 }
 
 internal fun InboxItem.activityFooterSlots(
@@ -1175,6 +1197,9 @@ internal fun InboxItem.activityFooterSlots(
     }
     if (unreadCount > 0) {
         slots += SharedActivityFooterSlot.New
+    }
+    if (hasDraft) {
+        slots += SharedActivityFooterSlot.Draft
     }
     return slots
 }

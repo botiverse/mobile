@@ -1,8 +1,12 @@
 package build.raft.app
 
+import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.MviPersistSlice
 import build.raft.app.data.MviStoreRuntime
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.model.InboxItemKind
+import build.raft.app.model.TaskSummary
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
@@ -53,10 +57,27 @@ internal data class SharedThreadComposerDraftRecord(
 }
 
 internal data class SharedThreadComposerDraftProjection(
-    private val rootConversationIds: Set<String> = emptySet()
+    private val rootConversationIds: Set<String> = emptySet(),
+    private val replyParentMessageIds: Set<String> = emptySet()
 ) {
     fun hasRootDraft(conversationId: String): Boolean =
         conversationId in rootConversationIds
+
+    fun hasReplyDraft(parentMessageId: String?): Boolean =
+        parentMessageId?.takeIf { it.isNotBlank() } in replyParentMessageIds
+
+    fun hasDraftForInboxItem(item: InboxItem): Boolean =
+        when (item.kind) {
+            InboxItemKind.Thread -> hasReplyDraft(item.parentMessageId?.value)
+            InboxItemKind.Channel,
+            InboxItemKind.DirectMessage,
+            InboxItemKind.MentionAction,
+            InboxItemKind.System -> hasRootDraft(item.channelId.value)
+        }
+
+    fun hasDraftForTask(task: TaskSummary): Boolean =
+        hasReplyDraft(task.parentMessageId?.value)
+            || hasReplyDraft(task.messageId?.value)
 
     companion object {
         val Empty = SharedThreadComposerDraftProjection()
@@ -67,8 +88,21 @@ internal fun Set<SharedThreadComposerDraftRecord>.toSharedThreadComposerDraftPro
     SharedThreadComposerDraftProjection(
         rootConversationIds = mapNotNull { record ->
             record.sendChannelId.takeIf { record.isRootComposer }
+        }.toSet(),
+        replyParentMessageIds = mapNotNull { record ->
+            record.parentMessageId?.takeIf { !record.isRootComposer && it.isNotBlank() }
         }.toSet()
     )
+
+internal fun InboxItem.withComposerDraftProjection(
+    draftProjection: SharedThreadComposerDraftProjection
+): InboxItem =
+    copy(hasDraft = draftProjection.hasDraftForInboxItem(this))
+
+internal fun InboxSnapshot.withComposerDraftProjection(
+    draftProjection: SharedThreadComposerDraftProjection
+): InboxSnapshot =
+    copy(items = items.map { item -> item.withComposerDraftProjection(draftProjection) })
 
 internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore,

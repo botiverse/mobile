@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InboxItem
+import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MessageId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -169,6 +176,91 @@ class SharedThreadComposerDraftStoreTest {
         assertTrue(records.any { it.matchesRootConversation("channel-1") })
         assertTrue(records.any { it.matchesReplyThread("message-1") })
         assertFalse(records.any { it.matchesRootConversation("reply-thread-1") })
+    }
+
+    @Test
+    fun replyDraftRestoresByParentComposerKey() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
+        val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "reply-composer-1",
+                        parentMessageId = "message-1",
+                        streamChannelId = "reply-thread-1"
+                    ),
+                draftKey = draftKey
+            )
+        )
+        firstStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "reply in progress", seedAsTask = false))
+
+        val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        secondStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "reply-composer-2",
+                        parentMessageId = "message-1",
+                        streamChannelId = "reply-thread-1"
+                    ),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals("reply in progress", secondStore.state.value.seedText)
+        assertTrue(persistSlice.activeDraftRecordsState.value.any { it.matchesReplyThread("message-1") })
+    }
+
+    @Test
+    fun activeDraftProjectionMarksThreadInboxAndTaskRows() {
+        val projection =
+            setOf(
+                SharedThreadComposerDraftRecord(
+                    key = "send=channel-1|parent=_|mention=channel-1",
+                    sendChannelId = "channel-1"
+                ),
+                SharedThreadComposerDraftRecord(
+                    key = "send=reply-thread-1|parent=message-1|mention=channel-1",
+                    sendChannelId = "reply-thread-1",
+                    parentMessageId = "message-1",
+                    mentionChannelId = "channel-1"
+                )
+            ).toSharedThreadComposerDraftProjection()
+
+        val channelItem =
+            InboxItem(
+                key = "channel-1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "channel"
+            ).withComposerDraftProjection(projection)
+        val threadItem =
+            InboxItem(
+                key = "thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "channel",
+                threadChannelId = ChannelId("reply-thread-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("message-1")
+            ).withComposerDraftProjection(projection)
+        val task =
+            TaskSummary(
+                id = TaskId("task-1"),
+                title = "Task",
+                status = TaskStatus.Todo,
+                messageId = MessageId("message-1"),
+                channelId = ChannelId("channel-1"),
+                updatedAtLabel = "now"
+            )
+
+        assertTrue(channelItem.hasDraft)
+        assertTrue(threadItem.hasDraft)
+        assertTrue(projection.hasDraftForTask(task))
     }
 
     @Test

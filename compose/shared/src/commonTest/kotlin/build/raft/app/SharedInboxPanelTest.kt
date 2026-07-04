@@ -347,6 +347,31 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityFooterSlotsPutDraftPencilAtRowBottomEnd() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                replyCount = 12,
+                hasMention = true,
+                unreadCount = 3,
+                hasDraft = true
+            )
+
+        assertEquals(
+            listOf(
+                SharedActivityFooterSlot.Replies,
+                SharedActivityFooterSlot.Mention,
+                SharedActivityFooterSlot.New,
+                SharedActivityFooterSlot.Draft
+            ),
+            item.activityFooterSlots()
+        )
+    }
+
+    @Test
     fun activityFooterSlotsHideTaskWhenTaskStatusBadgesDisabled() {
         val item =
             InboxItem(

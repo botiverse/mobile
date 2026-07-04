@@ -693,6 +693,7 @@ private data class HomeSecondaryRouteEnvironment(
     val networkClient: SlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
     val serverMembersStore: SharedServerMembersStore,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContext: AppShellThreadTimeContext?,
@@ -748,6 +749,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         localWriteThrough,
         settingsCapabilities,
         sharedStores.serverMembersStore,
+        sharedStores.composerDraftPersistSlice,
         sharedStores.homeSavedStateCache,
         timeContext,
         myMessageAlignment,
@@ -763,6 +765,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             networkClient = networkClient,
             localWriteThrough = localWriteThrough,
             serverMembersStore = sharedStores.serverMembersStore,
+            composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContext = timeContext,
@@ -915,11 +918,17 @@ private fun HomeSearchRouterContent(
     }
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
+        draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
@@ -968,6 +977,11 @@ private fun HomeSavedRouterContent(
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
     var savedServerId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(environment.authStore, environment.serverMembersStore) {
         val serverId =
@@ -988,6 +1002,7 @@ private fun HomeSavedRouterContent(
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
         memberAvatarResolver = memberAvatarResolver,
+        draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
@@ -1688,6 +1703,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
     val localePreferenceStore =
         remember(sharedPreferenceStore) {
             KeyValueLocalePreferenceStore(sharedPreferenceStore)
@@ -2916,6 +2936,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
                             bottomContentPadding = appShellBottomContentInset,
+                            draftProjection = draftProjection,
                             initialListPosition = tasksListPosition,
                             onListPositionSnapshot = { tasksListPosition = it },
                             onOpenTask = { task ->
@@ -10885,6 +10906,7 @@ private fun SharedHomeSearchPanel(
     homeState: SharedHomeState,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     interactiveSearchField: Boolean = true,
@@ -10905,7 +10927,11 @@ private fun SharedHomeSearchPanel(
     val entityResults = remember(state.query, homeState, state.senderFilters) {
         homeSearchEntityResults(state.query, homeState, state.senderFilters)
     }
-    val groupedResults = remember(state.items) { groupHomeSearchResults(state.items) }
+    val projectedItems =
+        remember(state.items, draftProjection) {
+            state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
+        }
+    val groupedResults = remember(projectedItems) { groupHomeSearchResults(projectedItems) }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
     var senderAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -10965,7 +10991,7 @@ private fun SharedHomeSearchPanel(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 item {
-                    val hasSearchRows = state.items.isNotEmpty() || entityResults.isNotEmpty()
+                    val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
                     if (state.loading && !hasSearchRows) {
                         SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
                     } else if (state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
@@ -10977,12 +11003,12 @@ private fun SharedHomeSearchPanel(
                             emptyDetail = "",
                             onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
                         )
-                    } else if (!state.searched && state.items.isEmpty() && entityResults.isEmpty()) {
+                    } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
                         SharedHomeSearchEmptyState(
                             title = "Search everything",
                             detail = "Search channels, DMs, people, agents, and message history."
                         )
-                    } else if (state.empty || (state.searched && state.items.isEmpty() && entityResults.isEmpty())) {
+                    } else if (state.empty || (state.searched && projectedItems.isEmpty() && entityResults.isEmpty())) {
                         val trimmedQuery = state.query.trim()
                         SharedHomeSearchEmptyState(
                             title = if (trimmedQuery.isNotBlank()) "No results for \"$trimmedQuery\"" else "No matching messages",
@@ -11272,6 +11298,7 @@ private fun SharedHomeSearchIconButton(
 private fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     onOpenItem: (InboxItem) -> Unit,
@@ -11300,7 +11327,11 @@ private fun SharedHomeSavedPanel(
         }
     }
     val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
-    if (state.loading && state.items.isEmpty()) {
+    val projectedItems =
+        remember(state.items, draftProjection) {
+            state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
+        }
+    if (state.loading && projectedItems.isEmpty()) {
         Column(
             modifier =
                 Modifier
@@ -11308,7 +11339,7 @@ private fun SharedHomeSavedPanel(
                     .background(SlockColor.SurfaceWhite)
         ) {
             SharedHomeSavedHeader(
-                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
                 onClose = onClose,
                 refreshing = state.refreshing && !state.pullRefreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
@@ -11326,7 +11357,7 @@ private fun SharedHomeSavedPanel(
     ) {
         Column(Modifier.fillMaxSize()) {
             SharedHomeSavedHeader(
-                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
                 onClose = onClose,
                 refreshing = state.refreshing && !state.pullRefreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
@@ -11354,7 +11385,7 @@ private fun SharedHomeSavedPanel(
                         }
                     )
                 }
-                val hasSavedRows = state.items.isNotEmpty()
+                val hasSavedRows = projectedItems.isNotEmpty()
                 if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
                     item {
                         SharedHomePanelStatus(
@@ -11366,13 +11397,13 @@ private fun SharedHomeSavedPanel(
                             onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
                         )
                     }
-                } else if (state.empty || (state.loaded && state.items.isEmpty())) {
+                } else if (state.empty || (state.loaded && projectedItems.isEmpty())) {
                     item {
                         SharedHomeSavedEmptyState()
                     }
                 }
-                items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
-                    val item = state.items[index]
+                items(projectedItems.size, key = { index -> "saved-${projectedItems[index].key}" }) { index ->
+                    val item = projectedItems[index]
                     SharedHomeSavedResultCard(
                         item = item,
                         selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
@@ -11985,6 +12016,9 @@ private fun SharedHomeSavedResultCard(
                             )
                         }
                     }
+                    if (item.hasDraft) {
+                        SharedHomeDraftPencilIcon()
+                    }
                     sender?.let {
                         SharedHomeSavedSenderMeta(
                             senderName = it,
@@ -12278,6 +12312,9 @@ private fun SharedHomeThreadResultGroup(
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
                 )
+                if (firstItem.hasDraft) {
+                    SharedHomeDraftPencilIcon(compact = true)
+                }
                 Spacer(Modifier.weight(1f))
                 if (!latestTime.isNullOrBlank()) {
                     Text(
@@ -12372,6 +12409,9 @@ private fun SharedHomeSearchMessageResultRow(
                 if (item.kind == InboxItemKind.Thread && !nested) {
                     SharedHomeMiniMetaBadge("thread", SlockLucideIconName.MessageSquare)
                 }
+                if (item.hasDraft) {
+                    SharedHomeDraftPencilIcon(compact = nested)
+                }
                 if (!sender.isNullOrBlank()) {
                     SharedHomeSearchSenderMeta(
                         sender = sender,
@@ -12410,6 +12450,18 @@ private fun SharedHomeMiniMetaBadge(
     compact: Boolean = false
 ) {
     SharedHomeOutlinedMetaBadge(label = label, iconName = iconName, compact = compact)
+}
+
+@Composable
+private fun SharedHomeDraftPencilIcon(
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    SlockLucideIcon(
+        SlockLucideIconName.Pencil,
+        modifier = modifier.size(if (compact) 10.dp else 12.dp),
+        color = SlockColor.TextMutedGrayArgb
+    )
 }
 
 @Composable
