@@ -1,3 +1,5 @@
+import hilog from '@ohos.hilog';
+
 export interface SlockOhosDiagnosticEntry {
   timestampMillis: number;
   level: string;
@@ -30,11 +32,20 @@ export class SlockOhosDiagnostics {
     SlockOhosDiagnostics.persistentRecorder = recorder;
   }
 
-  static record(tag: string, message: string, timestampMillis: number = Date.now(), level: string = 'info'): void {
+  static record(
+    tag: string,
+    message: string,
+    timestampMillis: number = Date.now(),
+    level: string = 'info',
+    mirrorToHiLog: boolean = true
+  ): void {
     const safeTag = SlockOhosDiagnostics.sanitize(tag).slice(0, 48);
     const normalizedLevel = SlockOhosDiagnostics.normalizeLevel(level);
     const sanitizedMessage = SlockOhosDiagnostics.sanitize(message);
     const safeMessage = sanitizedMessage.slice(0, 2048);
+    if (mirrorToHiLog) {
+      SlockOhosDiagnostics.mirrorToHiLog(safeTag, safeMessage, normalizedLevel);
+    }
     SlockOhosDiagnostics.entries.push({
       timestampMillis,
       level: normalizedLevel,
@@ -103,6 +114,25 @@ export class SlockOhosDiagnostics {
       return level;
     }
     return 'info';
+  }
+
+  private static mirrorToHiLog(tag: string, message: string, level: string): void {
+    try {
+      if (level === 'debug') {
+        hilog.debug(0x0000, tag, '%{public}s', message);
+        return;
+      }
+      if (level === 'warn') {
+        hilog.warn(0x0000, tag, '%{public}s', message);
+        return;
+      }
+      if (level === 'error') {
+        hilog.error(0x0000, tag, '%{public}s', message);
+        return;
+      }
+      hilog.info(0x0000, tag, '%{public}s', message);
+    } catch (_error) {
+    }
   }
 
   private static eventName(message: string): string {

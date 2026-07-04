@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
+import build.raft.app.slockLogInfo
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
@@ -23,6 +24,14 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+
+private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
+
+private fun BridgeModule.logSharedAuthDiagnostic(prefix: String, message: String) {
+    val line = "$prefix $message"
+    log(line)
+    slockLogInfo(SHARED_AUTH_LOG_TAG, line)
+}
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
@@ -171,11 +180,16 @@ internal class SlockSharedStoreProvider private constructor(
             val tasksDataStore = SharedTasksDataStore()
             val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
-            bridge.log("shared_auth_session auth_storage_scope scope=${authKeyValueStoreBinding.scope}")
+            bridge.logSharedAuthDiagnostic(
+                "shared_auth_session",
+                "auth_storage_scope scope=${authKeyValueStoreBinding.scope}"
+            )
             val authStore =
                 KeyValueAuthSessionStore(
                     store = authKeyValueStore,
-                    diagnosticsLogger = { message -> bridge.log("shared_auth_session $message") }
+                    diagnosticsLogger = { message ->
+                        bridge.logSharedAuthDiagnostic("shared_auth_session", message)
+                    }
                 )
             val sharedPreferenceStoreBinding =
                 SlockSharedKeyValueStoreProvider.create(
@@ -183,9 +197,11 @@ internal class SlockSharedStoreProvider private constructor(
                     storageName = "shared preference"
                 )
             val sharedPreferenceStore = sharedPreferenceStoreBinding.store
-            bridge.log(
-                "shared_key_value storage_scope name=sharedPreference " +
-                    "namespace=${SlockLocalPreferenceStore.KuiklyNamespace} scope=${sharedPreferenceStoreBinding.scope}"
+            bridge.logSharedAuthDiagnostic(
+                "shared_key_value",
+                "storage_scope name=sharedPreference " +
+                    "namespace=${SlockLocalPreferenceStore.KuiklyNamespace} " +
+                    "scope=${sharedPreferenceStoreBinding.scope}"
             )
             val apiEnvironmentKeyValueStoreBinding =
                 SlockSharedKeyValueStoreProvider.create(
@@ -193,9 +209,11 @@ internal class SlockSharedStoreProvider private constructor(
                     storageName = "API environment"
                 )
             val apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStoreBinding.store
-            bridge.log(
-                "shared_key_value storage_scope name=apiEnvironment " +
-                    "namespace=${SharedApiEnvironmentStore.Namespace} scope=${apiEnvironmentKeyValueStoreBinding.scope}"
+            bridge.logSharedAuthDiagnostic(
+                "shared_key_value",
+                "storage_scope name=apiEnvironment " +
+                    "namespace=${SharedApiEnvironmentStore.Namespace} " +
+                    "scope=${apiEnvironmentKeyValueStoreBinding.scope}"
             )
             val apiEnvironmentStore =
                 SharedApiEnvironmentStore(
@@ -203,18 +221,22 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
             val platformFileResolver = SlockSharedPlatformFileResolverProvider.create()
-            bridge.log(
-                "shared_network_file_resolver storage_scope=" +
-                    if (platformFileResolver == null) "missing" else "app"
+            bridge.logSharedAuthDiagnostic(
+                "shared_network_file_resolver",
+                "storage_scope=" + if (platformFileResolver == null) "missing" else "app"
             )
             val authDataSource =
                 SharedAuthDataSource(
                     transport = SharedKtorSlockAuthTransport(
                         baseUrl = apiBaseUrl,
-                        warningLogger = { message -> bridge.log("shared_auth_network $message") }
+                        warningLogger = { message ->
+                            bridge.logSharedAuthDiagnostic("shared_auth_network", message)
+                        }
                     ),
                     sessionStore = authStore,
-                    diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
+                    diagnosticsLogger = { message ->
+                        bridge.logSharedAuthDiagnostic("shared_auth", message)
+                    }
                 )
             val networkClient =
                 SharedKtorSlockNetworkClient(
