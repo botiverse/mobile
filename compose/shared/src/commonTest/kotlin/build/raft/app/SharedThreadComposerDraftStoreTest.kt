@@ -216,6 +216,97 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun replyDraftRestoreBumpsSyncNonceForSameComposerInstance() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
+        persistence.save(
+            key = draftKey,
+            text = "reply in progress",
+            asTask = false
+        )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "reply-composer",
+                        seedText = "",
+                        syncNonce = 0,
+                        parentMessageId = "message-1",
+                        streamChannelId = "reply-thread-1"
+                    ),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals("reply in progress", store.state.value.seedText)
+        assertEquals(1, store.state.value.syncNonce)
+    }
+
+    @Test
+    fun replyDraftRestoresAndMigratesWhenSendTargetChangesForSameParentTuple() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val oldDraftKey = "send=reply-thread-old|parent=message-1|mention=channel-1"
+        val currentDraftKey = "send=reply-thread-new|parent=message-1|mention=channel-1"
+        persistence.save(
+            key = oldDraftKey,
+            text = "reply in progress",
+            asTask = false
+        )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "reply-composer",
+                        parentMessageId = "message-1",
+                        streamChannelId = "reply-thread-new",
+                        mentionChannelId = "channel-1"
+                    ),
+                draftKey = currentDraftKey
+            )
+        )
+
+        assertEquals("reply in progress", store.state.value.seedText)
+        assertEquals("reply in progress", persistence.read(currentDraftKey)?.text)
+        assertEquals(null, persistence.read(oldDraftKey))
+        assertTrue(persistSlice.activeDraftRecordsState.value.any { record -> record.key == currentDraftKey })
+        assertFalse(persistSlice.activeDraftRecordsState.value.any { record -> record.key == oldDraftKey })
+    }
+
+    @Test
+    fun replyDraftFallbackRequiresParentChannelMatch() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        persistence.save(
+            key = "send=reply-thread-old|parent=message-1|mention=channel-1",
+            text = "wrong channel draft",
+            asTask = false
+        )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "reply-composer",
+                        parentMessageId = "message-1",
+                        streamChannelId = "reply-thread-new",
+                        mentionChannelId = "channel-2"
+                    ),
+                draftKey = "send=reply-thread-new|parent=message-1|mention=channel-2"
+            )
+        )
+
+        assertEquals("", store.state.value.seedText)
+        assertEquals(0, store.state.value.syncNonce)
+    }
+
+    @Test
     fun activeDraftProjectionMarksThreadInboxAndTaskRows() {
         val projection =
             setOf(
