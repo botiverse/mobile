@@ -12919,16 +12919,20 @@ private fun ThreadMessageAvatarSlot(
     ) {
         when {
             showAvatar ->
-                ThreadMessageAvatar(
-                    avatarLabel = avatarLabel,
-                    avatarWireValue = avatarWireValue,
-                    gravatarUrl = gravatarUrl,
-                    status = status,
-                    statusPulsing = statusPulsing,
-                    muted = muted,
-                    onClick = onClick,
-                    onLongPress = onLongPress
-                )
+                // React parity: MessageSenderAvatar carries mt-0.5 (2px) so the
+                // avatar top optically aligns with the name glyphs.
+                Box(modifier = Modifier.padding(top = 2.dp)) {
+                    ThreadMessageAvatar(
+                        avatarLabel = avatarLabel,
+                        avatarWireValue = avatarWireValue,
+                        gravatarUrl = gravatarUrl,
+                        status = status,
+                        statusPulsing = statusPulsing,
+                        muted = muted,
+                        onClick = onClick,
+                        onLongPress = onLongPress
+                    )
+                }
             showTimestamp ->
                 Text(
                     text = timestampLabel,

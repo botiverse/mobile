@@ -7,8 +7,6 @@ import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalModalLayer
-import build.raft.app.components.SlockModalShellModel
 import build.raft.app.components.SlockBrutalTone
 import build.raft.app.PixelAvatarDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
@@ -3189,10 +3187,15 @@ private fun MembersDetailContent(
         val activePendingConfirmation =
             if (sharedAgentDetailStore != null) storePendingConfirmation else pendingConfirmation
         activePendingConfirmation?.let { action ->
-            SlockBrutalModalLayer(
-                model = SlockModalShellModel(
-                    title = membersLifecycleConfirmTitle(action)
-                ),
+            // Reuse the shared unified dialog (React ConfirmDialog is a plain
+            // card: uppercase 18px title + X, no header divider, max-w-sm).
+            SlockUnifiedDialog(
+                title = membersLifecycleConfirmTitle(action).uppercase(),
+                dismissEnabled = lifecycleInFlight != action.actionKey,
+                maxWidth = 384.dp,
+                contentPadding = 24.dp,
+                titleFontSize = 18,
+                titleLineHeight = 22,
                 onDismiss = {
                     if (sharedAgentDetailStore != null) {
                         sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
@@ -3553,8 +3556,9 @@ private fun MembersLifecycleConfirmation(
     onCancel: () -> Unit
 ) {
     val accent = if (action.destructive) SlockColor.AccentRed else SlockColor.AccentOrange
+    // Hosted inside SlockUnifiedDialog, which owns the card padding.
     Column(
-        modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         Row(
@@ -3566,9 +3570,11 @@ private fun MembersLifecycleConfirmation(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
             verticalAlignment = Alignment.Top
         ) {
+            // React Banner icons: destructive → AlertTriangle, warning →
+            // CircleAlert (closest available catalog glyph is Info).
             SlockLucideIcon(
-                SlockLucideIconName.TriangleAlert,
-                modifier = Modifier.size(16.dp),
+                if (action.destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
+                modifier = Modifier.size(18.dp),
                 color = SlockColor.TextBlackArgb
             )
             Text(
