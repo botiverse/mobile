@@ -13634,6 +13634,10 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     val parentMessageId =
         task.parentMessageId?.value?.takeIf { it.isNotBlank() }
             ?: task.messageId?.value?.takeIf { it.isNotBlank() }
+    val focusedMessageId =
+        task.messageId
+            ?.value
+            ?.takeIf { it.isNotBlank() && it != parentMessageId }
     return WireThreadLaunchPayload(
         instanceId = "task-thread-${task.id.value}",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -13644,7 +13648,7 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         parentMessageId = parentMessageId,
         parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
         originParentMessageId = parentMessageId,
-        focusedMessageId = parentMessageId,
+        focusedMessageId = focusedMessageId,
         selectedTab = "chat",
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,

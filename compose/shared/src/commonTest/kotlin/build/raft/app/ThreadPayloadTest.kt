@@ -3729,7 +3729,7 @@ class ThreadPayloadTest {
         assertEquals("parent-channel-1", launch.parentChannelId)
         assertEquals("parent-message-1", launch.parentMessageId)
         assertEquals("parent-message-1", launch.originParentMessageId)
-        assertEquals("parent-message-1", launch.focusedMessageId)
+        assertEquals("message-1", launch.focusedMessageId)
         assertEquals(480, launch.localOffsetMinutes)
         assertEquals(20593, launch.todayEpochDay)
         assertEquals(true, launch.alignOwnMessagesRight)
@@ -3747,7 +3747,7 @@ class ThreadPayloadTest {
         assertEquals("thread-channel-1", initialPayload.sourceThreadId)
         assertEquals("parent-channel-1", initialPayload.parentChannelId)
         assertEquals("parent-message-1", initialPayload.parentMessageId)
-        assertEquals("parent-message-1", initialPayload.focusedMessageId)
+        assertEquals("message-1", initialPayload.focusedMessageId)
         assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
         assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
@@ -4842,12 +4842,36 @@ class ThreadPayloadTest {
         assertEquals("message-482", launchPayload?.parentMessageId)
         assertEquals("thread-482", launchPayload?.streamChannelId)
         assertEquals("thread-482", launchPayload?.sourceThreadId)
+        assertEquals(null, launchPayload?.focusedMessageId)
         assertEquals(true, launchPayload?.alignOwnMessagesRight)
         assertEquals(true, launchPayload?.compactConsecutiveMessages)
         assertEquals(SlockTimeFormat12Hour, launchPayload?.timeFormat)
         assertEquals(emptyList<KuiklyThreadMessageItem>(), launchPayload?.messages)
         assertEquals(emptyList<KuiklyThreadMemberItem>(), launchPayload?.members)
         assertEquals("loading", launchPayload?.status)
+    }
+
+    @Test
+    fun markdownTaskNumberLaunchPayloadFocusesTaskReplyWhenDistinctFromOrigin() {
+        val payload = KuiklyThreadScreenPayload()
+        val task =
+            TaskSummary(
+                id = TaskId("task-482"),
+                title = "markdown clicks",
+                status = TaskStatus.InProgress,
+                taskNumber = 482,
+                messageId = MessageId("reply-message-482"),
+                parentMessageId = MessageId("parent-message-482"),
+                channelId = ChannelId("channel-dialog"),
+                threadId = ThreadId("thread-482"),
+                updatedAtLabel = "now"
+            )
+
+        val launchPayload = payload.markdownTaskNumberLaunchPayload(task)
+
+        assertEquals("parent-message-482", launchPayload?.parentMessageId)
+        assertEquals("parent-message-482", launchPayload?.originParentMessageId)
+        assertEquals("reply-message-482", launchPayload?.focusedMessageId)
     }
 
     @Test

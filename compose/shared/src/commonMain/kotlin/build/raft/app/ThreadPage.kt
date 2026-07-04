@@ -1326,6 +1326,10 @@ internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: Tas
         task.parentMessageId?.value?.takeIf { it.isNotBlank() }
             ?: task.messageId?.value?.takeIf { it.isNotBlank() }
             ?: return null
+    val focusedMessageId =
+        task.messageId
+            ?.value
+            ?.takeIf { it.isNotBlank() && it != parentMessageId }
     val threadChannelId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val instanceId =
         threadChannelId?.let { "shared-shell-thread-$it" }
@@ -1340,6 +1344,7 @@ internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: Tas
         parentMessageId = parentMessageId,
         parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
         originParentMessageId = parentMessageId,
+        focusedMessageId = focusedMessageId,
         selectedTab = KuiklyThreadTab.Chat.wireValue,
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
