@@ -25,6 +25,16 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 private val SharedHomeSearchInputShadowOffset = 2.dp
 
+private fun submitSharedHomeSearchInput(
+    query: String,
+    loading: Boolean,
+    onSubmit: () -> Unit
+) {
+    if (query.isNotBlank() && !loading) {
+        onSubmit()
+    }
+}
+
 @Composable
 internal fun SharedHomeSearchInput(
     query: String,
@@ -47,8 +57,12 @@ internal fun SharedHomeSearchInput(
             fieldMinHeight = 38.dp,
             horizontalPadding = 11.dp,
             verticalPadding = 5.dp,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions =
+                KeyboardActions(
+                    onSearch = { submitSharedHomeSearchInput(query, loading, onSubmit) },
+                    onDone = { submitSharedHomeSearchInput(query, loading, onSubmit) }
+                ),
             showClearWhenNotEmpty = true,
             onClear = onClear,
             autoFocus = autoFocus,

@@ -297,6 +297,31 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun multiWordSearchQueryIsSubmittedIntactAndDiagnosedWithoutRawText() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val diagnostics = mutableListOf<String>()
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-phrase")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L,
+                diagnosticsLogger = diagnostics::add
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged(" do not "))
+
+        assertEquals(" do not ", store.state.value.search.query)
+        assertEquals(" do not ", search.query)
+        assertEquals(listOf(" do not "), search.calls.map { it.query })
+        assertEquals(true, diagnostics.any { it.contains("domain=search") && it.contains("queryLen=6") && it.contains("queryWords=2") })
+        assertEquals(false, diagnostics.any { it.contains("do not") })
+        scope.cancel()
+    }
+
+    @Test
     fun searchQueryChangeShowsPendingAffordanceBeforeDebounceRuns() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-pending")))

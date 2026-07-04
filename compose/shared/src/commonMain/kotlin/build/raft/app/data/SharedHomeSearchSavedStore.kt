@@ -369,12 +369,12 @@ class SharedHomeSearchSavedStore(
                     if (isActiveSearchRequest(requestToken)) {
                         applySearchResult(result, append = !refresh)
                         diagnosticsLogger(
-                            "store_load domain=search refresh=$refresh append=${!refresh} " +
+                            "store_load domain=search ${previous.query.searchQueryDiagnostics()} refresh=$refresh append=${!refresh} " +
                                 "result=${result.searchDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                         )
                     } else {
                         diagnosticsLogger(
-                            "store_load domain=search refresh=$refresh append=${!refresh} result=stale_request " +
+                            "store_load domain=search ${previous.query.searchQueryDiagnostics()} refresh=$refresh append=${!refresh} result=stale_request " +
                                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                         )
                     }
@@ -736,6 +736,15 @@ private fun DataResult<SearchSnapshot>.searchDiagnosticsResult(): String =
         is DataResult.Error -> "error code=${error.code}"
         is DataResult.NoPermission -> "no_permission code=${blocker.code}"
     }
+
+private fun String.searchQueryDiagnostics(): String {
+    val trimmed = trim()
+    val wordCount =
+        trimmed
+            .split(Regex("\\s+"))
+            .count { it.isNotBlank() }
+    return "queryLen=${trimmed.length} queryWords=$wordCount"
+}
 
 class SharedHomeSearchSavedViewModel(
     authStore: SlockAuthSessionStore,
