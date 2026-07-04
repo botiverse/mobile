@@ -23,6 +23,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1621,40 +1622,6 @@ internal fun List<SlockHomeConversationItem>.orderedBySidebarIds(
     return ordered.values.toList()
 }
 
-internal data class SlockChannelOrderDragState(
-    val activeId: String,
-    val startIndex: Int,
-    val initialOrder: List<String>,
-    val totalDragY: Float,
-    val previewOrder: List<String>,
-    val rowOffsetPx: Float
-) {
-    fun dragBy(
-        deltaY: Float,
-        rowStepPx: Float,
-        fallbackOrder: List<String>
-    ): SlockChannelOrderDragState {
-        val baseOrder = initialOrder.takeIf { it.isNotEmpty() } ?: fallbackOrder
-        if (activeId !in baseOrder || baseOrder.size < 2) {
-            return copy(totalDragY = totalDragY + deltaY, previewOrder = baseOrder, rowOffsetPx = 0f)
-        }
-        val nextDragY = totalDragY + deltaY
-        val targetIndex =
-            (startIndex + (nextDragY / rowStepPx.coerceAtLeast(1f)).roundToInt())
-                .coerceIn(baseOrder.indices)
-        val nextOrder = baseOrder.moveItem(activeId, targetIndex)
-        // rowOffsetPx is the dragged row's offset from its stable (pre-drag)
-        // slot: the row follows the finger exactly; sibling rows render their
-        // preview shift separately. Slot-snapped offsets here made the dragged
-        // row appear frozen (task #356 device feedback).
-        return copy(
-            totalDragY = nextDragY,
-            previewOrder = nextOrder,
-            rowOffsetPx = nextDragY
-        )
-    }
-}
-
 internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
     val fromIndex = indexOf(id)
     if (fromIndex < 0 || toIndex !in indices || fromIndex == toIndex) return this
@@ -1662,6 +1629,35 @@ internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
     val item = mutable.removeAt(fromIndex)
     mutable.add(toIndex.coerceIn(0, mutable.size), item)
     return mutable
+}
+
+/** A visible sort-overlay row's laid-out vertical bounds, in viewport space. */
+internal data class SlockSortRowBounds(val index: Int, val top: Float, val size: Float)
+
+/**
+ * Resolve which list index the finger is over, in CONTENT space. [pointerY] is
+ * the finger's viewport Y; [rows] are the currently visible rows (their tops
+ * move as the list scrolls, so the same finger Y maps to a new index after an
+ * auto-scroll — this is what keeps drag + auto-scroll consistent). Above the
+ * first visible row clamps to it; below the last clamps to it; result is
+ * clamped to [0, lastIndex].
+ */
+internal fun resolveSortTargetIndex(
+    pointerY: Float,
+    rows: List<SlockSortRowBounds>,
+    lastIndex: Int
+): Int {
+    if (rows.isEmpty() || lastIndex < 0) return 0
+    val sorted = rows.sortedBy { it.index }
+    val first = sorted.first()
+    val last = sorted.last()
+    val raw =
+        when {
+            pointerY <= first.top -> first.index
+            pointerY >= last.top + last.size -> last.index
+            else -> (sorted.firstOrNull { pointerY >= it.top && pointerY < it.top + it.size }?.index ?: last.index)
+        }
+    return raw.coerceIn(0, lastIndex)
 }
 
 /**
@@ -2485,55 +2481,89 @@ private fun SlockSidebarSortOverlay(
     onDismiss: () -> Unit
 ) {
     var order by remember(items) { mutableStateOf(items.map { it.id }) }
-    var dragState by remember(items) { mutableStateOf<SlockChannelOrderDragState?>(null) }
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val rowStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
-    val edgeScrollZonePx = with(density) { 48.dp.toPx() }
+    val edgeScrollZonePx = with(density) { 56.dp.toPx() }
+    val edgeScrollStepPx = with(density) { 10.dp.toPx() }
     val listState = rememberLazyListState()
-    // While a row is dragged the LazyColumn item order stays FIXED: reordering
-    // items mid-gesture moves the composable to a new slot, which restarts its
-    // pointerInput and kills the drag stream (Kuikly LazyColumn contract).
-    // The dragged row follows the finger via offset; other rows shift by the
-    // delta between their stable index and their preview index. The reorder is
-    // committed on drop.
-    fun edgeAutoScroll(active: SlockChannelOrderDragState): Float {
-        val info = listState.layoutInfo
-        val draggedInfo = info.visibleItemsInfo.firstOrNull { it.key == "sort-${active.activeId}" } ?: return 0f
-        val visualTop = draggedInfo.offset + active.rowOffsetPx
-        val visualBottom = visualTop + draggedInfo.size
-        val scrollDelta =
-            when {
-                visualTop < info.viewportStartOffset + edgeScrollZonePx -> -EdgeAutoScrollStepPx
-                visualBottom > info.viewportEndOffset - edgeScrollZonePx -> EdgeAutoScrollStepPx
-                else -> 0f
-            }
-        if (scrollDelta != 0f) listState.dispatchRawDelta(scrollDelta)
-        return scrollDelta
+
+    // Content-space drag model. The LazyColumn item order stays FIXED while a
+    // row is dragged (reordering mid-gesture moves the composable to a new slot,
+    // restarting its pointerInput and killing the drag — Kuikly contract). We
+    // track the finger's viewport Y; the target index is resolved against the
+    // CURRENT visible-row layout, so after an auto-scroll the same finger Y maps
+    // to a new index and the dragged row (rendered at its stable slot + offset)
+    // stays under the finger. The reorder commits on drop.
+    var draggedId by remember(items) { mutableStateOf<String?>(null) }
+    var draggedStartIndex by remember(items) { mutableStateOf(0) }
+    var pointerViewportY by remember(items) { mutableStateOf(0f) }
+    var previewOrder by remember(items) { mutableStateOf(order) }
+    var draggedRowOffsetPx by remember(items) { mutableStateOf(0f) }
+
+    fun visibleSortRowBounds(): List<SlockSortRowBounds> =
+        listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+            val key = info.key as? String ?: return@mapNotNull null
+            val id = key.removePrefix("sort-").takeIf { key.startsWith("sort-") } ?: return@mapNotNull null
+            val index = order.indexOf(id).takeIf { it >= 0 } ?: return@mapNotNull null
+            SlockSortRowBounds(index = index, top = info.offset.toFloat(), size = info.size.toFloat())
+        }
+
+    fun recomputeDrag() {
+        val active = draggedId ?: return
+        val rows = visibleSortRowBounds()
+        val target = resolveSortTargetIndex(pointerViewportY, rows, order.lastIndex)
+        previewOrder = order.moveItem(active, target)
+        val naturalTop = rows.firstOrNull { it.index == draggedStartIndex }?.top
+        draggedRowOffsetPx =
+            if (naturalTop != null) pointerViewportY - (naturalTop + rowStepPx / 2f) else pointerViewportY
     }
+
+    // Continuous auto-scroll while the finger sits in an edge zone — required
+    // for long sections (140+ channels): the user holds near the edge and the
+    // list keeps scrolling even without further finger movement.
+    LaunchedEffect(draggedId) {
+        if (draggedId == null) return@LaunchedEffect
+        while (draggedId != null) {
+            val info = listState.layoutInfo
+            val start = info.viewportStartOffset.toFloat()
+            val end = info.viewportEndOffset.toFloat()
+            val delta =
+                when {
+                    pointerViewportY < start + edgeScrollZonePx -> -edgeScrollStepPx
+                    pointerViewportY > end - edgeScrollZonePx -> edgeScrollStepPx
+                    else -> 0f
+                }
+            if (delta != 0f) {
+                listState.dispatchRawDelta(delta)
+                recomputeDrag()
+            }
+            withFrameNanos { }
+        }
+    }
+
     SlockUnifiedDialog(
         title = title,
         onDismiss = onDismiss,
-        dismissEnabled = dragState == null,
+        dismissEnabled = draggedId == null,
         contentSpacing = 12.dp
     ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
-            userScrollEnabled = dragState == null
+            userScrollEnabled = draggedId == null
         ) {
             items(order.size, key = { index -> "sort-${order[index]}" }) { index ->
                 val itemId = order[index]
                 val item = itemsById[itemId] ?: return@items
                 val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                val activeDrag = dragState
                 val dragOffsetY =
                     when {
-                        activeDrag == null -> 0f
-                        activeDrag.activeId == itemId -> activeDrag.rowOffsetPx
+                        draggedId == null -> 0f
+                        draggedId == itemId -> draggedRowOffsetPx
                         else -> {
-                            val previewIndex = activeDrag.previewOrder.indexOf(itemId)
+                            val previewIndex = previewOrder.indexOf(itemId)
                             if (previewIndex >= 0) (previewIndex - index) * rowStepPx else 0f
                         }
                     }
@@ -2544,42 +2574,32 @@ private fun SlockSidebarSortOverlay(
                     joined = item.joined || isDirectMessage,
                     showPresence = false,
                     interactionState =
-                        if (activeDrag?.activeId == itemId) ChannelRowInteractionState.Pressed else ChannelRowInteractionState.Default,
+                        if (draggedId == itemId) ChannelRowInteractionState.Pressed else ChannelRowInteractionState.Default,
                     captureLongPressAnchor = false,
                     dragEnabled = order.size > 1,
                     rowDragEnabled = true,
                     dragOffsetY = dragOffsetY,
                     onDragStart = {
-                        dragState =
-                            SlockChannelOrderDragState(
-                                activeId = itemId,
-                                startIndex = index,
-                                initialOrder = order,
-                                totalDragY = 0f,
-                                previewOrder = order,
-                                rowOffsetPx = 0f
-                            )
+                        val startTop = visibleSortRowBounds().firstOrNull { it.index == index }?.top ?: 0f
+                        draggedId = itemId
+                        draggedStartIndex = index
+                        pointerViewportY = startTop + rowStepPx / 2f
+                        previewOrder = order
+                        draggedRowOffsetPx = 0f
                     },
                     onDragMove = { deltaY ->
-                        val moved = dragState?.dragBy(deltaY = deltaY, rowStepPx = rowStepPx, fallbackOrder = order)
-                        if (moved != null) {
-                            val scrolled = edgeAutoScroll(moved)
-                            dragState =
-                                if (scrolled != 0f) {
-                                    moved.dragBy(deltaY = scrolled, rowStepPx = rowStepPx, fallbackOrder = order)
-                                } else {
-                                    moved
-                                }
+                        if (draggedId != null) {
+                            pointerViewportY += deltaY
+                            recomputeDrag()
                         }
                     },
                     onDragEnd = {
-                        val ended = dragState
-                        dragState = null
-                        if (ended != null && ended.previewOrder != order) {
-                            order = ended.previewOrder
+                        if (draggedId != null && previewOrder != order) {
+                            order = previewOrder
                         }
+                        draggedId = null
                     },
-                    onDragCancel = { dragState = null }
+                    onDragCancel = { draggedId = null }
                 )
             }
         }
@@ -2587,7 +2607,7 @@ private fun SlockSidebarSortOverlay(
             label = saveLabel,
             icon = SlockLucideIconName.Check,
             color = SlockColor.AccentPink,
-            enabled = dragState == null,
+            enabled = draggedId == null,
             onClick = { onSave(order) }
         )
     }
