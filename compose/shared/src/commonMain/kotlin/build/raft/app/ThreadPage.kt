@@ -96,6 +96,7 @@ import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
 import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -2243,6 +2244,7 @@ private fun ThreadMessageVisualCard(
     highlightedMentions: Set<String> = emptySet(),
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    activeMarkdownTagKey: String? = null,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     timestampLabel: String = message.timestampLabel,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -2317,6 +2319,7 @@ private fun ThreadMessageVisualCard(
                                 isTagValid = isMarkdownTagValid,
                                 resolveTagLabel = resolveMarkdownTagLabel,
                                 inlineContentScope = message.id,
+                                activeTagKey = activeMarkdownTagKey,
                                 onOpenTag = onOpenMarkdownTag,
                                 onOpenUrl = onOpenMarkdownUrl
                             )
@@ -6965,6 +6968,7 @@ private fun ThreadPageContent(
 ) {
     val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell(timelineSlice)
     val shareExportScope = rememberCoroutineScope()
+    val markdownTagFeedbackScope = rememberCoroutineScope()
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -7120,7 +7124,19 @@ private fun ThreadPageContent(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
+    var activeMarkdownTagKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var activeMarkdownTagPressId by remember(threadInstanceKey) { mutableStateOf(0) }
     val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
+        val activeKey = threadMarkdownTagActivationKey(tag)
+        val pressId = activeMarkdownTagPressId + 1
+        activeMarkdownTagPressId = pressId
+        activeMarkdownTagKey = activeKey
+        markdownTagFeedbackScope.launch {
+            delay(ThreadMarkdownTagActiveFeedbackMs)
+            if (activeMarkdownTagPressId == pressId && activeMarkdownTagKey == activeKey) {
+                activeMarkdownTagKey = null
+            }
+        }
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
@@ -7220,6 +7236,7 @@ private fun ThreadPageContent(
                         isMarkdownTagValid = isMarkdownTagValid,
                         markdownTagContextSignature = markdownTagContextSignature,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        activeMarkdownTagKey = activeMarkdownTagKey,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = { memberId -> onOpenMemberProfile(memberId, null, null) },
                         onMentionAuthor = { handle ->
@@ -7977,6 +7994,7 @@ private fun ThreadChatTab(
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onMentionAuthor: (String) -> Unit,
@@ -8044,6 +8062,7 @@ private fun ThreadChatTab(
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                    activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
@@ -8093,6 +8112,7 @@ private fun ThreadChatTab(
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                    activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
@@ -8406,6 +8426,7 @@ private fun ThreadMessagesList(
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onMentionAuthor: (String) -> Unit,
@@ -9106,6 +9127,7 @@ private fun ThreadMessagesList(
                         isMarkdownTagValid = isMarkdownTagValid,
                         markdownTagContextSignature = markdownTagContextSignature,
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        activeMarkdownTagKey = activeMarkdownTagKey,
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
@@ -9324,6 +9346,7 @@ private fun ThreadMessagesList(
                                 resolvedTaskAssigneeName = linkedTaskAssigneeName,
                                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                                 markdownTagContextSignature = markdownTagContextSignature,
+                                activeMarkdownTagKey = activeMarkdownTagKey,
                                 taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
                                 taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
                                 captureLongPressAnchor = captureMessageAnchors,
@@ -10283,6 +10306,7 @@ private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
+private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadBackgroundTasksJoinDelayMs = 360L
 private const val ThreadLayoutStabilityMaxFrames = 30
@@ -10441,6 +10465,7 @@ private fun ThreadMessageCard(
     showSaveAction: Boolean = true,
     showInlineSaveAction: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
+    activeMarkdownTagKey: String? = null,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
     onShowActions: (Offset) -> Unit,
@@ -10673,6 +10698,7 @@ private fun ThreadMessageCard(
                                             isTagValid = isMarkdownTagValid,
                                             resolveTagLabel = resolveMarkdownTagLabel,
                                             inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                            activeTagKey = activeMarkdownTagKey,
                                             onOpenTag = onOpenMarkdownTag,
                                             onOpenUrl = onOpenMarkdownUrl,
                                             performanceKey = messagePerformanceKey,
@@ -12555,6 +12581,7 @@ private fun ThreadOriginCard(
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    activeMarkdownTagKey: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -12633,6 +12660,7 @@ private fun ThreadOriginCard(
                                     ),
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                             markdownTagContextSignature = markdownTagContextSignature,
+                            activeMarkdownTagKey = activeMarkdownTagKey,
                             taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = timelineSlice.showMessageSaveAction,
