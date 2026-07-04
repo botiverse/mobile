@@ -1441,6 +1441,9 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alpha = 0.3f)
 private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
 private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
+private val SlockMarkdownPlainMentionUnderlineColor = SlockColor.BorderBlack.copy(alpha = 0.3f)
+private val SlockMarkdownPlainMentionUnderlineThickness = 2.sp
+private val SlockMarkdownPlainMentionUnderlineOffset = 2.sp
 
 internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
     Channel("channel"),
@@ -1622,6 +1625,9 @@ internal fun slockMarkdownTagSpanStyle(
                     .copy(
                         color = SlockColor.TextBlack,
                         textDecoration = TextDecoration.Underline,
+                        textDecorationColor = SlockMarkdownPlainMentionUnderlineColor,
+                        textDecorationThickness = SlockMarkdownPlainMentionUnderlineThickness,
+                        textDecorationOffset = SlockMarkdownPlainMentionUnderlineOffset,
                         background = Color.Unspecified
                     )
             }

@@ -410,12 +410,16 @@ class SlockMarkdownTest {
         assertEquals(null, selfMentionStyle.textDecoration)
         assertEquals(SlockMarkdownTagFontSize, selfMentionStyle.fontSize)
         assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
+        assertEquals(SlockColor.BorderBlack.copy(alpha = 0.3f), ordinaryMentionStyle.textDecorationColor)
+        assertEquals(2.sp, ordinaryMentionStyle.textDecorationThickness)
+        assertEquals(2.sp, ordinaryMentionStyle.textDecorationOffset)
         assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
         assertEquals(SlockMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
 
         val activeMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, active = true)
         assertEquals(SlockColor.BrandYellow, activeMentionStyle.background)
         assertEquals(null, activeMentionStyle.textDecoration)
+        assertEquals(Color.Unspecified, activeMentionStyle.textDecorationColor)
     }
 
     @Test
