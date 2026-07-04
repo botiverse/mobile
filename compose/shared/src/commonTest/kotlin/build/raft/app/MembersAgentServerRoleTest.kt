@@ -27,6 +27,25 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
+    fun displayRoleDefaultsMissingAgentServerRoleToMember() {
+        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole(null, null))
+        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole("", " "))
+    }
+
+    @Test
+    fun displayRolePrefersMemberRoleOverSummaryRole() {
+        assertEquals(
+            MembersAgentServerRole.Admin,
+            membersAgentDisplayServerRole("admin", "member")
+        )
+    }
+
+    @Test
+    fun displayRoleRejectsUnknownNonBlankRole() {
+        assertNull(membersAgentDisplayServerRole("owner", null))
+    }
+
+    @Test
     fun marksSelectedAgentServerRoleOption() {
         val options = membersAgentServerRoleOptions(MembersAgentServerRole.Member)
 

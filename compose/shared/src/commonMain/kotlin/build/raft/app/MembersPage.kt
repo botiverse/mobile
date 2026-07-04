@@ -227,6 +227,16 @@ internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
         else -> null
     }
 
+internal fun membersAgentDisplayServerRole(
+    memberServerRole: String?,
+    summaryServerRole: String?
+): MembersAgentServerRole? {
+    val rawRole = memberServerRole?.trim()?.takeIf { it.isNotBlank() }
+        ?: summaryServerRole?.trim()?.takeIf { it.isNotBlank() }
+    return rawRole.toMembersAgentServerRoleOrNull()
+        ?: if (rawRole == null) MembersAgentServerRole.Member else null
+}
+
 internal fun membersAgentServerRoleOptions(
     selectedRole: MembersAgentServerRole?
 ): List<SlockRaftUiSelectionOption> =
@@ -4743,10 +4753,8 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
-    val currentServerRole =
-        member.serverRole.toMembersAgentServerRoleOrNull()
-            ?: summary?.serverRole.toMembersAgentServerRoleOrNull()
-    val canEditServerRole = canEdit && currentServerRole != null
+    val currentServerRole = membersAgentDisplayServerRole(member.serverRole, summary?.serverRole)
+    val canEditServerRole = canEdit
     var editingServerRole by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
     var draftServerRole by remember(member.id.value, currentServerRole?.wireValue) {
         mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
@@ -5250,21 +5258,39 @@ private fun MembersAgentProfileTab(
         ) {
             MembersDetailSectionDivider()
             MembersDetailSectionTitle("INFO")
-            // Role row
-            Row(
+            // Role row: React keeps this as a label affordance plus an inline role chip/editor,
+            // not the compact two-column metadata row used by Computer/Created/Creator.
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
-                Text(
-                    text = "Role",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.width(86.dp)
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Role",
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                    SlockLucideIcon(
+                        SlockLucideIconName.Info,
+                        modifier = Modifier.size(14.dp),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                    if (canEditServerRole && !editingServerRole) {
+                        MembersProfilePencilButton(
+                            onClick = {
+                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                serverRoleError = null
+                                editingServerRole = true
+                            }
+                        )
+                    }
+                }
                 if (editingServerRole) {
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                     ) {
                         Box(modifier = Modifier.width(160.dp)) {
@@ -5316,20 +5342,10 @@ private fun MembersAgentProfileTab(
                     }
                 } else {
                     Row(
-                        modifier = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         MembersAgentServerRoleChip(currentServerRole)
-                        if (canEditServerRole) {
-                            MembersProfilePencilButton(
-                                onClick = {
-                                    draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                    serverRoleError = null
-                                    editingServerRole = true
-                                }
-                            )
-                        }
                     }
                 }
             }
