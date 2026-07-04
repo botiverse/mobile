@@ -2965,9 +2965,11 @@ internal fun SharedThreadRouteContent(
     // listener; realtime domain events arrive through the shared
     // SharedRealtimeDomainEventOwner sink below so the owner's dedup ledger is
     // the single ingress decision point (#196, replaces per-route raw decode).
-    val latestForegroundRejoinRoomIds by rememberUpdatedState(
-        (payload.activeRealtimeRoomIds() + listOfNotNull(resolvedAuxiliaryThreadId)).distinct()
-    )
+    // resolvedAuxiliaryThreadId is provably within activeRealtimeRoomIds()
+    // (timelineChannelId = streamChannelId ?: sourceThreadId), so the rejoin
+    // set is exactly the mount-time join/leave set — keeping them identical
+    // avoids force-joining a room that never gets a paired leave.
+    val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
     DisposableEffect(realtimeEvents, active) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->

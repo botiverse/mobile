@@ -325,6 +325,13 @@ final class SlockIosRealtimeHost: NSObject {
                     return
                 }
                 self.emitRoomCommand(eventName: GeneratedRealtimeContract.SocketEvent.joinChannel, channelId: channelId)
+            case GeneratedRealtimeContract.RoomAction.rejoinChannel:
+                // Foreground reconcile: always re-emit join:channel even when the
+                // local joined set already has the room (server join is idempotent);
+                // keep the set accurate so later plain joins dedupe and leaves pair up.
+                self.joinedChannels.insert(channelId)
+                self.log("room_join_emit reason=foreground_reconcile force=true channelId=\(channelId)")
+                self.emitRoomCommand(eventName: GeneratedRealtimeContract.SocketEvent.joinChannel, channelId: channelId)
             case GeneratedRealtimeContract.RoomAction.leaveChannel:
                 guard self.joinedChannels.remove(channelId) != nil else {
                     self.log("room_leave_skip reason=not_joined channelId=\(channelId)")
