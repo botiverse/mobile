@@ -338,6 +338,18 @@ internal fun membersInitialAgentDetailTabForLaunch(
         ?: agentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }
 }
 
+internal fun shouldWaitForAgentPanelTabOrderBeforeRender(
+    expectedKind: MemberKind?,
+    initialAgentTab: MembersAgentDetailTab?,
+    payloadAgentPanelTabOrder: List<String>,
+    storeServerMatches: Boolean,
+    storeLoaded: Boolean
+): Boolean =
+    expectedKind == MemberKind.Agent &&
+        initialAgentTab == null &&
+        payloadAgentPanelTabOrder.isEmpty() &&
+        (!storeServerMatches || !storeLoaded)
+
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
@@ -1613,6 +1625,14 @@ private fun MemberDetailPageContent() {
         } else {
             payload.agentPanelTabOrder
         }
+    val waitForAgentPanelTabOrder =
+        shouldWaitForAgentPanelTabOrderBeforeRender(
+            expectedKind = expectedKind,
+            initialAgentTab = initialAgentTab,
+            payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
+            storeServerMatches = agentPanelTabOrderState.serverId == statusLookupServerId,
+            storeLoaded = agentPanelTabOrderState.loaded
+        )
     val agentStatusResolver =
         remember(provider.serverMembersStore, statusLookupServerId) {
             slockAgentStatusResolver(provider.serverMembersStore, statusLookupServerId)
@@ -1651,11 +1671,15 @@ private fun MemberDetailPageContent() {
         }
         when (val result = provider.loadAgentPanelTabOrder()) {
             is DataResult.Content -> provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, result.data)
-            is DataResult.Empty -> Unit
-            is DataResult.Error ->
+            is DataResult.Empty -> provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
+            is DataResult.Error -> {
+                provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
                 bridge.log("member_detail_agent_tab_order_load_failed code=${result.error.code}")
-            is DataResult.NoPermission ->
+            }
+            is DataResult.NoPermission -> {
+                provider.agentPanelTabOrderStore.applyLoaded(statusLookupServerId, emptyList())
                 bridge.log("member_detail_agent_tab_order_load_blocked code=${result.blocker.code}")
+            }
         }
     }
 
@@ -1675,7 +1699,7 @@ private fun MemberDetailPageContent() {
             )
         is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toMemberProfile(current.server)
-            if (member == null) {
+            if (member == null || waitForAgentPanelTabOrder) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
                     contentAlignment = Alignment.Center

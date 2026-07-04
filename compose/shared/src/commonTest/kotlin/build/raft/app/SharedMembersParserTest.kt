@@ -228,6 +228,67 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentDetailWaitsForServerTabOrderBeforeRenderingWithoutLaunchOrder() {
+        assertTrue(
+            shouldWaitForAgentPanelTabOrderBeforeRender(
+                expectedKind = MemberKind.Agent,
+                initialAgentTab = null,
+                payloadAgentPanelTabOrder = emptyList(),
+                storeServerMatches = true,
+                storeLoaded = false
+            )
+        )
+    }
+
+    @Test
+    fun agentDetailDoesNotWaitForTabOrderWhenLaunchIntentOrOrderExists() {
+        assertEquals(
+            false,
+            shouldWaitForAgentPanelTabOrderBeforeRender(
+                expectedKind = MemberKind.Agent,
+                initialAgentTab = MembersAgentDetailTab.Activity,
+                payloadAgentPanelTabOrder = emptyList(),
+                storeServerMatches = false,
+                storeLoaded = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldWaitForAgentPanelTabOrderBeforeRender(
+                expectedKind = MemberKind.Agent,
+                initialAgentTab = null,
+                payloadAgentPanelTabOrder = listOf("activity", "profile"),
+                storeServerMatches = false,
+                storeLoaded = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldWaitForAgentPanelTabOrderBeforeRender(
+                expectedKind = MemberKind.Agent,
+                initialAgentTab = null,
+                payloadAgentPanelTabOrder = emptyList(),
+                storeServerMatches = true,
+                storeLoaded = true
+            )
+        )
+    }
+
+    @Test
+    fun humanDetailDoesNotWaitForAgentTabOrder() {
+        assertEquals(
+            false,
+            shouldWaitForAgentPanelTabOrderBeforeRender(
+                expectedKind = MemberKind.Human,
+                initialAgentTab = null,
+                payloadAgentPanelTabOrder = emptyList(),
+                storeServerMatches = false,
+                storeLoaded = false
+            )
+        )
+    }
+
+    @Test
     fun memberDetailPageDataCarriesSourceServerIdentityWithoutProfileContent() {
         val payload =
             KuiklyMembersPayload(
