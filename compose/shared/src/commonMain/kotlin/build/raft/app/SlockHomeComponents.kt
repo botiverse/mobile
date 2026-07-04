@@ -1744,11 +1744,12 @@ internal fun pinnedItemsForSidebar(
 }
 @Composable
 private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = 0.01f))
-            .pointerInput(onDismiss) {
+            .pointerInput(Unit) {
                 forEachGesture {
                     awaitPointerEventScope {
                         var moved = false
@@ -1761,7 +1762,7 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
                             if (event.changes.all { !it.pressed }) break
                         }
                         if (!moved) {
-                            onDismiss()
+                            currentOnDismiss()
                         }
                     }
                 }
@@ -2208,7 +2209,8 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     }
     val clickModifier =
         if (onClick != null) {
-            Modifier.pointerInput(icon, label, onClick) {
+            val currentOnClick by rememberUpdatedState(onClick)
+            Modifier.pointerInput(icon, label) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
@@ -2218,7 +2220,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
                             pressed = false
                         }
                     },
-                    onTap = { onClick.invoke() }
+                    onTap = { currentOnClick?.invoke() }
                 )
             }
         } else {
@@ -2336,54 +2338,65 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnPress by rememberUpdatedState(onPress)
+    val currentOnPressEnd by rememberUpdatedState(onPressEnd)
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDragMove by rememberUpdatedState(onDragMove)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
     val dragHandleModifier =
         if (dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
-            Modifier.pointerInput(name, dragEnabled, onDragStart, onDragMove, onDragEnd, onDragCancel) {
+            Modifier.pointerInput(name, dragEnabled) {
                 // Sort mode is explicit, so the handle drags immediately —
                 // no long-press gate (task #356: the v2 long-press-drag felt stuck).
                 detectDragGestures(
-                    onDragStart = { onDragStart.invoke() },
-                    onDragEnd = { onDragEnd.invoke() },
-                    onDragCancel = { (onDragCancel ?: onDragEnd).invoke() }
+                    onDragStart = { currentOnDragStart?.invoke() },
+                    onDragEnd = { currentOnDragEnd?.invoke() },
+                    onDragCancel = { (currentOnDragCancel ?: currentOnDragEnd)?.invoke() }
                 ) { change, dragAmount ->
                     change.consume()
-                    onDragMove.invoke(dragAmount.y)
+                    currentOnDragMove?.invoke(dragAmount.y)
                 }
             }
         } else {
             Modifier
         }
     val rowClickIdentity = "channel:$symbol:$name:${avatarWireValue.orEmpty()}:$badge:$joined"
-    val clickModifier = remember(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
+    val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
         if (onLongPress != null) {
-            Modifier.pointerInput(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
+            Modifier.pointerInput(rowClickIdentity, true) {
                 detectTapGestures(
                     onPress = {
                         captureAnchorForPress = true
-                        onPress?.invoke()
+                        currentOnPress?.invoke()
                         try {
                             tryAwaitRelease()
                         } finally {
                             captureAnchorForPress = false
-                            onPressEnd?.invoke()
+                            currentOnPressEnd?.invoke()
                         }
                     },
-                    onTap = { onClick?.invoke() },
+                    onTap = { currentOnClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
-                        onLongPress.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
+                        currentOnLongPress?.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
                     }
                 )
             }
         } else if (onClick != null) {
-            Modifier.pointerInput(rowClickIdentity, onClick, onPress, onPressEnd) {
+            Modifier.pointerInput(rowClickIdentity, false) {
                 detectTapGestures(
                     onPress = {
-                        onPress?.invoke()
-                        tryAwaitRelease()
-                        onPressEnd?.invoke()
+                        currentOnPress?.invoke()
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            currentOnPressEnd?.invoke()
+                        }
                     },
-                    onTap = { onClick.invoke() }
+                    onTap = { currentOnClick?.invoke() }
                 )
             }
         } else {
@@ -2562,37 +2575,44 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnPress by rememberUpdatedState(onPress)
+    val currentOnPressEnd by rememberUpdatedState(onPressEnd)
     val rowClickIdentity = "dm:${memberId.orEmpty()}:$name:${avatarWireValue.orEmpty()}:$badge"
-    val clickModifier = remember(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
+    val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
         if (onLongPress != null) {
-            Modifier.pointerInput(rowClickIdentity, onClick, onLongPress, onPress, onPressEnd) {
+            Modifier.pointerInput(rowClickIdentity, true) {
                 detectTapGestures(
                     onPress = {
                         captureAnchorForPress = true
-                        onPress?.invoke()
+                        currentOnPress?.invoke()
                         try {
                             tryAwaitRelease()
                         } finally {
                             captureAnchorForPress = false
-                            onPressEnd?.invoke()
+                            currentOnPressEnd?.invoke()
                         }
                     },
-                    onTap = { onClick?.invoke() },
+                    onTap = { currentOnClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
-                        onLongPress.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
+                        currentOnLongPress?.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
                     }
                 )
             }
         } else if (onClick != null) {
-            Modifier.pointerInput(rowClickIdentity, onClick, onPress, onPressEnd) {
+            Modifier.pointerInput(rowClickIdentity, false) {
                 detectTapGestures(
                     onPress = {
-                        onPress?.invoke()
-                        tryAwaitRelease()
-                        onPressEnd?.invoke()
+                        currentOnPress?.invoke()
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            currentOnPressEnd?.invoke()
+                        }
                     },
-                    onTap = { onClick.invoke() }
+                    onTap = { currentOnClick?.invoke() }
                 )
             }
         } else {

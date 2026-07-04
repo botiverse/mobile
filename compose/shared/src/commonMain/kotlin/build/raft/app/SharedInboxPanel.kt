@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
@@ -705,13 +706,14 @@ private fun SharedActivityRow(
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
+    val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
         Row(
             modifier = surfaceModifier.padding(12.dp),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, captureMenuAnchor, onOpen, onOpenMenu)) {
+            Column(modifier = Modifier.weight(1f).activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -778,11 +780,13 @@ private fun SharedActivityRow(
 
 @Composable
 private fun Modifier.activityRowGestures(
-    itemKey: String,
+    gestureKey: String,
     captureMenuAnchor: Boolean,
     onClick: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ): Modifier {
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
     val rootPos = remember { SlockMutableOffsetRef() }
     return this
         .then(
@@ -792,15 +796,32 @@ private fun Modifier.activityRowGestures(
                 Modifier
             }
         )
-        .pointerInput(itemKey) {
+        .pointerInput(gestureKey) {
             detectTapGestures(
-                onTap = { onClick() },
+                onTap = { currentOnClick() },
                 onLongPress = { localOffset ->
                     val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                    onOpenMenu(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                    currentOnOpenMenu(Offset(base.x + localOffset.x, base.y + localOffset.y))
                 }
             )
         }
+}
+
+internal fun InboxItem.inboxItemOpenGestureKey(): String {
+    val request = toHomeMessageOpenRequest()
+    val identity = request.conversationIdentity
+    val thread = identity.thread
+    return listOf(
+        key,
+        kind.name,
+        identity.threadId.value,
+        identity.channelId?.value.orEmpty(),
+        thread?.streamChannelId?.value.orEmpty(),
+        thread?.parentChannelId?.value.orEmpty(),
+        thread?.parentMessageId?.value.orEmpty(),
+        request.anchorMessageId.orEmpty(),
+        unreadCount.toString()
+    ).joinToString("|")
 }
 
 @Composable

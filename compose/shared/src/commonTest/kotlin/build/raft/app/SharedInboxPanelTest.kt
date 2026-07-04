@@ -633,6 +633,61 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun inboxItemOpenGestureKeyChangesWhenStableThreadRowTargetsNewReply() {
+        val base =
+            InboxItem(
+                key = "thread:reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-stream"),
+                channelName = "visual-testing",
+                threadChannelId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "visual-testing",
+                parentMessageId = MessageId("parent-message"),
+                latestActivityMessageId = MessageId("reply-1"),
+                latestActivityPreview = "old reply",
+                latestActivityAt = "2026-07-04T14:00:00Z"
+            )
+        val updated =
+            base.copy(
+                latestActivityMessageId = MessageId("reply-2"),
+                latestActivityPreview = "new reply",
+                latestActivityAt = "2026-07-04T14:05:00Z"
+            )
+
+        assertEquals(base.key, updated.key)
+        assertEquals(base.toHomeMessageOpenRequest().conversationIdentity, updated.toHomeMessageOpenRequest().conversationIdentity)
+        assertEquals("reply-1", base.toHomeMessageOpenRequest().anchorMessageId)
+        assertEquals("reply-2", updated.toHomeMessageOpenRequest().anchorMessageId)
+        assertNotEquals(base.inboxItemOpenGestureKey(), updated.inboxItemOpenGestureKey())
+    }
+
+    @Test
+    fun inboxItemOpenGestureKeyIgnoresDisplayOnlyPreviewChanges() {
+        val base =
+            InboxItem(
+                key = "thread:reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-stream"),
+                channelName = "visual-testing",
+                threadChannelId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "visual-testing",
+                parentMessageId = MessageId("parent-message"),
+                latestActivityMessageId = MessageId("reply-1"),
+                latestActivityPreview = "old text",
+                latestActivitySenderName = "Alice"
+            )
+        val updated =
+            base.copy(
+                latestActivityPreview = "new text",
+                latestActivitySenderName = "Bob"
+            )
+
+        assertEquals(base.inboxItemOpenGestureKey(), updated.inboxItemOpenGestureKey())
+    }
+
+    @Test
     fun threadLaunchIdentityIgnoresDisplayAccessDirectoryPresentationAndStatusFields() {
         val base =
             ConversationSummary(

@@ -5880,6 +5880,8 @@ private fun ThreadImagePreviewOverlay(
     val hasMultiple = state.images.size > 1
     val isLoading = current.id in state.loadingAttachmentIds
     val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
+    val currentPreviewState by rememberUpdatedState(state)
+    val currentOnSelectIndex by rememberUpdatedState(onSelectIndex)
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val swipeThresholdPx =
         with(LocalDensity.current) {
@@ -5936,12 +5938,12 @@ private fun ThreadImagePreviewOverlay(
                                             onDragStart = { dragDistance = 0f },
                                             onDragEnd = {
                                                 when {
-                                                    dragDistance <= -swipeThresholdPx && state.currentIndex < state.images.lastIndex -> {
-                                                        onSelectIndex(state.currentIndex + 1)
+                                                    dragDistance <= -swipeThresholdPx && currentPreviewState.currentIndex < currentPreviewState.images.lastIndex -> {
+                                                        currentOnSelectIndex(currentPreviewState.currentIndex + 1)
                                                     }
 
-                                                    dragDistance >= swipeThresholdPx && state.currentIndex > 0 -> {
-                                                        onSelectIndex(state.currentIndex - 1)
+                                                    dragDistance >= swipeThresholdPx && currentPreviewState.currentIndex > 0 -> {
+                                                        currentOnSelectIndex(currentPreviewState.currentIndex - 1)
                                                     }
                                                 }
                                             },
@@ -12981,6 +12983,8 @@ private fun ThreadMessageAvatar(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     val avatarSource =
         remember(avatarWireValue) {
             avatarWireValue?.takeIf { it.isNotBlank() }
@@ -12989,10 +12993,10 @@ private fun ThreadMessageAvatar(
         modifier =
             Modifier
                 .size(36.dp)
-                .pointerInput(onClick, onLongPress) {
+                .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { onClick() },
-                        onLongPress = { onLongPress() }
+                        onTap = { currentOnClick() },
+                        onLongPress = { currentOnLongPress() }
                     )
                 },
         contentAlignment = Alignment.Center

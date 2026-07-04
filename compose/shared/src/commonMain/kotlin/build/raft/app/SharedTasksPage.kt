@@ -1082,6 +1082,8 @@ private fun SharedTaskCard(
     // Capture the card root so a long-press offset reported in card-local coords can be
     // converted to root coords for the overlay menu anchor.
     val rootPos = remember { SlockMutableOffsetRef() }
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     val description: String? = null // TaskSummary doesn't carry a description today; placeholder for forward-compat.
     Box(
         modifier = Modifier
@@ -1111,11 +1113,11 @@ private fun SharedTaskCard(
                     // same pointerInput keeps gesture semantics consistent and avoids
                     // clickable() swallowing the long-press.
                     detectTapGestures(
-                        onTap = { if (!updating) onClick() },
+                        onTap = { if (!updating) currentOnClick() },
                         onLongPress = { localOffset ->
                             if (!updating) {
                                 val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                                onLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                                currentOnLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
                             }
                         }
                     )

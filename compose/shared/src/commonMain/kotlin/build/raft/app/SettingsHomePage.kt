@@ -12071,6 +12071,9 @@ private fun SharedHomeSavedResultCard(
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
+    val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val currentOnOpen by rememberUpdatedState(onOpen)
+    val currentOnContextMenu by rememberUpdatedState(onContextMenu)
     val source =
         when {
             item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
@@ -12097,12 +12100,12 @@ private fun SharedHomeSavedResultCard(
                     Modifier
                         .weight(1f)
                         .onGloballyPositioned { coordinates -> contentTopLeft.update(coordinates.positionInRoot()) }
-                        .pointerInput(onOpen, onContextMenu) {
+                        .pointerInput(openGestureKey) {
                             detectTapGestures(
-                                onTap = { onOpen() },
+                                onTap = { currentOnOpen() },
                                 onLongPress = { localOffset ->
                                     val topLeft = contentTopLeft.value
-                                    onContextMenu(Offset(topLeft.x + localOffset.x, topLeft.y + localOffset.y))
+                                    currentOnContextMenu(Offset(topLeft.x + localOffset.x, topLeft.y + localOffset.y))
                                 }
                             )
                         },

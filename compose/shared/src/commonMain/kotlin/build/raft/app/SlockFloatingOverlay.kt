@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import com.tencent.kuikly.compose.foundation.background
@@ -168,12 +169,13 @@ private fun SlockFloatingOverlayDismissBarrier(
     dismissClickableActive: Boolean,
     onDismiss: () -> Unit
 ) {
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
             .slockNativeDispatchCapture()
-            .pointerInput(dismissClickableActive, onDismiss) {
+            .pointerInput(dismissClickableActive) {
                 awaitEachGesture {
                     var moved = false
                     while (true) {
@@ -185,7 +187,7 @@ private fun SlockFloatingOverlayDismissBarrier(
                         if (event.changes.all { !it.pressed }) break
                     }
                     if (dismissClickableActive && !moved) {
-                        onDismiss()
+                        currentOnDismiss()
                     }
                 }
             }
