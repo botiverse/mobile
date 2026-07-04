@@ -40,6 +40,26 @@ internal class KuiklyRealtimeEvents(
         )
     }
 
+    fun rejoinChannels(channelIds: List<String>) {
+        channelIds
+            .asSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+            .forEach(::rejoinChannel)
+    }
+
+    fun rejoinChannel(channelId: String) {
+        val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
+        module.postNotify(
+            SlockRealtimeNotifyContract.RoomsEventName,
+            JSONObject()
+                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRejoinChannel)
+                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId),
+            source = "foreground_reconcile"
+        )
+    }
+
     fun leaveChannels(channelIds: List<String>) {
         channelIds
             .asSequence()

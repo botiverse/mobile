@@ -10,6 +10,7 @@ object GeneratedRealtimeContract {
     object RoomAction {
         const val JoinChannel = "joinChannel"
         const val LeaveChannel = "leaveChannel"
+        const val RejoinChannel = "rejoinChannel"
     }
 
     object PayloadKey {

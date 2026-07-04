@@ -7,6 +7,7 @@ class GeneratedRealtimeNotifyContract {
 class GeneratedRealtimeRoomActionContract {
   readonly JoinChannel: string = "joinChannel";
   readonly LeaveChannel: string = "leaveChannel";
+  readonly RejoinChannel: string = "rejoinChannel";
 }
 
 class GeneratedRealtimePayloadKeyContract {

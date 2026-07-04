@@ -17,7 +17,7 @@ on:
         type: boolean
         default: false
       case_filter:
-        description: "Optional case selection (comma-separated ids for --case); empty = full manifest"
+        description: "Optional case ids, comma-separated — drives BOTH React --case and the Android instrumentation method filter (fast targeted round); empty = full manifest"
         type: string
         default: ""
       slock_source_ref:
@@ -99,26 +99,49 @@ jobs:
           path: slock-source/visual-testing-results/react
           if-no-files-found: error
 
-  android-capture:
-    name: Android capture (shard ${{ matrix.shard }}/3)
+  android-build:
+    name: Android build (connected test APKs)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    # AndroidJUnitRunner shards the capture test methods across parallel
-    # emulator jobs; each case writes distinct files so artifacts merge
-    # cleanly in the report job.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2]
+    timeout-minutes: 60
+    outputs:
+      method_filter: ${{ steps.methods.outputs.filter }}
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
-      # Gradle caches + kuikly fork build + APKs leave <6GB free on the runner,
-      # and the emulator FATALs needing ~7.4GB for its userdata partition.
+      # Map requested case ids to KmpVisualScreenshotCaptureTest methods so a
+      # case_filter round only captures those cases on Android too.
+      - name: Derive android method filter
+        id: methods
+        env:
+          CASES: ${{ inputs.case_filter }}
+        run: |
+          python3 - <<'EOF'
+          import os, re
+          cases = [c.strip() for c in os.environ.get("CASES", "").split(",") if c.strip()]
+          methods = []
+          if cases:
+              src = open("compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt").read()
+              chunks = re.split(r"\bfun\s+(\w+)\s*\(", src)
+              for case in cases:
+                  needle = f'"{case}"'
+                  found = None
+                  for i in range(1, len(chunks) - 1, 2):
+                      if needle in chunks[i + 1]:
+                          found = chunks[i]
+                          break
+                  if found:
+                      methods.append(f"build.raft.app.visual.KmpVisualScreenshotCaptureTest#{found}")
+                  else:
+                      print(f"::warning::no capture method found for case {case}")
+          value = ",".join(methods)
+          print(f"derived method filter: {value or '(none — full sharded run)'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"filter={value}\n")
+          EOF
+
       - name: Free runner disk space
         run: |
-          df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
             /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /opt/ghc \
             /usr/local/share/boost /usr/local/lib/node_modules
@@ -165,21 +188,61 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           bash scripts/build_kuikly_fork.sh --android-only
 
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # Pre-build outside the emulator step so boot timeout is not consumed
-      # by Gradle, and a compile failure is distinguishable from an emulator one.
       - name: Build connected test APKs
         working-directory: ./compose
         run: |
           ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
             :androidApp:assembleConnectedTest :androidApp:assembleConnectedTestAndroidTest
 
-      - name: Run visual capture connected test
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-test-apks
+          path: |
+            compose/androidApp/build/outputs/apk/connectedTest/*.apk
+            compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
+          if-no-files-found: error
+
+  android-capture:
+    name: Android capture (shard ${{ matrix.shard }}/6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: android-build
+    # Build once, capture many: shards skip Gradle entirely — install the
+    # prebuilt APKs and drive AndroidJUnitRunner sharding via adb directly.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      # Targeted case_filter runs only use shard 0; the other shards no-op
+      # so the round finishes in one emulator's time.
+      - name: Free runner disk space for emulator
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Android SDK
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        uses: android-actions/setup-android@v3
+
+      - name: Download APKs
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-test-apks
+          path: apks
+
+      - name: Enable KVM
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run visual capture shard
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -191,29 +254,23 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          working-directory: ./compose
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
-            ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true :androidApp:connectedConnectedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=build.raft.app.visual.KmpVisualScreenshotCaptureTest -Pandroid.testInstrumentationRunnerArguments.numShards=3 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }} || echo "connected test exited non-zero; pulling whatever was captured"
-            mkdir -p ../visual-testing-results/android
-            adb pull /sdcard/Download/slock-visual-testing/android/. ../visual-testing-results/android/
+            adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
+            adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
+            mkdir -p visual-testing-results/android
+            adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
 
       - name: Upload android results
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
           path: visual-testing-results/android
-          if-no-files-found: error
-
-      - name: Upload connected test reports on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-connected-test-reports-shard-${{ matrix.shard }}
-          path: compose/androidApp/build/reports/androidTests
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   report:
     name: Diff, report, site, publish

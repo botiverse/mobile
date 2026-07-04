@@ -13,6 +13,7 @@ object SlockRealtimeNotifyContract {
     const val RoomsEventName = GeneratedRealtimeContract.Notify.RoomsEventName
     const val ActionJoinChannel = GeneratedRealtimeContract.RoomAction.JoinChannel
     const val ActionLeaveChannel = GeneratedRealtimeContract.RoomAction.LeaveChannel
+    const val ActionRejoinChannel = GeneratedRealtimeContract.RoomAction.RejoinChannel
     const val KeyAction = GeneratedRealtimeContract.PayloadKey.Action
     const val KeyChannelId = GeneratedRealtimeContract.PayloadKey.ChannelId
     const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId

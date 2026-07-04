@@ -225,6 +225,7 @@ class SlockRealtimeAppScopeEngine {
         }
         return when (action) {
             SlockRealtimeNotifyContract.ActionJoinChannel -> joinChannelDecision(channelId, reason)
+            SlockRealtimeNotifyContract.ActionRejoinChannel -> joinChannelDecision(channelId, reason, force = true)
             SlockRealtimeNotifyContract.ActionLeaveChannel -> leaveChannelDecision(channelId, reason)
             else ->
                 SlockRealtimeAppScopeRoomCommandDecision(
@@ -238,7 +239,11 @@ class SlockRealtimeAppScopeEngine {
         }
     }
 
-    fun joinChannelDecision(channelId: ChannelId, reason: String = "direct"): SlockRealtimeAppScopeRoomCommandDecision {
+    fun joinChannelDecision(
+        channelId: ChannelId,
+        reason: String = "direct",
+        force: Boolean = false
+    ): SlockRealtimeAppScopeRoomCommandDecision {
         if (channelId.value.isBlank()) {
             return SlockRealtimeAppScopeRoomCommandDecision(
                 shouldEmit = false,
@@ -249,7 +254,12 @@ class SlockRealtimeAppScopeEngine {
                 logMessage = "room_join_skip reason=missing_channel_id"
             )
         }
-        if (!state.markChannelJoined(channelId)) {
+        // Foreground reconcile: local joined-set may say "joined" while the
+        // server-side socket room membership was lost across background or
+        // reconnect. force re-emits join:channel (server join is idempotent
+        // and re-verifies access) while keeping the joined set accurate.
+        val newlyJoined = state.markChannelJoined(channelId)
+        if (!newlyJoined && !force) {
             return SlockRealtimeAppScopeRoomCommandDecision(
                 shouldEmit = false,
                 eventName = null,
@@ -265,7 +275,7 @@ class SlockRealtimeAppScopeEngine {
             payload = channelId.value,
             channelId = channelId,
             joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.Join,
-            logMessage = "room_join_emit reason=$reason channelId=${channelId.value}"
+            logMessage = "room_join_emit reason=$reason force=$force channelId=${channelId.value}"
         )
     }
 
