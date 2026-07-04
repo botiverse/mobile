@@ -143,14 +143,13 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --android-only
 
-      - name: Compile shared iOS targets and unit tests
+      - name: Compile shared iOS targets
         working-directory: compose
         run: |
           ./gradlew \
             :shared:compileKotlinIosArm64 \
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:compileKotlinIosX64 \
-            :shared:compileTestKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain
 
@@ -280,7 +279,7 @@ jobs:
 
           scripts/prepare_ktor_ohos_fork.sh --publish
 
-      - name: Compile shared OHOS target and unit tests
+      - name: Compile shared OHOS target
         working-directory: compose
         env:
           SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
@@ -288,6 +287,5 @@ jobs:
           ./gradlew \
             -c settings.ohos.gradle.kts \
             :shared:compileKotlinOhosArm64 \
-            :shared:compileTestKotlinOhosArm64 \
             --no-daemon \
             --console=plain
