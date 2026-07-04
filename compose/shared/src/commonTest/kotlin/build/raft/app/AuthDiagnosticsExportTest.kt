@@ -16,7 +16,7 @@ class AuthDiagnosticsExportTest {
                         appName = "Raft",
                         versionLabel = "1.2.3",
                         buildLabel = "42",
-                        sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
+                        sourceLabel = "abc1234",
                         packageName = "build.raft.app",
                         signedInUserLabel = "artin@slock.ai",
                         selectedServerLabel = "Slock Team",
@@ -37,7 +37,7 @@ class AuthDiagnosticsExportTest {
 
         assertContains(text, "Raft auth diagnostics")
         assertContains(text, "Platform: HarmonyOS")
-        assertContains(text, "Source: auth-bootstrap-diagnostics/e36bc138+")
+        assertContains(text, "Source: abc1234")
         assertContains(text, "SlockAuthNetwork")
         assertContains(text, "[redacted]")
         assertFalse(text.contains("refresh-token-123"))
