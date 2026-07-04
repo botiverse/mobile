@@ -1626,7 +1626,7 @@ private fun MemberDetailPageContent() {
                 }
             } else {
                 val agentDetailActions =
-                    remember(provider) {
+                    remember(provider, current.server.id) {
                         object : SharedAgentDetailActions {
                             override suspend fun runLifecycleAction(
                                 agentId: MemberId,
@@ -1637,6 +1637,18 @@ private fun MemberDetailPageContent() {
                                     provider.updateCachedLifecycleResult(action, agentId)
                                     localAgentDetailRefreshKey += 1
                                     if (action == MembersAgentLifecycleAction.Delete) {
+                                        provider.serverMembersStore.removeMember(
+                                            serverId = current.server.id,
+                                            memberId = agentId,
+                                            memberKind = MemberKind.Agent
+                                        )
+                                        routeScope.launch {
+                                            provider.serverMembersStore.refreshMembers(
+                                                serverId = current.server.id,
+                                                priority = DataRequestPriority.Background,
+                                                force = true
+                                            )
+                                        }
                                         provider.bridge.closePage()
                                     }
                                 }
