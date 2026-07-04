@@ -284,6 +284,16 @@ internal fun threadComposerSuggestionPanelState(
     }
 }
 
+internal fun <T> threadComposerRenderedSuggestions(
+    loadedSuggestions: List<T>,
+    retainedSuggestions: List<T>,
+    fallbackSuggestions: List<T>,
+    status: SharedMembersLoadStatus
+): List<T> =
+    loadedSuggestions.takeIf { it.isNotEmpty() || status == SharedMembersLoadStatus.Loaded }
+        ?: retainedSuggestions.takeIf { it.isNotEmpty() }
+        ?: fallbackSuggestions
+
 @Serializable
 internal data class KuiklyPendingAttachmentItem(
     val id: String,

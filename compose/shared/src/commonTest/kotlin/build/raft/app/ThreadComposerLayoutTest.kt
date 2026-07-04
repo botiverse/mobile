@@ -64,6 +64,21 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun memberSuggestionTriggerShowsItemsDuringRefreshWhenCandidatesExist() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.MemberItems,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                memberCount = 1,
+                memberStatus = SharedMembersLoadStatus.InFlight,
+                channelCount = 0,
+                channelStatus = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
     fun memberSuggestionTriggerShowsEmptyPanelAfterLoadedEmptyResult() {
         assertEquals(
             ThreadComposerSuggestionPanelState.MemberEmpty,
@@ -119,6 +134,45 @@ class ThreadComposerLayoutTest {
                 memberStatus = SharedMembersLoadStatus.Loaded,
                 channelCount = 0,
                 channelStatus = SharedMembersLoadStatus.Idle
+            )
+        )
+    }
+
+    @Test
+    fun renderedSuggestionsKeepRetainedCandidatesWhileRefreshIsInFlight() {
+        assertEquals(
+            listOf("@artin"),
+            threadComposerRenderedSuggestions(
+                loadedSuggestions = emptyList(),
+                retainedSuggestions = listOf("@artin"),
+                fallbackSuggestions = emptyList(),
+                status = SharedMembersLoadStatus.InFlight
+            )
+        )
+    }
+
+    @Test
+    fun renderedSuggestionsReplaceRetainedCandidatesWhenRefreshCompletesEmpty() {
+        assertEquals(
+            emptyList(),
+            threadComposerRenderedSuggestions(
+                loadedSuggestions = emptyList(),
+                retainedSuggestions = listOf("@artin"),
+                fallbackSuggestions = listOf("@old"),
+                status = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
+    fun renderedSuggestionsUseFreshCandidatesWhenRefreshReturnsItems() {
+        assertEquals(
+            listOf("@kmp"),
+            threadComposerRenderedSuggestions(
+                loadedSuggestions = listOf("@kmp"),
+                retainedSuggestions = listOf("@artin"),
+                fallbackSuggestions = emptyList(),
+                status = SharedMembersLoadStatus.Loaded
             )
         )
     }

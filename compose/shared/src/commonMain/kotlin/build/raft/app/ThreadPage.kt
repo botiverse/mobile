@@ -7786,13 +7786,19 @@ private fun ThreadComposerContentWithSuggestions(
         }
     }
     val renderedMemberSuggestions =
-        loadedMemberSuggestions.takeIf { it.isNotEmpty() || memberSuggestionSlice.status == SharedMembersLoadStatus.Loaded }
-            ?: retainedMemberSuggestions.takeIf { it.isNotEmpty() }
-            ?: state.memberSuggestions
+        threadComposerRenderedSuggestions(
+            loadedSuggestions = loadedMemberSuggestions,
+            retainedSuggestions = retainedMemberSuggestions,
+            fallbackSuggestions = state.memberSuggestions,
+            status = memberSuggestionSlice.status
+        )
     val renderedChannelSuggestions =
-        loadedChannelSuggestions.takeIf { it.isNotEmpty() || channelSuggestionSlice.status == SharedMembersLoadStatus.Loaded }
-            ?: retainedChannelSuggestions.takeIf { it.isNotEmpty() }
-            ?: state.channelSuggestions
+        threadComposerRenderedSuggestions(
+            loadedSuggestions = loadedChannelSuggestions,
+            retainedSuggestions = retainedChannelSuggestions,
+            fallbackSuggestions = state.channelSuggestions,
+            status = channelSuggestionSlice.status
+        )
     val renderedState =
         remember(state, memberSuggestionSlice, renderedMemberSuggestions, channelSuggestionSlice, renderedChannelSuggestions) {
             state.copy(
