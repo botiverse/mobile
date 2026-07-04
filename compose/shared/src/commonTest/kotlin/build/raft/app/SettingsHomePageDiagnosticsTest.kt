@@ -57,7 +57,7 @@ class SettingsHomePageDiagnosticsTest {
                                 SharedSettingsAboutSnapshot(
                                     appName = "Raft",
                                     versionLabel = "1.2.3",
-                                    sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
+                                    sourceLabel = "abc1234",
                                     signedInUserLabel = "Artin",
                                     selectedServerLabel = "Botiverse",
                                     sessionStatusLabel = "Signed in",

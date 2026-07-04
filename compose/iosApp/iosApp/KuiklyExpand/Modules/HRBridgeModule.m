@@ -748,16 +748,17 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
         NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
         NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
+        NSString *gitCommit = SlockBridgeGitCommit();
         UIDevice *device = UIDevice.currentDevice;
         return @{
             @"status" : @"ok",
             @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
             @"versionLabel" : version,
             @"buildLabel" : build,
-            @"sourceLabel" : @"iOS P0 host bridge",
+            @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
             @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
             @"buildTime" : SlockBridgeBuildTime(),
-            @"gitCommit" : SlockBridgeGitCommit(),
+            @"gitCommit" : gitCommit,
             @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
             @"platformLabel" : @"iOS",
             @"sessionStatusLabel" : @"Not wired",

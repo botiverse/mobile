@@ -17,6 +17,7 @@ import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
+import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -78,7 +79,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
-  static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -606,7 +606,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "appName": "Raft",
       "versionLabel": bundleInfo.versionName,
       "buildLabel": `${bundleInfo.versionCode}`,
-      "sourceLabel": KRBridgeModule.AUTH_DIAGNOSTICS_SOURCE_MARKER,
+      "sourceLabel": SLOCK_OHOS_GIT_COMMIT.length > 0 ? SLOCK_OHOS_GIT_COMMIT : "unknown",
       "packageName": bundleInfo.name,
       "socketStatusLabel": "Shared shell",
       "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
@@ -614,8 +614,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
       "baseUrl": SlockOhosApiEnvironmentStore.current(this).apiBaseUrl,
       "filesDir": context.filesDir,
-      "buildTime": new Date().toISOString(),
-      "gitCommit": "unknown"
+      "buildTime": SLOCK_OHOS_BUILD_TIME.length > 0 ? SLOCK_OHOS_BUILD_TIME : "unknown",
+      "gitCommit": SLOCK_OHOS_GIT_COMMIT.length > 0 ? SLOCK_OHOS_GIT_COMMIT : "unknown"
     };
   }
 
