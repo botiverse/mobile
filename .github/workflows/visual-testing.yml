@@ -10,6 +10,12 @@ name: Visual Testing
 # preflight guard (case-count drop / missing Raft UI entry are rejected).
 
 on:
+  # Nightly full run publishes the report (21:30 UTC = 05:30 Beijing, fresh
+  # before the team's morning). Scheduled runs have empty inputs: slock ref
+  # falls back to the repo default branch (staging), case_filter is empty
+  # (full manifest), and the publish step below treats schedule as publish.
+  schedule:
+    - cron: "30 21 * * *"
   workflow_dispatch:
     inputs:
       publish:
@@ -345,7 +351,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to gh-pages (preflight-guarded)
-        if: ${{ inputs.publish }}
+        if: ${{ inputs.publish || github.event_name == 'schedule' }}
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
