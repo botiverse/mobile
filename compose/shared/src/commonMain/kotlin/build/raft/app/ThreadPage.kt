@@ -13802,62 +13802,55 @@ private fun ThreadShareSelectionToolbar(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
-                .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+                .background(SlockColor.BrandYellow)
     ) {
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp + bottomSafeArea),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = if (selectedCount == 1) "1 message selected" else "$selectedCount messages selected",
-                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockBrutalIconButton(
-                iconName = SlockLucideIconName.X,
-                onClick = onCancel,
-                size = 34.dp,
-                shadowOffset = 2.dp
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockBrutalActionButton(
-                label = "Share",
-                leadingIcon = SlockLucideIconName.Share2,
-                onClick = onShare,
-                enabled = hasSelection,
-                modifier = Modifier.weight(1f),
-                minWidth = 0.dp,
-                minHeight = 38.dp,
-                backgroundColor = SlockColor.AccentPink,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
+            Text(
+                text = selectedCount.toString(),
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack.copy(alpha = 0.70f),
+                maxLines = 1
             )
-            SlockBrutalActionButton(
-                label = "Copy MD",
-                leadingIcon = SlockLucideIconName.Copy,
-                onClick = onCopyMarkdown,
-                enabled = hasSelection,
+            Row(
                 modifier = Modifier.weight(1f),
-                minWidth = 0.dp,
-                minHeight = 38.dp,
-                backgroundColor = SlockColor.SurfaceWhite,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
-            )
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.X,
+                    onClick = onCancel,
+                    size = 28.dp,
+                    shadowOffset = SlockShadow.BrutalSmall,
+                    iconSize = 14.dp
+                )
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.Share2,
+                    onClick = onShare,
+                    enabled = hasSelection,
+                    size = 28.dp,
+                    shadowOffset = SlockShadow.BrutalSmall,
+                    iconSize = 14.dp,
+                    backgroundColor = SlockColor.AccentPink,
+                    disabledBackgroundColor = SlockColor.AccentPink
+                )
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.Copy,
+                    onClick = onCopyMarkdown,
+                    enabled = hasSelection,
+                    size = 28.dp,
+                    shadowOffset = SlockShadow.BrutalSmall,
+                    iconSize = 14.dp
+                )
+            }
         }
     }
 }
