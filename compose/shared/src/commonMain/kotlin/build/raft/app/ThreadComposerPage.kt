@@ -245,16 +245,18 @@ internal fun threadComposerSuggestionPanelState(
             when {
                 memberCount > 0 -> ThreadComposerSuggestionPanelState.MemberItems
                 memberStatus == SharedMembersLoadStatus.Error -> ThreadComposerSuggestionPanelState.MemberError
+                memberStatus == SharedMembersLoadStatus.InFlight -> ThreadComposerSuggestionPanelState.MemberLoading
                 memberStatus == SharedMembersLoadStatus.Loaded -> ThreadComposerSuggestionPanelState.MemberEmpty
-                else -> ThreadComposerSuggestionPanelState.MemberLoading
+                else -> ThreadComposerSuggestionPanelState.MemberEmpty
             }
 
         is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
             when {
                 channelCount > 0 -> ThreadComposerSuggestionPanelState.ChannelItems
                 channelStatus == SharedMembersLoadStatus.Error -> ThreadComposerSuggestionPanelState.ChannelError
+                channelStatus == SharedMembersLoadStatus.InFlight -> ThreadComposerSuggestionPanelState.ChannelLoading
                 channelStatus == SharedMembersLoadStatus.Loaded -> ThreadComposerSuggestionPanelState.ChannelEmpty
-                else -> ThreadComposerSuggestionPanelState.ChannelLoading
+                else -> ThreadComposerSuggestionPanelState.ChannelEmpty
             }
 
         KuiklyComposerSuggestionTrigger.None -> ThreadComposerSuggestionPanelState.Hidden

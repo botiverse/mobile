@@ -79,6 +79,21 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun memberSuggestionTriggerShowsEmptyWhenNoRequestIsInFlight() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.MemberEmpty,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                memberCount = 0,
+                memberStatus = SharedMembersLoadStatus.Idle,
+                channelCount = 0,
+                channelStatus = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
     fun channelSuggestionTriggerShowsItemsWhenFilteredChannelsExist() {
         assertEquals(
             ThreadComposerSuggestionPanelState.ChannelItems,
@@ -89,6 +104,21 @@ class ThreadComposerLayoutTest {
                 memberStatus = SharedMembersLoadStatus.Loaded,
                 channelCount = 1,
                 channelStatus = SharedMembersLoadStatus.InFlight
+            )
+        )
+    }
+
+    @Test
+    fun channelSuggestionTriggerShowsEmptyWhenNoRequestIsInFlight() {
+        assertEquals(
+            ThreadComposerSuggestionPanelState.ChannelEmpty,
+            threadComposerSuggestionPanelState(
+                focused = true,
+                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0),
+                memberCount = 0,
+                memberStatus = SharedMembersLoadStatus.Loaded,
+                channelCount = 0,
+                channelStatus = SharedMembersLoadStatus.Idle
             )
         )
     }
