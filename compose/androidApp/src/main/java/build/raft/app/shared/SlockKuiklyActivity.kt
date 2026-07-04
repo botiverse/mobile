@@ -112,6 +112,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.caverock.androidsvg.SVG
+import io.quiver.update.QuiverDeviceId
 import io.quiver.update.internal.QuiverClient
 import io.quiver.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -2480,7 +2481,8 @@ internal class SlockKuiklyBridgeModule(
                                 productType = "android-apk",
                                 platform = "android",
                                 arch = arch,
-                                filetype = "apk"
+                                filetype = "apk",
+                                deviceId = QuiverDeviceId.get(appContext)
                         )
         SlockDiagnosticsLogger.record(
                 "SlockQuiverUpdate",
