@@ -1861,8 +1861,32 @@ class SharedSettingsStore(
                     when (updateResult) {
                         is DataResult.Content ->
                             developerResult.data.copy(updateCheck = updateResult.data)
-                        is DataResult.Empty,
-                        is DataResult.Error,
+                        is DataResult.Empty ->
+                            developerResult.data.copy(
+                                updateCheck =
+                                    SharedSettingsUpdateCheckSnapshot(
+                                        supported = true,
+                                        statusLabel = "Check failed",
+                                        detail = "Update check returned no data. Try again later.",
+                                        errorCode = "update_check_empty"
+                                    )
+                            )
+                        is DataResult.Error ->
+                            developerResult.data.copy(
+                                updateCheck =
+                                    SharedSettingsUpdateCheckSnapshot(
+                                        supported = true,
+                                        statusLabel = "Check failed",
+                                        detail =
+                                            "Could not reach the update server (" +
+                                                updateResult.error.code.ifBlank { "unknown" } +
+                                                "). Check your network and try again.",
+                                        errorCode =
+                                            updateResult.error.code.ifBlank {
+                                                "update_check_failed"
+                                            }
+                                    )
+                            )
                         is DataResult.NoPermission -> developerResult.data
                     }
                 _state.value = _state.value.copy(developer = ScreenLoadState.Content(developer))

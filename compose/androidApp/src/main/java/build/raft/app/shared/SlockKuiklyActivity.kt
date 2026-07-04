@@ -2107,6 +2107,11 @@ internal class SlockKuiklyBridgeModule(
                                     checkQuiverUpdate(install = install)
                                 }
                                 .getOrElse { throwable ->
+                                    SlockDiagnosticsLogger.record(
+                                            "SlockQuiverUpdate",
+                                            "check_failed action=$action base=${BuildConfig.QUIVER_BASE_URL} " +
+                                                    "error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                                    )
                                     mapOf(
                                             "status" to "error",
                                             "code" to "settings_quiver_update_check_failed",
