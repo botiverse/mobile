@@ -9,6 +9,7 @@ import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
+import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -240,6 +241,7 @@ internal fun SlockRaftUiBanner(
                 .fillMaxWidth()
                 .background(status.background)
                 .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
+                .slockSquareCorners()
                 .padding(size.padding),
         horizontalArrangement = Arrangement.spacedBy(size.gap),
         verticalAlignment = Alignment.Top

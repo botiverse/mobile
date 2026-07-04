@@ -127,6 +127,7 @@ internal fun SlockAnchoredMetaChip(
             .heightIn(min = 20.dp)
             .border(borderWidth, SlockColor.BorderBlack, RectangleShape)
             .background(color, RectangleShape)
+            .slockSquareCorners()
             .padding(horizontal = 6.dp, vertical = 2.dp)
             .let { base ->
                 if (anchorPlacement == SlockAnchorPlacement.Tap) {
@@ -682,6 +683,7 @@ internal fun SlockBrutalActionButton(
                     .matchParentSize()
                     .offset(x = shadowOffset, y = shadowOffset)
                     .background(SlockColor.ShadowBlack.copy(alpha = chromeAlpha), RectangleShape)
+                    .slockSquareCorners()
         )
         SlockAnchorButton(
             onClick = onClick,
@@ -693,6 +695,7 @@ internal fun SlockBrutalActionButton(
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = chromeAlpha), RectangleShape)
+                    .slockSquareCorners()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             SlockBrutalActionButtonInnerContent(
@@ -822,6 +825,7 @@ internal fun SlockToolbarChip(
                         .matchParentSize()
                         .offset(x = activeShadowOffset, y = activeShadowOffset)
                         .background(activeShadowColor, RectangleShape)
+                        .slockSquareCorners()
             )
         }
         Box(
@@ -830,6 +834,7 @@ internal fun SlockToolbarChip(
                     .heightIn(min = 30.dp)
                     .background(if (active) activeBackgroundColor else inactiveBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, resolvedBorderColor, RectangleShape)
+                    .slockSquareCorners()
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
@@ -857,6 +862,7 @@ internal fun SlockToolbarChip(
                             Modifier
                                 .background(SlockColor.SurfaceWhite, RectangleShape)
                                 .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
+                                .slockSquareCorners()
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                         maxLines = 1
                     )

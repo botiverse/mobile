@@ -10,6 +10,7 @@ import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
+import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -94,6 +95,7 @@ internal fun SlockSelectionPopover(
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite, RectangleShape)
                     .border(SlockStroke.Default, SlockColor.BorderBlack, RectangleShape)
+                    .slockSquareCorners()
         ) {
             if (showHeader) {
                 Row(

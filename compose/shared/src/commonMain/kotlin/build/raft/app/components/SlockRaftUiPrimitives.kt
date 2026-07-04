@@ -7,6 +7,7 @@ import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
+import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -111,6 +112,7 @@ private fun SlockBrutalBadgeChrome(
                 .widthIn(min = 0.dp)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                 .background(tone.color, RectangleShape)
+                .slockSquareCorners()
                 .padding(horizontal = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -199,6 +201,7 @@ internal fun SlockSurfaceListItem(
                     .fillMaxWidth()
                     .background(backgroundColor, RectangleShape)
                     .border(SlockStroke.Default, borderColor, RectangleShape)
+                    .slockSquareCorners()
                     .let { base ->
                         if (onClick != null) {
                             base.clickable(enabled = true, role = Role.Button, onClick = onClick)
