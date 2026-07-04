@@ -5,6 +5,15 @@ Owner: Android/App integration + KMP Thread
 Status: Draft
 Task: #391
 
+> **Update (2026-07-04, task #335):** the source contract below is superseded.
+> The web repo now defines reactions canonically in
+> `packages/web/assets/reactions/reactions.json` + `source/*.svg`
+> (botiverse/slock), and `scripts/generate_thread_reaction_atlas.mjs` consumes
+> those directly (set `SLOCK_SOURCE_REPO` to a slock checkout). The local
+> `scripts/assets/thread-reactions/` copies were removed; ids, labels, and
+> aliases (e.g. `❤` → `❤️`) now come from the canonical JSON, and the generator
+> writes both the atlas PNG and the manifest.
+
 ## Problem
 
 Thread reactions currently render from the raw server reaction string. Known quick reactions are either text emoji or hand-drawn Canvas glyphs in `ThreadPage.kt`; unknown reactions fall back to text. This makes visual parity hard to maintain across Android/OHOS/iOS/H5 because emoji fonts differ by platform, while hand-drawn glyphs are embedded in code and do not carry product metadata such as localized names.

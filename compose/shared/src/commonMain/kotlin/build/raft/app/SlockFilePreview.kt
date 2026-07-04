@@ -10,6 +10,9 @@ import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AttachmentPreview
+import build.raft.app.data.AttachmentPreviewContent
+import build.raft.app.data.parseSharedAttachmentPreview
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealMemberRepository
@@ -1146,10 +1149,57 @@ private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
     )
 }
 
+/**
+ * Server-side preview attempt per task #203: `GET attachments/:id/preview`
+ * returns text/markdown bodies already truncated to a safe size with an
+ * explicit `truncated` flag, so text-like previews stop downloading whole
+ * files through signed URLs. Returns null when the endpoint is missing,
+ * errors, reports unsupported, or answers with a kind the caller does not
+ * render — callers then fall back to the legacy full-body fetch.
+ */
+private suspend fun fetchServerAttachmentPreview(
+    networkClient: SlockNetworkClient,
+    attachmentId: String
+): AttachmentPreview? {
+    val cleanId = attachmentId.trim().takeIf { it.isNotBlank() } ?: return null
+    val response =
+        try {
+            networkClient.request(
+                priority = DataRequestPriority.Visible,
+                path = "attachments/$cleanId/preview"
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return null
+        }
+    if (response.code !in 200..299) return null
+    val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return null
+    val preview = parseSharedAttachmentPreview(body) ?: return null
+    return preview.takeIf { it.isOk }
+}
+
+private const val SlockFilePreviewServerTruncatedNotice =
+    "\n\nPreview truncated. Open with system viewer for the full file."
+
 private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: SlockThreadApiClient,
     networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload {
+    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverText = (serverPreview?.content as? AttachmentPreviewContent.Text)?.text
+    if (serverPreview != null && serverText != null) {
+        val previewBody =
+            if (serverPreview.truncated) serverText + SlockFilePreviewServerTruncatedNotice else serverText
+        return copy(
+            kind = "text",
+            title = "Text preview",
+            content = previewBody,
+            markdown = false,
+            message = "",
+            error = null
+        )
+    }
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
@@ -1206,6 +1256,24 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     threadApi: SlockThreadApiClient,
     networkClient: SlockNetworkClient
 ): SlockFilePreviewPayload {
+    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverMarkdown = (serverPreview?.content as? AttachmentPreviewContent.Markdown)?.markdown
+    if (serverPreview != null && serverMarkdown != null) {
+        val previewBody =
+            if (serverPreview.truncated) {
+                serverMarkdown + "\n\n_Preview truncated. Open with system viewer for the full file._"
+            } else {
+                serverMarkdown
+            }
+        return copy(
+            kind = "markdown",
+            title = "Markdown preview",
+            content = previewBody,
+            markdown = true,
+            message = "",
+            error = null
+        )
+    }
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }

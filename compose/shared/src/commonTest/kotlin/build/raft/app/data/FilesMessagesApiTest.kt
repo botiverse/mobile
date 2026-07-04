@@ -26,7 +26,9 @@ class FilesMessagesApiTest {
         assertEquals(1, assertIs<DataResult.Content<FilesPage>>(files).data.itemCount)
         assertEquals("cursor-2", assertIs<DataResult.Content<FilesPage>>(files).data.nextCursor)
         assertEquals("https://cdn.slock.test/a.png", assertIs<DataResult.Content<AttachmentUrlTarget>>(url).data.url)
-        assertEquals("markdown", assertIs<DataResult.Content<AttachmentPreviewSummary>>(preview).data.kind)
+        val previewData = assertIs<DataResult.Content<AttachmentPreview>>(preview).data
+        assertEquals("# Hi", assertIs<AttachmentPreviewContent.Markdown>(previewData.content).markdown)
+        assertEquals(true, previewData.truncated)
         assertEquals("https://api.slock.test/api/attachments/attachment-1/html-preview", assertIs<DataResult.Content<AttachmentUrlTarget>>(html).data.url)
         assertEquals(1, assertIs<DataResult.Content<MessageSearchPage>>(search).data.resultCount)
         assertEquals("channel-1", assertIs<DataResult.Content<MessageContextSummary>>(context).data.channelId)
@@ -80,7 +82,7 @@ class FilesMessagesApiTest {
         private val attachmentUrlBody: String =
             """{"url":"https://cdn.slock.test/a.png","expiresAt":"2026-05-22T10:00:00.000Z"}""",
         private val previewBody: String =
-            """{"status":"ok","data":{"kind":"markdown","content":"# Hello"},"truncated":false}""",
+            """{"status":"ok","data":{"kind":"markdown","markdown":"# Hi"},"truncated":true}""",
         private val htmlPreviewBody: String =
             """{"url":"https://api.slock.test/api/attachments/attachment-1/html-preview","expiresAt":"2026-05-22T10:00:00.000Z"}""",
         private val searchBody: String =
@@ -135,4 +137,36 @@ class FilesMessagesApiTest {
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
     }
+    @Test
+    fun parseSharedAttachmentPreviewCoversUnionKindsAndUnknowns() {
+        val text = parseSharedAttachmentPreview("""{"status":"ok","data":{"kind":"text","text":"hello"},"truncated":false}""")
+        assertEquals("hello", assertIs<AttachmentPreviewContent.Text>(text?.content).text)
+        assertEquals(false, text?.truncated)
+
+        val csv = parseSharedAttachmentPreview(
+            """{"status":"ok","data":{"kind":"csv","delimiter":",","headers":["a"],"rows":[["1"],["2"]],"rowCount":9,"columnCount":1},"truncated":true}"""
+        )
+        val csvContent = assertIs<AttachmentPreviewContent.Csv>(csv?.content)
+        assertEquals(9, csvContent.rowCount)
+        assertEquals(true, csv?.truncated)
+
+        val diff = parseSharedAttachmentPreview(
+            """{"status":"ok","data":{"kind":"diff","stats":{"files":2,"hunks":3,"additions":10,"deletions":4}}}"""
+        )
+        assertEquals(2, assertIs<AttachmentPreviewContent.Diff>(diff?.content).files)
+
+        val pdf = parseSharedAttachmentPreview("""{"status":"ok","data":{"kind":"pdf"}}""")
+        assertIs<AttachmentPreviewContent.Pdf>(pdf?.content)
+
+        val unsupported = parseSharedAttachmentPreview("""{"status":"unsupported"}""")
+        assertEquals("unsupported", unsupported?.status)
+        assertEquals(null, unsupported?.content)
+        assertEquals(false, unsupported?.isOk)
+
+        val unknownKind = parseSharedAttachmentPreview("""{"status":"ok","data":{"kind":"hologram"}}""")
+        assertEquals(null, unknownKind?.content)
+
+        assertEquals(null, parseSharedAttachmentPreview("not json"))
+    }
+
 }

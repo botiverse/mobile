@@ -55,15 +55,15 @@ internal class SlockFilesMessagesApiClient(
             AttachmentUrlTarget(url = url, expiresAt = wire.expiresAt)
         }
 
-    suspend fun attachmentPreview(attachmentId: AttachmentId): DataResult<AttachmentPreviewSummary> =
+    suspend fun attachmentPreview(attachmentId: AttachmentId): DataResult<AttachmentPreview> =
         transport.attachmentPreview(attachmentId).mapFilesBody(
             "attachment_preview_contract_mismatch",
             AttachmentPreviewResponseDto.serializer()
         ) { wire ->
             val status = wire.status.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
-            AttachmentPreviewSummary(
+            AttachmentPreview(
                 status = status,
-                kind = wire.data?.kind,
+                content = wire.data?.toAttachmentPreviewContent(),
                 truncated = wire.truncated ?: false,
             )
         }
@@ -112,7 +112,40 @@ internal class SlockFilesMessagesApiClient(
 
 internal data class FilesPage(val itemCount: Int, val nextCursor: String?)
 internal data class AttachmentUrlTarget(val url: String, val expiresAt: String?)
-internal data class AttachmentPreviewSummary(val status: String, val kind: String?, val truncated: Boolean)
+/**
+ * Typed projection of `GET attachments/:id/preview`
+ * (`packages/shared/src/attachmentPreview.ts` AttachmentPreviewResponse).
+ * `content == null` means the server answered but the payload kind is not
+ * previewable here (unsupported status, pdf, or an unknown future kind) —
+ * callers fall back to their legacy path.
+ */
+internal sealed interface AttachmentPreviewContent {
+    data class Text(val text: String) : AttachmentPreviewContent
+    data class Markdown(val markdown: String) : AttachmentPreviewContent
+    data class Csv(
+        val delimiter: String,
+        val headers: List<String>,
+        val rows: List<List<String>>,
+        val rowCount: Int,
+        val columnCount: Int,
+    ) : AttachmentPreviewContent
+    data class Diff(
+        val files: Int,
+        val hunks: Int,
+        val additions: Int,
+        val deletions: Int,
+    ) : AttachmentPreviewContent
+    data object Pdf : AttachmentPreviewContent
+}
+
+internal data class AttachmentPreview(
+    val status: String,
+    val content: AttachmentPreviewContent?,
+    val truncated: Boolean,
+) {
+    val isOk: Boolean
+        get() = status == "ok"
+}
 internal data class MessageSearchPage(val resultCount: Int, val hasMore: Boolean)
 internal data class MessageContextSummary(
     val channelId: String,
@@ -199,7 +232,62 @@ private data class AttachmentPreviewResponseDto(
 )
 
 @Serializable
-private data class AttachmentPreviewDataDto(val kind: String? = null)
+private data class AttachmentPreviewDataDto(
+    val kind: String? = null,
+    // text
+    val text: String? = null,
+    // markdown
+    val markdown: String? = null,
+    // csv
+    val delimiter: String? = null,
+    val headers: List<String>? = null,
+    val rows: List<List<String>>? = null,
+    val rowCount: Int? = null,
+    val columnCount: Int? = null,
+    // diff
+    val stats: AttachmentPreviewDiffStatsDto? = null,
+)
+
+@Serializable
+private data class AttachmentPreviewDiffStatsDto(
+    val files: Int = 0,
+    val hunks: Int = 0,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+)
+
+internal fun parseSharedAttachmentPreview(bodyText: String): AttachmentPreview? = runCatching {
+    val wire = filesMessagesApiJson.decodeFromString(AttachmentPreviewResponseDto.serializer(), bodyText)
+    val status = wire.status.takeIf { it.isNotBlank() } ?: return@runCatching null
+    AttachmentPreview(
+        status = status,
+        content = wire.data?.toAttachmentPreviewContent(),
+        truncated = wire.truncated ?: false,
+    )
+}.getOrNull()
+
+private fun AttachmentPreviewDataDto.toAttachmentPreviewContent(): AttachmentPreviewContent? =
+    when (kind) {
+        "text" -> text?.let { AttachmentPreviewContent.Text(it) }
+        "markdown" -> markdown?.let { AttachmentPreviewContent.Markdown(it) }
+        "csv" ->
+            AttachmentPreviewContent.Csv(
+                delimiter = delimiter ?: ",",
+                headers = headers.orEmpty(),
+                rows = rows.orEmpty(),
+                rowCount = rowCount ?: rows.orEmpty().size,
+                columnCount = columnCount ?: headers.orEmpty().size,
+            )
+        "diff" ->
+            AttachmentPreviewContent.Diff(
+                files = stats?.files ?: 0,
+                hunks = stats?.hunks ?: 0,
+                additions = stats?.additions ?: 0,
+                deletions = stats?.deletions ?: 0,
+            )
+        "pdf" -> AttachmentPreviewContent.Pdf
+        else -> null
+    }
 
 @Serializable
 private data class AttachmentHtmlPreviewUrlDto(

@@ -29,6 +29,11 @@ final class SlockIosRealtimeHost: NSObject {
     private var connectParams: ConnectParams?
     private var state: State = .disconnected
     private var joinedChannels: Set<String> = []
+    // Room-command semantics (join dedupe, leave bookkeeping, force rejoin)
+    // live in the shared Kotlin engine — same decision path as Android/OHOS.
+    // joinedChannels stays only as the host mirror used to resend joins on
+    // reconnect, updated exclusively from decision.joinedChannelAction.
+    private let roomEngine = SlockRealtimeAppScopeEngine()
     private var authRefreshInFlight = false
     private var didInstallObservers = false
 
@@ -111,6 +116,7 @@ final class SlockIosRealtimeHost: NSObject {
             }
             if !sameSession {
                 self.joinedChannels.removeAll()
+                self.roomEngine.resetRoomStateForHost()
             }
             self.connectParams = next
             self.authRefreshInFlight = false
@@ -318,29 +324,25 @@ final class SlockIosRealtimeHost: NSObject {
         }
         queue.async { [weak self] in
             guard let self else { return }
-            switch action {
-            case GeneratedRealtimeContract.RoomAction.joinChannel:
-                guard self.joinedChannels.insert(channelId).inserted else {
-                    self.log("room_join_skip reason=already_joined channelId=\(channelId)")
-                    return
-                }
-                self.emitRoomCommand(eventName: GeneratedRealtimeContract.SocketEvent.joinChannel, channelId: channelId)
-            case GeneratedRealtimeContract.RoomAction.rejoinChannel:
-                // Foreground reconcile: always re-emit join:channel even when the
-                // local joined set already has the room (server join is idempotent);
-                // keep the set accurate so later plain joins dedupe and leaves pair up.
-                self.joinedChannels.insert(channelId)
-                self.log("room_join_emit reason=foreground_reconcile force=true channelId=\(channelId)")
-                self.emitRoomCommand(eventName: GeneratedRealtimeContract.SocketEvent.joinChannel, channelId: channelId)
-            case GeneratedRealtimeContract.RoomAction.leaveChannel:
-                guard self.joinedChannels.remove(channelId) != nil else {
-                    self.log("room_leave_skip reason=not_joined channelId=\(channelId)")
-                    return
-                }
-                self.emitRoomCommand(eventName: GeneratedRealtimeContract.SocketEvent.leaveChannel, channelId: channelId)
-            default:
-                self.log("room_command_skip reason=unsupported_action action=\(action)")
+            let decision = self.roomEngine.roomCommandDecisionForHost(
+                action: action,
+                channelIdValue: channelId,
+                reason: "notify"
+            )
+            if !decision.logMessage.isEmpty {
+                self.log(decision.logMessage)
             }
+            if let decidedChannelId = decision.channelId?.value, !decidedChannelId.isEmpty {
+                if decision.joinedChannelAction == "join" {
+                    self.joinedChannels.insert(decidedChannelId)
+                } else if decision.joinedChannelAction == "leave" {
+                    self.joinedChannels.remove(decidedChannelId)
+                }
+            }
+            guard decision.shouldEmit, let eventName = decision.eventName, let payload = decision.payload else {
+                return
+            }
+            self.emitRoomCommand(eventName: eventName, channelId: payload)
         }
     }
 
@@ -382,6 +384,7 @@ final class SlockIosRealtimeHost: NSObject {
         if !keepSession {
             connectParams = nil
             joinedChannels.removeAll()
+            roomEngine.resetRoomStateForHost()
         }
         log("disconnect reason=\(reason) keepSession=\(keepSession)")
     }
