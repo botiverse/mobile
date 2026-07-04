@@ -156,8 +156,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
                               "messageId": "message-1",
                               "channelId": "channel-1",
                               "channelName": "android-dev",
-                              "targetType": "user",
-                              "targetHandle": "missing-human",
+                              "targetType": "agent",
+                              "targetHandle": "missing-agent",
+                              "targetAvatarUrl": "https://cdn.slock.ai/avatars/agents/missing-agent.webp",
                               "reason": "Mention target was not notified at send time.",
                               "availableActions": ["notify", "invite"],
                               "expiresAt": "2026-06-27T02:40:00Z"
@@ -192,7 +193,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("resolution-1", pending.resolutionId)
         assertEquals("message-1", pending.messageId?.value)
         assertEquals("channel-1", pending.channelId?.value)
-        assertEquals("missing-human", pending.targetHandle)
+        assertEquals("missing-agent", pending.targetHandle)
+        assertEquals("https://cdn.slock.ai/avatars/agents/missing-agent.webp", pending.targetAvatarUrl)
         assertEquals(listOf("notify", "invite"), pending.availableActions)
     }
 

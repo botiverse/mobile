@@ -171,6 +171,7 @@ private data class MessagesWirePendingMentionAction(
     val channelName: String? = null,
     val targetType: String? = null,
     val targetHandle: String? = null,
+    val targetAvatarUrl: String? = null,
     val reason: String? = null,
     val availableActions: List<String> = emptyList(),
     val expiresAt: String? = null
@@ -392,6 +393,7 @@ private fun MessagesWirePendingMentionAction.toDomain(): PendingMentionAction? {
         channelName = channelName?.takeIf { it.isNotBlank() },
         targetType = targetType?.takeIf { it.isNotBlank() } ?: "unknown",
         targetHandle = targetHandle.orEmpty(),
+        targetAvatarUrl = targetAvatarUrl.normalizedPendingMentionAvatarUrl(),
         reason = reason.orEmpty(),
         availableActions = availableActions.map { it.trim() }.filter { it.isNotBlank() },
         expiresAt = expiresAt?.takeIf { it.isNotBlank() }
