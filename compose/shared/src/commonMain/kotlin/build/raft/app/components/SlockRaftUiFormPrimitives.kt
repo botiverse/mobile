@@ -39,6 +39,9 @@ internal enum class SlockFormFieldSize {
     Compact
 }
 
+internal val SlockSlugInputPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.30f)
+internal val SlockSlugInputDisabledPrefixBackground = SlockSlugInputPrefixBackground.copy(alpha = 0.55f)
+
 @Composable
 internal fun SlockFormField(
     label: String,
@@ -216,7 +219,7 @@ internal fun SlockSlugInput(
                     Modifier
                         .width(32.dp)
                         .height(fieldHeight)
-                        .background(Color(0xFFFFF7D6).copy(alpha = if (enabled) 1f else 0.55f))
+                        .background(if (enabled) SlockSlugInputPrefixBackground else SlockSlugInputDisabledPrefixBackground)
                         .border(SlockStroke.Thin, borderColor),
                 contentAlignment = Alignment.Center
             ) {
