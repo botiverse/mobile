@@ -8572,8 +8572,7 @@ private fun ThreadMessagesList(
             translationStore,
             translationBatchSignature,
             translationState.settings.available,
-            translationState.settings.autoTranslationEnabled,
-            translationState.settings.preferredTranslationDisplay,
+            translationState.settings.translationMode,
             translationState.settings.effectiveLanguage
         ) {
             translationStore.requestAutoTranslations(

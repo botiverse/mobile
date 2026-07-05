@@ -296,6 +296,9 @@ internal class SlockSharedStoreProvider private constructor(
                         authStore = authStore,
                         api = NetworkSlockMessageTranslationApi(networkClient),
                         scope = CoroutineScope(SupervisorJob()),
+                        translationMode = {
+                            KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationModeSync()
+                        },
                         fallbackLanguage = {
                             KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
                         },
