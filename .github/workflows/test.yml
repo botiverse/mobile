@@ -235,6 +235,10 @@ jobs:
       # The fork projects' settings list only CN mirrors (mirrors.tencent.com /
       # maven.eazytec-cloud.com), which are flaky from hosted runners. Fall back
       # to the canonical repositories without touching the pinned submodules.
+      # Plugin repositories only: an allprojects{repositories{}} block here would
+      # give every project PROJECT-level repositories, which makes Gradle ignore
+      # the settings-level dependencyResolutionManagement repositories — i.e. it
+      # would hide the CN mirrors that the KBA kotlin artifacts resolve from.
       - name: Add canonical repository fallbacks
         shell: bash
         run: |
@@ -247,12 +251,6 @@ jobs:
                       mavenCentral()
                       google()
                   }
-              }
-          }
-          allprojects {
-              repositories {
-                  mavenCentral()
-                  google()
               }
           }
           INIT
@@ -281,11 +279,16 @@ jobs:
       # (mirrors.tencent.com), whose reachability from hosted runners is
       # flaky — every fork-deps failure so far has been this. Once one run
       # succeeds, the os-less cache keeps everyone warm until pins change.
+      # The attempt runs as its own `bash` process: a shell function called from
+      # an `if` has errexit suppressed for its whole body, so one failing gradlew
+      # would silently fall through to the next command and the step would pass
+      # with a half-empty ~/.m2 (this shipped a 2.6MB ktor-only cache once).
       - name: Publish shared fork dependencies
         if: steps.forkdeps-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          attempt() {
+          cat > /tmp/publish-forkdeps.sh <<'SCRIPT'
+          set -euo pipefail
           git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
           git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
 
@@ -318,14 +321,36 @@ jobs:
           popd
 
           scripts/prepare_ktor_ohos_fork.sh --publish
-          }
+          SCRIPT
           for i in 1 2 3; do
-            if attempt; then exit 0; fi
+            if bash /tmp/publish-forkdeps.sh; then exit 0; fi
             echo "fork-deps publish attempt $i failed; retrying in $((i*30))s" >&2
             sleep $((i*30))
           done
           echo "fork-deps publish failed after 3 attempts" >&2
           exit 1
+
+      # Guard against ever saving a half-empty cache again: assert the marker
+      # artifacts from each fork are present before the post-job cache save.
+      - name: Verify published fork dependencies
+        shell: bash
+        run: |
+          repo="$HOME/.m2/repository"
+          missing=0
+          for probe in \
+            "co/touchlab/stately-strict-ohosarm64" \
+            "co/touchlab/stately-concurrency-ohosarm64" \
+            "co/touchlab/sqliter-driver-ohosarm64" \
+            "app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" \
+            "app/cash/sqldelight/runtime-ohosarm64" \
+            "app/cash/sqldelight/native-driver-ohosarm64" \
+            "io/ktor/ktor-client-core-ohosarm64"; do
+            if ! find "$repo/$probe" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
+              echo "MISSING: $probe" >&2
+              missing=1
+            fi
+          done
+          exit $missing
 
   android:
     name: Android compile & tests
@@ -549,22 +574,29 @@ jobs:
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}
           fail-on-cache-miss: true
 
-      # The prebuild saves caches on ubuntu, and actions/cache extracts to the
-      # absolute paths recorded at save time (/home/runner/.m2). On this
-      # runner's different home layout that directory is not mavenLocal —
-      # relocate the artifacts to where Gradle will actually look.
+      # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
+      # relative to the save-time workspace (../../../.m2 from
+      # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
+      # workspace. Where that lands relative to $HOME differs per runner (on the
+      # container it is /.m2, not the pinned /github/home/.m2) — relocate to the
+      # mavenLocal Gradle will actually consult, verifying content on the way.
       - name: Relocate restored mavenLocal caches
         shell: bash
         run: |
-          src="/home/runner/.m2/repository"
+          src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
           dst="$HOME/.m2/repository"
           if [ -d "$src" ] && [ "$src" != "$dst" ]; then
             mkdir -p "$HOME/.m2"
             cp -a "$src" "$HOME/.m2/"
-            echo "relocated $(find "$dst" -maxdepth 3 -mindepth 3 -type d | wc -l) artifact roots"
+            echo "relocated from $src"
           else
-            echo "no relocation needed"
+            echo "no relocation needed (src=$src)"
           fi
+          test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
+            echo "restored cache is missing the sqldelight gradle plugin" >&2
+            find "$dst" -maxdepth 3 -mindepth 3 -type d >&2 || true
+            exit 1
+          }
 
       - name: Compile shared OHOS target and unit tests
         working-directory: compose
@@ -648,22 +680,29 @@ jobs:
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}
           fail-on-cache-miss: true
 
-      # The prebuild saves caches on ubuntu, and actions/cache extracts to the
-      # absolute paths recorded at save time (/home/runner/.m2). On this
-      # runner's different home layout that directory is not mavenLocal —
-      # relocate the artifacts to where Gradle will actually look.
+      # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
+      # relative to the save-time workspace (../../../.m2 from
+      # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
+      # workspace. Where that lands relative to $HOME differs per runner (on the
+      # container it is /.m2, not the pinned /github/home/.m2) — relocate to the
+      # mavenLocal Gradle will actually consult, verifying content on the way.
       - name: Relocate restored mavenLocal caches
         shell: bash
         run: |
-          src="/home/runner/.m2/repository"
+          src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
           dst="$HOME/.m2/repository"
           if [ -d "$src" ] && [ "$src" != "$dst" ]; then
             mkdir -p "$HOME/.m2"
             cp -a "$src" "$HOME/.m2/"
-            echo "relocated $(find "$dst" -maxdepth 3 -mindepth 3 -type d | wc -l) artifact roots"
+            echo "relocated from $src"
           else
-            echo "no relocation needed"
+            echo "no relocation needed (src=$src)"
           fi
+          test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
+            echo "restored cache is missing the sqldelight gradle plugin" >&2
+            find "$dst" -maxdepth 3 -mindepth 3 -type d >&2 || true
+            exit 1
+          }
 
       # entry/src/main/cpp links pbcurlwrapper; the runtime .so set is not
       # committed — it is copied out of the NetworkKMM ohos-runtime artifact.
