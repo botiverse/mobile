@@ -281,7 +281,7 @@ private fun SharedHomeState.toSharedHomeShellHomeSummary(): String =
     when (val current = content) {
         is SharedHomeContentState.Loading -> "Loading(session=${current.session?.currentServerId ?: "_"})"
         is SharedHomeContentState.Empty -> "Empty(session=${current.session.currentServerId ?: "_"})"
-        is SharedHomeContentState.Error -> "Error(${current.code})"
+        is SharedHomeContentState.Error -> "Error(${current.code},session=${current.session?.currentServerId ?: "_"})"
         is SharedHomeContentState.Content ->
             "Content(server=${current.snapshot.server.id.value},refreshing=${current.contentRefreshing}," +
                 "channels=${current.snapshot.channels.size},dms=${current.snapshot.directMessages.size})"
@@ -292,7 +292,7 @@ private fun SharedHomeState.activeHomeServerId(): String? =
         is SharedHomeContentState.Content -> current.snapshot.server.id.value
         is SharedHomeContentState.Loading -> current.session?.currentServerId
         is SharedHomeContentState.Empty -> current.session.currentServerId
-        is SharedHomeContentState.Error -> null
+        is SharedHomeContentState.Error -> current.session?.currentServerId
     }
 
 private fun SharedHomeState.canRefreshHomeBadgeSummaries(): Boolean =

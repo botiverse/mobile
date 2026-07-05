@@ -3,7 +3,7 @@ import deviceInfo from '@ohos.deviceInfo';
 import http from '@ohos.net.http';
 import i18n from '@ohos.i18n';
 import hilog from '@ohos.hilog';
-import { QUIVER_APP_SLUG, QUIVER_BASE_URL, QUIVER_CHANNEL } from './QuiverConfig';
+import { QUIVER_APP_SLUG, QUIVER_BASE_URL, QUIVER_CHANNEL, QUIVER_CLIENT_KEY } from './QuiverConfig';
 import { QuiverDeviceId } from './QuiverDeviceId';
 
 const TAG: string = 'QuiverFeedbackClient';
@@ -82,6 +82,7 @@ export class QuiverFeedbackClient {
           header: {
             'Content-Type': 'multipart/form-data',
             'Accept': 'application/json',
+            'X-Quiver-Client-Key': QUIVER_CLIENT_KEY,
           },
           multiFormDataList: multiFormDataList,
           connectTimeout: REQUEST_TIMEOUT_MS,

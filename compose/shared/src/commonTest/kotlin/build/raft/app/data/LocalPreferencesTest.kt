@@ -43,7 +43,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
-        assertEquals(TranslationModePreference.Automatic, snapshot.translationMode)
+        assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(

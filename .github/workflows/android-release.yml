@@ -254,6 +254,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload R8 mapping as workflow artifact
+        # Enables server-side crash deobfuscation: the publish job attaches
+        # this as a proguard-mapping build asset.
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-mapping
+          path: compose/androidApp/build/outputs/mapping/${{ inputs.android_variant }}/mapping.txt
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Step summary
         if: always()
         run: |
@@ -313,10 +323,19 @@ jobs:
           name: android-release-apk
           path: dist/
 
+      - name: Download R8 mapping (optional)
+        # Restored to the exact path the publish helper probes; absent for
+        # variants without minification.
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-mapping
+          path: compose/androidApp/build/outputs/mapping/${{ inputs.android_variant }}/
+
       - name: Install Quiver CLI (npm)
         shell: bash
         run: |
-          npm install -g @oranix/quiver-cli@0.2.1
+          npm install -g @oranix/quiver-cli@0.3.1
           quiver --version
 
       - name: Generate changelog from git history
@@ -341,7 +360,7 @@ jobs:
           fi
           echo "previous release commit: '${PREV_COMMIT:-none}'"
           if [ -n "${PREV_COMMIT}" ] && git cat-file -e "${PREV_COMMIT}^{commit}" 2>/dev/null; then
-            git log --no-merges --pretty='- %s' "${PREV_COMMIT}..HEAD" | head -n 40 > changelog.txt
+            git log --no-merges --pretty='- %s' --max-count=40 "${PREV_COMMIT}..HEAD" > changelog.txt
           fi
           if [ ! -s changelog.txt ]; then
             git log --no-merges --pretty='- %s' -15 > changelog.txt

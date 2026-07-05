@@ -1,5 +1,7 @@
 package build.raft.app
 
+import platform.Foundation.NSNotificationCenter
+
 internal actual fun logPixelAvatarDrawCache(message: String) {
     // Keep iOS quiet; counters still update in common state.
 }
@@ -7,5 +9,17 @@ internal actual fun logPixelAvatarDrawCache(message: String) {
 internal actual fun isSlockNativePixelAvatarViewSupported(): Boolean = false
 
 internal actual fun slockPlatformLog(level: SlockLogLevel, tag: String, message: String) {
+    NSNotificationCenter.defaultCenter.postNotificationName(
+        aName = SlockIosSharedLogNotificationName,
+        `object` = null,
+        userInfo =
+            mapOf(
+                "level" to level.wireValue,
+                "tag" to tag,
+                "message" to message
+            )
+    )
     println("[$tag][${level.name}] $message")
 }
+
+private const val SlockIosSharedLogNotificationName = "slockSharedLog"

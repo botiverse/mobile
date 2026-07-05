@@ -189,6 +189,13 @@ enum class SlockHomeNotificationKind { Warning, Info, Error }
 @Serializable
 enum class SlockHomeNotificationIcon { Default, WifiOff, CircleArrowUp, Info }
 
+data class SlockHomeInlineError(
+    val title: String,
+    val detail: String,
+    val code: String,
+    val actionLabel: String = "Retry"
+)
+
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
 
@@ -606,6 +613,7 @@ internal fun SlockStructuralHomeShell(
     inboxTotalCount: Int = 0,
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
+    inlineError: SlockHomeInlineError? = null,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
@@ -641,6 +649,7 @@ internal fun SlockStructuralHomeShell(
     onSearchClick: () -> Unit = {},
     onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    onInlineErrorAction: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
@@ -896,6 +905,17 @@ internal fun SlockStructuralHomeShell(
                                 )
                             }
                             item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                            inlineError?.let { error ->
+                                item {
+                                    HomeInlineErrorCard(
+                                        error = error,
+                                        modifier =
+                                            Modifier
+                                                .padding(horizontal = HomeListHorizontalPadding, vertical = SlockSpacing.Sm),
+                                        onAction = onInlineErrorAction
+                                    )
+                                }
+                            }
                             if (displayedPinned.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
@@ -1655,7 +1675,13 @@ internal fun resolveSortTargetIndex(
         when {
             pointerY <= first.top -> first.index
             pointerY >= last.top + last.size -> last.index
-            else -> (sorted.firstOrNull { pointerY >= it.top && pointerY < it.top + it.size }?.index ?: last.index)
+            // Rows are laid out with spacing between them: a pointer inside the
+            // gap between two rows belongs to the next row down. "First row whose
+            // bottom edge is below the pointer" covers both cases; the old
+            // strict-containment check missed the gaps and fell back to the last
+            // visible row, snapping the insertion indicator to the end whenever
+            // the finger crossed a gap (task #356 device feedback).
+            else -> sorted.first { pointerY < it.top + it.size }.index
         }
     return raw.coerceIn(0, lastIndex)
 }
@@ -2025,6 +2051,67 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
     SlockHomeNotificationKind.Warning -> SlockColor.AccentOrange
     SlockHomeNotificationKind.Info -> SlockColor.BrandYellow
     SlockHomeNotificationKind.Error -> SlockColor.AccentRed
+}
+
+@Composable
+private fun HomeInlineErrorCard(
+    error: SlockHomeInlineError,
+    modifier: Modifier = Modifier,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.Top
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.size(18.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = error.title,
+                        style = SlockType.ButtonBold,
+                        color = SlockColor.TextBlack,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = error.detail,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = error.code,
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            SlockBrutalActionButton(
+                label = error.actionLabel,
+                onClick = onAction,
+                leadingIcon = SlockLucideIconName.RefreshCw,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+        }
+    }
 }
 
 @Composable
@@ -3087,7 +3174,18 @@ private fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
         else -> (extent * index / PixelAvatarGridCellCount).roundToInt().toFloat()
     }
 
-internal data class PixelAvatarSpec(val background: Color, val grid: List<String>) {
+internal data class PixelAvatarSpec(
+    val background: Color,
+    val grid: List<String>,
+    // Palette lookups resolved at construction. Defaults are the generated bundled table
+    // (safe during SlockPixelAvatarDataKt class init: they are that file's own fields);
+    // SlockPixelAvatarRuntime passes the downloaded document's own palette instead.
+    val palette: Map<Char, Color> = PixelAvatarPalette,
+    val paletteArgb: Map<Char, String> = PixelAvatarPaletteArgb,
+    // Null means "use the bundled PixelAvatarKnownBackgroundArgb" — resolved lazily below,
+    // NOT as a default argument, which would re-enter SlockHomeComponentsKt mid-init.
+    val backgroundArgbLookup: Map<Color, String>? = null
+) {
     val spans: List<PixelAvatarSpan> =
         buildList {
             grid.forEachIndexed { rowIndex, row ->
@@ -3111,8 +3209,8 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
                     spanLength = 0
                 }
                 row.forEachIndexed { columnIndex, key ->
-                    val color = PixelAvatarPalette[key] ?: Color.Transparent
-                    val colorArgb = PixelAvatarPaletteArgb[key]
+                    val color = palette[key] ?: Color.Transparent
+                    val colorArgb = paletteArgb[key]
                     when {
                         color == Color.Transparent -> flushSpan()
                         color == spanColor -> spanLength += 1
@@ -3129,16 +3227,24 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
             }
         }
 
-    val backgroundArgb: String =
-        PixelAvatarKnownBackgroundArgb[background] ?: SlockColor.BrandYellowArgb
+    // Lazy: PixelAvatarFixedSpecs (generated file) constructs specs during its
+    // class init, which SlockHomeComponentsKt's own init triggers — an eager
+    // read here hits PixelAvatarKnownBackgroundArgb before it is assigned
+    // (init cycle -> NPE in every unit test touching this file).
+    val backgroundArgb: String by lazy(LazyThreadSafetyMode.NONE) {
+        (backgroundArgbLookup ?: PixelAvatarKnownBackgroundArgb)[background] ?: SlockColor.BrandYellowArgb
+    }
 
     val nativeSpanPayload: String =
         spans.joinToString(separator = ";") { span ->
             "${span.rowIndex},${span.startColumnIndex},${span.columnCount},${span.colorArgb}"
         }
 
-    val nativeCacheKey: String =
+    // Lazy for the same reason: its template reads backgroundArgb, which would
+    // force that lazy right back during the generated file's class init.
+    val nativeCacheKey: String by lazy(LazyThreadSafetyMode.NONE) {
         "$backgroundArgb|${grid.joinToString(separator = "/")}"
+    }
 }
 
 internal data class PixelAvatarSpan(
@@ -3151,13 +3257,9 @@ internal data class PixelAvatarSpan(
 private const val PixelAvatarGridCellCount = 8
 private const val PixelAvatarProtocolPrefix = "pixel:"
 private const val PixelAvatarRandomPrefix = "random:"
-internal const val PixelAvatarDefaultKey = "robot"
-/**
- * Avatar keys reserved for specific agents (mirrors React `RESERVED_AVATAR_KEYS`).
- * `finch` is reserved for the Cindy OA agent only — excluded from random selection
- * (CreateAgentDialog) and the manual picker grid (AgentDetailPanel).
- */
-internal val PixelAvatarReservedKeys: Set<String> = setOf("finch")
+// PixelAvatarDefaultKey / PixelAvatarReservedKeys / PixelAvatarPalette(Argb) /
+// PixelAvatarFixedSpecs are GENERATED from the canonical web pixelAvatars.json —
+// see SlockPixelAvatarData.kt (scripts/generate_pixel_avatars.mjs, task #352).
 
 /**
  * #195/#199 diagnostic counter retained for avatar render churn. Android now routes pixel
@@ -3207,40 +3309,12 @@ private object SlockPixelAvatarDrawCache {
 
 internal expect fun logPixelAvatarDrawCache(message: String)
 internal expect fun isSlockNativePixelAvatarViewSupported(): Boolean
-private val PixelAvatarPaletteArgb = mapOf('_' to "#00000000", 'K' to "#FF141111", 'W' to "#FFFFFFFF", 'P' to "#FFFE7DA8", 'O' to "#FFF8A16F", 'Y' to "#FFFFD440", 'L' to "#FFA9D877", 'C' to "#FF27CCF3", 'V' to "#FFBBAFE6", 'B' to "#FF576574", 'R' to "#FFF97264", 'G' to "#FF9DCAAA")
-private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
 private val PixelAvatarKnownBackgroundArgb: Map<Color, String> =
-    PixelAvatarPalette
-        .filterKeys { it != '_' }
-        .entries
-        .associate { entry -> entry.value to PixelAvatarPaletteArgb.getValue(entry.key) } +
-        mapOf(
-            Color(0xFFD7F3FB) to "#FFD7F3FB",
-            Color(0xFF1E1E1C) to "#FF1E1E1C"
-        )
-internal val PixelAvatarFixedSpecs = mapOf(
-    "robot" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
-    "cat" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
-    "ghost" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
-    "skull" to PixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("_KKKKKK_", "KWWWWWWK", "KWKWWKWK", "KWWWWWWK", "_KWWWWK_", "_KWKWKK_", "__KKKK__", "___KK___")),
-    "alien" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")),
-    "heart" to PixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___")),
-    "star" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("___KK___", "___KK___", "KKKKKKKK", "_KYYYYK_", "__KYYK__", "_KYKKYK_", "KYK__KYK", "KK____KK")),
-    "flame" to PixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")),
-    "diamond" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___")),
-    "mushroom" to PixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("__KKKK__", "_KRWWRK_", "KRRWWRRK", "KRRRRRRK", "_KKKKKK_", "__KWWK__", "__KWWK__", "_KKKKKK_")),
-    "eye" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("________", "__KKKK__", "_KWWWWK_", "KWWKKWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__", "________")),
-    "crown" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("________", "_K_KK_K_", "_KKKKKK_", "_KYYYYK_", "_KYYYYK_", "KKKKKKKK", "KYYYYYYK", "KKKKKKKK")),
-    "cloud" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
-    "sun" to PixelAvatarSpec(PixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
-    "bell" to PixelAvatarSpec(PixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
-    "tree" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___")),
-    // Reserved for Cindy OA agent — excluded from picker grid (mirrors React
-    // `RESERVED_AVATAR_KEYS`). Bg is `#D7F3FB` (soft-sky tint of cyan),
-    // intentionally NOT in the palette; kept as a literal here to match React
-    // PixelAvatar.tsx without promoting a one-off surface into the shared token.
-    "finch" to PixelAvatarSpec(Color(0xFFD7F3FB), listOf("__KKKK__", "_KCCCCK_", "KCWCCWCK", "KCKCCKCK", "KCCOOCCK", "_KCCCCK_", "_KCKKCK_", "__K__K__"))
-)
+    pixelAvatarKnownBackgroundArgb(
+        palette = PixelAvatarPalette,
+        paletteArgb = PixelAvatarPaletteArgb,
+        literalBackgroundArgb = PixelAvatarLiteralBackgroundArgb
+    )
 private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('C') to 'K',
     PixelAvatarPalette.getValue('Y') to 'K',
@@ -3255,7 +3329,7 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('O') to 'K',
     PixelAvatarPalette.getValue('C') to 'W'
 )
-private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { PixelAvatarFixedSpecs[it] ?: PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey) } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
+private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { key -> SlockPixelAvatarRuntime.current.let { data -> data.specs[key] ?: data.specs.getValue(data.defaultKey) } } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
 
 /**
  * Returns the picker keys in display order, mirroring React
@@ -3265,8 +3339,8 @@ private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(Pi
  * the Upload cell and use this list directly for the remaining keys.
  * Used by the avatar picker modal grid in `MembersAgentProfileTab`.
  */
-internal val PixelAvatarPickerKeys: List<String> = PixelAvatarFixedSpecs.keys
-    .filterNot { it in PixelAvatarReservedKeys }
+internal val PixelAvatarPickerKeys: List<String>
+    get() = SlockPixelAvatarRuntime.current.let { data -> data.specs.keys.filterNot { it in data.reservedKeys } }
 private fun String.removePrefixOrNull(prefix: String): String? = takeIf { it.startsWith(prefix) }?.substring(prefix.length)
 private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
     val random = PixelAvatarRandom(pixelHash(seed))

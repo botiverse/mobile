@@ -26,6 +26,24 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
+    suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "mobileOAuthLink")
+                    .put("providerId", providerId)
+            )
+        val status = response?.optString("status").orEmpty()
+        return when (status) {
+            "started", "ok" -> DataResult.Content(Unit)
+            "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            else -> {
+                val code = response?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_link_failed" }
+                DataResult.Error(ScreenError(code, retryable = true))
+            }
+        }
+    }
+
     override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
@@ -148,32 +166,6 @@ internal class BridgeSettingsPlatformCapabilities(
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_failed" }))
         }
         return DataResult.Content(response.toDeveloperSnapshot())
-    }
-
-    override suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response =
-            bridge.settingsCapability(
-                JSONObject()
-                    .put("action", "setSharedSocketIoTransport")
-                    .put("enabled", enabled)
-            )
-        if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_shared_socketio_transport_failed" }))
-        }
-        return DataResult.Content(response.toDeveloperSnapshot())
-    }
-
-    override suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> {
-        val response =
-            bridge.settingsCapability(
-                JSONObject()
-                    .put("action", "realtimeTransportPreferenceChanged")
-                    .put("enabled", enabled)
-            )
-        if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_realtime_transport_hook_failed" }))
-        }
-        return DataResult.Content(Unit)
     }
 
     override suspend fun onApiEnvironmentChanged(
@@ -346,7 +338,6 @@ internal class BridgeSettingsPlatformCapabilities(
             apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
             socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
             webUrl = optString("webUrl"),
-            sharedSocketIoTransportEnabled = optBoolean("sharedSocketIoTransportEnabled", false),
             updateCheck =
                 SharedSettingsUpdateCheckSnapshot(
                     supported = updateCheckSupported,
@@ -357,7 +348,7 @@ internal class BridgeSettingsPlatformCapabilities(
                     detail =
                         optString("updateCheckDetail").ifBlank {
                             if (updateCheckSupported) {
-                                "Checks Quiver for a newer Android APK and opens the installer when available."
+                                "Checks for a newer Android build and opens the installer when available."
                             } else {
                                 "This build does not expose in-app update checks."
                             }

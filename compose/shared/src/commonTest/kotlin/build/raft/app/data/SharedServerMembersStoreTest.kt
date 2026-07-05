@@ -362,6 +362,52 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun deleteAgentEvictsLocallyWithoutImmediateRefreshAndKeepsStaleRosterHidden() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.retainDeletedAgentsInRoster = true
+        repository.membersByServer["server-1"] =
+            listOf(
+                member("u1", "Cindy"),
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member("agent-1", "Build Agent").copy(
+                    handle = "build-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+
+        val result =
+            store.deleteAgent(
+                serverId = ServerId("server-1"),
+                agentId = MemberId("agent-1")
+            )
+
+        assertIs<DataResult.Content<AgentLifecycleActionResult>>(result)
+        assertEquals(1, repository.getMembersCalls)
+        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertEquals(emptyList(), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
+        assertNull(store.state.value.memberProfile(ServerId("server-1"), "agent-1"))
+
+        store.refreshMembers(ServerId("server-1"), force = true)
+
+        assertEquals(2, repository.getMembersCalls)
+        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertNull(store.state.value.memberProfile(ServerId("server-1"), "agent-1"))
+    }
+
+    @Test
     fun addChannelMemberUpdatesChannelSliceAndSuggestionStateThroughStore() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] =
@@ -391,9 +437,10 @@ class SharedServerMembersStoreTest {
                         memberId = MemberId("agent-1"),
                         kind = MemberKind.Agent
                     )
-            )
+        )
 
         assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        assertEquals(1, repository.getChannelMembersCalls)
         assertEquals(listOf("u1", "agent-1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
         val suggestions =
             store.state.value.memberSuggestionSlice(
@@ -446,6 +493,7 @@ class SharedServerMembersStoreTest {
             )
 
         assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        assertEquals(1, repository.getChannelMembersCalls)
         assertEquals(listOf("u1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
         val suggestions =
             store.state.value.memberSuggestionSlice(
@@ -784,6 +832,7 @@ class SharedServerMembersStoreTest {
         var addChannelMemberCalls = 0
         var removeChannelMemberCalls = 0
         var deleteAgentCalls = 0
+        var retainDeletedAgentsInRoster = false
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -813,9 +862,11 @@ class SharedServerMembersStoreTest {
             agentId: MemberId
         ): DataResult<AgentLifecycleActionResult> {
             deleteAgentCalls += 1
-            for (key in membersByServer.keys.toList()) {
-                membersByServer[key] =
-                    membersByServer.getValue(key).filterNot { it.id == agentId && it.kind == MemberKind.Agent }
+            if (!retainDeletedAgentsInRoster) {
+                for (key in membersByServer.keys.toList()) {
+                    membersByServer[key] =
+                        membersByServer.getValue(key).filterNot { it.id == agentId && it.kind == MemberKind.Agent }
+                }
             }
             return DataResult.Content(
                 AgentLifecycleActionResult(

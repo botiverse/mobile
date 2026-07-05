@@ -8,12 +8,13 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalTone
-import build.raft.app.PixelAvatarDefaultKey
+import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
@@ -350,6 +351,16 @@ internal fun shouldWaitForAgentPanelTabOrderBeforeRender(
         initialAgentTab == null &&
         payloadAgentPanelTabOrder.isEmpty() &&
         (!storeServerMatches || !storeLoaded)
+
+internal fun memberDetailAgentPanelTabOrderServerId(
+    routeServerId: String?,
+    payloadSourceServerId: String
+): String? =
+    routeServerId.cleanMemberDetailServerId()
+        ?: payloadSourceServerId.cleanMemberDetailServerId()
+
+private fun String?.cleanMemberDetailServerId(): String? =
+    this?.trim()?.takeIf { it.isNotBlank() }
 
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
@@ -1257,6 +1268,7 @@ private class MemberDetailRouteProvider(
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
+    val computersStore: SharedComputersStore,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
@@ -1560,6 +1572,19 @@ private fun rememberMemberDetailRouteProvider(
     val agentDetailStore = sharedStores.agentDetailStore
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = sharedStores.serverMembersStore
+    val scope = rememberCoroutineScope()
+    val computersApiClient = remember(networkClient) {
+        SlockComputersApiClient(
+            SlockComputersNetworkApi(networkClient)
+        )
+    }
+    val computersStore = remember(computersApiClient, scope) {
+        SharedComputersStore(
+            computersApiClient = computersApiClient,
+            scope = scope,
+            logger = { message -> bridge.log("member_detail_$message") }
+        )
+    }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1576,6 +1601,7 @@ private fun rememberMemberDetailRouteProvider(
         agentDetailStore,
         agentPanelTabOrderStore,
         serverMembersStore,
+        computersStore,
         agentsApiClient
     ) {
         MemberDetailRouteProvider(
@@ -1588,6 +1614,7 @@ private fun rememberMemberDetailRouteProvider(
             agentDetailStore = agentDetailStore,
             agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
+            computersStore = computersStore,
             agentsApiClient = agentsApiClient
         )
     }
@@ -1634,16 +1661,29 @@ private fun MemberDetailPageContent() {
             is MemberDetailRouteState.Agent -> current.server.id.value
             else -> null
         }
-    LaunchedEffect(provider.agentPanelTabOrderStore, statusLookupServerId, payload.agentPanelTabOrder) {
+    val agentPanelTabOrderServerId =
+        memberDetailAgentPanelTabOrderServerId(
+            routeServerId = statusLookupServerId,
+            payloadSourceServerId = payload.sourceServerId
+        )
+    val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
+        SharedComputersPickerSlice()
+    )
+    LaunchedEffect(provider.computersStore, statusLookupServerId) {
+        val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+    }
+    LaunchedEffect(provider.agentPanelTabOrderStore, agentPanelTabOrderServerId, payload.agentPanelTabOrder) {
+        val serverId = agentPanelTabOrderServerId ?: return@LaunchedEffect
         provider.agentPanelTabOrderStore.bindServer(
-            serverId = statusLookupServerId,
+            serverId = serverId,
             initialOrder = payload.agentPanelTabOrder,
             source = "member_detail_bind_payload",
             logger = { message -> bridge.log(message) }
         )
     }
     val agentPanelTabOrder =
-        if (agentPanelTabOrderState.serverId == statusLookupServerId) {
+        if (agentPanelTabOrderState.serverId == agentPanelTabOrderServerId) {
             agentPanelTabOrderState.order
         } else {
             payload.agentPanelTabOrder
@@ -1653,7 +1693,7 @@ private fun MemberDetailPageContent() {
             expectedKind = expectedKind,
             initialAgentTab = initialAgentTab,
             payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
-            storeServerMatches = agentPanelTabOrderState.serverId == statusLookupServerId,
+            storeServerMatches = agentPanelTabOrderState.serverId == agentPanelTabOrderServerId,
             storeLoaded = agentPanelTabOrderState.loaded
         )
     val agentStatusResolver =
@@ -1792,6 +1832,11 @@ private fun MemberDetailPageContent() {
                 MembersDetailContent(
                     member = member,
                     agentDetailState = agentDetailState,
+                    agentMachineRuntimes =
+                        membersAgentMachineRuntimeIds(
+                            machines = computerPickerSlice.machines,
+                            machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
+                        ),
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.server.permissions.canManageSettings ||
                             detail?.summary?.creatorId == current.currentUserId
@@ -2749,6 +2794,7 @@ internal fun membersLazyItemCount(
 private fun MembersDetailContent(
     member: MemberProfile,
     agentDetailState: MembersAgentDetailLoadState,
+    agentMachineRuntimes: List<String> = emptyList(),
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     onBack: () -> Unit,
@@ -3178,6 +3224,7 @@ private fun MembersDetailContent(
                                     MembersAgentProfileTab(
                                         member = member,
                                         detail = detail,
+                                        agentMachineRuntimes = agentMachineRuntimes,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
                                         agentStatusResolver = agentStatusResolver,
@@ -4712,7 +4759,7 @@ private fun MembersAgentAvatarChoiceGrid(
     val activePixelKey = if (activeCustomAvatar) {
         null
     } else {
-        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarDefaultKey)
+        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarActiveDefaultKey)
     }
     @OptIn(ExperimentalLayoutApi::class)
     FlowRow(
@@ -4745,12 +4792,12 @@ private fun MembersAgentAvatarChoiceGrid(
             }
         }
         MembersAgentAvatarPickerCell(
-            wireValue = "pixel:$PixelAvatarDefaultKey",
-            fallbackLabel = PixelAvatarDefaultKey,
-            active = activePixelKey == PixelAvatarDefaultKey,
+            wireValue = "pixel:$PixelAvatarActiveDefaultKey",
+            fallbackLabel = PixelAvatarActiveDefaultKey,
+            active = activePixelKey == PixelAvatarActiveDefaultKey,
             onClick = onClear
         )
-        PixelAvatarPickerKeys.filter { it != PixelAvatarDefaultKey }.forEach { key ->
+        PixelAvatarPickerKeys.filter { it != PixelAvatarActiveDefaultKey }.forEach { key ->
             MembersAgentAvatarPickerCell(
                 wireValue = "pixel:$key",
                 fallbackLabel = key,
@@ -4924,6 +4971,7 @@ private fun MembersAgentProfileHeader(
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
+    agentMachineRuntimes: List<String> = emptyList(),
     canManage: Boolean,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -5214,12 +5262,7 @@ private fun MembersAgentProfileTab(
         val currentConfig = summary.toMembersRuntimeConfig(member)
         val currentStatus = AgentStatus.fromWireValue(summary?.status)
         val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
-        val restartMode =
-            when {
-                !activeAgent -> null
-                nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
-                else -> AgentResetMode.Restart
-            }
+        val restartMode = membersRuntimeConfigResetMode(currentConfig, nextConfig, activeAgent)
         scope.launch {
             savingRuntimeConfig = true
             runtimeConfigError = null
@@ -5324,22 +5367,30 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalInputField(
-                        value = draftDisplayName,
-                        placeholder = "Display name",
-                        onValueChange = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
-                                )
-                            } else {
-                                localDraftDisplayName = it
-                                if (localDisplayNameError != null) localDisplayNameError = null
-                            }
-                        },
-                        enabled = !savingDisplayName,
-                        autoFocus = true
-                    )
+                    SlockFormField(
+                        label = "Display name",
+                        error = displayNameError,
+                        showLabel = false
+                    ) {
+                        SlockBrutalInputField(
+                            value = draftDisplayName,
+                            placeholder = "Display name",
+                            onValueChange = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
+                                    )
+                                } else {
+                                    localDraftDisplayName = it
+                                    if (localDisplayNameError != null) localDisplayNameError = null
+                                }
+                            },
+                            enabled = !savingDisplayName,
+                            autoFocus = true,
+                            borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                            enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                         SlockBrutalActionButton(
                             label = if (savingDisplayName) "Saving\u2026" else "Save",
@@ -5362,14 +5413,6 @@ private fun MembersAgentProfileTab(
                             },
                             enabled = !savingDisplayName,
                             backgroundColor = SlockColor.SurfaceWhite
-                        )
-                    }
-                    if (displayNameError != null) {
-                        Text(
-                            text = displayNameError.orEmpty(),
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
                         )
                     }
                 }
@@ -5409,24 +5452,32 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalInputField(
-                        value = draftRole,
-                        placeholder = "Describe this agent",
-                        onValueChange = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
-                                )
-                            } else {
-                                localDraftRole = it
-                                if (localRoleError != null) localRoleError = null
-                            }
-                        },
-                        enabled = !savingRole,
-                        autoFocus = true,
-                        maxLines = 4,
-                        fieldMinHeight = 86.dp
-                    )
+                    SlockFormField(
+                        label = "Description",
+                        error = roleError,
+                        showLabel = false
+                    ) {
+                        SlockBrutalInputField(
+                            value = draftRole,
+                            placeholder = "Describe this agent",
+                            onValueChange = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                    )
+                                } else {
+                                    localDraftRole = it
+                                    if (localRoleError != null) localRoleError = null
+                                }
+                            },
+                            enabled = !savingRole,
+                            autoFocus = true,
+                            maxLines = 4,
+                            fieldMinHeight = 86.dp,
+                            borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                            enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
@@ -5459,14 +5510,6 @@ private fun MembersAgentProfileTab(
                             text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
                             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                             color = SlockColor.TextMutedGray
-                        )
-                    }
-                    if (roleError != null) {
-                        Text(
-                            text = roleError.orEmpty(),
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
                         )
                     }
                 }
@@ -5741,6 +5784,7 @@ private fun MembersAgentProfileTab(
             MembersAgentRuntimeConfigDialog(
                 member = member,
                 summary = summary,
+                machineRuntimeIds = agentMachineRuntimes,
                 saving = savingRuntimeConfig,
                 error = runtimeConfigError,
                 onDismiss = {
@@ -6038,6 +6082,7 @@ private fun membersMaskedEnvValue(value: String?): String =
 private fun MembersAgentRuntimeConfigDialog(
     member: MemberProfile,
     summary: AgentDetailSummary?,
+    machineRuntimeIds: List<String> = emptyList(),
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
@@ -6068,9 +6113,12 @@ private fun MembersAgentRuntimeConfigDialog(
     var envVarEntries by remember(initialConfig) {
         mutableStateOf(initialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
+    var pendingRuntimeSwitchConfig by remember(initialConfig) { mutableStateOf<RuntimeConfig?>(null) }
     var advancedOpen by remember(initialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
+    val currentStatus = AgentStatus.fromWireValue(summary?.status)
+    val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
     val providerUrlInvalid =
         runtime == "claude" &&
@@ -6129,6 +6177,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             model = it
                         },
                         runtimeModelsOverride = emptyList(),
+                        machineRuntimeIds = machineRuntimeIds,
                         enabled = !saving,
                         providerMode = providerMode,
                         onProviderModeChange = { providerMode = it },
@@ -6184,22 +6233,157 @@ private fun MembersAgentRuntimeConfigDialog(
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
-                        onSave(
-                            buildRuntimeConfig(
-                                runtime = runtime,
-                                model = if (customModelMode) customModelName else model,
-                                customModelMode = customModelMode,
-                                customModelName = customModelName.takeIf { customModelMode },
-                                providerMode = providerMode,
-                                providerApiUrl = providerApiUrl,
-                                providerApiKey = providerApiKey,
-                                fastMode = fastMode,
-                                reasoningEffort = reasoningEffort,
-                                envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                                command = command
-                            )
+                        val nextConfig = buildRuntimeConfig(
+                            runtime = runtime,
+                            model = if (customModelMode) customModelName else model,
+                            customModelMode = customModelMode,
+                            customModelName = customModelName.takeIf { customModelMode },
+                            providerMode = providerMode,
+                            providerApiUrl = providerApiUrl,
+                            providerApiKey = providerApiKey,
+                            fastMode = fastMode,
+                            reasoningEffort = reasoningEffort,
+                            envVars = envVarEntries.toMembersRuntimeEnvVars(),
+                            command = command
                         )
+                        if (membersRuntimeConfigSwitchConfirmation(initialConfig, nextConfig, activeAgent) != null) {
+                            pendingRuntimeSwitchConfig = nextConfig
+                        } else {
+                            onSave(nextConfig)
+                        }
                     }
+                )
+            }
+        }
+    }
+
+    pendingRuntimeSwitchConfig?.let { pendingConfig ->
+        membersRuntimeConfigSwitchConfirmation(initialConfig, pendingConfig, activeAgent)?.let { confirmation ->
+            MembersRuntimeConfigSwitchConfirmationDialog(
+                confirmation = confirmation,
+                onConfirm = {
+                    pendingRuntimeSwitchConfig = null
+                    onSave(pendingConfig)
+                },
+                onCancel = {
+                    if (!saving) {
+                        pendingRuntimeSwitchConfig = null
+                    }
+                }
+            )
+        } ?: run {
+            pendingRuntimeSwitchConfig = null
+        }
+    }
+}
+
+internal data class MembersRuntimeConfigSwitchConfirmation(
+    val title: String,
+    val message: String,
+    val confirmLabel: String
+)
+
+internal fun membersRuntimeConfigResetMode(
+    currentConfig: RuntimeConfig,
+    nextConfig: RuntimeConfig,
+    activeAgent: Boolean
+): AgentResetMode? =
+    when {
+        nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
+        activeAgent -> AgentResetMode.Restart
+        else -> null
+    }
+
+internal fun membersRuntimeConfigSwitchConfirmation(
+    currentConfig: RuntimeConfig,
+    nextConfig: RuntimeConfig,
+    activeAgent: Boolean
+): MembersRuntimeConfigSwitchConfirmation? {
+    if (nextConfig.runtime == currentConfig.runtime) return null
+
+    val fromRuntimeLabel = getRuntimeDisplayName(currentConfig.runtime)
+    val nextRuntimeLabel = getRuntimeDisplayName(nextConfig.runtime)
+    val nextModelLabel = getModelLabel(nextConfig.runtime, nextConfig.toMembersRuntimeModelValue())
+    val reasoningCopy =
+        if (supportsRuntimeReasoningEffort(nextConfig.runtime)) {
+            val label = nextConfig.reasoningEffort?.toMembersDisplayLabel() ?: "Default"
+            if (activeAgent) " with $label reasoning" else " and $label reasoning"
+        } else {
+            ""
+        }
+    val modeCopy =
+        if (supportsRuntimeFastMode(nextConfig.runtime) && nextConfig.mode is RuntimeModeConfig.Fast) {
+            " in fast mode"
+        } else {
+            ""
+        }
+    val message =
+        if (activeAgent) {
+            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will reset the current runtime session. " +
+                "The next launch will use model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
+        } else {
+            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will apply on the next start with a fresh runtime session. " +
+                "The agent will launch with model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
+        }
+    return MembersRuntimeConfigSwitchConfirmation(
+        title = "Switch Runtime Config",
+        message = message,
+        confirmLabel = if (activeAgent) "Reset Runtime Session" else "Save Runtime Change"
+    )
+}
+
+@Composable
+private fun MembersRuntimeConfigSwitchConfirmationDialog(
+    confirmation: MembersRuntimeConfigSwitchConfirmation,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = confirmation.title,
+        maxWidth = 420.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        onDismiss = onCancel
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Info,
+                    modifier = Modifier.size(18.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+                Text(
+                    text = confirmation.message,
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = "Cancel",
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    onClick = onCancel
+                )
+                SlockBrutalActionButton(
+                    label = confirmation.confirmLabel,
+                    backgroundColor = SlockColor.AccentOrange,
+                    onClick = onConfirm
                 )
             }
         }
@@ -6228,7 +6412,15 @@ private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
     when (val modelConfig = model) {
         is RuntimeModelConfig.Preset -> modelConfig.id
         is RuntimeModelConfig.Custom -> modelConfig.name
-    }
+}
+
+internal fun membersAgentMachineRuntimeIds(
+    machines: List<SharedCreateAgentMachineOption>,
+    machineId: String?
+): List<String> {
+    val normalizedMachineId = machineId?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+    return machines.firstOrNull { it.id == normalizedMachineId }?.runtimes.orEmpty()
+}
 
 private fun AgentDetailSummary?.membersRuntimeEnvVarNames(): List<String> =
     if (this == null) {

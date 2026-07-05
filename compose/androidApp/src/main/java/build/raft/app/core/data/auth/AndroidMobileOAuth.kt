@@ -15,12 +15,15 @@ data class AndroidMobileOAuthPkce(
 data class AndroidMobileOAuthPendingRequest(
     val provider: String,
     val requestId: String,
-    val codeVerifier: String
+    val codeVerifier: String,
+    val mode: String = AndroidMobileOAuth.ModeLogin
 )
 
 object AndroidMobileOAuth {
     const val AppEnv = "dev"
     const val ReturnUri = "raft-dev://oauth/callback"
+    const val ModeLogin = "login"
+    const val ModeLink = "link"
     private const val VerifierByteCount = 32
     private val SupportedProviders = setOf("google", "github")
 
@@ -54,24 +57,33 @@ class AndroidMobileOAuthPendingStore(context: Context) {
         store.putString(KEY_PROVIDER, request.provider)
         store.putString(KEY_REQUEST_ID, request.requestId)
         store.putString(KEY_VERIFIER, request.codeVerifier)
+        store.putString(KEY_MODE, request.mode)
     }
 
     fun read(): AndroidMobileOAuthPendingRequest? {
         val provider = store.getString(KEY_PROVIDER)?.takeIf { it.isNotBlank() } ?: return null
         val requestId = store.getString(KEY_REQUEST_ID)?.takeIf { it.isNotBlank() } ?: return null
         val verifier = store.getString(KEY_VERIFIER)?.takeIf { it.isNotBlank() } ?: return null
-        return AndroidMobileOAuthPendingRequest(provider = provider, requestId = requestId, codeVerifier = verifier)
+        val mode = store.getString(KEY_MODE)?.takeIf { it.isNotBlank() } ?: AndroidMobileOAuth.ModeLogin
+        return AndroidMobileOAuthPendingRequest(
+            provider = provider,
+            requestId = requestId,
+            codeVerifier = verifier,
+            mode = mode
+        )
     }
 
     fun clear() {
         store.putString(KEY_PROVIDER, null)
         store.putString(KEY_REQUEST_ID, null)
         store.putString(KEY_VERIFIER, null)
+        store.putString(KEY_MODE, null)
     }
 
     private companion object {
         const val KEY_PROVIDER = "provider"
         const val KEY_REQUEST_ID = "oauthRequestId"
         const val KEY_VERIFIER = "codeVerifier"
+        const val KEY_MODE = "mode"
     }
 }

@@ -17,6 +17,9 @@ class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SlockAndroidBuglyDiagnostics.init(this)
+        installSlockPlatformLogSink { level, tag, message ->
+            SlockAndroidBuglyDiagnostics.recordLog(level, tag, message)
+        }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidAppScopeEventBus(this)
@@ -42,6 +45,7 @@ class SlockApplication : Application() {
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE.toLong(),
             channel = BuildConfig.QUIVER_CHANNEL,
+            clientKey = BuildConfig.QUIVER_CLIENT_KEY,
             extraContext = {
                 SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(this)
             }

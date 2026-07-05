@@ -260,7 +260,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          profile: pixel_6
+          profile: pixel_6_pro
           ram-size: 4096M
           cores: 2
           emulator-boot-timeout: 1200
@@ -270,11 +270,34 @@ jobs:
           # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
+            # Per-case timing (task #362): grow the device logcat ring so the
+            # sparse VisualCapture CASE_START/CASE_END lines survive a full
+            # shard, then clear so the dump only holds this run. Each script
+            # line is a separate command (no background jobs / shared vars), so
+            # we size+clear here and dump after instrumentation below.
+            adb logcat -G 16M
+            adb logcat -c
+            # True 3x captures at the manifest viewport (390x844dp), task #370.
+            # `wm density 480` alone is NOT enough: pixel_6_pro is 1440px wide,
+            # so at 480dpi the layout window is 480dp (confirmed via #90
+            # diagnostics: rootView 1440x2975), NOT 390dp. cropDp then takes the
+            # top-left 1170x2532 (390x844dp * 3), so content centered in the
+            # wider window is offset by half the difference and clipped —
+            # centered dialogs (server-danger-modal, create-channel) even fell
+            # off and failed to capture. Pinning the physical size to 1170x2532
+            # makes the layout window == the crop == React's 390dp viewport, so
+            # both top-left- and centre-anchored content align.
+            adb shell wm size 1170x2532
+            adb shell wm density 480
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
-            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
             mkdir -p visual-testing-results/android
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
             adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
+            # Per-case timing + idle-wait warnings for this shard. Grep
+            # CASE_START/CASE_END to see how long every android item ran and
+            # which case (if any) stalled.
+            adb logcat -d -v time -s VisualCapture:V TestRunner:V > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
 
       - name: Upload android results
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -282,6 +305,14 @@ jobs:
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
           path: visual-testing-results/android
+          if-no-files-found: warn
+
+      - name: Upload capture logcat (per-case timing)
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-logcat-shard-${{ matrix.shard }}
+          path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
   report:
@@ -330,6 +361,14 @@ jobs:
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
+
+      # Pixel avatar drift gate (task #352): mobile's generated
+      # SlockPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
+      - name: Check pixel avatar drift
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: node scripts/generate_pixel_avatars.mjs --check
 
       - name: Download react results
         if: ${{ !inputs.site_only }}

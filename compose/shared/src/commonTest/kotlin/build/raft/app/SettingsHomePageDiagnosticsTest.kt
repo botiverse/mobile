@@ -7,7 +7,6 @@ import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
-import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
@@ -17,6 +16,33 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
+    @Test
+    fun administrationSectionsMatchReactOrder() {
+        assertEquals(
+            listOf(
+                "Admins",
+                "System Channels",
+                "Pending Invites",
+                "Join Links",
+                "Pre-join Agreement",
+                "Onboarding",
+                "Translation",
+                "Member Permissions",
+                "Sidebar Order"
+            ),
+            settingsAdministrationSectionTitles()
+        )
+    }
+
+    @Test
+    fun administrationRoleOptionsMatchServerRolePolicy() {
+        assertEquals(listOf("owner", "admin"), settingsAdminRoleOptions("owner", "member"))
+        assertEquals(listOf("owner"), settingsAdminRoleOptions("owner", "admin"))
+        assertEquals(listOf("admin"), settingsAdminRoleOptions("admin", "member"))
+        assertEquals(emptyList(), settingsAdminRoleOptions("admin", "admin"))
+        assertEquals(emptyList(), settingsAdminRoleOptions("member", "member"))
+    }
+
     @Test
     fun unsupportedProfilerSnapshotShowsDisabledProfilerStatus() {
         val payload =
@@ -123,7 +149,7 @@ class SettingsHomePageDiagnosticsTest {
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
                         statusLabel = "Current",
-                        detail = "No Quiver update is available on main."
+                        detail = "No app update is available on main."
                     ),
                 options = listOf(production, staging)
             )
@@ -136,16 +162,11 @@ class SettingsHomePageDiagnosticsTest {
 
         val apiRows = payload.sections.first { it.title == "API Server" }.rows
         val environmentRow = apiRows.first { it.key == DEVELOPER_ACTION_API_ENVIRONMENT }
-        val transportRow = apiRows.first { it.key == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT }
 
         assertEquals("API Environment", environmentRow.title)
         assertEquals("Production", environmentRow.status)
         assertTrue(environmentRow.enabled)
         assertTrue(environmentRow.detail.contains("Choose presets"))
-        assertEquals("Shared Socket.IO transport", transportRow.title)
-        assertEquals(false, transportRow.toggleValue)
-        assertEquals("true", transportRow.value)
-        assertTrue(transportRow.detail.contains("Android"))
         assertFalse(apiRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
     }
 
@@ -162,7 +183,7 @@ class SettingsHomePageDiagnosticsTest {
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
                         statusLabel = "Current",
-                        detail = "No Quiver update is available on main."
+                        detail = "No app update is available on main."
                     ),
                 actionState = null
             )
@@ -173,7 +194,8 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Check for update", updateRow.title)
         assertEquals("Current", updateRow.status)
         assertTrue(updateRow.enabled)
-        assertTrue(updateRow.detail.contains("Quiver"))
+        assertFalse(updateRow.detail.contains("Quiver"))
+        assertTrue(updateRow.detail.contains("app update"))
     }
 
     @Test

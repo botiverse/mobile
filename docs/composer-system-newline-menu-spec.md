@@ -1,5 +1,10 @@
 # Composer System Newline Menu Spec
 
+> **Status (2026-07-05, task #206 closed):** Phase 1 (shared prop +
+> Android host adapter in `SlockKuiklyTextFieldViews.kt`) is live. Phase 2
+> (OHOS render fork hook for `slockSystemNewlineAction`) is NOT implemented —
+> the prop is a silent no-op on OHOS. Tracked as a residual under task #207.
+
 ## Goal
 
 The mobile composer uses `ImeAction.Send`, so touch-only users need a newline entry that does not compete with the platform text editing affordances. Long pressing the composer input should show the normal platform edit menu and include one additional action: `换行`.

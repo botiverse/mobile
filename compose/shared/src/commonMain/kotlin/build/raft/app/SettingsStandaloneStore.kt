@@ -12,11 +12,14 @@ import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
+import build.raft.app.data.SlockAgentsApiClient
+import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -32,6 +35,8 @@ import com.tencent.kuikly.core.pager.Pager
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
     val authDataSource: SharedAuthDataSource,
+    val computersStore: SharedComputersStore,
+    val createAgentCoordinator: SharedCreateAgentCoordinator,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities
 )
@@ -48,6 +53,21 @@ internal fun rememberStandaloneSettingsEnvironment(
     val computersApiClient =
         remember(networkClient) {
             SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+        }
+    val agentsApiClient =
+        remember(networkClient) {
+            SlockAgentsApiClient(
+                transport = SlockAgentsNetworkApi(networkClient),
+                diagnosticsLogger = { message -> bridge.log("settings_standalone_agents_api $message") }
+            )
+        }
+    val createAgentCoordinator =
+        remember(agentsApiClient, computersApiClient) {
+            SharedCreateAgentCoordinator(
+                agentsApiClient = agentsApiClient,
+                computersApiClient = computersApiClient,
+                logger = { message -> bridge.log("settings_standalone_create_agent $message") }
+            )
         }
     val scope = rememberCoroutineScope()
     val computersStore =
@@ -85,10 +105,12 @@ internal fun rememberStandaloneSettingsEnvironment(
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
             )
         }
-    return remember(dataSource, authDataSource, sharedStores.serverMembersStore, settingsCapabilities) {
+    return remember(dataSource, authDataSource, computersStore, createAgentCoordinator, sharedStores.serverMembersStore, settingsCapabilities) {
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
             authDataSource = authDataSource,
+            computersStore = computersStore,
+            createAgentCoordinator = createAgentCoordinator,
             serverMembersStore = sharedStores.serverMembersStore,
             settingsCapabilities = settingsCapabilities
         )

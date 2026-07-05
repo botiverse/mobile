@@ -392,6 +392,74 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun deliveredMentionActionShowsAddedStateBeforeRemoval() {
+        val store = SharedThreadComposerDraftStore()
+        val action =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "user",
+                targetHandle = "jane",
+                availableActions = listOf("add")
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(listOf(action)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-1", state = "added"))
+
+        assertEquals(mapOf("res-1" to "added"), store.state.value.executingMentionActionStates)
+        assertEquals(listOf(action), store.state.value.pendingMentionActions)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionAction(
+                resolutionId = "res-1",
+                notice = "@jane was added to #team",
+                delivered = true,
+                state = "added"
+            )
+        )
+
+        assertEquals(listOf(action), store.state.value.pendingMentionActions)
+        assertEquals(mapOf("res-1" to "added"), store.state.value.mentionActionStates)
+        assertEquals(null, store.state.value.mentionActionNotice)
+        assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
+
+        store.dispatch(SharedThreadComposerDraftIntent.MarkMentionActionRemoving("res-1"))
+        assertEquals(setOf("res-1"), store.state.value.removingMentionActionIds)
+
+        store.dispatch(SharedThreadComposerDraftIntent.RemoveMentionAction("res-1"))
+        assertEquals(emptyList(), store.state.value.pendingMentionActions)
+        assertEquals(emptyMap(), store.state.value.mentionActionStates)
+        assertEquals(emptySet(), store.state.value.removingMentionActionIds)
+    }
+
+    @Test
+    fun failedMentionActionKeepsPendingRowAndShowsNotice() {
+        val store = SharedThreadComposerDraftStore()
+        val action =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-2",
+                targetType = "user",
+                targetHandle = "jane",
+                availableActions = listOf("notify")
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(listOf(action)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-2", state = "notified"))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionAction(
+                resolutionId = "res-2",
+                notice = "That person cannot read this conversation, so they were not notified.",
+                delivered = false,
+                state = "notified"
+            )
+        )
+
+        assertEquals(listOf(action), store.state.value.pendingMentionActions)
+        assertEquals(emptyMap(), store.state.value.mentionActionStates)
+        assertEquals("That person cannot read this conversation, so they were not notified.", store.state.value.mentionActionNotice)
+        assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
+    }
+
+    @Test
     fun uploadedAttachmentOnlyDraftPersistsActiveRecordAndRestores() {
         val storage = InMemorySlockKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
@@ -900,7 +968,7 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
-    fun deliveredMentionActionRemovesRowAndFailureKeepsRow() {
+    fun deliveredMentionActionMarksRowAndFailureKeepsRow() {
         val store = SharedThreadComposerDraftStore()
         val pending =
             KuiklyPendingMentionActionItem(
@@ -911,28 +979,35 @@ class SharedThreadComposerDraftStoreTest {
             )
         store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
 
-        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-1"))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-1", state = "notified"))
         assertEquals(setOf("res-1"), store.state.value.executingMentionActionIds)
 
         store.dispatch(
             SharedThreadComposerDraftIntent.FinishMentionAction(
                 resolutionId = "res-1",
                 notice = "failed",
-                delivered = false
+                delivered = false,
+                state = "notified"
             )
         )
         assertEquals(listOf(pending), store.state.value.pendingMentionActions)
         assertEquals("failed", store.state.value.mentionActionNotice)
 
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-1", state = "notified"))
         store.dispatch(
             SharedThreadComposerDraftIntent.FinishMentionAction(
                 resolutionId = "res-1",
                 notice = "delivered",
-                delivered = true
+                delivered = true,
+                state = "notified"
             )
         )
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertEquals(mapOf("res-1" to "notified"), store.state.value.mentionActionStates)
+        assertEquals(null, store.state.value.mentionActionNotice)
+
+        store.dispatch(SharedThreadComposerDraftIntent.RemoveMentionAction("res-1"))
         assertEquals(emptyList(), store.state.value.pendingMentionActions)
-        assertEquals("delivered", store.state.value.mentionActionNotice)
     }
 
     @Test
@@ -950,7 +1025,8 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftIntent.FinishMentionAction(
                 resolutionId = "res-1",
                 notice = "failed",
-                delivered = false
+                delivered = false,
+                state = "added"
             )
         )
 

@@ -418,6 +418,7 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Error)
         assertEquals("home_network", content.code)
+        assertEquals("server-1", content.session?.currentServerId)
         assertContains(logs, "home_ui_error source=shared_home_load code=home_network mapped=home_error_panel")
         scope.cancel()
     }
@@ -444,6 +445,7 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Error)
         assertEquals("home_network", content.code)
+        assertEquals("server-1", content.session?.currentServerId)
         assertEquals("general", localStore.readHome(ServerId("server-1"))?.channels?.single()?.name)
         scope.cancel()
     }

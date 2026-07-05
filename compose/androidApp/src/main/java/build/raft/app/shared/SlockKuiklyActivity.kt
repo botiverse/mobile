@@ -2154,8 +2154,6 @@ internal class SlockKuiklyBridgeModule(
                         "loadDeveloper" -> loadSettingsDeveloper()
                         "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
-                        "setSharedSocketIoTransport" -> setSharedSocketIoTransport(request)
-                        "realtimeTransportPreferenceChanged" -> onRealtimeTransportPreferenceChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
@@ -2196,6 +2194,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                         "sendTestNotification" -> sendTestNotificationCapability()
                         "postUnreadNotification" -> postUnreadNotificationCapability(request)
+                        "mobileOAuthLink" -> return startMobileOAuthLink(request, callback)
                         else -> mapOf("status" to "error", "code" to "settings_capability_unknown")
                     }
                 }.getOrElse { throwable ->
@@ -2206,6 +2205,107 @@ internal class SlockKuiklyBridgeModule(
                     )
                 }
         callback?.invoke(result)
+    }
+
+    private fun startMobileOAuthLink(request: JSONObject, callback: KuiklyRenderCallback?) {
+        val provider = request.optString("providerId").trim().lowercase(Locale.US)
+        if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
+            callback?.invoke(
+                    mapOf(
+                            "status" to "error",
+                            "code" to "settings_mobile_oauth_link_provider_unsupported",
+                            "message" to "This account provider is not available on Android yet"
+                    )
+            )
+            return
+        }
+        val lifecycleOwner = activity as? SlockKuiklyActivity ?: appContext as? SlockKuiklyActivity
+        if (lifecycleOwner == null) {
+            callback?.invoke(
+                    mapOf(
+                            "status" to "error",
+                            "code" to "settings_mobile_oauth_link_host_unavailable",
+                            "message" to "Unable to open ${provider.socialProviderDisplayName()} account linking"
+                    )
+            )
+            return
+        }
+
+        lifecycleOwner.lifecycleScope.launch {
+            val pkce = AndroidMobileOAuth.createPkce()
+            val authDataSource =
+                    SharedAuthDataSource(
+                            api = AndroidAuthApiFactory.createAuthApi(appContext),
+                            sessionStore =
+                                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
+                            diagnosticsLogger = ::logSharedAuthDiagnostics
+                    )
+            val startResult =
+                    withContext(Dispatchers.IO) {
+                        authDataSource.startMobileOAuthLink(
+                                provider = provider,
+                                returnUri = AndroidMobileOAuth.ReturnUri,
+                                codeChallenge = pkce.codeChallenge
+                        )
+                    }
+            when (startResult) {
+                is SharedAuthResult.Success -> {
+                    AndroidMobileOAuthPendingStore(appContext).save(
+                            AndroidMobileOAuthPendingRequest(
+                                    provider = provider,
+                                    requestId = startResult.data.requestId,
+                                    codeVerifier = pkce.codeVerifier,
+                                    mode = AndroidMobileOAuth.ModeLink
+                            )
+                    )
+                    val intent =
+                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                    runCatching {
+                                appContext.startActivity(intent)
+                            }
+                            .onSuccess {
+                                callback?.invoke(mapOf("status" to "started", "code" to 202))
+                            }
+                            .onFailure { throwable ->
+                                AndroidMobileOAuthPendingStore(appContext).clear()
+                                val message =
+                                        if (throwable is ActivityNotFoundException) {
+                                            "No browser can open ${provider.socialProviderDisplayName()} account linking"
+                                        } else {
+                                            "Unable to open ${provider.socialProviderDisplayName()} account linking"
+                                        }
+                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+                                callback?.invoke(
+                                        mapOf(
+                                                "status" to "error",
+                                                "code" to "settings_mobile_oauth_link_open_failed",
+                                                "message" to message
+                                        )
+                                )
+                            }
+                }
+                is SharedAuthResult.Failure -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "error",
+                                    "code" to "settings_mobile_oauth_link_start_failed",
+                                    "message" to startResult.message
+                            )
+                    )
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "error",
+                                    "code" to "settings_mobile_oauth_link_auth_required",
+                                    "message" to "Sign in again to link ${provider.socialProviderDisplayName()}."
+                            )
+                    )
+                }
+            }
+        }
     }
 
     private fun loadSettingsStorage(
@@ -2487,7 +2587,6 @@ internal class SlockKuiklyBridgeModule(
                 "apiBaseUrl" to current.apiBaseUrl,
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
-                "sharedSocketIoTransportEnabled" to AndroidApiServerEnvironmentStore(appContext).sharedSocketIoTransportEnabled(),
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
                 "updateCheckDetail" to "Check Quiver channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
@@ -2856,28 +2955,6 @@ internal class SlockKuiklyBridgeModule(
         return mapOf("status" to "ok")
     }
 
-    private fun setSharedSocketIoTransport(request: JSONObject): Map<String, Any> {
-        val enabled = request.optBoolean("enabled", false)
-        AndroidApiServerEnvironmentStore(appContext).setSharedSocketIoTransportEnabled(enabled)
-        AndroidAppScopeRealtimeOwner.onRealtimeTransportPreferenceChanged(appContext, enabled)
-        SlockDiagnosticsLogger.record("SlockDeveloper", "shared_socketio_transport_enabled=$enabled")
-        return loadSettingsDeveloper(
-                feedback =
-                        if (enabled) {
-                            "Shared Socket.IO transport enabled for Android, iOS, and OHOS."
-                        } else {
-                            "Shared Socket.IO transport disabled. Android will use the platform transport on the next realtime reconnect."
-                        }
-        )
-    }
-
-    private fun onRealtimeTransportPreferenceChanged(request: JSONObject): Map<String, Any> {
-        val enabled = request.optBoolean("enabled", false)
-        AndroidAppScopeRealtimeOwner.onRealtimeTransportPreferenceChanged(appContext, enabled)
-        SlockDiagnosticsLogger.record("SlockDeveloper", "realtime_transport_preference_changed shared=$enabled")
-        return mapOf("status" to "ok")
-    }
-
     private fun loadSettingsDiagnostics(): Map<String, Any> {
         val entries =
                 JSONArray().also { array ->
@@ -2914,6 +2991,7 @@ internal class SlockKuiklyBridgeModule(
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
                     channel = BuildConfig.QUIVER_CHANNEL,
+                    clientKey = BuildConfig.QUIVER_CLIENT_KEY,
             ).submit(
                     message = description,
                     kind = "bug",
@@ -3619,7 +3697,8 @@ internal class SlockKuiklyBridgeModule(
                             AndroidMobileOAuthPendingRequest(
                                     provider = provider,
                                     requestId = startResult.data.requestId,
-                                    codeVerifier = pkce.codeVerifier
+                                    codeVerifier = pkce.codeVerifier,
+                                    mode = AndroidMobileOAuth.ModeLogin
                             )
                     )
                     val intent =

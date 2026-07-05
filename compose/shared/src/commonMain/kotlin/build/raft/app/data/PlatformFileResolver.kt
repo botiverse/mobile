@@ -46,10 +46,23 @@ object SlockSharedPlatformFileResolverProvider {
         appScopeResolverFactory = factory
     }
 
-    internal fun create(): SlockPlatformFileResolver? =
-        appScopeResolverFactory?.invoke()
+    internal fun createBinding(): SlockPlatformFileResolverBinding {
+        val appScopeResolver = appScopeResolverFactory?.invoke()
+        if (appScopeResolver != null) {
+            return SlockPlatformFileResolverBinding(appScopeResolver, "app")
+        }
+        val platformResolver = createDefaultPlatformFileResolver()
+        return SlockPlatformFileResolverBinding(platformResolver, if (platformResolver == null) "missing" else "platform")
+    }
 
     internal fun clearAppScopeResolverForTests() {
         appScopeResolverFactory = null
     }
 }
+
+internal data class SlockPlatformFileResolverBinding(
+    val resolver: SlockPlatformFileResolver?,
+    val scope: String
+)
+
+internal expect fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver?

@@ -3,8 +3,12 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
+import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
+import build.raft.app.SlockPixelAvatarRuntime
+import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.slockLogInfo
+import build.raft.app.slockLogWarn
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
@@ -23,18 +27,35 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 
+// Pixel-avatar runtime refresh (task #352) waits out the startup window before
+// fetching: first screen must not compete with this non-urgent request, and the
+// per-client jitter keeps a web deploy from triggering a synchronized spike.
+private const val PixelAvatarRefreshDelayMinMs = 10_000L
+private const val PixelAvatarRefreshDelayMaxMs = 60_000L
+
 private fun BridgeModule.logSharedAuthDiagnostic(prefix: String, message: String) {
     val line = "$prefix $message"
-    log(line)
     slockLogInfo(SHARED_AUTH_LOG_TAG, line)
 }
+
+private fun sharedInfoLogger(tag: String, prefix: String = ""): (String) -> Unit =
+    { message ->
+        slockLogInfo(tag, if (prefix.isBlank()) message else "$prefix $message")
+    }
+
+private fun sharedWarnLogger(tag: String, prefix: String = ""): (String) -> Unit =
+    { message ->
+        slockLogWarn(tag, if (prefix.isBlank()) message else "$prefix $message")
+    }
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
@@ -221,7 +242,7 @@ internal class SlockSharedStoreProvider private constructor(
             val localDataStore =
                 RelationalComposeLocalDataStore(
                     store = relationalStore,
-                    diagnosticsLogger = { message -> bridge.log("local_cache $message") }
+                    diagnosticsLogger = sharedInfoLogger("SlockLocalCache", "local_cache")
                 )
             val tasksDataStore = SharedTasksDataStore()
             val authSessionEvents =
@@ -271,40 +292,58 @@ internal class SlockSharedStoreProvider private constructor(
                     apiEnvironmentKeyValueStore
                 )
             val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
-            val platformFileResolver = SlockSharedPlatformFileResolverProvider.create()
+            val platformFileResolverBinding = SlockSharedPlatformFileResolverProvider.createBinding()
+            val platformFileResolver = platformFileResolverBinding.resolver
             bridge.logSharedAuthDiagnostic(
                 "shared_network_file_resolver",
-                "storage_scope=" + if (platformFileResolver == null) "missing" else "app"
+                "storage_scope=${platformFileResolverBinding.scope}"
             )
             val authDataSource =
                 SharedAuthDataSource(
                     transport = SharedKtorSlockAuthTransport(
                         baseUrl = apiBaseUrl,
                         warningLogger = { message ->
-                            bridge.logSharedAuthDiagnostic("shared_auth_network", message)
+                            slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
                         }
                     ),
                     sessionStore = authStore,
-                    diagnosticsLogger = { message ->
-                        bridge.logSharedAuthDiagnostic("shared_auth", message)
-                    }
+                    diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
                 )
             val networkClient =
                 SharedKtorSlockNetworkClient(
                     sessionStore = authStore,
                     baseUrl = apiBaseUrl,
-                    warningLogger = { message -> bridge.log("shared_network $message") },
+                    warningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network"),
                     platformFileResolver = platformFileResolver
                 )
+            // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
+            // synchronously (before first render), then fire-and-forget a refresh from the
+            // deployed WEB app origin (webUrl, not the API base URL) — the same canonical
+            // pixelAvatars.json the generator consumes. Bad data never crashes rendering;
+            // the generated bundled table stays the fallback.
+            val pixelAvatarStore = KeyValuePixelAvatarStore(sharedPreferenceStore)
+            SlockPixelAvatarRuntime.applyRuntimeJson(pixelAvatarStore.readJson(), source = "cache")
+            CoroutineScope(SupervisorJob()).launch {
+                // Jittered delay: the refresh is not first-screen data (the cached/bundled
+                // table is already applied above), so keep it off the startup window where
+                // it would contend with channel/message fetches — and spread clients out
+                // so a web deploy doesn't produce a synchronized fetch spike.
+                delay(Random.nextLong(PixelAvatarRefreshDelayMinMs, PixelAvatarRefreshDelayMaxMs))
+                refreshPixelAvatarsFromWeb(
+                    networkClient = networkClient,
+                    store = pixelAvatarStore,
+                    webBaseUrl = apiEnvironmentStore.current().webUrl
+                )
+            }
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository =
                         RealMemberRepository(
                             sessionStore = authStore,
                             networkClient = networkClient,
-                            logger = { message -> bridge.log("shared_server_members_repository $message") }
+                            logger = sharedInfoLogger("SlockServerMembers", "shared_server_members_repository")
                         ),
-                    logger = { message -> bridge.log(message) }
+                    logger = sharedInfoLogger("SlockServerMembers")
                 )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
@@ -317,7 +356,7 @@ internal class SlockSharedStoreProvider private constructor(
                 networkClient = networkClient,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
-                    logger = { message -> bridge.log("shared_agent_detail_store $message") }
+                    logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
                 ),
                 agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
                 tasksDataStore = tasksDataStore,
@@ -326,20 +365,20 @@ internal class SlockSharedStoreProvider private constructor(
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
                             sharedPreferenceStore,
-                            diagnosticsLogger = { message -> bridge.log(message) }
+                            diagnosticsLogger = sharedInfoLogger("SlockComposerDraft")
                         ),
-                        diagnosticsLogger = { message -> bridge.log(message) }
+                        diagnosticsLogger = sharedInfoLogger("SlockComposerDraft")
                     ),
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = { message -> bridge.log("shared_activity_persist $message") }
+                        diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist")
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = { message -> bridge.log("shared_home_persist $message") }
+                        diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist")
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,
@@ -355,7 +394,7 @@ internal class SlockSharedStoreProvider private constructor(
                         fallbackLanguage = {
                             KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
                         },
-                        diagnosticsLogger = { message -> bridge.log("shared_message_translation $message") }
+                        diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),
                 threadMessageStore = SharedThreadMessageStore(),
                 foregroundReconciler =
@@ -369,7 +408,7 @@ internal class SlockSharedStoreProvider private constructor(
                             )
                         },
                         scope = CoroutineScope(SupervisorJob()),
-                        diagnosticsLogger = { message -> bridge.log("shared_foreground_reconcile $message") }
+                        diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
                     ),
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
@@ -390,6 +429,7 @@ internal interface RealtimeDomainEventOwner {
 internal data class RealtimeDomainEventSinks(
     val applyHomeShell: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applySettings: (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyServerMembersRefresh: (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: (MemberPresenceUpdated) -> Unit = {},
     val requestMemberDetailRefresh: () -> Unit = {},
     val joinChannel: (String) -> Unit = {},
@@ -465,6 +505,9 @@ internal class SharedRealtimeDomainEventOwner(
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
+            if (event is RealtimeRefreshRequired) {
+                activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, event)
+            }
             activeSinks?.requestMemberDetailRefresh?.invoke()
         }
         activeSinks?.emitRouteMarker?.invoke(event)

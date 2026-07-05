@@ -1,6 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
+#import <Quiver/QuiverReport.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -22,7 +23,6 @@ static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentP
 static NSString *const SlockDiagnosticsLogDirName = @"Slock/diagnostics";
 static NSString *const SlockDiagnosticsLogFileName = @"slock-diagnostics.jsonl";
 static NSString *const SlockApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
-static NSString *const SlockSharedSocketIoTransportKey = @"slock_api_server_environment:shared_socket_io_transport_enabled";
 static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
 static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
 static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
@@ -85,15 +85,6 @@ static MMKV *SlockBridgeApiEnvironmentStore(void) {
         [MMKV initializeMMKV:nil];
     });
     return [MMKV mmkvWithID:SlockApiEnvironmentMMKVNamespace] ?: [MMKV defaultMMKV];
-}
-
-static BOOL SlockBridgeSharedSocketIoTransportEnabled(void) {
-    NSString *value = [SlockBridgeApiEnvironmentStore() getStringForKey:SlockSharedSocketIoTransportKey defaultValue:@"false"] ?: @"false";
-    return SlockBridgeBool(value);
-}
-
-static void SlockBridgeSetSharedSocketIoTransportEnabled(BOOL enabled) {
-    [SlockBridgeApiEnvironmentStore() setString:(enabled ? @"true" : @"false") forKey:SlockSharedSocketIoTransportKey];
 }
 
 static NSDictionary *SlockBridgeIdentityPageData(NSDictionary *pageData) {
@@ -708,9 +699,6 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
 - (void)reportRealTime:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     NSMutableDictionary *command = [params isKindOfClass:NSDictionary.class] ? [params mutableCopy] : [NSMutableDictionary dictionary];
-    if ([command[@"action"] isEqualToString:@"connect"]) {
-        command[@"sharedSocketIoTransportEnabled"] = @(SlockBridgeSharedSocketIoTransportEnabled());
-    }
     [[SlockIosRealtimeHost shared] handleCommand:command];
 }
 
@@ -733,8 +721,7 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         @"status" : @"ok",
         @"environmentKey" : @"default",
         @"environmentLabel" : @"Default",
-        @"sharedSocketIoTransportEnabled" : @(SlockBridgeSharedSocketIoTransportEnabled()),
-        @"feedback" : feedback.length > 0 ? feedback : @"API environment switching is not wired on iOS P0. Shared Socket.IO transport can switch the Android, iOS, and OHOS realtime socket.",
+        @"feedback" : feedback.length > 0 ? feedback : @"API environment switching is not wired on iOS P0.",
         @"options" : @[]
     };
 }
@@ -838,20 +825,6 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
         return @{ @"status" : @"ok" };
     }
-    if ([action isEqualToString:@"setSharedSocketIoTransport"]) {
-        BOOL enabled = SlockBridgeBool(params[@"enabled"]);
-        SlockBridgeSetSharedSocketIoTransportEnabled(enabled);
-        [[SlockIosRealtimeHost shared] realtimeTransportPreferenceChangedWithEnabled:enabled];
-        SlockDiagnosticsRecord(@"info", @"SlockDeveloper", [NSString stringWithFormat:@"shared_socketio_transport_enabled=%@", enabled ? @"true" : @"false"]);
-        return [self slock_developerCapabilityResultWithFeedback:(enabled
-            ? @"Shared Socket.IO transport enabled. Android, iOS, and OHOS reconnects use the shared Ktor pilot."
-            : @"Shared Socket.IO flag disabled. iOS keeps the native Swift realtime host.")];
-    }
-    if ([action isEqualToString:@"realtimeTransportPreferenceChanged"]) {
-        BOOL enabled = SlockBridgeBool(params[@"enabled"]);
-        [[SlockIosRealtimeHost shared] realtimeTransportPreferenceChangedWithEnabled:enabled];
-        return @{ @"status" : @"ok" };
-    }
     if ([action isEqualToString:@"setApiEnvironment"]) {
         return [self slock_unsupportedResultWithCode:@"settings_developer_environment_unsupported"
                                              message:@"API environment switching is not wired on iOS P0"];
@@ -872,21 +845,8 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         return [self slock_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
-        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
-        NSString *message = SlockBridgeString(draft[@"message"]);
-        NSString *path = SlockBridgeString(draft[@"filePath"]);
-        NSMutableArray *items = [NSMutableArray array];
-        if (message.length > 0) {
-            [items addObject:message];
-        }
-        if (path.length > 0) {
-            NSURL *url = [NSURL fileURLWithPath:path];
-            if (url) {
-                [items addObject:url];
-            }
-        }
-        [self slock_shareItems:items];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_send_feedback");
+        [self slock_promptAndSubmitQuiverFeedback];
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"clearStorage"]) {
@@ -917,6 +877,80 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         UINavigationController *presentedNavigationController =
             [[UINavigationController alloc] initWithRootViewController:renderViewController];
         [controller presentViewController:presentedNavigationController animated:YES completion:nil];
+    });
+}
+
+/// Quiver feedback flow (parity with the Android host): prompt for a
+/// description, submit a kind=bug ticket with the diagnostics export
+/// attached, then copy a shareable "Quiver feedback <id>" reference to the
+/// clipboard so the user can paste it in the community.
+- (void)slock_promptAndSubmitQuiverFeedback {
+    SlockBridgeRunOnMain(^{
+        UIViewController *controller = [self slock_currentViewController];
+        if (!controller) {
+            return;
+        }
+        UIAlertController *prompt =
+            [UIAlertController alertControllerWithTitle:@"Send feedback"
+                                                message:@"Your message plus device diagnostics will be sent to Quiver. You'll get a copyable reference to share in the community."
+                                         preferredStyle:UIAlertControllerStyleAlert];
+        [prompt addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+            textField.placeholder = @"Describe your feedback";
+        }];
+        [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                   style:UIAlertActionStyleCancel
+                                                 handler:nil]];
+        __weak UIAlertController *weakPrompt = prompt;
+        [prompt addAction:[UIAlertAction actionWithTitle:@"Send"
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction *action) {
+            NSString *description = [weakPrompt.textFields.firstObject.text
+                stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if (description.length == 0) {
+                return;
+            }
+            [self slock_submitQuiverFeedbackWithDescription:description];
+        }]];
+        [controller presentViewController:prompt animated:YES completion:nil];
+    });
+}
+
+- (void)slock_submitQuiverFeedbackWithDescription:(NSString *)description {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
+        NSString *path = SlockBridgeString(draft[@"filePath"]);
+        NSArray<NSString *> *attachments = path.length > 0 ? @[ path ] : @[];
+        [QuiverReport submitFeedback:description
+                                 kind:@"bug"
+                      attachmentPaths:attachments
+                               extras:nil
+                           completion:^(NSString *ticketId, NSError *error) {
+            SlockBridgeRunOnMain(^{
+                UIViewController *controller = [self slock_currentViewController];
+                if (error || ticketId.length == 0) {
+                    SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
+                        [NSString stringWithFormat:@"quiver_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
+                    UIAlertController *failed =
+                        [UIAlertController alertControllerWithTitle:@"Feedback failed"
+                                                            message:error.localizedDescription ?: @"Unknown error"
+                                                     preferredStyle:UIAlertControllerStyleAlert];
+                    [failed addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [controller presentViewController:failed animated:YES completion:nil];
+                    return;
+                }
+                NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
+                NSString *shareText = [NSString stringWithFormat:@"Quiver feedback %@\n%@", shortId, description];
+                UIPasteboard.generalPasteboard.string = shareText;
+                SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
+                    [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);
+                UIAlertController *done =
+                    [UIAlertController alertControllerWithTitle:@"Feedback sent"
+                                                        message:@"Copied — paste it in the community."
+                                                 preferredStyle:UIAlertControllerStyleAlert];
+                [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [controller presentViewController:done animated:YES completion:nil];
+            });
+        }];
     });
 }
 

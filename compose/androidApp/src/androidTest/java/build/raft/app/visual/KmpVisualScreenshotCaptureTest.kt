@@ -7,23 +7,89 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import android.app.Activity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import build.raft.app.shared.SlockKuiklyActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.BeforeClass
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestWatcher
+import org.junit.rules.Timeout
+import org.junit.runner.Description
 import kotlin.math.roundToInt
 
 class KmpVisualScreenshotCaptureTest {
+    // Per-case timing to logcat + a hard per-case wall-clock backstop (task
+    // #362). AndroidJUnitRunner buffers its one-dot-per-test stream, so a hung
+    // shard prints nothing until the 45m job timeout kills it — these rules
+    // make per-item duration observable (CASE_START/CASE_END) and stop any
+    // single hung/animating case from burning the whole shard's budget. The
+    // bounded idle waits below are the primary defense; the Timeout is the
+    // belt-and-suspenders cap that turns a residual hang into a per-case
+    // failure so the runner advances to the next case.
+    private val caseTimingWatcher: TestWatcher =
+        object : TestWatcher() {
+            private var startUptimeMs = 0L
+
+            override fun starting(description: Description) {
+                startUptimeMs = SystemClock.uptimeMillis()
+                // Log the display/viewport condition up front (task #367): a
+                // case that later renders blank should carry the exact
+                // width/height/density it ran under, so a CI-only failure can be
+                // told apart from a geometry difference.
+                val dm = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
+                Log.i(
+                    VISUAL_LOG_TAG,
+                    "CASE_START ${description.methodName} display=${dm.widthPixels}x${dm.heightPixels} densityDpi=${dm.densityDpi}"
+                )
+                recordTiming("START ${description.methodName}")
+            }
+
+            override fun succeeded(description: Description) {
+                val durationMs = SystemClock.uptimeMillis() - startUptimeMs
+                Log.i(VISUAL_LOG_TAG, "CASE_END ${description.methodName} status=OK durationMs=$durationMs")
+                recordTiming("OK ${description.methodName} durationMs=$durationMs")
+            }
+
+            override fun failed(e: Throwable, description: Description) {
+                val durationMs = SystemClock.uptimeMillis() - startUptimeMs
+                Log.w(
+                    VISUAL_LOG_TAG,
+                    "CASE_END ${description.methodName} status=FAIL durationMs=$durationMs error=${e.javaClass.simpleName}: ${e.message}"
+                )
+                recordTiming("FAIL ${description.methodName} durationMs=$durationMs error=${e.javaClass.simpleName}")
+            }
+        }
+
+    private val perCaseTimeout: Timeout =
+        Timeout.builder()
+            .withTimeout(PER_CASE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .withLookingForStuckThread(true)
+            .build()
+
+    // Watcher outer, timeout inner: a timeout surfaces as a normal test
+    // failure that caseTimingWatcher.failed() records with its duration.
+    @get:Rule
+    val visualCaptureRules: RuleChain =
+        RuleChain.outerRule(caseTimingWatcher).around(perCaseTimeout)
+
+
     @Test
     fun captureTokenPalette() {
         captureKmpComponentCase(
@@ -639,6 +705,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowWideMarkdownWrap() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.wide-markdown-wrap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-wide-markdown-wrap")
+                    .put("visualFixture", "wide_markdown_wrap"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",
@@ -1156,6 +1235,72 @@ class KmpVisualScreenshotCaptureTest {
     private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
         (pageData ?: JSONObject()).put("slockVisualZeroSafeArea", true)
 
+    /**
+     * Idle-sync with a hard wall-clock ceiling (task #362). Plain
+     * [android.app.Instrumentation.waitForIdleSync] blocks forever on screens
+     * that keep the main thread perpetually busy — a continuous
+     * spinner/skeleton/indeterminate-progress animation, a never-resolving
+     * loading state, or async thumbnail decoding — and it swallows interrupts,
+     * so it cannot be unblocked by the JUnit Timeout rule. Running it on a
+     * daemon thread and bounding the join lets capture proceed and grab the
+     * current frame instead of stalling the whole 6-way shard until the 45m
+     * job timeout (the failure mode that killed shards 2 & 5 on
+     * components.thread.files.list / screens.members.agent-detail.activity).
+     */
+    private fun waitForIdleBounded(maxMs: Long = IDLE_WAIT_TIMEOUT_MS) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val settled = CountDownLatch(1)
+        Thread {
+            instrumentation.waitForIdleSync()
+            settled.countDown()
+        }.apply {
+            isDaemon = true
+            name = "visual-wait-for-idle"
+        }.start()
+        if (!settled.await(maxMs, TimeUnit.MILLISECONDS)) {
+            Log.w(
+                VISUAL_LOG_TAG,
+                "waitForIdle exceeded ${maxMs}ms; proceeding with current frame (screen likely still animating/loading)"
+            )
+        }
+    }
+
+    /**
+     * Close the scenario with a wall-clock ceiling (task #364). Even after the
+     * screenshot is captured, ActivityScenario.close() -> moveToState(DESTROYED)
+     * does its own unbounded Instrumentation.waitForIdleSync(), which never
+     * returns on a screen still animating/loading at teardown (e.g.
+     * components.members.avatar-management) — so the case would burn the per-case
+     * backstop even though its image is already written. Run close() on a daemon
+     * thread and bound the join; if teardown never idles, abandon it (the leaked
+     * activity is replaced when the next case launches fresh) so the case is
+     * reported OK with the image it already produced.
+     */
+    private fun closeScenarioBounded(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        maxMs: Long = SCENARIO_CLOSE_TIMEOUT_MS
+    ) {
+        val closed = CountDownLatch(1)
+        Thread {
+            try {
+                scenario.close()
+            } catch (t: Throwable) {
+                Log.w(VISUAL_LOG_TAG, "scenario.close() threw: ${t.message}")
+            } finally {
+                closed.countDown()
+            }
+        }.apply {
+            isDaemon = true
+            name = "visual-scenario-close"
+        }.start()
+        if (!closed.await(maxMs, TimeUnit.MILLISECONDS)) {
+            Log.w(
+                VISUAL_LOG_TAG,
+                "scenario.close() exceeded ${maxMs}ms; abandoning teardown (screen never idle at close)"
+            )
+        }
+    }
+
     private fun captureKmpHomeCase(
         caseId: String,
         pageData: JSONObject,
@@ -1167,13 +1312,14 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            scenario.onActivity { applyVisualFullscreen(it) }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
+            waitForIdleBounded()
             Thread.sleep(2_500)
-            scenario.onActivity { suppressVisualKeyboard(it) }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
+            onActivityNoIdle { suppressVisualKeyboard(it) }
+            waitForIdleBounded()
+            val normalized = captureStableVisualBitmap(context, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1195,6 +1341,8 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
+        } finally {
+            closeScenarioBounded(scenario)
         }
     }
 
@@ -1212,15 +1360,16 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", pageName)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            scenario.onActivity { applyVisualFullscreen(it) }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
+            waitForIdleBounded()
             Thread.sleep(settleMs)
             beforeScreenshot?.invoke()
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            scenario.onActivity { suppressVisualKeyboard(it) }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
+            waitForIdleBounded()
+            onActivityNoIdle { suppressVisualKeyboard(it) }
+            waitForIdleBounded()
+            val normalized = captureStableVisualBitmap(context, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1242,6 +1391,8 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
+        } finally {
+            closeScenarioBounded(scenario)
         }
     }
 
@@ -1279,12 +1430,35 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun captureActivityScreenshot(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
-        caseId: String
-    ): Bitmap {
+    /**
+     * Run [block] against the current RESUMED activity on the main thread
+     * WITHOUT ActivityScenario.onActivity's internal waitForIdleSync (task
+     * #364). onActivity() blocks on waitForIdleSync, which never returns on a
+     * never-idle screen (animation/loading) — the same unbounded wait #362
+     * fixed for the standalone calls but which stayed hidden inside onActivity,
+     * so those screens still burned the full 120s per-case backstop.
+     * runOnMainSync posts the runnable and waits for it to execute but does NOT
+     * wait for idle, so it always makes progress. If the activity already died
+     * (e.g. a page that crashes on render, like wip-list-panels), there is no
+     * RESUMED activity — skip instead of NPE-cascading on a destroyed scenario.
+     */
+    private fun onActivityNoIdle(block: (Activity) -> Unit) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val activity =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .firstOrNull()
+            if (activity != null) {
+                block(activity)
+            } else {
+                Log.w(VISUAL_LOG_TAG, "onActivityNoIdle: no RESUMED activity (page may have crashed/finished)")
+            }
+        }
+    }
+
+    private fun captureActivityScreenshot(caseId: String): Bitmap {
         var bitmap: Bitmap? = null
-        scenario.onActivity { activity ->
+        onActivityNoIdle { activity ->
             val root = activity.window.decorView.rootView
             if (root.width > 0 && root.height > 0) {
                 bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
@@ -1300,7 +1474,6 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun captureStableVisualBitmap(
         context: Context,
-        scenario: ActivityScenario<SlockKuiklyActivity>,
         caseId: String,
         crop: VisualCrop
     ): Bitmap {
@@ -1310,11 +1483,15 @@ class KmpVisualScreenshotCaptureTest {
         var lastProblems: List<String> = emptyList()
 
         do {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val screenshot = captureActivityScreenshot(scenario, caseId)
+            waitForIdleBounded()
+            val screenshot = captureActivityScreenshot(caseId)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
-            val normalized = cropped.normalizeToDpPixels(context)
+            // Task #342: keep native device pixels (emulator pinned to 480dpi
+            // = exactly 3x, matching React's deviceScaleFactor 3) instead of
+            // downsampling to 1x dp pixels — the downsample blurred every
+            // android capture and hid sub-dp diffs.
+            val normalized = cropped
             val stats = normalized.visualStats()
             val problems = visualValidationProblems(normalized, stats)
             if (problems.isEmpty()) {
@@ -1480,14 +1657,6 @@ class KmpVisualScreenshotCaptureTest {
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
     }
 
-    private fun Bitmap.normalizeToDpPixels(context: Context): Bitmap {
-        val density = context.resources.displayMetrics.density
-        val targetWidth = (width / density).roundToInt().coerceAtLeast(1)
-        val targetHeight = (height / density).roundToInt().coerceAtLeast(1)
-        if (targetWidth == width && targetHeight == height) return this
-        return Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
-    }
-
     private fun validateCropBounds(caseId: String, screenshot: Bitmap, crop: VisualCrop) {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
         val left = (crop.leftDp * density).roundToInt()
@@ -1542,7 +1711,7 @@ class KmpVisualScreenshotCaptureTest {
         val downTime = SystemClock.uptimeMillis()
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0))
-        instrumentation.waitForIdleSync()
+        waitForIdleBounded()
     }
 
     private fun writeFailureArtifacts(
@@ -1560,6 +1729,7 @@ class KmpVisualScreenshotCaptureTest {
         imageFile.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
+        val diagnostics = collectDiagnosticsJson(context)
         val metadataFile = File(outputDir, "$caseId.failure.json")
         metadataFile.writeText(
             """
@@ -1581,6 +1751,7 @@ class KmpVisualScreenshotCaptureTest {
                 "dominantRatio": ${stats.dominantRatio},
                 "errors": ${JSONArray(problems)}
               },
+              "diagnostics": $diagnostics,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
@@ -1598,6 +1769,7 @@ class KmpVisualScreenshotCaptureTest {
         captureMethod: String
     ): String {
         val stats = bitmap.visualStats()
+        val diagnostics = collectDiagnosticsJson(context)
         return """
             {
               "provider": "android",
@@ -1621,13 +1793,83 @@ class KmpVisualScreenshotCaptureTest {
                   "dominantRatio": ${stats.dominantRatio}
                 }
               },
+              "diagnostics": $diagnostics,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
     }
 
+    // Capture-environment diagnostics (task #367). A case can render blank in
+    // one environment (e.g. CI's software-GPU headless emulator) while passing
+    // in another with identical geometry — so record the display/GPU/layout
+    // condition each capture ran under. The view-tree counts distinguish
+    // "content never laid out" (data/fixture problem: laidOut≈0) from "content
+    // laid out but drawn blank" (renderer/GPU problem: laidOut>0 yet the bitmap
+    // is one color). Emitted into both metadata.json and failure.json.
+    private fun collectDiagnosticsJson(context: Context): String {
+        val dm = context.resources.displayMetrics
+        var rootWidth = 0
+        var rootHeight = 0
+        var hardwareAccelerated = false
+        val counts = IntArray(3) // total, laidOut (w>0 && h>0), visibleContentLeaf
+        try {
+            onActivityNoIdle { activity ->
+                val root = activity.window.decorView.rootView
+                rootWidth = root.width
+                rootHeight = root.height
+                hardwareAccelerated = root.isHardwareAccelerated
+                summarizeViewTree(root, counts)
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "collectDiagnostics failed: ${t.message}")
+        }
+        return """
+            {
+                "displayWidthPx": ${dm.widthPixels},
+                "displayHeightPx": ${dm.heightPixels},
+                "densityDpi": ${dm.densityDpi},
+                "rootWidthPx": $rootWidth,
+                "rootHeightPx": $rootHeight,
+                "hardwareAccelerated": $hardwareAccelerated,
+                "totalViews": ${counts[0]},
+                "laidOutViews": ${counts[1]},
+                "visibleContentLeafViews": ${counts[2]}
+            }
+        """.trimIndent()
+    }
+
+    private fun summarizeViewTree(view: View, counts: IntArray) {
+        if (counts[0] >= DIAGNOSTICS_MAX_VIEWS) return
+        counts[0]++
+        val laidOut = view.width > 0 && view.height > 0
+        if (laidOut) counts[1]++
+        if (view !is ViewGroup) {
+            if (laidOut && view.visibility == View.VISIBLE) counts[2]++
+        } else {
+            for (i in 0 until view.childCount) summarizeViewTree(view.getChildAt(i), counts)
+        }
+    }
+
     private fun visualOutputDir(context: Context): File =
         File(context.filesDir, "visual-testing/android")
+
+    // Append a per-case timing line to a shard-scoped log that rides along in
+    // the existing visual-results-android-shard-N artifact (task #362). START
+    // is written before the case runs, so a case that later times out is still
+    // recorded — pinpointing exactly which item stalled and for how long, even
+    // without the (workflow-scoped) logcat upload.
+    private fun recordTiming(line: String) {
+        try {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val dir = visualOutputDir(context)
+            dir.mkdirs()
+            val timingFile = File(dir, CAPTURE_TIMING_FILE)
+            timingFile.appendText("${SystemClock.uptimeMillis()} $line\n")
+            mirrorFileForAdbPull(context, timingFile)
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "recordTiming failed: ${t.message}")
+        }
+    }
 
     private fun mirrorFileForAdbPull(context: Context, file: File) {
         VisualAndroidArtifacts.mirrorFile(file)
@@ -2063,9 +2305,41 @@ class KmpVisualScreenshotCaptureTest {
         @JvmStatic
         fun clearVisualOutputDirectory() {
             VisualAndroidArtifacts.resetPublicOutput()
+            // Start each shard's per-case timing log clean.
+            File(
+                InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
+                "visual-testing/android/$CAPTURE_TIMING_FILE"
+            ).delete()
         }
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
         private const val STABLE_CAPTURE_RETRY_MS = 750L
+
+        // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
+        // warnings — grep this out of the uploaded logcat artifact (task #362).
+        private const val VISUAL_LOG_TAG = "VisualCapture"
+
+        // Shard-scoped per-case timing log carried in the results artifact.
+        private const val CAPTURE_TIMING_FILE = "_capture-timing.log"
+
+        // Cap the diagnostics view-tree walk so it never dominates a capture.
+        private const val DIAGNOSTICS_MAX_VIEWS = 2_000
+
+        // Ceiling for a single idle-sync. Healthy cases idle in well under a
+        // second; an animating/never-idle screen would otherwise block forever.
+        private const val IDLE_WAIT_TIMEOUT_MS = 8_000L
+
+        // Ceiling for ActivityScenario.close() teardown (its moveToState does an
+        // unbounded waitForIdleSync). Normal close is sub-second.
+        private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
+
+        // Hard per-case backstop. With every unbounded waitForIdleSync path now
+        // bounded (idle waits, onActivity, close — task #362/#364), no case
+        // hangs forever, so this is a generous ceiling for legitimately-slow 3x
+        // captures, not a hang guard: the heaviest never-idle screens (e.g.
+        // components.thread.files.list, whose async thumbnails never idle) still
+        // run ~90-100s at 3x density, so keep well above that. It only trips on
+        // a genuinely stuck case, failing that case alone instead of the shard.
+        private const val PER_CASE_TIMEOUT_SECONDS = 150L
     }
 }

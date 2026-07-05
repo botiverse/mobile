@@ -214,7 +214,7 @@ private fun createAgentRuntimeEnvVars(entries: List<Pair<String, String>>): Map<
 
 private fun randomCreateAgentAvatarWireValue(): String {
     val keys = PixelAvatarPickerKeys
-    val key = if (keys.isEmpty()) PixelAvatarDefaultKey else keys.random()
+    val key = if (keys.isEmpty()) PixelAvatarActiveDefaultKey else keys.random()
     return "pixel:$key"
 }
 

@@ -12,6 +12,7 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
 import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
+import { QuiverFeedbackClient } from '../../quiver/QuiverFeedbackClient';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
@@ -423,9 +424,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return;
     }
     const command = this.parseRecord(params);
-    if (((command["action"] as string) ?? "") === "connect") {
-      command["sharedSocketIoTransportEnabled"] = SlockOhosApiEnvironmentStore.sharedSocketIoTransportEnabled(this);
-    }
     slockOhosRealtimeBridge.handleCommand(command);
   }
 
@@ -479,14 +477,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(this.onApiEnvironmentChangedCapability(records));
           return;
         }
-        case "setSharedSocketIoTransport": {
-          callback(this.setSharedSocketIoTransportCapability(records));
-          return;
-        }
-        case "realtimeTransportPreferenceChanged": {
-          callback(this.onRealtimeTransportPreferenceChangedCapability(records));
-          return;
-        }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
           return;
@@ -513,11 +503,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
         case "prepareDiagnosticsFeedback": {
-          callback(await this.prepareDiagnosticsFeedbackCapability());
+          // Raft-channel feedback flow retired (parity with Android):
+          // a non-draft response skips the channel picker and the shared
+          // settings UI falls through to sendFeedback -> Quiver.
+          callback({ "status": "unsupported" });
           return;
         }
         case "sendFeedback": {
-          callback(this.uploadBuglyDiagnosticsCapability());
+          callback(await this.sendFeedbackToQuiverCapability());
           return;
         }
         case "requestNotificationPermission": {
@@ -631,7 +624,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "apiBaseUrl": current.apiBaseUrl,
       "socketBaseUrl": current.socketBaseUrl,
       "webUrl": current.webUrl,
-      "sharedSocketIoTransportEnabled": SlockOhosApiEnvironmentStore.sharedSocketIoTransportEnabled(this),
       "options": options,
       "feedback": feedback
     };
@@ -682,27 +674,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return { "status": "ok" };
   }
 
-  private setSharedSocketIoTransportCapability(records: Record<string, Object>): Record<string, Object> {
-    const rawEnabled = records["enabled"];
-    const enabled = rawEnabled === true || rawEnabled === "true" || rawEnabled === "1";
-    SlockOhosApiEnvironmentStore.setSharedSocketIoTransportEnabled(enabled, this);
-    slockOhosRealtimeBridge.disconnectForSessionEnd("process_teardown");
-    SlockOhosDiagnostics.record("SlockDeveloper", `shared_socketio_transport_enabled=${enabled}`);
-    return this.loadDeveloperCapability(
-      enabled
-        ? "Shared Socket.IO flag enabled. Android, iOS, and OHOS reconnects use the shared Ktor pilot."
-        : "Shared Socket.IO flag disabled. OHOS keeps the native ArkTS realtime host."
-    );
-  }
-
-  private onRealtimeTransportPreferenceChangedCapability(records: Record<string, Object>): Record<string, Object> {
-    const rawEnabled = records["enabled"];
-    const enabled = rawEnabled === true || rawEnabled === "true" || rawEnabled === "1";
-    slockOhosRealtimeBridge.disconnectForSessionEnd("process_teardown");
-    SlockOhosDiagnostics.record("SlockDeveloper", `realtime_transport_preference_changed shared=${enabled}`);
-    return { "status": "ok" };
-  }
-
   private loadDiagnosticsCapability(): Record<string, Object> {
     const entries: Array<OhosDiagnosticEntryPayload> = SlockOhosDiagnostics.recent(500).map((entry): OhosDiagnosticEntryPayload => {
       return {
@@ -721,22 +692,28 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return { "status": "ok", "code": "diagnostics_copied" };
   }
 
-  private uploadBuglyDiagnosticsCapability(): Record<string, Object> {
-    const context = getContext(this) as common.UIAbilityContext;
-    const result = SlockOhosBuglyDiagnostics.uploadDiagnostics(context);
-    if (result["status"] === "ok") {
-      SlockOhosDiagnostics.record("Settings", "diagnostics_upload_requested");
+  /**
+   * Submit in-app feedback to the Quiver ticket system (kind=bug) with the
+   * diagnostics archive attached — same behavior as the Android host.
+   */
+  private async sendFeedbackToQuiverCapability(): Promise<Record<string, Object>> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const archivePath = await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context);
+      const ticketId = await QuiverFeedbackClient.submit(
+        context,
+        'In-app feedback (diagnostics attached).',
+        'bug',
+        [archivePath],
+        [],
+      );
+      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${ticketId.slice(0, 8)}`);
+      return { "status": "ok", "ticketId": ticketId };
+    } catch (error) {
+      const message = String(error);
+      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
+      return { "status": "error", "code": "quiver_feedback_failed", "message": message };
     }
-    return result;
-  }
-
-  private async prepareDiagnosticsFeedbackCapability(): Promise<Record<string, Object>> {
-    const context = getContext(this) as common.UIAbilityContext;
-    const result = await SlockOhosBuglyDiagnostics.prepareDiagnosticsFeedbackDraft(context);
-    if (result["status"] === "ok") {
-      SlockOhosDiagnostics.record("Settings", "diagnostics_feedback_prepared");
-    }
-    return result;
   }
 
   private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {

@@ -197,6 +197,16 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun machineNotificationsAreLocalAndClassifiedForComputersDestination() {
+        assertTrue("machine-offline:machine-1".isLocalHomeNotificationId())
+        assertTrue("machine-outdated:0.0.68:machine-1,machine-2".isLocalHomeNotificationId())
+        assertTrue("machine-offline:machine-1".isMachineHomeNotificationId())
+        assertTrue("machine-outdated:0.0.68:machine-1,machine-2".isMachineHomeNotificationId())
+        assertFalse(APP_UPDATE_HOME_NOTIFICATION_ID.isMachineHomeNotificationId())
+        assertFalse("announcement-1".isMachineHomeNotificationId())
+    }
+
+    @Test
     fun loadHomeDoesNotBlockOnAgentDirectMessageStatusEnrichment() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val agentDm =

@@ -134,6 +134,7 @@ android {
         buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver.oranix.io")}\"")
         buildConfigField("String", "QUIVER_APP_SLUG", "\"${slockBuildConfigString("SLOCK_QUIVER_APP_SLUG", "raft-android")}\"")
         buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "main")}\"")
+        buildConfigField("String", "QUIVER_CLIENT_KEY", "\"${slockBuildConfigString("SLOCK_QUIVER_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
     }
 
     buildTypes {
@@ -221,7 +222,7 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("io.quiver:quiver-android-updater:0.4.0")
+    implementation("io.quiver:quiver-android-updater:0.5.0")
     implementation(libs.socket.io.client)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

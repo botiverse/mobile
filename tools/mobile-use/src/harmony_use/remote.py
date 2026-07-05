@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Sequence
 
 from .config import HarmonyConfig
 from .runner import CommandResult, run_command
+from device_use.remote import shell_join
 
 
 @dataclass
@@ -28,11 +28,6 @@ class RemoteHost:
 
     def hdc_connect(self, endpoint: str) -> CommandResult:
         return self.run_with_deveco_env([str(self.config.hdc), "tconn", endpoint], check=False)
-
-
-def shell_join(values: Sequence[str | Path]) -> str:
-    return " ".join(shlex.quote(str(value)) for value in values)
-
 
 def remote_env_prefix(config: HarmonyConfig) -> str:
     path_entries = [

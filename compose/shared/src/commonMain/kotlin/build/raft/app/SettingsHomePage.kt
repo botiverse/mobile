@@ -20,6 +20,7 @@ import build.raft.app.components.SlockDisabledActionContentArgb
 import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.SlockRaftUiSelectField
 import build.raft.app.components.SlockRaftUiSelectionOption
+import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockSwitchButton
@@ -38,6 +39,7 @@ import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
@@ -54,7 +56,6 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.AppLocale
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
-import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -74,7 +75,6 @@ import build.raft.app.data.CONNECTED_APPS_ACTION_UPDATE
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.SERVER_ACTION_INVITE_CREATE
 import build.raft.app.data.SERVER_ACTION_INVITE_REVOKE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_CREATE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_REVOKE
@@ -97,6 +97,7 @@ import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthLoginResponse
+import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
@@ -726,7 +727,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         remember(sharedStores.localDataStore, bridge) {
             ComposeLocalWriteThrough(
                 sharedStores.localDataStore,
-                logger = { message -> bridge.logDebug("home_secondary_cache $message") }
+                logger = slockLogger("SlockHomeSecondaryCache", "home_secondary_cache", SlockLogLevel.Debug)
             )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
@@ -865,9 +866,9 @@ private fun HomeSearchRouterContent(
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
                 computersApi = SlockComputersNetworkApi(environment.networkClient),
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session) { message -> environment.bridge.log(message) }
+                    parseSlockHome(payload, session, slockLogger("SlockHomeSecondaryParse"))
                 },
-                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeViewModel: SharedHomeViewModel =
@@ -875,7 +876,7 @@ private fun HomeSearchRouterContent(
             SharedHomeViewModel(
                 authStore = environment.authStore,
                 dataSource = homeDataSource,
-                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeState by homeViewModel.state.collectAsState()
@@ -1064,7 +1065,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSavedRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = { message -> environment.bridge.log("home_secondary_saved $message") }
+                warningLogger = slockLogger("SlockHomeSecondarySaved", "home_secondary_saved", SlockLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -1072,7 +1073,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSearchRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = { message -> environment.bridge.log("home_secondary_search $message") }
+                warningLogger = slockLogger("SlockHomeSecondarySearch", "home_secondary_search", SlockLogLevel.Warn)
             )
         }
     val memberRepository =
@@ -1080,8 +1081,8 @@ private fun rememberHomeSearchSavedViewModel(
             RealMemberRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                logger = { message -> environment.bridge.log("home_secondary_member $message") },
-                warningLogger = { message -> environment.bridge.log("home_secondary_member_warning $message") }
+                logger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member"),
+                warningLogger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member_warning", SlockLogLevel.Warn)
             )
         }
     return viewModel(key = key) {
@@ -1563,7 +1564,7 @@ private fun sharedHomeContentRenderSummary(content: SharedHomeContentState): Str
         is SharedHomeContentState.Empty ->
             "Empty(session=${content.session.currentServerId ?: "_"})"
         is SharedHomeContentState.Error ->
-            "Error(${content.code})"
+            "Error(${content.code},session=${content.session?.currentServerId ?: "_"})"
         is SharedHomeContentState.Content -> {
             val snapshot = content.snapshot
             "Content(server=${snapshot.server.id.value},channels=${snapshot.channels.size}," +
@@ -1577,9 +1578,40 @@ private fun sharedHomeRenderBranch(content: SharedHomeContentState): String =
         is SharedHomeContentState.Loading ->
             if (content.session != null) "loading_session_shell" else "loading_centered"
         is SharedHomeContentState.Empty -> "empty_session_shell"
-        is SharedHomeContentState.Error -> "error_${content.code}"
+        is SharedHomeContentState.Error ->
+            if (content.session != null) "error_session_shell_${content.code}" else "error_${content.code}"
         is SharedHomeContentState.Content -> "content"
     }
+
+private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
+    SlockHomeInlineError(
+        title =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() -> "Session expired"
+                code.contains("permission", ignoreCase = true) -> "Home is unavailable"
+                code.contains("timeout", ignoreCase = true) -> "Connection timed out"
+                code.contains("offline", ignoreCase = true) -> "You are offline"
+                code.contains("network", ignoreCase = true) -> "Could not refresh Home"
+                else -> "Could not load Home"
+            },
+        detail =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() ->
+                    "Sign out and sign in again, or switch to another available server."
+                code.contains("permission", ignoreCase = true) ->
+                    "You can still switch servers or open account actions while this server recovers."
+                code.contains("timeout", ignoreCase = true) ->
+                    "The server did not respond in time. Retry, or switch servers if another workspace is available."
+                code.contains("offline", ignoreCase = true) ->
+                    "Check your connection, then retry. Server switch and account actions remain available."
+                code.contains("network", ignoreCase = true) ->
+                    "The current server could not be reached. Retry, or switch servers if another workspace is available."
+                else ->
+                    "Retry Home refresh, or use server switch and account actions to recover."
+            },
+        code = code,
+        actionLabel = "Retry"
+    )
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
@@ -1703,7 +1735,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("app_shell_member_repository $message") }
+                logger = slockLogger("SlockAppShell", "app_shell_member_repository")
             )
         }
     val homeDataSource =
@@ -1717,9 +1749,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session) { message -> bridge.log(message) }
+                    parseSlockHome(payload, session, slockLogger("SlockHomeParse"))
                 },
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
+                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home")
             )
         }
     val channelRepository =
@@ -1727,7 +1759,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealChannelRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_channel_repository $message") }
+                warningLogger = slockLogger("SlockChannelRepository", "shared_channel_repository", SlockLogLevel.Warn)
             )
         }
     val homeReadReceiptRepository =
@@ -1735,7 +1767,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealReadReceiptRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_home_read_receipt $message") }
+                warningLogger = slockLogger("SlockReadReceipt", "shared_home_read_receipt", SlockLogLevel.Warn)
             )
         }
     val conversationRepository =
@@ -1743,14 +1775,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealConversationRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_conversation_repository $message") }
+                warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
             )
         }
     val agentsApiClient =
         remember(appShellNetworkClient) {
             SlockAgentsApiClient(
                 transport = SlockAgentsNetworkApi(appShellNetworkClient),
-                diagnosticsLogger = { message -> bridge.log("app_shell_agents_api $message") }
+                diagnosticsLogger = slockLogger("SlockAgentsApi", "app_shell_agents_api")
             )
         }
     val computersApiClient =
@@ -1762,7 +1794,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedCreateAgentCoordinator(
                 agentsApiClient = agentsApiClient,
                 computersApiClient = computersApiClient,
-                logger = { message -> bridge.log("app_shell_thread_create_agent $message") }
+                logger = slockLogger("SlockCreateAgent", "app_shell_thread_create_agent")
             )
         }
     val savedRepository =
@@ -1770,7 +1802,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSavedRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_saved_repository $message") }
+                warningLogger = slockLogger("SlockSavedRepository", "shared_saved_repository", SlockLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -1778,14 +1810,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSearchRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_search_repository $message") }
+                warningLogger = slockLogger("SlockSearchRepository", "shared_search_repository", SlockLogLevel.Warn)
             )
         }
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
                 api = NetworkSlockTasksApi(appShellNetworkClient),
-                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
+                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
@@ -1837,7 +1869,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 if (authSessionEvents.isLocalSource(signal)) {
                     return@addSessionClearedListener
                 }
-                bridge.log("shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                slockLogInfo("SlockSharedAuth", "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
                 appShellCoroutineScope.launch {
                     runCatchingPreservingCancellation {
                         authStore.clearSessionFromSessionClearedNotify(
@@ -1845,12 +1877,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             previousSessionFingerprint = signal.previousSessionFingerprint
                         )
                     }.onSuccess { applied ->
-                        bridge.log(
+                        slockLogInfo(
+                            "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
                                 "source=${signal.source} reason=${signal.reason}"
                         )
                     }.onFailure { throwable ->
-                        bridge.log(
+                        slockLogWarn(
+                            "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
                                 "reason=${signal.reason} error=${throwable.message.orEmpty()}"
                         )
@@ -1866,8 +1900,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealInboxRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_home_activity $message") },
-                warningLogger = { message -> bridge.log("shared_home_activity_warning $message") }
+                logger = slockLogger("SlockHomeActivity", "shared_home_activity"),
+                warningLogger = slockLogger("SlockHomeActivity", "shared_home_activity_warning", SlockLogLevel.Warn)
             )
         }
     val homeSidebarOrderRepository =
@@ -1875,8 +1909,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSettingsRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_home_sidebar_order $message") },
-                warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
+                logger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order"),
+                warningLogger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order_warning", SlockLogLevel.Warn)
             )
         }
     val homeStore =
@@ -1890,7 +1924,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         ) {
             sharedStores.getOrCreateHomeStore(
                 dataSource = homeDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
+                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
@@ -1915,7 +1949,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
+                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity")
             )
         }
     val appShellComputersStore =
@@ -1923,7 +1957,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedComputersStore(
                 computersApiClient = computersApiClient,
                 scope = appShellCoroutineScope,
-                logger = { message -> bridge.log("app_shell_$message") }
+                logger = slockLogger("SlockComputers", "app_shell")
             )
         }
     var notificationPreferenceSnapshot by remember {
@@ -1934,8 +1968,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSettingsRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_settings_repository $message") },
-                warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") },
+                logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
+                warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
                 channelRepository = channelRepository
             )
         }
@@ -1952,7 +1986,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
+                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
     var authGateMessage by remember { mutableStateOf<String?>(null) }
@@ -2012,7 +2046,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 serverMembersStore = sharedStores.serverMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
-                diagnosticsLogger = { message -> bridge.log("shared_home_search_saved $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }
     val homeShellStore =
@@ -2030,7 +2064,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 dispatchActivity = homeActivityStore::dispatch,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
                 resetActivity = homeActivityStore::reset,
-                diagnosticsLogger = { message -> bridge.log("shared_home_shell $message") },
+                diagnosticsLogger = slockLogger("SlockHomeShell", "shared_home_shell"),
                 scope = appShellCoroutineScope
             )
         }
@@ -2062,7 +2096,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 authStore = authStore,
                 dataSource = tasksDataSource,
                 sharedTasksDataStore = sharedStores.tasksDataStore,
-                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
+                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }
     val tasksState by tasksViewModel.state.collectAsState()
@@ -2071,7 +2105,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         viewModel(key = "shared-settings") {
             SharedSettingsViewModel(
                 settingsDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
+                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
     val settingsState by settingsViewModel.state.collectAsState()
@@ -2869,6 +2903,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 applySettings = { serverId, event ->
                     settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
                 },
+                applyServerMembersRefresh = { serverId, event ->
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.Agents && event.reason == "agent:deleted") {
+                        val agentId = event.subjectId?.takeIf { it.isNotBlank() }
+                            ?: event.memberId?.value?.takeIf { it.isNotBlank() }
+                        if (agentId != null) {
+                            sharedStores.serverMembersStore.markAgentDeleted(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                agentId = build.raft.app.model.MemberId(agentId)
+                            )
+                        }
+                    }
+                },
                 applyAgentActivity = { event ->
                     sharedStores.agentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
@@ -2895,7 +2941,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                 },
-                log = { message -> bridge.log(message) }
+                log = slockLogger("SlockRealtimeDomain")
             )
         sharedStores.realtimeDomainEventOwner.registerSinks(sinks)
         onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
@@ -2921,54 +2967,69 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         settingsViewModel
     ) {
         val callbackRef =
-            realtimeEvents.addListener { eventData ->
-                if (eventData.optString("action") == AppShellLifecycleAction) {
-                    val event = eventData.optString("event")
+            realtimeEvents.addListener { rawEventData ->
+                val eventDataSnapshot = rawEventData.toString()
+                appShellCoroutineScope.launch {
+                    val eventData = JSONObject(eventDataSnapshot)
+                    if (eventData.optString("action") == AppShellLifecycleAction) {
+                        val event = eventData.optString("event")
+                        if (
+                            eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
+                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                            latestReadySession != null
+                        ) {
+                            refreshVisibleAppShellRoute("app_lifecycle_$event")
+                            sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                        }
+                        return@launch
+                    }
+                    if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
+                        latestRealtimeAuthRefreshHandler(eventData)
+                        return@launch
+                    }
+                    val event =
+                        decodeSharedShellRealtimeEvent(
+                            eventData,
+                            realtimeEventMapper,
+                            slockLogger("SlockRealtimeDecode")
+                        ) ?: return@launch
+                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
+                    val activeSession = latestReadySession
                     if (
-                        eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
-                        (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
-                        latestReadySession != null
+                        event is ServerMembershipRemoved &&
+                        event.serverId.value == activeSession?.currentServerId
                     ) {
-                        refreshVisibleAppShellRoute("app_lifecycle_$event")
-                        sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                        slockLogWarn(
+                            "SlockRealtimeDomain",
+                            "shared_realtime_server_membership_removed serverId=${event.serverId.value}"
+                        )
+                        bridge.realtimeDisconnect("server_membership_removed")
+                        latestResetAppShellSessionState()
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return@launch
                     }
-                    return@addListener
-                }
-                if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
-                    latestRealtimeAuthRefreshHandler(eventData)
-                    return@addListener
-                }
-                val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@addListener
-                val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@addListener
-                val activeSession = latestReadySession
-                if (
-                    event is ServerMembershipRemoved &&
-                    event.serverId.value == activeSession?.currentServerId
-                ) {
-                    bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
-                    bridge.realtimeDisconnect("server_membership_removed")
-                    latestResetAppShellSessionState()
-                    appShellCoroutineScope.launch {
-                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                    if (
+                        event is ServerDeleted &&
+                        event.serverId.value == activeSession?.currentServerId
+                    ) {
+                        slockLogWarn(
+                            "SlockRealtimeDomain",
+                            "shared_realtime_server_deleted serverId=${event.serverId.value}"
+                        )
+                        bridge.realtimeDisconnect("server_deleted")
+                        latestResetAppShellSessionState()
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return@launch
                     }
-                    return@addListener
+                    realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                 }
-                if (
-                    event is ServerDeleted &&
-                    event.serverId.value == activeSession?.currentServerId
-                ) {
-                    bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
-                    bridge.realtimeDisconnect("server_deleted")
-                    latestResetAppShellSessionState()
-                    appShellCoroutineScope.launch {
-                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                    }
-                    return@addListener
-                }
-                realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
     }
@@ -3105,6 +3166,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 },
                                 onOpenSaved = {
                                     openHomeSecondaryDestination(HomeDestinationSaved)
+                                },
+                                onOpenComputers = {
+                                    selectedTab = "settings"
+                                    retainedAppShellTabs = retainedAppShellTabs + "settings"
+                                    selectedSettingsDestination = SettingsDestinationComputers
+                                    settingsViewModel.dispatch(
+                                        SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers)
+                                    )
                                 },
                                 onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -3369,6 +3438,8 @@ private fun SettingsAppShellContent(
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
+    val accountLinkScope = rememberCoroutineScope()
+
     LaunchedEffect(selectedDestination) {
         when (selectedDestination) {
             SettingsDestinationApiEnvironment ->
@@ -3481,7 +3552,6 @@ private fun SettingsAppShellContent(
         onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
     }
 
-    var serverInviteEmail by remember { mutableStateOf("") }
     var serverProfileName by remember { mutableStateOf("") }
     var serverDeleteConfirmation by remember { mutableStateOf("") }
     var serverJoinLinkMaxUses by remember { mutableStateOf("") }
@@ -3665,11 +3735,17 @@ private fun SettingsAppShellContent(
                         "uploadAvatar" -> onSettingsIntent(SharedSettingsIntent.RequestAccountAvatarUpload)
                         "connectProvider" ->
                             value?.takeIf { it.isNotBlank() }?.let { providerId ->
-                                onSettingsIntent(
-                                    SharedSettingsIntent.ConnectAccountProvider(
-                                        AccountProviderLinkStartRequest(providerId = providerId)
-                                    )
-                                )
+                                accountLinkScope.launch {
+                                    when (settingsCapabilities.startMobileOAuthAccountLink(providerId)) {
+                                        is DataResult.Content -> Unit
+                                        else ->
+                                            onSettingsIntent(
+                                                SharedSettingsIntent.ConnectAccountProvider(
+                                                    AccountProviderLinkStartRequest(providerId = providerId)
+                                                )
+                                            )
+                                    }
+                                }
                             }
                         "saveProfile" -> {
                             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
@@ -3825,8 +3901,6 @@ private fun SettingsAppShellContent(
                         actionState = settingsState.actionState,
                         timeContext = timeContext
                     ),
-                    inviteEmail = serverInviteEmail,
-                    onInviteEmailChange = { serverInviteEmail = it },
                     joinLinkMaxUses = serverJoinLinkMaxUses,
                     onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
                     joinLinkExpiresAt = serverJoinLinkExpiresAt,
@@ -3853,6 +3927,7 @@ private fun SettingsAppShellContent(
                     onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    showProfileCard = false,
                     onCreateJoinLink = { request ->
                         onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
                     },
@@ -4112,9 +4187,6 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
-                    onSharedSocketIoTransportChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetSharedSocketIoTransport(enabled))
-                    },
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
                 )
@@ -4197,8 +4269,6 @@ private fun SharedSettingsServerContent(
     serverRole: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    inviteEmail: String = "",
-    onInviteEmailChange: (String) -> Unit = {},
     joinLinkMaxUses: String = "",
     onJoinLinkMaxUsesChange: (String) -> Unit = {},
     joinLinkExpiresAt: String = "",
@@ -4219,6 +4289,7 @@ private fun SharedSettingsServerContent(
     expectedServerSlug: String = "",
     deleteConfirmationName: String = "",
     onDeleteConfirmationNameChange: (String) -> Unit = {},
+    showProfileCard: Boolean = true,
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     onAction: (String, String?) -> Unit
 ) {
@@ -4226,17 +4297,19 @@ private fun SharedSettingsServerContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            SettingsServerProfileFormCard(
-                profile = serverSnapshot?.profile,
-                draftName = profileName,
-                fallbackName = payload.heroLabel,
-                fallbackSlug = expectedServerSlug,
-                role = serverRole,
-                actionState = actionState,
-                onNameChange = onProfileNameChange,
-                onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
-            )
+        if (showProfileCard) {
+            item {
+                SettingsServerProfileFormCard(
+                    profile = serverSnapshot?.profile,
+                    draftName = profileName,
+                    fallbackName = payload.heroLabel,
+                    fallbackSlug = expectedServerSlug,
+                    role = serverRole,
+                    actionState = actionState,
+                    onNameChange = onProfileNameChange,
+                    onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
+                )
+            }
         }
         payload.sections.forEach { section ->
             when (section.title) {
@@ -4256,11 +4329,8 @@ private fun SharedSettingsServerContent(
                         SettingsServerInvitesCard(
                             invites = serverSnapshot?.pendingInvites.orEmpty(),
                             section = serverSnapshot?.sections?.firstOrNull { it.key == "pending_invites" },
-                            email = inviteEmail,
                             actionState = actionState,
                             timeContext = timeContext,
-                            onEmailChange = onInviteEmailChange,
-                            onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) },
                             onAction = onAction
                         )
                     }
@@ -6553,48 +6623,12 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
-    val shadowOffset = 3.dp
-    Box(modifier = Modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .height(42.dp)
-                        .background(SlockColor.BrandYellow.copy(alpha = 0.22f))
-                        .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "/",
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-                    color = SlockColor.TextBlack
-                )
-            }
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = SlockColor.TextMutedGray,
-                maxLines = 1,
-                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
-            )
-        }
-    }
+    SlockSlugInput(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        enabled = enabled
+    )
 }
 
 @Composable
@@ -6662,6 +6696,26 @@ private fun SettingsServerAdminsCard(
             .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     val candidates = members.filter { !it.isPrivilegedServerMember() }.sortedBy { it.name }
     val ownerCount = admins.count { it.normalizedRole() == "owner" }
+    var selectedCandidateId by remember(candidates, normalizedActorRole) {
+        mutableStateOf(candidates.firstOrNull()?.id.orEmpty())
+    }
+    val selectedCandidate = candidates.firstOrNull { it.id == selectedCandidateId }
+    val selectedRoleOptions = selectedCandidate
+        ?.let { candidate -> settingsAdminRoleOptions(normalizedActorRole, candidate.normalizedRole().ifBlank { "member" }) }
+        .orEmpty()
+    var selectedRole by remember(selectedCandidateId, normalizedActorRole, selectedRoleOptions) {
+        mutableStateOf(selectedRoleOptions.firstOrNull() ?: "admin")
+    }
+    LaunchedEffect(candidates, selectedCandidateId) {
+        if (selectedCandidateId.isBlank() || candidates.none { it.id == selectedCandidateId }) {
+            selectedCandidateId = candidates.firstOrNull()?.id.orEmpty()
+        }
+    }
+    LaunchedEffect(selectedRoleOptions, selectedRole) {
+        if (selectedRole !in selectedRoleOptions) {
+            selectedRole = selectedRoleOptions.firstOrNull() ?: "admin"
+        }
+    }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = "Owners & Admins") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
@@ -6670,30 +6724,77 @@ private fun SettingsServerAdminsCard(
                 style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
-            candidates.forEach { candidate ->
-                val targetRole = candidate.normalizedRole().ifBlank { "member" }
-                val canMakeOwner = canChangeServerMemberRole(normalizedActorRole, targetRole, "owner")
-                val canMakeAdmin = canChangeServerMemberRole(normalizedActorRole, targetRole, "admin")
-                if (canMakeOwner) {
-                    SettingsServerActionRow(
-                        title = candidate.name,
-                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
-                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Owner", candidate.id),
-                        buttonIcon = SlockLucideIconName.ShieldCheck,
-                        buttonColor = SlockColor.AccentPink,
-                        enabled = actionState?.inProgress != true,
-                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:owner") }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                SlockBrutalSelectField(
+                    options =
+                        candidates.map { candidate ->
+                            SlockBrutalSelectOption(
+                                id = candidate.id,
+                                label =
+                                    listOfNotNull(
+                                        candidate.name.takeIf { it.isNotBlank() },
+                                        candidate.detail?.takeIf { it.isNotBlank() }
+                                    ).joinToString(" · ").ifBlank { "Unknown member" }
+                            )
+                        },
+                    selectedId = selectedCandidateId,
+                    selectedLabel =
+                        selectedCandidate
+                            ?.let { candidate ->
+                                listOfNotNull(
+                                    candidate.name.takeIf { it.isNotBlank() },
+                                    candidate.detail?.takeIf { it.isNotBlank() }
+                                ).joinToString(" · ")
+                            }
+                            .orEmpty(),
+                    placeholder = "Select member...",
+                    enabled = actionState?.inProgress != true,
+                    onSelect = { option -> selectedCandidateId = option.id }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalSelectField(
+                        options =
+                            listOf(
+                                SlockBrutalSelectOption(
+                                    id = "owner",
+                                    label = "Owner",
+                                    enabled = "owner" in selectedRoleOptions
+                                ),
+                                SlockBrutalSelectOption(
+                                    id = "admin",
+                                    label = "Admin",
+                                    enabled = "admin" in selectedRoleOptions
+                                )
+                            ),
+                        selectedId = selectedRole,
+                        selectedLabel = selectedRole.replaceFirstChar { it.uppercase() },
+                        placeholder = "Role",
+                        enabled = selectedCandidate != null && selectedRoleOptions.isNotEmpty() && actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onSelect = { option -> selectedRole = option.id }
                     )
-                }
-                if (canMakeAdmin) {
-                    SettingsServerActionRow(
-                        title = candidate.name,
-                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
-                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Admin", candidate.id),
-                        buttonIcon = SlockLucideIconName.ShieldCheck,
-                        buttonColor = SlockColor.BrandYellow,
-                        enabled = actionState?.inProgress != true,
-                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:admin") }
+                    SlockBrutalActionButton(
+                        label =
+                            selectedCandidate
+                                ?.let { actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Update Role", it.id) }
+                                ?: "Update Role",
+                        onClick = {
+                            val candidateId = selectedCandidate?.id ?: return@SlockBrutalActionButton
+                            onAction(SERVER_ACTION_MEMBER_ROLE, "$candidateId:$selectedRole")
+                        },
+                        enabled =
+                            selectedCandidate != null &&
+                                selectedRole in selectedRoleOptions &&
+                                actionState?.inProgress != true,
+                        backgroundColor = SlockColor.AccentPink,
+                        minWidth = 112.dp
                     )
                 }
             }
@@ -6733,34 +6834,12 @@ private fun SettingsServerAdminsCard(
 private fun SettingsServerInvitesCard(
     invites: List<SettingsServerInviteSnapshot>,
     section: SettingsServerSectionSnapshot?,
-    email: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     timeContext: SlockTimeContext?,
-    onEmailChange: (String) -> Unit,
-    onSubmit: () -> Unit,
     onAction: (String, String?) -> Unit
 ) {
-    val trimmedEmail = email.trim()
-    val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
-    val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
     SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = "Pending Invites") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SlockBrutalTextField(
-            label = "Email",
-            value = email,
-            placeholder = "teammate@example.com",
-            onValueChange = onEmailChange,
-            required = true,
-            enabled = !busy
-        )
-        SlockBrutalActionButton(
-            label = actionState.serverStatusFor(SERVER_ACTION_INVITE_CREATE, "Send invite"),
-            onClick = onSubmit,
-            enabled = enabled,
-            leadingIcon = SlockLucideIconName.MailPlus,
-            backgroundColor = SlockColor.BrandYellow
-        )
-        SettingsFormDivider()
         if (invites.isEmpty()) {
             SettingsFormEmptyText("No pending invites.")
         } else {
@@ -7243,7 +7322,6 @@ internal fun SharedSettingsDeveloperContent(
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenApiEnvironment: () -> Unit,
-    onSharedSocketIoTransportChange: (Boolean) -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -7252,7 +7330,6 @@ internal fun SharedSettingsDeveloperContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
-            DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT -> onSharedSocketIoTransportChange(value?.toBooleanStrictOrNull() ?: true)
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
@@ -7976,46 +8053,71 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
-            listOf(
-                KuiklySharedSettingsSection(
-                    title = "Admins",
-                    rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pending Invites",
-                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Join Links",
-                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pre-join Agreement",
-                    rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "System Channels",
-                    rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Onboarding",
-                    rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Member Permissions",
-                    rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Translation",
-                    rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Sidebar Order",
-                    rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
-                )
-            )
+            settingsAdministrationSectionTitles().map { title ->
+                when (title) {
+                    "Admins" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
+                        )
+                    "System Channels" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
+                        )
+                    "Pending Invites" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
+                        )
+                    "Join Links" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
+                        )
+                    "Pre-join Agreement" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
+                        )
+                    "Onboarding" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
+                        )
+                    "Translation" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
+                        )
+                    "Member Permissions" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
+                        )
+                    "Sidebar Order" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
+                        )
+                    else -> error("Unknown administration section: $title")
+                }
+            }
     )
 }
+
+internal fun settingsAdministrationSectionTitles(): List<String> =
+    listOf(
+        "Admins",
+        "System Channels",
+        "Pending Invites",
+        "Join Links",
+        "Pre-join Agreement",
+        "Onboarding",
+        "Translation",
+        "Member Permissions",
+        "Sidebar Order"
+    )
 
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
@@ -8583,6 +8685,14 @@ private fun canChangeServerMemberRole(
         else -> false
     }
 
+internal fun settingsAdminRoleOptions(actorRole: String?, targetRole: String?): List<String> =
+    listOf("owner", "admin")
+        .filter { nextRole ->
+            val normalizedTargetRole = targetRole.normalizedServerRole()
+            nextRole != normalizedTargetRole &&
+                canChangeServerMemberRole(actorRole.normalizedServerRole(), normalizedTargetRole, nextRole)
+        }
+
 private fun build.raft.app.data.SharedSettingsActionState?.statusFor(action: String, fallback: String): String =
     when {
         this == null || this.action != action -> fallback
@@ -8746,7 +8856,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                         key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
                                         iconName = SlockLucideIconName.Download,
                                         title = "Check for update",
-                                        detail = updateCheck.detail.ifBlank { "Checks Quiver for a newer Android APK and opens the installer when available." },
+                                        detail = updateCheck.detail.ifBlank { "Checks for a newer Android build and opens the installer when available." },
                                         status =
                                             when {
                                                 updateCheckBusy -> "Checking"
@@ -8757,6 +8867,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     )
                                 )
                             }
+                            add(
+                                KuiklySharedSettingsRow(
+                                    key = "feedback",
+                                    iconName = SlockLucideIconName.MessageSquare,
+                                    title = "Send feedback",
+                                    detail = "Report a problem or suggestion. Device diagnostics are attached and you get a copyable ticket reference for the community.",
+                                    status = "Send",
+                                    enabled = true
+                                )
+                            )
                             add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
                         }
                 )
@@ -8783,9 +8903,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
             state is ScreenLoadState.Loading -> "Loading"
             else -> "Open"
         }
-    val sharedTransportBusy =
-        actionState?.action == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT && actionState.inProgress
-    val sharedTransportEnabled = this?.sharedSocketIoTransportEnabled == true
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
         title = "Developer",
@@ -8819,21 +8936,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 detail = environmentDetail,
                                 status = environmentStatus,
                                 enabled = state is ScreenLoadState.Content
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT,
-                                iconName = SlockLucideIconName.Activity,
-                                title = "Shared Socket.IO transport",
-                                detail = "Opt Android, iOS, and OHOS into the shared Ktor websocket-only Socket.IO pilot on the next realtime reconnect.",
-                                value = (!sharedTransportEnabled).toString(),
-                                status =
-                                    when {
-                                        sharedTransportBusy -> "Saving"
-                                        sharedTransportEnabled -> "Flag on"
-                                        else -> "Platform"
-                                    },
-                                enabled = state is ScreenLoadState.Content && !sharedTransportBusy,
-                                toggleValue = sharedTransportEnabled
                             )
                         )
                 ),
@@ -9273,6 +9375,22 @@ private class AuthChooseServerVisualApi(
     ): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)
 
+    override suspend fun startMobileOAuthLink(
+        provider: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthStartResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun completeMobileOAuthLink(
+        provider: String,
+        code: String,
+        codeVerifier: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
+        AuthApiResult.Failure(code = 400)
+
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)
 
@@ -9687,11 +9805,11 @@ private fun SharedMembersScreen(
             is DataResult.Content -> result.data.agentPanelTabOrder
             is DataResult.Empty -> null
             is DataResult.Error -> {
-                bridge.log("shared_members_agent_tab_order_load_failed code=${result.error.code}")
+                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_failed code=${result.error.code}")
                 null
             }
             is DataResult.NoPermission -> {
-                bridge.log("shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
+                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
                 null
             }
         }
@@ -9700,7 +9818,7 @@ private fun SharedMembersScreen(
         agentPanelTabOrderStore.bindServer(
             serverId = currentServerId,
             source = "shared_members_bind_server",
-            logger = { message -> bridge.log(message) }
+            logger = slockLogger("SlockAgentPanelTabOrder")
         )
     }
     LaunchedEffect(
@@ -9717,7 +9835,7 @@ private fun SharedMembersScreen(
                 serverId = currentServerId,
                 order = order,
                 source = "shared_members_sidebar_order_get",
-                logger = { message -> bridge.log(message) }
+                logger = slockLogger("SlockAgentPanelTabOrder")
             )
         }
     }
@@ -9960,7 +10078,7 @@ private fun SharedMembersScreen(
                                             serverId = serverId,
                                             order = order,
                                             source = "shared_members_detail_open_preload",
-                                            logger = { message -> bridge.log(message) }
+                                            logger = slockLogger("SlockAgentPanelTabOrder")
                                         )
                                     }
                                     ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
@@ -10253,6 +10371,7 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenComputers: () -> Unit = {},
     onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
@@ -10334,13 +10453,34 @@ private fun SharedHomeScreen(
                 onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
-            PageErrorContent(
-                title = "Home",
-                subtitle = "Workspace",
-                iconName = SlockLucideIconName.House,
-                message = "Could not load home",
-                code = current.code
-            )
+            if (current.session != null) {
+                SharedHomeSessionShell(
+                    session = current.session,
+                    serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverUnreadCounts = state.serverUnreadCounts,
+                    prefersChineseCommunity = prefersChineseCommunity,
+                    bottomContentPadding = bottomContentPadding,
+                    inlineError = sharedHomeErrorDisplay(current.code),
+                    onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
+                    onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                    onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerSelected = { serverId ->
+                        onSelectedConversationCleared()
+                        onIntent(SharedHomeIntent.SelectServer(serverId))
+                    },
+                    onCreateServerClick = onOpenServerSelection,
+                    onCreateChannelClick = onCreateChannel
+                )
+            } else {
+                val error = sharedHomeErrorDisplay(current.code)
+                PageErrorContent(
+                    title = "Home",
+                    subtitle = "Workspace",
+                    iconName = SlockLucideIconName.House,
+                    message = error.title,
+                    code = current.code
+                )
+            }
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             val agentStatusResolver =
@@ -10499,6 +10639,8 @@ private fun SharedHomeScreen(
                     when {
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateInstall != null ->
                             onAppUpdateInstall()
+                        notification.id.isMachineHomeNotificationId() ->
+                            onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||
                             notification.targetId?.startsWith("https://") == true -> {
                             notification.targetId?.let(bridge::openUrl)
@@ -13232,8 +13374,14 @@ private val SearchSort.searchKey: String
             SearchSort.Recent -> "recent"
         }
 
-private fun ConversationSummary.searchMatches(query: String): Boolean =
-    listOf(name, subtitle.orEmpty(), channelId?.value.orEmpty(), threadId.value)
+internal fun ConversationSummary.searchMatches(query: String): Boolean =
+    listOfNotNull(
+        name,
+        if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
+        subtitle.orEmpty(),
+        channelId?.value.orEmpty(),
+        threadId.value
+    )
         .any { it.lowercase().contains(query) }
 
 private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
@@ -13252,6 +13400,8 @@ private fun SharedHomeSessionShell(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    inlineError: SlockHomeInlineError? = null,
+    onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
@@ -13265,11 +13415,13 @@ private fun SharedHomeSessionShell(
         servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
         channels = emptyList(),
         directMessages = emptyList(),
+        inlineError = inlineError,
         serverSwitcherExpanded = serverSwitcherExpanded,
         prefersChineseCommunity = prefersChineseCommunity,
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
+        onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
@@ -14367,7 +14519,6 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 private fun SettingsVisualServerFocusedContent(variant: String) {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
-    var inviteEmail by remember { mutableStateOf(settingsVisualFixtureValues.designerEmail) }
     var joinLinkMaxUses by remember { mutableStateOf("25") }
     var joinLinkExpiresAt by remember { mutableStateOf(settingsVisualFixtureValues.recentActivityAtIso) }
     var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
@@ -14388,8 +14539,6 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
     // always mirrors production — no duplicated card call sites.
     SharedSettingsServerContent(
         payload = serverPayload,
-        inviteEmail = inviteEmail,
-        onInviteEmailChange = { inviteEmail = it },
         joinLinkMaxUses = joinLinkMaxUses,
         onJoinLinkMaxUsesChange = { joinLinkMaxUses = it },
         joinLinkExpiresAt = joinLinkExpiresAt,

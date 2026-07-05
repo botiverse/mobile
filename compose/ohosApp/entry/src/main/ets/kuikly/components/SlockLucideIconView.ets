@@ -7,6 +7,9 @@ const kColor = 'color';
 const kFill = 'fill';
 const kStrokeWidth = 'strokeWidth';
 const kFrame = 'frame';
+const kRotationDegrees = 'rotationDegrees';
+const kSpinning = 'spinning';
+const kSpinDurationMs = 900;
 
 @Observed
 export class SlockLucideIconView extends KuiklyRenderBaseView {
@@ -20,6 +23,9 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconRenderY: number = 0;
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
+  iconRotationDegrees: number = 0;
+  iconSpinning: boolean = false;
+  iconSpinRotationDegrees: number = 0;
   renderRevision: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
@@ -48,6 +54,12 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
       case kStrokeWidth:
         this.updateStrokeWidth(propValue);
         return true;
+      case kRotationDegrees:
+        this.updateIconRotationDegrees(propValue);
+        return true;
+      case kSpinning:
+        this.updateIconSpinning(propValue);
+        return true;
       case kFrame:
         this.applyFrame(propValue);
         return true;
@@ -62,6 +74,9 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
 
   didMoveToParentView(): void {
     this.bumpRenderRevision();
+    if (this.iconSpinning) {
+      this.startSpinAnimation();
+    }
     this.updateArkUI();
   }
 
@@ -85,6 +100,10 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
       return 1;
     }
     return vp2px(Math.min(width / entry.viewportWidth, height / entry.viewportHeight));
+  }
+
+  rotationAngle(): number {
+    return this.iconSpinning ? this.iconSpinRotationDegrees : this.iconRotationDegrees;
   }
 
   private bumpRenderRevision(): void {
@@ -127,6 +146,58 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     }
     this.iconStrokeWidth = nextStrokeWidth;
     return true;
+  }
+
+  private updateIconRotationDegrees(value: KRAny | KuiklyRenderCallback): boolean {
+    const nextRotationDegrees = normalizeRotationDegrees(value);
+    if (Math.abs(this.iconRotationDegrees - nextRotationDegrees) < 0.01) {
+      return false;
+    }
+    this.iconRotationDegrees = nextRotationDegrees;
+    return true;
+  }
+
+  private updateIconSpinning(value: KRAny | KuiklyRenderCallback): boolean {
+    const nextSpinning = normalizeBoolean(value);
+    if (this.iconSpinning === nextSpinning) {
+      return false;
+    }
+    this.iconSpinning = nextSpinning;
+    if (nextSpinning) {
+      this.startSpinAnimation();
+    } else {
+      this.stopSpinAnimation();
+    }
+    return true;
+  }
+
+  private startSpinAnimation(): void {
+    this.iconSpinRotationDegrees = 0;
+    const uiContext = this.getUIContext() as UIContext;
+    uiContext.animateTo(
+      {
+        duration: kSpinDurationMs,
+        curve: Curve.Linear,
+        iterations: -1,
+        playMode: PlayMode.Normal,
+      },
+      () => {
+        this.iconSpinRotationDegrees = 360;
+      }
+    );
+  }
+
+  private stopSpinAnimation(): void {
+    const uiContext = this.getUIContext() as UIContext;
+    uiContext.animateTo(
+      {
+        duration: 0,
+        iterations: 0,
+      },
+      () => {
+        this.iconSpinRotationDegrees = 0;
+      }
+    );
   }
 
   private updateRenderSize(width: number, height: number): boolean {
@@ -194,6 +265,7 @@ export struct SlockLucideIcon {
       .alignContent(Alignment.Center)
       .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY })
       .size({ width: this.renderView.iconRenderWidth, height: this.renderView.iconRenderHeight })
+      .rotate({ angle: this.renderView.rotationAngle() })
       .alignSelf(ItemAlign.Start)
   }
 }
@@ -232,6 +304,31 @@ function normalizeStrokeWidth(value: KRAny | KuiklyRenderCallback): number {
     return parsed > 0 ? parsed : 0;
   }
   return 0;
+}
+
+function normalizeRotationDegrees(value: KRAny | KuiklyRenderCallback): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeBoolean(value: KRAny | KuiklyRenderCallback): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  return false;
 }
 
 function resolvePathPaint(paint: string, currentColor: ResourceColor): ResourceColor {
