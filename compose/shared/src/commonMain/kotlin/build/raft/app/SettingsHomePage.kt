@@ -20,6 +20,7 @@ import build.raft.app.components.SlockDisabledActionContentArgb
 import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.SlockRaftUiSelectField
 import build.raft.app.components.SlockRaftUiSelectionOption
+import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockSwitchButton
@@ -6582,48 +6583,12 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
-    val shadowOffset = 3.dp
-    Box(modifier = Modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .height(42.dp)
-                        .background(SlockColor.BrandYellow.copy(alpha = 0.22f))
-                        .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "/",
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-                    color = SlockColor.TextBlack
-                )
-            }
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = SlockColor.TextMutedGray,
-                maxLines = 1,
-                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
-            )
-        }
-    }
+    SlockSlugInput(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        enabled = enabled
+    )
 }
 
 @Composable

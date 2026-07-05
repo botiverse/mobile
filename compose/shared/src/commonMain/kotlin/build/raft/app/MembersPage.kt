@@ -14,6 +14,7 @@ import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
@@ -5366,22 +5367,30 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalInputField(
-                        value = draftDisplayName,
-                        placeholder = "Display name",
-                        onValueChange = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
-                                )
-                            } else {
-                                localDraftDisplayName = it
-                                if (localDisplayNameError != null) localDisplayNameError = null
-                            }
-                        },
-                        enabled = !savingDisplayName,
-                        autoFocus = true
-                    )
+                    SlockFormField(
+                        label = "Display name",
+                        error = displayNameError,
+                        showLabel = false
+                    ) {
+                        SlockBrutalInputField(
+                            value = draftDisplayName,
+                            placeholder = "Display name",
+                            onValueChange = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
+                                    )
+                                } else {
+                                    localDraftDisplayName = it
+                                    if (localDisplayNameError != null) localDisplayNameError = null
+                                }
+                            },
+                            enabled = !savingDisplayName,
+                            autoFocus = true,
+                            borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                            enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                         SlockBrutalActionButton(
                             label = if (savingDisplayName) "Saving\u2026" else "Save",
@@ -5404,14 +5413,6 @@ private fun MembersAgentProfileTab(
                             },
                             enabled = !savingDisplayName,
                             backgroundColor = SlockColor.SurfaceWhite
-                        )
-                    }
-                    if (displayNameError != null) {
-                        Text(
-                            text = displayNameError.orEmpty(),
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
                         )
                     }
                 }
@@ -5451,24 +5452,32 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalInputField(
-                        value = draftRole,
-                        placeholder = "Describe this agent",
-                        onValueChange = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
-                                )
-                            } else {
-                                localDraftRole = it
-                                if (localRoleError != null) localRoleError = null
-                            }
-                        },
-                        enabled = !savingRole,
-                        autoFocus = true,
-                        maxLines = 4,
-                        fieldMinHeight = 86.dp
-                    )
+                    SlockFormField(
+                        label = "Description",
+                        error = roleError,
+                        showLabel = false
+                    ) {
+                        SlockBrutalInputField(
+                            value = draftRole,
+                            placeholder = "Describe this agent",
+                            onValueChange = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                    )
+                                } else {
+                                    localDraftRole = it
+                                    if (localRoleError != null) localRoleError = null
+                                }
+                            },
+                            enabled = !savingRole,
+                            autoFocus = true,
+                            maxLines = 4,
+                            fieldMinHeight = 86.dp,
+                            borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                            enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
@@ -5501,14 +5510,6 @@ private fun MembersAgentProfileTab(
                             text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
                             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                             color = SlockColor.TextMutedGray
-                        )
-                    }
-                    if (roleError != null) {
-                        Text(
-                            text = roleError.orEmpty(),
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
                         )
                     }
                 }
