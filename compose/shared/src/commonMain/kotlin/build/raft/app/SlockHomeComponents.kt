@@ -189,6 +189,13 @@ enum class SlockHomeNotificationKind { Warning, Info, Error }
 @Serializable
 enum class SlockHomeNotificationIcon { Default, WifiOff, CircleArrowUp, Info }
 
+data class SlockHomeInlineError(
+    val title: String,
+    val detail: String,
+    val code: String,
+    val actionLabel: String = "Retry"
+)
+
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
 
@@ -606,6 +613,7 @@ internal fun SlockStructuralHomeShell(
     inboxTotalCount: Int = 0,
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
+    inlineError: SlockHomeInlineError? = null,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
@@ -641,6 +649,7 @@ internal fun SlockStructuralHomeShell(
     onSearchClick: () -> Unit = {},
     onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    onInlineErrorAction: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
@@ -896,6 +905,17 @@ internal fun SlockStructuralHomeShell(
                                 )
                             }
                             item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                            inlineError?.let { error ->
+                                item {
+                                    HomeInlineErrorCard(
+                                        error = error,
+                                        modifier =
+                                            Modifier
+                                                .padding(horizontal = HomeListHorizontalPadding, vertical = SlockSpacing.Sm),
+                                        onAction = onInlineErrorAction
+                                    )
+                                }
+                            }
                             if (displayedPinned.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
@@ -2031,6 +2051,67 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
     SlockHomeNotificationKind.Warning -> SlockColor.AccentOrange
     SlockHomeNotificationKind.Info -> SlockColor.BrandYellow
     SlockHomeNotificationKind.Error -> SlockColor.AccentRed
+}
+
+@Composable
+private fun HomeInlineErrorCard(
+    error: SlockHomeInlineError,
+    modifier: Modifier = Modifier,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.Top
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.size(18.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = error.title,
+                        style = SlockType.ButtonBold,
+                        color = SlockColor.TextBlack,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = error.detail,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = error.code,
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            SlockBrutalActionButton(
+                label = error.actionLabel,
+                onClick = onAction,
+                leadingIcon = SlockLucideIconName.RefreshCw,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+        }
+    }
 }
 
 @Composable

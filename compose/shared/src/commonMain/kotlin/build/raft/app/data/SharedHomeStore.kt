@@ -1655,7 +1655,7 @@ private fun SharedHomeContentState.toSharedHomeContentDiagnosticsSummary(): Stri
         is SharedHomeContentState.Empty ->
             "Empty(session=${session.currentServerId ?: "_"})"
         is SharedHomeContentState.Error ->
-            "Error($code)"
+            "Error($code,session=${session?.currentServerId ?: "_"})"
         is SharedHomeContentState.Content ->
             "Content(server=${snapshot.server.id.value},channels=${snapshot.channels.size},dms=${snapshot.directMessages.size}," +
                 "channelDrafts=${snapshot.channels.count { it.hasDraft }},dmDrafts=${snapshot.directMessages.count { it.hasDraft }}," +
@@ -1887,7 +1887,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
 sealed interface SharedHomeContentState {
     data class Loading(val session: StoredAuthSession? = null) : SharedHomeContentState
     data class Empty(val session: StoredAuthSession) : SharedHomeContentState
-    data class Error(val code: String) : SharedHomeContentState
+    data class Error(val code: String, val session: StoredAuthSession? = null) : SharedHomeContentState
     data class Content(
         val snapshot: HomeSnapshot,
         val session: StoredAuthSession,
@@ -1904,13 +1904,15 @@ private fun SharedHomeContentState.asRefreshing(
         is SharedHomeContentState.Content -> copy(contentRefreshing = showRefreshAffordance)
         is SharedHomeContentState.Empty -> SharedHomeContentState.Loading(session ?: this.session)
         is SharedHomeContentState.Loading -> SharedHomeContentState.Loading(session ?: this.session)
-        is SharedHomeContentState.Error -> SharedHomeContentState.Loading(session)
+        is SharedHomeContentState.Error -> SharedHomeContentState.Loading(session ?: this.session)
     }
 
 private fun SharedHomeContentState.asRefreshFailed(code: String): SharedHomeContentState =
     when (this) {
         is SharedHomeContentState.Content -> copy(contentRefreshing = false)
-        else -> SharedHomeContentState.Error(code)
+        is SharedHomeContentState.Empty -> SharedHomeContentState.Error(code, session)
+        is SharedHomeContentState.Loading -> SharedHomeContentState.Error(code, session)
+        is SharedHomeContentState.Error -> copy(code = code)
     }
 
 private fun SharedHomeContentState.refreshFailureMapping(): String =
