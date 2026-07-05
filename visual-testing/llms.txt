@@ -1,11 +1,11 @@
-# Slock Visual Testing
+# Raft Visual Testing
 
-Generated: 2026-07-05 16:41:22 UTC
-Latest run: 8c4406b-20260705164052
-Latest commit: 8c4406b-20260705164052
-Commit subject: feat(settings): Send feedback entry on the About page (#87)
+Generated: 2026-07-05 21:45:23 UTC
+Latest run: 911fdb1-20260705214455
+Latest commit: 911fdb1-20260705214455
+Commit subject: fix(visual): component crops + fixture geometry for tabbar/message-row/header/list-items (#370) (#103)
 Providers: react vs android
-Summary: total 82, same 0, pass 0, basic-pass 6, different 73, missing 3
+Summary: total 82, same 0, pass 0, basic-pass 4, different 73, missing 5
 AI analysis: ready 0 / total 82, pending 82
 Visual coverage matrix: active 83 / total 102, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
@@ -105,34 +105,35 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
-- 8c4406b-20260705164052: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/8c4406b-20260705164052/component-matrix.json, report runs/8c4406b-20260705164052/report.html
-- 884d172-20260705161853: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/884d172-20260705161853/component-matrix.json, report runs/884d172-20260705161853/report.html
-- e512d6b-20260705153218: react vs android, total 82, pass 0, basic-pass 6, different 71, matrix runs/e512d6b-20260705153218/component-matrix.json, report runs/e512d6b-20260705153218/report.html
-- 308bcdf-20260705140151: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/308bcdf-20260705140151/component-matrix.json, report runs/308bcdf-20260705140151/report.html
-- 02e09aa-20260705104859: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/02e09aa-20260705104859/component-matrix.json, report runs/02e09aa-20260705104859/report.html
-- e17a1d4-20260705102311: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/e17a1d4-20260705102311/component-matrix.json, report runs/e17a1d4-20260705102311/report.html
-- 80be632-20260705101315: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/80be632-20260705101315/component-matrix.json, report runs/80be632-20260705101315/report.html
-- 7ca6a69-20260705095113: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/7ca6a69-20260705095113/component-matrix.json, report runs/7ca6a69-20260705095113/report.html
-- 11f2525-20260705065201: react vs android, total 82, pass 0, basic-pass 1, different 78, matrix runs/11f2525-20260705065201/component-matrix.json, report runs/11f2525-20260705065201/report.html
-- 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, report runs/0baa579-20260704220716/report.html
-- 0458783-20260704203528: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0458783-20260704203528/component-matrix.json, report runs/0458783-20260704203528/report.html
-- 963d46cb1-20260703121500: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/963d46cb1-20260703121500/component-matrix.json, report runs/963d46cb1-20260703121500/report.html
-- b120ed975-20260703092044: react vs android, total 52, pass 0, basic-pass 0, different 0, matrix runs/b120ed975-20260703092044/component-matrix.json, report runs/b120ed975-20260703092044/report.html
-- 48631ed3f-20260703075006: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/48631ed3f-20260703075006/component-matrix.json, report runs/48631ed3f-20260703075006/report.html
-- c153932a6-20260703042704: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/c153932a6-20260703042704/component-matrix.json, report runs/c153932a6-20260703042704/report.html
-- 695c99afb-20260702214109: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/695c99afb-20260702214109/component-matrix.json, report runs/695c99afb-20260702214109/report.html
-- 695c99afb-20260702202831: react vs android, total 103, pass 0, basic-pass 3, different 99, matrix runs/695c99afb-20260702202831/component-matrix.json, report runs/695c99afb-20260702202831/report.html
-- b1d7a3d01-20260702184638: react vs android, total 102, pass 0, basic-pass 3, different 98, matrix runs/b1d7a3d01-20260702184638/component-matrix.json, report runs/b1d7a3d01-20260702184638/report.html
-- 1c6dce5ad-20260701181253: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181253/component-matrix.json, report runs/1c6dce5ad-20260701181253/report.html
-- 1c6dce5ad-20260701181139: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181139/component-matrix.json, report runs/1c6dce5ad-20260701181139/report.html
-- 1c6dce5ad: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad/component-matrix.json, report runs/1c6dce5ad/report.html
-- 1c6dce5ad-20260701173710: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173710/component-matrix.json, report runs/1c6dce5ad-20260701173710/report.html
-- 1c6dce5ad-20260701173638: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173638/component-matrix.json, report runs/1c6dce5ad-20260701173638/report.html
-- 1c6dce5ad-20260701173402: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173402/component-matrix.json, report runs/1c6dce5ad-20260701173402/report.html
-- 1c6dce5ad-20260701173330: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173330/component-matrix.json, report runs/1c6dce5ad-20260701173330/report.html
-- 1c6dce5ad-20260701172140: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701172140/component-matrix.json, report runs/1c6dce5ad-20260701172140/report.html
-- 1c6dce5ad-20260701172109: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701172109/component-matrix.json, report runs/1c6dce5ad-20260701172109/report.html
-- 1c6dce5ad-20260701171619: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701171619/component-matrix.json, report runs/1c6dce5ad-20260701171619/report.html
+- 911fdb1-20260705214455: react vs android, total 82, pass 0, basic-pass 4, different 73, matrix runs/911fdb1-20260705214455/component-matrix.json, page runs/911fdb1-20260705214455/
+- 8c4406b-20260705164052: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/8c4406b-20260705164052/component-matrix.json, page runs/8c4406b-20260705164052/
+- 884d172-20260705161853: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/884d172-20260705161853/component-matrix.json, page runs/884d172-20260705161853/
+- e512d6b-20260705153218: react vs android, total 82, pass 0, basic-pass 6, different 71, matrix runs/e512d6b-20260705153218/component-matrix.json, page runs/e512d6b-20260705153218/
+- 308bcdf-20260705140151: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/308bcdf-20260705140151/component-matrix.json, page runs/308bcdf-20260705140151/
+- 02e09aa-20260705104859: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/02e09aa-20260705104859/component-matrix.json, page runs/02e09aa-20260705104859/
+- e17a1d4-20260705102311: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/e17a1d4-20260705102311/component-matrix.json, page runs/e17a1d4-20260705102311/
+- 80be632-20260705101315: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/80be632-20260705101315/component-matrix.json, page runs/80be632-20260705101315/
+- 7ca6a69-20260705095113: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/7ca6a69-20260705095113/component-matrix.json, page runs/7ca6a69-20260705095113/
+- 11f2525-20260705065201: react vs android, total 82, pass 0, basic-pass 1, different 78, matrix runs/11f2525-20260705065201/component-matrix.json, page runs/11f2525-20260705065201/
+- 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, page runs/0baa579-20260704220716/
+- 0458783-20260704203528: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0458783-20260704203528/component-matrix.json, page runs/0458783-20260704203528/
+- 963d46cb1-20260703121500: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/963d46cb1-20260703121500/component-matrix.json, page runs/963d46cb1-20260703121500/
+- b120ed975-20260703092044: react vs android, total 52, pass 0, basic-pass 0, different 0, matrix runs/b120ed975-20260703092044/component-matrix.json, page runs/b120ed975-20260703092044/
+- 48631ed3f-20260703075006: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/48631ed3f-20260703075006/component-matrix.json, page runs/48631ed3f-20260703075006/
+- c153932a6-20260703042704: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/c153932a6-20260703042704/component-matrix.json, page runs/c153932a6-20260703042704/
+- 695c99afb-20260702214109: react vs android, total 104, pass 0, basic-pass 3, different 100, matrix runs/695c99afb-20260702214109/component-matrix.json, page runs/695c99afb-20260702214109/
+- 695c99afb-20260702202831: react vs android, total 103, pass 0, basic-pass 3, different 99, matrix runs/695c99afb-20260702202831/component-matrix.json, page runs/695c99afb-20260702202831/
+- b1d7a3d01-20260702184638: react vs android, total 102, pass 0, basic-pass 3, different 98, matrix runs/b1d7a3d01-20260702184638/component-matrix.json, page runs/b1d7a3d01-20260702184638/
+- 1c6dce5ad-20260701181253: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181253/component-matrix.json, page runs/1c6dce5ad-20260701181253/
+- 1c6dce5ad-20260701181139: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701181139/component-matrix.json, page runs/1c6dce5ad-20260701181139/
+- 1c6dce5ad: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad/component-matrix.json, page runs/1c6dce5ad/
+- 1c6dce5ad-20260701173710: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173710/component-matrix.json, page runs/1c6dce5ad-20260701173710/
+- 1c6dce5ad-20260701173638: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173638/component-matrix.json, page runs/1c6dce5ad-20260701173638/
+- 1c6dce5ad-20260701173402: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173402/component-matrix.json, page runs/1c6dce5ad-20260701173402/
+- 1c6dce5ad-20260701173330: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701173330/component-matrix.json, page runs/1c6dce5ad-20260701173330/
+- 1c6dce5ad-20260701172140: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701172140/component-matrix.json, page runs/1c6dce5ad-20260701172140/
+- 1c6dce5ad-20260701172109: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701172109/component-matrix.json, page runs/1c6dce5ad-20260701172109/
+- 1c6dce5ad-20260701171619: react vs android, total 62, pass 0, basic-pass 3, different 58, matrix runs/1c6dce5ad-20260701171619/component-matrix.json, page runs/1c6dce5ad-20260701171619/
 
 ## Baseline Gate
 
