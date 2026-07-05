@@ -221,7 +221,7 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("io.quiver:quiver-android-updater:0.2.0")
+    implementation("io.quiver:quiver-android-updater:0.4.0")
     implementation(libs.socket.io.client)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
