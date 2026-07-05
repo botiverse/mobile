@@ -123,7 +123,7 @@ class SettingsHomePageDiagnosticsTest {
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
                         statusLabel = "Current",
-                        detail = "No Quiver update is available on main."
+                        detail = "No app update is available on main."
                     ),
                 options = listOf(production, staging)
             )
@@ -162,7 +162,7 @@ class SettingsHomePageDiagnosticsTest {
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
                         statusLabel = "Current",
-                        detail = "No Quiver update is available on main."
+                        detail = "No app update is available on main."
                     ),
                 actionState = null
             )
@@ -173,7 +173,8 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Check for update", updateRow.title)
         assertEquals("Current", updateRow.status)
         assertTrue(updateRow.enabled)
-        assertTrue(updateRow.detail.contains("Quiver"))
+        assertFalse(updateRow.detail.contains("Quiver"))
+        assertTrue(updateRow.detail.contains("app update"))
     }
 
     @Test

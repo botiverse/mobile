@@ -357,7 +357,7 @@ internal class BridgeSettingsPlatformCapabilities(
                     detail =
                         optString("updateCheckDetail").ifBlank {
                             if (updateCheckSupported) {
-                                "Checks Quiver for a newer Android APK and opens the installer when available."
+                                "Checks for a newer Android build and opens the installer when available."
                             } else {
                                 "This build does not expose in-app update checks."
                             }

@@ -1912,7 +1912,7 @@ class SharedSettingsStore(
                             developerResult.data.copy(
                                 updateCheck =
                                     SharedSettingsUpdateCheckSnapshot(
-                                        supported = true,
+                                        supported = developerResult.data.updateCheck.supported,
                                         statusLabel = "Check failed",
                                         detail = "Update check returned no data. Try again later.",
                                         errorCode = "update_check_empty"
@@ -1922,7 +1922,7 @@ class SharedSettingsStore(
                             developerResult.data.copy(
                                 updateCheck =
                                     SharedSettingsUpdateCheckSnapshot(
-                                        supported = true,
+                                        supported = developerResult.data.updateCheck.supported,
                                         statusLabel = "Check failed",
                                         detail =
                                             "Could not reach the update server (" +

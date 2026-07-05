@@ -8746,7 +8746,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                         key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
                                         iconName = SlockLucideIconName.Download,
                                         title = "Check for update",
-                                        detail = updateCheck.detail.ifBlank { "Checks Quiver for a newer Android APK and opens the installer when available." },
+                                        detail = updateCheck.detail.ifBlank { "Checks for a newer Android build and opens the installer when available." },
                                         status =
                                             when {
                                                 updateCheckBusy -> "Checking"

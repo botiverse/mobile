@@ -1694,6 +1694,43 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun aboutKeepsUpdateCheckHiddenWhenHostDoesNotSupportStatusCapability() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities =
+            FakeSettingsCapabilities(
+                developerSnapshot =
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = "production",
+                        environmentLabel = "Production",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
+                        webUrl = "https://app.raft.build",
+                        updateCheck = SharedSettingsUpdateCheckSnapshot()
+                    ),
+                updateStatusResult = DataResult.Error(ScreenError("settings_capability_unknown"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+
+        val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals(false, developer.updateCheck.supported)
+        assertEquals("Check failed", developer.updateCheck.statusLabel)
+        assertEquals("settings_capability_unknown", developer.updateCheck.errorCode)
+        assertEquals(listOf("about", "quiverUpdateStatus"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun defaultDeveloperEnvironmentPresetsIncludeProductionAndStaging() {
         val options = sharedSettingsDefaultApiEnvironmentOptions()
 
@@ -2673,6 +2710,15 @@ class SharedSettingsStoreTest {
                 )
             ),
         private var developerSnapshot: SharedSettingsDeveloperSnapshot = buildDeveloperSnapshot("production"),
+        private val updateStatusResult: DataResult<SharedSettingsUpdateCheckSnapshot> =
+            DataResult.Content(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    statusLabel = "Current",
+                    detail = "No app update is available on main.",
+                    actionLabel = "Check"
+                )
+            ),
         private val avatarFileResult: DataResult<PlatformFile> =
             DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
         private val connectedAppLogoFileResult: DataResult<PlatformFile> =
@@ -2743,7 +2789,7 @@ class SharedSettingsStoreTest {
                         SharedSettingsUpdateCheckSnapshot(
                             supported = true,
                             statusLabel = "Update available",
-                            detail = "Quiver has version 1.0.1 on main.",
+                            detail = "Version 1.0.1 is available on main.",
                             updateAvailable = true,
                             latestVersionLabel = "1.0.1",
                             latestVersionCode = 2L,
@@ -2756,14 +2802,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
             calls += "quiverUpdateStatus"
-            return DataResult.Content(
-                SharedSettingsUpdateCheckSnapshot(
-                    supported = true,
-                    statusLabel = "Current",
-                    detail = "No Quiver update is available on main.",
-                    actionLabel = "Check"
-                )
-            )
+            return updateStatusResult
         }
 
         override suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> {
