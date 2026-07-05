@@ -958,32 +958,34 @@ internal fun ThreadComposerContent(
     if (text.isNotBlank()) {
         println("[composer] trigger t=" + text.take(30) + " trigger=" + suggestionTrigger.toString())
     }
+    val memberSuggestionSearchEntries =
+        remember(state.memberSuggestions) {
+            state.memberSuggestions.toThreadComposerMemberSuggestionSearchEntries()
+        }
     val filteredMemberSuggestions =
-        remember(suggestionTrigger, state.memberSuggestions) {
+        remember(suggestionTrigger, memberSuggestionSearchEntries) {
             when (val trigger = suggestionTrigger) {
-                is KuiklyComposerSuggestionTrigger.MemberTrigger -> {
-                    val query = trigger.query.lowercase()
-                    state.memberSuggestions.filter { member ->
-                        query.isBlank() ||
-                            member.displayName.lowercase().contains(query) ||
-                            member.handle.lowercase().contains(query)
-                    }
-                }
+                is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+                    rankThreadComposerMemberSuggestionEntries(
+                        query = trigger.query,
+                        entries = memberSuggestionSearchEntries
+                    )
 
                 else -> emptyList()
             }
         }
+    val channelSuggestionSearchEntries =
+        remember(state.channelSuggestions) {
+            state.channelSuggestions.toThreadComposerChannelSuggestionSearchEntries()
+        }
     val filteredChannelSuggestions =
-        remember(suggestionTrigger, state.channelSuggestions) {
+        remember(suggestionTrigger, channelSuggestionSearchEntries) {
             when (val trigger = suggestionTrigger) {
-                is KuiklyComposerSuggestionTrigger.ChannelTrigger -> {
-                    val query = trigger.query.lowercase()
-                    state.channelSuggestions.filter { channel ->
-                        query.isBlank() ||
-                            channel.name.lowercase().contains(query) ||
-                            channel.subtitle.orEmpty().lowercase().contains(query)
-                    }
-                }
+                is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+                    rankThreadComposerChannelSuggestionEntries(
+                        query = trigger.query,
+                        entries = channelSuggestionSearchEntries
+                    )
 
                 else -> emptyList()
             }
