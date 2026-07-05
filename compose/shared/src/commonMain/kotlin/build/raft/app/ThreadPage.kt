@@ -1881,7 +1881,8 @@ internal fun ThreadMessageVisualScreen() {
         remember(visualFixture) {
             if (
                 visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
-                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE
+                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
+                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP
             ) {
                 setOf("artin")
             } else {
@@ -2011,7 +2012,13 @@ internal fun ThreadMessageVisualScreen() {
                 )
             }
         }
-    Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
+    Column(
+        modifier =
+            Modifier
+                .width(threadMessageVisualWidth(visualFixture))
+                .background(SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Md)
+    ) {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
@@ -6399,7 +6406,15 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "task524_markdown_visible"
+
+private fun threadMessageVisualWidth(visualFixture: String): Dp =
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP) {
+        920.dp
+    } else {
+        390.dp
+    }
 
 internal fun threadVisualFixture(
     fixture: String,
@@ -6810,6 +6825,66 @@ internal fun threadVisualFixture(
                             handle = "KMP-专家",
                             kind = "agent",
                             avatarLabel = "KM"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Wide markdown wrap fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown-wide",
+                sourceThreadId = "channel-markdown-wide",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("markdown专修"),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_wide_markdown_wrap_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Tracking Markdown width regressions.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/06 01:40",
+                            messageType = "Chat",
+                            body =
+                                "Wide-row regression: this sentence should keep flowing across the available row width before it wraps, " +
+                                    "including tag chips #markdown专修, @artin, task #55, and inline code `RichTextMeasureWidthShouldUseTheActualThreadRowContentWidth` without leaving a large blank area on the right.\n\n" +
+                                    "Second paragraph keeps enough plain text after the chips so screenshots reveal whether Markdown/RichText was still measured with the old narrow 680dp cap.",
+                            threadChannelId = "thread-msg-wide-markdown-wrap-visual"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
                         )
                     ),
                 showComposer = false,
@@ -11483,7 +11558,11 @@ private fun ThreadReactionAddChipChrome() {
 }
 
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
-    widthIn(max = 680.dp).fillMaxWidth(maxWidthFraction)
+    if (maxWidthFraction < 1f) {
+        fillMaxWidth(maxWidthFraction)
+    } else {
+        fillMaxWidth()
+    }
 
 private fun Modifier.threadMessagePressOutline(pressed: Boolean): Modifier =
     border(

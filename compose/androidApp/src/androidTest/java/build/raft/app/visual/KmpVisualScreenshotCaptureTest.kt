@@ -696,6 +696,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowWideMarkdownWrap() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.wide-markdown-wrap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-wide-markdown-wrap")
+                    .put("visualFixture", "wide_markdown_wrap"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",
