@@ -3163,7 +3163,7 @@ internal const val PixelAvatarDefaultKey = "robot"
  * `finch` is reserved for the Cindy OA agent only — excluded from random selection
  * (CreateAgentDialog) and the manual picker grid (AgentDetailPanel).
  */
-internal val PixelAvatarReservedKeys: Set<String> = setOf("finch")
+internal val PixelAvatarReservedKeys: Set<String> = setOf("finch", "mug")
 
 /**
  * #195/#199 diagnostic counter retained for avatar render churn. Android now routes pixel
@@ -3213,8 +3213,8 @@ private object SlockPixelAvatarDrawCache {
 
 internal expect fun logPixelAvatarDrawCache(message: String)
 internal expect fun isSlockNativePixelAvatarViewSupported(): Boolean
-private val PixelAvatarPaletteArgb = mapOf('_' to "#00000000", 'K' to "#FF141111", 'W' to "#FFFFFFFF", 'P' to "#FFFE7DA8", 'O' to "#FFF8A16F", 'Y' to "#FFFFD440", 'L' to "#FFA9D877", 'C' to "#FF27CCF3", 'V' to "#FFBBAFE6", 'B' to "#FF576574", 'R' to "#FFF97264", 'G' to "#FF9DCAAA")
-private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
+private val PixelAvatarPaletteArgb = mapOf('_' to "#00000000", 'K' to "#FF141111", 'W' to "#FFFFFFFF", 'P' to "#FFFE7DA8", 'O' to "#FFF8A16F", 'Y' to "#FFFFD440", 'L' to "#FFA9D877", 'C' to "#FF27CCF3", 'V' to "#FFBBAFE6", 'B' to "#FF576574", 'R' to "#FFF97264", 'G' to "#FF9DCAAA", 'D' to "#FFB07A4E")
+private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA), 'D' to Color(0xFFB07A4E))
 private val PixelAvatarKnownBackgroundArgb: Map<Color, String> =
     PixelAvatarPalette
         .filterKeys { it != '_' }
@@ -3245,7 +3245,10 @@ internal val PixelAvatarFixedSpecs = mapOf(
     // `RESERVED_AVATAR_KEYS`). Bg is `#D7F3FB` (soft-sky tint of cyan),
     // intentionally NOT in the palette; kept as a literal here to match React
     // PixelAvatar.tsx without promoting a one-off surface into the shared token.
-    "finch" to PixelAvatarSpec(Color(0xFFD7F3FB), listOf("__KKKK__", "_KCCCCK_", "KCWCCWCK", "KCKCCKCK", "KCCOOCCK", "_KCCCCK_", "_KCKKCK_", "__K__K__"))
+    "finch" to PixelAvatarSpec(Color(0xFFD7F3FB), listOf("__KKKK__", "_KCCCCK_", "KCWCCWCK", "KCKCCKCK", "KCCOOCCK", "_KCCCCK_", "_KCKKCK_", "__K__K__")),
+    // Cindy OA's locked mug (web PixelAvatar.tsx, cindyz 2026-07-01): latte body
+    // 'D' #B07A4E + soft-cream bg #F8EEDF are avatar-local, not design tokens.
+    "mug" to PixelAvatarSpec(Color(0xFFF8EEDF), listOf("___KK___", "__K__K__", "KKKKKK__", "KDDDDKKK", "KWDDKK_K", "KDDDDKKK", "KDKKDK__", "_KKKKK__"))
 )
 private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('C') to 'K',
