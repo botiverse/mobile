@@ -24,6 +24,7 @@ interface OhosPickedThreadAttachment {
   mimeType: string;
   previewUri: string;
   fileRef: string;
+  bodyBase64: string;
   sizeBytes: number;
 }
 
@@ -34,6 +35,7 @@ interface OhosPickedThreadAttachmentPayload {
   sizeBytes: number;
   previewUri: string;
   fileRef: string;
+  bodyBase64: string;
   source: string;
 }
 
@@ -953,11 +955,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       try {
         const stat = fs.statSync(file.fd);
+        const bodyBytes = this.readOpenFileBytes(file.fd, Number(stat.size));
         files.push({
           fileName: this.fileNameFromUri(uri, index, imageOnly),
           mimeType: this.mimeTypeFromName(uri, imageOnly),
           previewUri: uri,
           fileRef: uri,
+          bodyBase64: new util.Base64Helper().encodeToStringSync(bodyBytes),
           sizeBytes: stat.size
         });
       } finally {
@@ -979,10 +983,20 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           "sizeBytes": file.sizeBytes,
           "previewUri": file.previewUri,
           "fileRef": file.fileRef,
+          "bodyBase64": file.bodyBase64,
           "source": "platform_picker"
         };
       })
     };
+  }
+
+  private readOpenFileBytes(fd: number, sizeBytes: number): Uint8Array {
+    if (sizeBytes <= 0) {
+      return new Uint8Array();
+    }
+    const buffer = new ArrayBuffer(sizeBytes);
+    const bytesRead = fs.readSync(fd, buffer);
+    return new Uint8Array(buffer.slice(0, bytesRead));
   }
 
   private fileNameFromUri(uri: string, index: number, imageOnly: boolean): string {
