@@ -27,12 +27,20 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
+
+// Pixel-avatar runtime refresh (task #352) waits out the startup window before
+// fetching: first screen must not compete with this non-urgent request, and the
+// per-client jitter keeps a web deploy from triggering a synchronized spike.
+private const val PixelAvatarRefreshDelayMinMs = 10_000L
+private const val PixelAvatarRefreshDelayMaxMs = 60_000L
 
 private fun BridgeModule.logSharedAuthDiagnostic(prefix: String, message: String) {
     val line = "$prefix $message"
@@ -316,6 +324,11 @@ internal class SlockSharedStoreProvider private constructor(
             val pixelAvatarStore = KeyValuePixelAvatarStore(sharedPreferenceStore)
             SlockPixelAvatarRuntime.applyRuntimeJson(pixelAvatarStore.readJson(), source = "cache")
             CoroutineScope(SupervisorJob()).launch {
+                // Jittered delay: the refresh is not first-screen data (the cached/bundled
+                // table is already applied above), so keep it off the startup window where
+                // it would contend with channel/message fetches — and spread clients out
+                // so a web deploy doesn't produce a synchronized fetch spike.
+                delay(Random.nextLong(PixelAvatarRefreshDelayMinMs, PixelAvatarRefreshDelayMaxMs))
                 refreshPixelAvatarsFromWeb(
                     networkClient = networkClient,
                     store = pixelAvatarStore,
