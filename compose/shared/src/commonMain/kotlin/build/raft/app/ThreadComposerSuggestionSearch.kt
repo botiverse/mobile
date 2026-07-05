@@ -120,13 +120,14 @@ internal data class ThreadComposerSuggestionScore(
 }
 
 internal data class ThreadComposerSuggestionQueryKey(
+    val rawLowercase: String,
     val compact: String,
     val tokens: List<String>,
     val pinyinFull: String,
     val pinyinInitials: String
 ) {
     val isBlank: Boolean
-        get() = compact.isBlank()
+        get() = rawLowercase.isBlank()
 
     val enablesFuzzy: Boolean
         get() = compact.length >= 2
@@ -142,6 +143,7 @@ internal data class ThreadComposerSuggestionQueryKey(
             val clean = query.trim().removePrefix("@").removePrefix("#")
             val normalized = clean.toThreadComposerNormalizedSearchText()
             return ThreadComposerSuggestionQueryKey(
+                rawLowercase = clean.lowercase(),
                 compact = normalized.compact,
                 tokens = normalized.tokens,
                 pinyinFull = clean.toThreadComposerPinyinFull(),
@@ -155,6 +157,7 @@ internal data class ThreadComposerSuggestionSearchField(
     val raw: String,
     val priority: Int
 ) {
+    private val rawLowercase = raw.lowercase()
     private val normalized = raw.toThreadComposerNormalizedSearchText()
     private val pinyinFull = raw.toThreadComposerPinyinFull()
     private val pinyinInitials = raw.toThreadComposerPinyinInitials()
@@ -170,6 +173,7 @@ internal data class ThreadComposerSuggestionSearchField(
         pinyinFullScore(query)?.let { return it }
         pinyinInitialsScore(query)?.let { return it }
         fuzzySubsequenceScore(query)?.let { return it }
+        legacySubstringScore(query)?.let { return it }
         return null
     }
 
@@ -243,6 +247,13 @@ internal data class ThreadComposerSuggestionSearchField(
         return listOfNotNull(compactScore, pinyinScore)
             .minByOrNull { score -> score.gap }
             ?.copy(rank = 6, fieldPriority = priority)
+    }
+
+    private fun legacySubstringScore(query: ThreadComposerSuggestionQueryKey): ThreadComposerSuggestionScore? {
+        val rawQuery = query.rawLowercase.takeIf { it.isNotBlank() } ?: return null
+        val position = rawLowercase.indexOf(rawQuery)
+        if (position < 0) return null
+        return ThreadComposerSuggestionScore(rank = 7, fieldPriority = priority, position = position, gap = 0)
     }
 }
 
