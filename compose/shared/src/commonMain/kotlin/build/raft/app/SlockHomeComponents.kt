@@ -3174,7 +3174,18 @@ private fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
         else -> (extent * index / PixelAvatarGridCellCount).roundToInt().toFloat()
     }
 
-internal data class PixelAvatarSpec(val background: Color, val grid: List<String>) {
+internal data class PixelAvatarSpec(
+    val background: Color,
+    val grid: List<String>,
+    // Palette lookups resolved at construction. Defaults are the generated bundled table
+    // (safe during SlockPixelAvatarDataKt class init: they are that file's own fields);
+    // SlockPixelAvatarRuntime passes the downloaded document's own palette instead.
+    val palette: Map<Char, Color> = PixelAvatarPalette,
+    val paletteArgb: Map<Char, String> = PixelAvatarPaletteArgb,
+    // Null means "use the bundled PixelAvatarKnownBackgroundArgb" — resolved lazily below,
+    // NOT as a default argument, which would re-enter SlockHomeComponentsKt mid-init.
+    val backgroundArgbLookup: Map<Color, String>? = null
+) {
     val spans: List<PixelAvatarSpan> =
         buildList {
             grid.forEachIndexed { rowIndex, row ->
@@ -3198,8 +3209,8 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
                     spanLength = 0
                 }
                 row.forEachIndexed { columnIndex, key ->
-                    val color = PixelAvatarPalette[key] ?: Color.Transparent
-                    val colorArgb = PixelAvatarPaletteArgb[key]
+                    val color = palette[key] ?: Color.Transparent
+                    val colorArgb = paletteArgb[key]
                     when {
                         color == Color.Transparent -> flushSpan()
                         color == spanColor -> spanLength += 1
@@ -3221,7 +3232,7 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
     // read here hits PixelAvatarKnownBackgroundArgb before it is assigned
     // (init cycle -> NPE in every unit test touching this file).
     val backgroundArgb: String by lazy(LazyThreadSafetyMode.NONE) {
-        PixelAvatarKnownBackgroundArgb[background] ?: SlockColor.BrandYellowArgb
+        (backgroundArgbLookup ?: PixelAvatarKnownBackgroundArgb)[background] ?: SlockColor.BrandYellowArgb
     }
 
     val nativeSpanPayload: String =
@@ -3299,15 +3310,11 @@ private object SlockPixelAvatarDrawCache {
 internal expect fun logPixelAvatarDrawCache(message: String)
 internal expect fun isSlockNativePixelAvatarViewSupported(): Boolean
 private val PixelAvatarKnownBackgroundArgb: Map<Color, String> =
-    PixelAvatarPalette
-        .filterKeys { it != '_' }
-        .entries
-        .associate { entry -> entry.value to PixelAvatarPaletteArgb.getValue(entry.key) } +
-        PixelAvatarLiteralBackgroundArgb +
-        mapOf(
-            // Dark random-avatar background — mobile-only, not in pixelAvatars.json.
-            Color(0xFF1E1E1C) to "#FF1E1E1C"
-        )
+    pixelAvatarKnownBackgroundArgb(
+        palette = PixelAvatarPalette,
+        paletteArgb = PixelAvatarPaletteArgb,
+        literalBackgroundArgb = PixelAvatarLiteralBackgroundArgb
+    )
 private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('C') to 'K',
     PixelAvatarPalette.getValue('Y') to 'K',
@@ -3322,7 +3329,7 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('O') to 'K',
     PixelAvatarPalette.getValue('C') to 'W'
 )
-private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { PixelAvatarFixedSpecs[it] ?: PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey) } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
+private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { key -> SlockPixelAvatarRuntime.current.let { data -> data.specs[key] ?: data.specs.getValue(data.defaultKey) } } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
 
 /**
  * Returns the picker keys in display order, mirroring React
@@ -3332,8 +3339,8 @@ private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(Pi
  * the Upload cell and use this list directly for the remaining keys.
  * Used by the avatar picker modal grid in `MembersAgentProfileTab`.
  */
-internal val PixelAvatarPickerKeys: List<String> = PixelAvatarFixedSpecs.keys
-    .filterNot { it in PixelAvatarReservedKeys }
+internal val PixelAvatarPickerKeys: List<String>
+    get() = SlockPixelAvatarRuntime.current.let { data -> data.specs.keys.filterNot { it in data.reservedKeys } }
 private fun String.removePrefixOrNull(prefix: String): String? = takeIf { it.startsWith(prefix) }?.substring(prefix.length)
 private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
     val random = PixelAvatarRandom(pixelHash(seed))
