@@ -8,7 +8,7 @@ target 'iosApp' do
   pod 'OpenKuiklyIOSRender', :path => '../../third_party/kuikly-ui'
   pod 'shared', :path => '../shared'
 
-  pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :tag => 'ios-v0.1.1'
+  pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :tag => 'ios-v0.1.2'
   pod 'SDWebImage'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.0'
