@@ -756,7 +756,7 @@ internal fun SegmentedControl(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(SegmentedControlItemGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         options.forEach { option ->
@@ -778,41 +778,61 @@ private fun SegmentedControlItem(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .height(28.dp)
-                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled) { onClick() }
-                .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier = Modifier.height(SegmentedControlItemHeight),
+        propagateMinConstraints = true
     ) {
-        option.iconName?.let { iconName ->
-            SlockLucideIcon(
-                name = iconName,
-                modifier = Modifier.size(13.dp),
-                color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
+                        .background(SlockColor.ShadowBlack, RectangleShape)
+                        .slockSquareCorners()
             )
         }
-        Text(
-            text = option.label,
-            style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        option.count?.takeIf { it > 0 }?.let { count ->
+        Row(
+            modifier =
+                Modifier
+                    .height(SegmentedControlItemHeight)
+                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(enabled = enabled) { onClick() }
+                    .padding(horizontal = SegmentedControlItemHorizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(SegmentedControlItemContentGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            option.iconName?.let { iconName ->
+                SlockLucideIcon(
+                    name = iconName,
+                    modifier = Modifier.size(13.dp),
+                    color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
+                )
+            }
             Text(
-                text = count.toString(),
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
-                color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
-                maxLines = 1
+                text = option.label,
+                style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            option.count?.takeIf { it > 0 }?.let { count ->
+                Text(
+                    text = count.toString(),
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                    color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
+                    maxLines = 1
+                )
+            }
         }
     }
 }
+
+private val SegmentedControlItemHeight = 28.dp
+private val SegmentedControlItemHorizontalPadding = 9.dp
+private val SegmentedControlItemGap = 5.dp
+private val SegmentedControlItemContentGap = 5.dp
 
 @Composable
 internal fun SlockToolbarChip(
