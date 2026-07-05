@@ -17,6 +17,8 @@ import android.view.WindowManager
 import build.raft.app.shared.SlockKuiklyActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -1241,6 +1243,42 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
+    /**
+     * Close the scenario with a wall-clock ceiling (task #364). Even after the
+     * screenshot is captured, ActivityScenario.close() -> moveToState(DESTROYED)
+     * does its own unbounded Instrumentation.waitForIdleSync(), which never
+     * returns on a screen still animating/loading at teardown (e.g.
+     * components.members.avatar-management) — so the case would burn the per-case
+     * backstop even though its image is already written. Run close() on a daemon
+     * thread and bound the join; if teardown never idles, abandon it (the leaked
+     * activity is replaced when the next case launches fresh) so the case is
+     * reported OK with the image it already produced.
+     */
+    private fun closeScenarioBounded(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        maxMs: Long = SCENARIO_CLOSE_TIMEOUT_MS
+    ) {
+        val closed = CountDownLatch(1)
+        Thread {
+            try {
+                scenario.close()
+            } catch (t: Throwable) {
+                Log.w(VISUAL_LOG_TAG, "scenario.close() threw: ${t.message}")
+            } finally {
+                closed.countDown()
+            }
+        }.apply {
+            isDaemon = true
+            name = "visual-scenario-close"
+        }.start()
+        if (!closed.await(maxMs, TimeUnit.MILLISECONDS)) {
+            Log.w(
+                VISUAL_LOG_TAG,
+                "scenario.close() exceeded ${maxMs}ms; abandoning teardown (screen never idle at close)"
+            )
+        }
+    }
+
     private fun captureKmpHomeCase(
         caseId: String,
         pageData: JSONObject,
@@ -1252,13 +1290,14 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            scenario.onActivity { applyVisualFullscreen(it) }
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
             Thread.sleep(2_500)
-            scenario.onActivity { suppressVisualKeyboard(it) }
+            onActivityNoIdle { suppressVisualKeyboard(it) }
             waitForIdleBounded()
-            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
+            val normalized = captureStableVisualBitmap(context, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1280,6 +1319,8 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
+        } finally {
+            closeScenarioBounded(scenario)
         }
     }
 
@@ -1297,15 +1338,16 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", pageName)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            scenario.onActivity { applyVisualFullscreen(it) }
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
             Thread.sleep(settleMs)
             beforeScreenshot?.invoke()
             waitForIdleBounded()
-            scenario.onActivity { suppressVisualKeyboard(it) }
+            onActivityNoIdle { suppressVisualKeyboard(it) }
             waitForIdleBounded()
-            val normalized = captureStableVisualBitmap(context, scenario, caseId, crop)
+            val normalized = captureStableVisualBitmap(context, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1327,6 +1369,8 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
+        } finally {
+            closeScenarioBounded(scenario)
         }
     }
 
@@ -1364,12 +1408,35 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun captureActivityScreenshot(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
-        caseId: String
-    ): Bitmap {
+    /**
+     * Run [block] against the current RESUMED activity on the main thread
+     * WITHOUT ActivityScenario.onActivity's internal waitForIdleSync (task
+     * #364). onActivity() blocks on waitForIdleSync, which never returns on a
+     * never-idle screen (animation/loading) — the same unbounded wait #362
+     * fixed for the standalone calls but which stayed hidden inside onActivity,
+     * so those screens still burned the full 120s per-case backstop.
+     * runOnMainSync posts the runnable and waits for it to execute but does NOT
+     * wait for idle, so it always makes progress. If the activity already died
+     * (e.g. a page that crashes on render, like wip-list-panels), there is no
+     * RESUMED activity — skip instead of NPE-cascading on a destroyed scenario.
+     */
+    private fun onActivityNoIdle(block: (Activity) -> Unit) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val activity =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .firstOrNull()
+            if (activity != null) {
+                block(activity)
+            } else {
+                Log.w(VISUAL_LOG_TAG, "onActivityNoIdle: no RESUMED activity (page may have crashed/finished)")
+            }
+        }
+    }
+
+    private fun captureActivityScreenshot(caseId: String): Bitmap {
         var bitmap: Bitmap? = null
-        scenario.onActivity { activity ->
+        onActivityNoIdle { activity ->
             val root = activity.window.decorView.rootView
             if (root.width > 0 && root.height > 0) {
                 bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
@@ -1385,7 +1452,6 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun captureStableVisualBitmap(
         context: Context,
-        scenario: ActivityScenario<SlockKuiklyActivity>,
         caseId: String,
         crop: VisualCrop
     ): Bitmap {
@@ -1396,7 +1462,7 @@ class KmpVisualScreenshotCaptureTest {
 
         do {
             waitForIdleBounded()
-            val screenshot = captureActivityScreenshot(scenario, caseId)
+            val screenshot = captureActivityScreenshot(caseId)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
             // Task #342: keep native device pixels (emulator pinned to 480dpi
@@ -2183,9 +2249,17 @@ class KmpVisualScreenshotCaptureTest {
         // second; an animating/never-idle screen would otherwise block forever.
         private const val IDLE_WAIT_TIMEOUT_MS = 8_000L
 
-        // Hard per-case backstop. Healthy 3x captures run ~20-40s; this only
-        // trips on a genuinely stuck case, failing that case alone instead of
-        // the whole shard.
-        private const val PER_CASE_TIMEOUT_SECONDS = 120L
+        // Ceiling for ActivityScenario.close() teardown (its moveToState does an
+        // unbounded waitForIdleSync). Normal close is sub-second.
+        private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
+
+        // Hard per-case backstop. With every unbounded waitForIdleSync path now
+        // bounded (idle waits, onActivity, close — task #362/#364), no case
+        // hangs forever, so this is a generous ceiling for legitimately-slow 3x
+        // captures, not a hang guard: the heaviest never-idle screens (e.g.
+        // components.thread.files.list, whose async thumbnails never idle) still
+        // run ~90-100s at 3x density, so keep well above that. It only trips on
+        // a genuinely stuck case, failing that case alone instead of the shard.
+        private const val PER_CASE_TIMEOUT_SECONDS = 150L
     }
 }
