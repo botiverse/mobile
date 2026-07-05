@@ -14583,12 +14583,15 @@ private fun BottomTabBarSmokeContent() {
 
 @Composable
 internal fun BottomTabBarVisualContent() {
+    // React measures the live tab bar element at full page width (390x53dp), so
+    // render the bar flush at the window origin at exactly 390dp — explicit width
+    // rather than fillMaxWidth because the capture window can be wider than 390dp
+    // (task #370).
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Spacer(modifier = Modifier.height(72.dp))
         SlockBottomTabBar(
             items = appShellBottomTabs("home"),
             onSelect = {},
-            modifier = Modifier.width(342.dp)
+            modifier = Modifier.width(390.dp)
         )
     }
 }
