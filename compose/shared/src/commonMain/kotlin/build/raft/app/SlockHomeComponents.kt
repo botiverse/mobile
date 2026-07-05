@@ -2621,8 +2621,12 @@ private fun SlockSidebarSortOverlay(
                     if (draggedId == itemId) {
                         Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
                     } else {
+                        // Live position prefix (1-based): reflects previewOrder, so
+                        // the numbers reflow as rows shift during a drag — makes the
+                        // reorder visually verifiable (task #356 diagnostic).
+                        val position = previewOrder.indexOf(itemId) + 1
                         ChannelRow(
-                            name = item.name,
+                            name = "$position. ${item.name}",
                             symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                             avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                             joined = item.joined || isDirectMessage,
@@ -2643,8 +2647,9 @@ private fun SlockSidebarSortOverlay(
                 val item = itemsById[active]
                 if (item != null) {
                     val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    val position = previewOrder.indexOf(active) + 1
                     ChannelRow(
-                        name = item.name,
+                        name = "$position. ${item.name}",
                         symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                         avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                         joined = item.joined || isDirectMessage,
