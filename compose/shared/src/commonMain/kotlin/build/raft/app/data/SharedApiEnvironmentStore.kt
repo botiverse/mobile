@@ -14,24 +14,8 @@ class SharedApiEnvironmentStore(
             apiBaseUrl = current.apiBaseUrl,
             socketBaseUrl = current.socketBaseUrl,
             webUrl = current.webUrl,
-            sharedSocketIoTransportEnabled = sharedSocketIoTransportEnabled(),
             options = predefined,
             feedback = feedback
-        )
-    }
-
-    fun sharedSocketIoTransportEnabled(): Boolean =
-        store.getBoolean(KEY_SHARED_SOCKET_IO_TRANSPORT, defaultValue = false)
-
-    fun setSharedSocketIoTransportEnabled(enabled: Boolean): SharedSettingsDeveloperSnapshot {
-        store.putBoolean(KEY_SHARED_SOCKET_IO_TRANSPORT, enabled)
-        return developerSnapshot(
-            feedback =
-                if (enabled) {
-                    "Shared Socket.IO transport flag enabled. Android, iOS, and OHOS reconnects will use the shared Ktor pilot."
-                } else {
-                    "Shared Socket.IO transport disabled. Realtime reconnects will use the platform transport."
-                }
         )
     }
 
@@ -134,6 +118,5 @@ class SharedApiEnvironmentStore(
         private const val KEY_CUSTOM_API_BASE_URL = "custom_api_base_url"
         private const val KEY_CUSTOM_SOCKET_BASE_URL = "custom_socket_base_url"
         private const val KEY_CUSTOM_WEB_URL = "custom_web_url"
-        const val KEY_SHARED_SOCKET_IO_TRANSPORT = "shared_socket_io_transport_enabled"
     }
 }

@@ -150,32 +150,6 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
-    override suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response =
-            bridge.settingsCapability(
-                JSONObject()
-                    .put("action", "setSharedSocketIoTransport")
-                    .put("enabled", enabled)
-            )
-        if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_shared_socketio_transport_failed" }))
-        }
-        return DataResult.Content(response.toDeveloperSnapshot())
-    }
-
-    override suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> {
-        val response =
-            bridge.settingsCapability(
-                JSONObject()
-                    .put("action", "realtimeTransportPreferenceChanged")
-                    .put("enabled", enabled)
-            )
-        if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_realtime_transport_hook_failed" }))
-        }
-        return DataResult.Content(Unit)
-    }
-
     override suspend fun onApiEnvironmentChanged(
         before: SharedSettingsApiEnvironmentOption,
         after: SharedSettingsApiEnvironmentOption
@@ -346,7 +320,6 @@ internal class BridgeSettingsPlatformCapabilities(
             apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
             socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
             webUrl = optString("webUrl"),
-            sharedSocketIoTransportEnabled = optBoolean("sharedSocketIoTransportEnabled", false),
             updateCheck =
                 SharedSettingsUpdateCheckSnapshot(
                     supported = updateCheckSupported,

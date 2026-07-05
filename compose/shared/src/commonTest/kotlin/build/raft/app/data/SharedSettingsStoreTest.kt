@@ -1608,40 +1608,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun developerSharedSocketIoTransportPersistsThroughSharedApiEnvironmentStore() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val persistence = InMemorySlockKeyValueStore()
-        val apiEnvironmentStore = SharedApiEnvironmentStore(persistence)
-        capabilities.onRealtimeTransportPreferenceChangedHook = { enabled ->
-            assertEquals(enabled, SharedApiEnvironmentStore(persistence).sharedSocketIoTransportEnabled())
-        }
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        apiEnvironmentStore = apiEnvironmentStore
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-        val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals(false, initial.sharedSocketIoTransportEnabled)
-
-        store.accept(SharedSettingsIntent.SetSharedSocketIoTransport(true))
-
-        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals(true, updated.sharedSocketIoTransportEnabled)
-        assertEquals(true, SharedApiEnvironmentStore(persistence).sharedSocketIoTransportEnabled())
-        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT, inProgress = false), store.state.value.actionState)
-        assertEquals(listOf("realtimeTransport:true"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun developerQuiverUpdateCheckRunsThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -2725,7 +2691,6 @@ class SharedSettingsStoreTest {
             DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable"))
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
-        var onRealtimeTransportPreferenceChangedHook: ((Boolean) -> Unit)? = null
 
         override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
             calls += "about"
@@ -2775,12 +2740,6 @@ class SharedSettingsStoreTest {
             return DataResult.Content(Unit)
         }
 
-        override suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> {
-            calls += "sharedSocketIo:$enabled"
-            developerSnapshot = developerSnapshot.copy(sharedSocketIoTransportEnabled = enabled)
-            return DataResult.Content(developerSnapshot)
-        }
-
         override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
             calls += "quiverUpdateCheck"
             developerSnapshot =
@@ -2803,12 +2762,6 @@ class SharedSettingsStoreTest {
         override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
             calls += "quiverUpdateStatus"
             return updateStatusResult
-        }
-
-        override suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> {
-            calls += "realtimeTransport:$enabled"
-            onRealtimeTransportPreferenceChangedHook?.invoke(enabled)
-            return DataResult.Content(Unit)
         }
 
         override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
