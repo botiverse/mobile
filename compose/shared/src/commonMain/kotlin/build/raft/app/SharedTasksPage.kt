@@ -123,7 +123,13 @@ internal fun SharedTasksPanel(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
+    /** Fixture hook (same pattern as SharedHomeSearchPanel.initialOpenFilterId): when
+     *  non-null, the loaded body starts from this presentation state instead of
+     *  [TasksPresentationState.Default] + the persisted view-mode preference. The
+     *  components.tasks.panel.states visual case starts in List mode with Done expanded,
+     *  mirroring the React capture's "Show Done" click (task #330/#353). */
+    initialPresentationOverride: TasksPresentationState? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -170,7 +176,8 @@ internal fun SharedTasksPanel(
                     bottomContentPadding = bottomContentPadding,
                     draftProjection = draftProjection,
                     initialListPosition = initialListPosition,
-                    onListPositionSnapshot = onListPositionSnapshot
+                    onListPositionSnapshot = onListPositionSnapshot,
+                    initialPresentationOverride = initialPresentationOverride
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
@@ -315,7 +322,8 @@ private fun SharedTasksLoadedBody(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
+    initialPresentationOverride: TasksPresentationState?
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -330,7 +338,8 @@ private fun SharedTasksLoadedBody(
             bottomContentPadding = bottomContentPadding,
             draftProjection = draftProjection,
             initialListPosition = initialListPosition,
-            onListPositionSnapshot = onListPositionSnapshot
+            onListPositionSnapshot = onListPositionSnapshot,
+            initialPresentationOverride = initialPresentationOverride
         )
     }
 }
@@ -348,7 +357,8 @@ private fun SharedTasksLoadedBodyContent(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
+    initialPresentationOverride: TasksPresentationState?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -357,9 +367,10 @@ private fun SharedTasksLoadedBodyContent(
         }
     val initialPresentationState =
         remember(viewModeRepository, defaultViewMode) {
-            TasksPresentationState.Default.copy(
-                selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode)
-            )
+            initialPresentationOverride
+                ?: TasksPresentationState.Default.copy(
+                    selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode)
+                )
         }
     var presentationState by remember(viewModeRepository) { mutableStateOf(initialPresentationState) }
     val sortedContent = remember(content) {

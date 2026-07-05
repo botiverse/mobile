@@ -559,3 +559,19 @@ internal class ComposeMembersAgentDetailVisualPage : BasePager() {
         setContent { MembersAgentDetailVisualContent() }
     }
 }
+
+@Page("compose_tasks_panel_visual", supportInLocal = true)
+internal class ComposeTasksPanelVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { TasksPanelVisualContent() }
+    }
+}
+
+@Page("compose_tasks_status_menu_visual", supportInLocal = true)
+internal class ComposeTasksStatusMenuVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { TasksStatusMenuVisualContent() }
+    }
+}
