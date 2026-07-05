@@ -242,6 +242,53 @@ internal enum class ThreadComposerSuggestionRefreshRequest {
     Channel
 }
 
+internal enum class ThreadComposerEnterAction {
+    AcceptMemberSuggestion,
+    AcceptChannelSuggestion,
+    CommitSuggestionToken,
+    Send,
+    Noop
+}
+
+internal fun threadComposerEnterAction(
+    trigger: KuiklyComposerSuggestionTrigger,
+    panelState: ThreadComposerSuggestionPanelState,
+    memberCount: Int,
+    channelCount: Int,
+    canSend: Boolean,
+    isImeComposing: Boolean
+): ThreadComposerEnterAction {
+    if (isImeComposing) return ThreadComposerEnterAction.Noop
+    return when (trigger) {
+        is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+            when (panelState) {
+                ThreadComposerSuggestionPanelState.MemberItems ->
+                    if (memberCount > 0) ThreadComposerEnterAction.AcceptMemberSuggestion else ThreadComposerEnterAction.CommitSuggestionToken
+                ThreadComposerSuggestionPanelState.MemberLoading,
+                ThreadComposerSuggestionPanelState.MemberEmpty,
+                ThreadComposerSuggestionPanelState.MemberError ->
+                    ThreadComposerEnterAction.CommitSuggestionToken
+                else ->
+                    if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
+            }
+
+        is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+            when (panelState) {
+                ThreadComposerSuggestionPanelState.ChannelItems ->
+                    if (channelCount > 0) ThreadComposerEnterAction.AcceptChannelSuggestion else ThreadComposerEnterAction.CommitSuggestionToken
+                ThreadComposerSuggestionPanelState.ChannelLoading,
+                ThreadComposerSuggestionPanelState.ChannelEmpty,
+                ThreadComposerSuggestionPanelState.ChannelError ->
+                    ThreadComposerEnterAction.CommitSuggestionToken
+                else ->
+                    if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
+            }
+
+        KuiklyComposerSuggestionTrigger.None ->
+            if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
+    }
+}
+
 internal fun threadComposerSuggestionRefreshRequest(
     focused: Boolean,
     trigger: KuiklyComposerSuggestionTrigger
@@ -1063,6 +1110,53 @@ internal fun ThreadComposerContent(
         }
     }
 
+    fun commitSuggestionToken() {
+        val triggerStart =
+            when (val trigger = suggestionTrigger) {
+                is KuiklyComposerSuggestionTrigger.MemberTrigger -> trigger.triggerStart
+                is KuiklyComposerSuggestionTrigger.ChannelTrigger -> trigger.triggerStart
+                KuiklyComposerSuggestionTrigger.None -> return
+            }
+        commitKuiklyComposerSuggestionToken(
+            text = text,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            triggerStart = triggerStart
+        )?.let { edit ->
+            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            focused = false
+            emitChange(nextText = edit.text)
+        }
+    }
+
+    fun sendComposerMessage() {
+        onEvent("send", null, null, null)
+        fieldValue = TextFieldValue("")
+        asTask = false
+        lastAcceptedLocalText = ""
+        lastAcceptedLocalAsTask = false
+        staleCallbackGuard = null
+    }
+
+    fun handleKeyboardSend() {
+        when (
+            threadComposerEnterAction(
+                trigger = suggestionTrigger,
+                panelState = suggestionPanelState,
+                memberCount = filteredMemberSuggestions.size,
+                channelCount = filteredChannelSuggestions.size,
+                canSend = canSend,
+                isImeComposing = fieldValue.composition != null
+            )
+        ) {
+            ThreadComposerEnterAction.AcceptMemberSuggestion -> filteredMemberSuggestions.firstComposerMemberSuggestionCandidate()?.let(::applyMemberSuggestion)
+            ThreadComposerEnterAction.AcceptChannelSuggestion -> filteredChannelSuggestions.firstOrNull()?.let(::applyChannelSuggestion)
+            ThreadComposerEnterAction.CommitSuggestionToken -> commitSuggestionToken()
+            ThreadComposerEnterAction.Send -> sendComposerMessage()
+            ThreadComposerEnterAction.Noop -> Unit
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.TopCenter
@@ -1178,11 +1272,7 @@ internal fun ThreadComposerContent(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (canSend) {
-                                    onEvent("send", null, null, null)
-                                    fieldValue = TextFieldValue("")
-                                    asTask = false
-                                }
+                                handleKeyboardSend()
                             }
                         ),
                         textStyle = SlockType.Input.copy(
@@ -1269,12 +1359,7 @@ internal fun ThreadComposerContent(
                                 enabled = canSend,
                                 sending = state.composerMode == "sending" || state.composerMode == "uploading"
                             ) {
-                                onEvent("send", null, null, null)
-                                fieldValue = TextFieldValue("")
-                                asTask = false
-                                lastAcceptedLocalText = ""
-                                lastAcceptedLocalAsTask = false
-                                staleCallbackGuard = null
+                                sendComposerMessage()
                             }
                         }
                     }
@@ -1471,6 +1556,9 @@ internal fun String?.toComposerChannelMentionLabel(): String? {
     return "#${display.removePrefix("#")}"
 }
 
+internal fun List<KuiklyComposerMemberItem>.firstComposerMemberSuggestionCandidate(): KuiklyComposerMemberItem? =
+    firstOrNull { it.inMentionChannel } ?: firstOrNull()
+
 internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
         .map { attachment -> attachment.id }
@@ -1594,7 +1682,7 @@ private fun ComposerMemberSuggestionPanel(
                 ComposerMemberSuggestionRow(
                     member = member,
                     inChannel = false,
-                    selected = false,
+                    selected = inChannel.isEmpty() && index == headerIndex + 1,
                     agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )
@@ -2493,6 +2581,27 @@ internal fun applyKuiklyComposerSuggestionEdit(
     return KuiklyComposerSuggestionEdit(
         text = nextText,
         cursor = triggerStart + replacement.length
+    )
+}
+
+internal fun commitKuiklyComposerSuggestionToken(
+    text: String,
+    selectionStart: Int,
+    selectionEnd: Int,
+    triggerStart: Int
+): KuiklyComposerSuggestionEdit? {
+    val safeStart = selectionStart.coerceIn(0, text.length)
+    val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
+    if (triggerStart < 0 || triggerStart > safeStart) return null
+    val nextText =
+        if (safeEnd < text.length && text[safeEnd].isWhitespace()) {
+            text
+        } else {
+            text.substring(0, safeEnd) + " " + text.substring(safeEnd)
+        }
+    return KuiklyComposerSuggestionEdit(
+        text = nextText,
+        cursor = (safeEnd + 1).coerceIn(0, nextText.length)
     )
 }
 

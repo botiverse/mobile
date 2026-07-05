@@ -49,6 +49,30 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionTokenCommitAddsTrailingSpaceAndMovesCursor() {
+        val edit = commitKuiklyComposerSuggestionToken(
+            text = "ping @ar",
+            selectionStart = 8,
+            selectionEnd = 8,
+            triggerStart = 5
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @ar ", cursor = 9), edit)
+    }
+
+    @Test
+    fun suggestionTokenCommitDoesNotDoubleExistingSpace() {
+        val edit = commitKuiklyComposerSuggestionToken(
+            text = "ping @ar world",
+            selectionStart = 8,
+            selectionEnd = 8,
+            triggerStart = 5
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @ar world", cursor = 9), edit)
+    }
+
+    @Test
     fun memberSuggestionTriggerShowsLoadingPanelBeforeItemsArrive() {
         assertEquals(
             ThreadComposerSuggestionPanelState.MemberLoading,
@@ -255,6 +279,100 @@ class ThreadComposerLayoutTest {
             threadComposerSuggestionRefreshRequest(
                 focused = true,
                 trigger = KuiklyComposerSuggestionTrigger.None
+            )
+        )
+    }
+
+    @Test
+    fun enterAcceptsMemberSuggestionBeforeSendWhenItemsAreVisible() {
+        assertEquals(
+            ThreadComposerEnterAction.AcceptMemberSuggestion,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 1,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = false
+            )
+        )
+    }
+
+    @Test
+    fun firstMemberSuggestionCandidateMatchesVisualGrouping() {
+        val outside =
+            KuiklyComposerMemberItem(
+                displayName = "Outside",
+                handle = "outside",
+                inMentionChannel = false
+            )
+        val inside =
+            KuiklyComposerMemberItem(
+                displayName = "Inside",
+                handle = "inside",
+                inMentionChannel = true
+            )
+
+        assertEquals(inside, listOf(outside, inside).firstComposerMemberSuggestionCandidate())
+        assertEquals(outside, listOf(outside).firstComposerMemberSuggestionCandidate())
+    }
+
+    @Test
+    fun enterAcceptsChannelSuggestionBeforeSendWhenItemsAreVisible() {
+        assertEquals(
+            ThreadComposerEnterAction.AcceptChannelSuggestion,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "des", triggerStart = 5),
+                panelState = ThreadComposerSuggestionPanelState.ChannelItems,
+                memberCount = 0,
+                channelCount = 1,
+                canSend = true,
+                isImeComposing = false
+            )
+        )
+    }
+
+    @Test
+    fun enterCommitsOpenLoadingSuggestionTokenInsteadOfSending() {
+        assertEquals(
+            ThreadComposerEnterAction.CommitSuggestionToken,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
+                panelState = ThreadComposerSuggestionPanelState.MemberLoading,
+                memberCount = 0,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = false
+            )
+        )
+    }
+
+    @Test
+    fun enterSendsWhenNoSuggestionTriggerIsActive() {
+        assertEquals(
+            ThreadComposerEnterAction.Send,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.None,
+                panelState = ThreadComposerSuggestionPanelState.Hidden,
+                memberCount = 0,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = false
+            )
+        )
+    }
+
+    @Test
+    fun enterDefersWhileImeCompositionIsActive() {
+        assertEquals(
+            ThreadComposerEnterAction.Noop,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "pin", triggerStart = 0),
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 1,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = true
             )
         )
     }
