@@ -49,6 +49,7 @@ class KmpVisualScreenshotCaptureTest {
 
             override fun starting(description: Description) {
                 startUptimeMs = SystemClock.uptimeMillis()
+                currentCaseId = null
                 // Log the display/viewport condition up front (task #367): a
                 // case that later renders blank should carry the exact
                 // width/height/density it ran under, so a CI-only failure can be
@@ -74,6 +75,7 @@ class KmpVisualScreenshotCaptureTest {
                     "CASE_END ${description.methodName} status=FAIL durationMs=$durationMs error=${e.javaClass.simpleName}: ${e.message}"
                 )
                 recordTiming("FAIL ${description.methodName} durationMs=$durationMs error=${e.javaClass.simpleName}")
+                currentCaseId?.let { writeExceptionFailureArtifact(it, e) }
             }
         }
 
@@ -88,6 +90,12 @@ class KmpVisualScreenshotCaptureTest {
     @get:Rule
     val visualCaptureRules: RuleChain =
         RuleChain.outerRule(caseTimingWatcher).around(perCaseTimeout)
+
+    // Set at the start of each capture so caseTimingWatcher.failed() can write a
+    // failure.json even when the case dies on the exception/timeout path (which
+    // never reaches writeFailureArtifacts) — task #370: form-field and other
+    // exception/timeout failures otherwise leave no on-site diagnostics.
+    private var currentCaseId: String? = null
 
 
     @Test
@@ -1306,6 +1314,7 @@ class KmpVisualScreenshotCaptureTest {
         pageData: JSONObject,
         crop: VisualCrop = FULL_VIEWPORT_CROP
     ) {
+        currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
@@ -1354,6 +1363,7 @@ class KmpVisualScreenshotCaptureTest {
         settleMs: Long = 1_500,
         beforeScreenshot: (() -> Unit)? = null
     ) {
+        currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
@@ -1847,6 +1857,52 @@ class KmpVisualScreenshotCaptureTest {
             if (laidOut && view.visibility == View.VISIBLE) counts[2]++
         } else {
             for (i in 0 until view.childCount) summarizeViewTree(view.getChildAt(i), counts)
+        }
+    }
+
+    // Failure-path safety net (task #370): validation failures go through
+    // writeFailureArtifacts (full image + #90 diagnostics), but a case that dies
+    // on the exception/timeout path (e.g. form-field's intermittent flake) never
+    // reaches it and used to leave NO on-site diagnostics — only logcat. Write a
+    // minimal failure.json here so the failure is at least triageable from the
+    // published artifact. Timeout-safe on purpose: display metrics only, NO
+    // view-tree walk / runOnMainSync, since a timeout means the main thread may
+    // itself be blocked. Skips if a full failure.json already exists.
+    private fun writeExceptionFailureArtifact(caseId: String, error: Throwable) {
+        try {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val dir = visualOutputDir(context)
+            dir.mkdirs()
+            val file = File(dir, "$caseId.failure.json")
+            if (file.exists()) return
+            val dm = context.resources.displayMetrics
+            file.writeText(
+                """
+                {
+                  "provider": "android",
+                  "providerType": "android-kuikly-shared-page",
+                  "source": "kmp-shared",
+                  "caseId": "$caseId",
+                  "status": "failed",
+                  "failurePath": "exception-or-timeout",
+                  "error": {
+                    "type": "${error.javaClass.name}",
+                    "message": ${JSONObject.quote(error.message ?: "")}
+                  },
+                  "diagnostics": {
+                    "displayWidthPx": ${dm.widthPixels},
+                    "displayHeightPx": ${dm.heightPixels},
+                    "densityDpi": ${dm.densityDpi},
+                    "note": "view-tree diagnostics skipped on the exception/timeout path (main thread may be blocked)"
+                  },
+                  "capturedAt": "${System.currentTimeMillis()}"
+                }
+                """.trimIndent() + "\n"
+            )
+            mirrorFileForAdbPull(context, file)
+            Log.i(VISUAL_LOG_TAG, "wrote exception-path failure.json for $caseId (${error.javaClass.simpleName})")
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "writeExceptionFailureArtifact failed: ${t.message}")
         }
     }
 
