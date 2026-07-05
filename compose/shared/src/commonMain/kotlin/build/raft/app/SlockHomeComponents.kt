@@ -2499,7 +2499,6 @@ private fun SlockSidebarSortOverlay(
     var draggedStartIndex by remember(items) { mutableStateOf(0) }
     var pointerViewportY by remember(items) { mutableStateOf(0f) }
     var previewOrder by remember(items) { mutableStateOf(order) }
-    var draggedRowOffsetPx by remember(items) { mutableStateOf(0f) }
 
     fun visibleSortRowBounds(): List<SlockSortRowBounds> =
         listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
@@ -2514,14 +2513,14 @@ private fun SlockSidebarSortOverlay(
         val rows = visibleSortRowBounds()
         val target = resolveSortTargetIndex(pointerViewportY, rows, order.lastIndex)
         previewOrder = order.moveItem(active, target)
-        val naturalTop = rows.firstOrNull { it.index == draggedStartIndex }?.top
-        draggedRowOffsetPx =
-            if (naturalTop != null) pointerViewportY - (naturalTop + rowStepPx / 2f) else pointerViewportY
     }
 
     // Continuous auto-scroll while the finger sits in an edge zone — required
     // for long sections (140+ channels): the user holds near the edge and the
-    // list keeps scrolling even without further finger movement.
+    // list keeps scrolling even without further finger movement. The drag
+    // gesture lives on the CONTAINER (below), not on a list row, so scrolling
+    // the dragged row off-screen no longer disposes the row and cancels the
+    // gesture (task #356 device feedback: auto-release + jitter).
     LaunchedEffect(draggedId) {
         if (draggedId == null) return@LaunchedEffect
         while (draggedId != null) {
@@ -2535,8 +2534,13 @@ private fun SlockSidebarSortOverlay(
                     else -> 0f
                 }
             if (delta != 0f) {
-                listState.dispatchRawDelta(delta)
+                val consumed = listState.dispatchRawDelta(delta)
                 recomputeDrag()
+                slockLogInfo(
+                    "SlockHomeSort",
+                    "autoscroll delta=$delta consumed=$consumed pointerY=$pointerViewportY " +
+                        "target=${previewOrder.indexOf(draggedId)} firstVisible=${listState.firstVisibleItemIndex}"
+                )
             }
             withFrameNanos { }
         }
@@ -2548,59 +2552,112 @@ private fun SlockSidebarSortOverlay(
         dismissEnabled = draggedId == null,
         contentSpacing = 12.dp
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            userScrollEnabled = draggedId == null
-        ) {
-            items(order.size, key = { index -> "sort-${order[index]}" }) { index ->
-                val itemId = order[index]
-                val item = itemsById[itemId] ?: return@items
-                val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                val dragOffsetY =
-                    when {
-                        draggedId == null -> 0f
-                        draggedId == itemId -> draggedRowOffsetPx
-                        else -> {
-                            val previewIndex = previewOrder.indexOf(itemId)
-                            if (previewIndex >= 0) (previewIndex - index) * rowStepPx else 0f
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+            // Container-level long-press drag: identify the row under the finger
+            // at long-press, then track the finger. Because the gesture is on
+            // the container it survives list scrolling and preview reordering.
+            LazyColumn(
+                state = listState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(order) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { pos ->
+                                    val rows = visibleSortRowBounds()
+                                    val target = resolveSortTargetIndex(pos.y, rows, order.lastIndex)
+                                    val id = order.getOrNull(target)
+                                    if (id != null) {
+                                        draggedId = id
+                                        draggedStartIndex = target
+                                        pointerViewportY = pos.y
+                                        previewOrder = order
+                                        slockLogInfo(
+                                            "SlockHomeSort",
+                                            "dragStart id=$id index=$target posY=${pos.y} size=${order.size}"
+                                        )
+                                    }
+                                },
+                                onDragEnd = {
+                                    val changed = draggedId != null && previewOrder != order
+                                    slockLogInfo(
+                                        "SlockHomeSort",
+                                        "dragEnd changed=$changed from=${order.indexOf(draggedId)} " +
+                                            "to=${previewOrder.indexOf(draggedId)}"
+                                    )
+                                    if (changed) order = previewOrder
+                                    draggedId = null
+                                },
+                                onDragCancel = {
+                                    slockLogInfo("SlockHomeSort", "dragCancel id=$draggedId")
+                                    draggedId = null
+                                }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                if (draggedId != null) {
+                                    pointerViewportY += dragAmount.y
+                                    recomputeDrag()
+                                }
+                            }
+                        },
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                userScrollEnabled = draggedId == null
+            ) {
+                items(order.size, key = { index -> "sort-${order[index]}" }) { index ->
+                    val itemId = order[index]
+                    val item = itemsById[itemId] ?: return@items
+                    val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    // Dragged row renders as an invisible placeholder (keeps its
+                    // slot height); the visible copy is the floating overlay.
+                    // Other rows shift to open a gap at the preview position.
+                    val dragOffsetY =
+                        when {
+                            draggedId == null || draggedId == itemId -> 0f
+                            else -> {
+                                val previewIndex = previewOrder.indexOf(itemId)
+                                if (previewIndex >= 0) (previewIndex - index) * rowStepPx else 0f
+                            }
                         }
+                    if (draggedId == itemId) {
+                        Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
+                    } else {
+                        ChannelRow(
+                            name = item.name,
+                            symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
+                            avatarLabel = if (isDirectMessage) item.avatarLabel else null,
+                            joined = item.joined || isDirectMessage,
+                            showPresence = false,
+                            interactionState = ChannelRowInteractionState.Default,
+                            captureLongPressAnchor = false,
+                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                            dragOffsetY = dragOffsetY
+                        )
                     }
-                ChannelRow(
-                    name = item.name,
-                    symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
-                    avatarLabel = if (isDirectMessage) item.avatarLabel else null,
-                    joined = item.joined || isDirectMessage,
-                    showPresence = false,
-                    interactionState =
-                        if (draggedId == itemId) ChannelRowInteractionState.Pressed else ChannelRowInteractionState.Default,
-                    captureLongPressAnchor = false,
-                    dragEnabled = order.size > 1,
-                    rowDragEnabled = true,
-                    dragOffsetY = dragOffsetY,
-                    onDragStart = {
-                        val startTop = visibleSortRowBounds().firstOrNull { it.index == index }?.top ?: 0f
-                        draggedId = itemId
-                        draggedStartIndex = index
-                        pointerViewportY = startTop + rowStepPx / 2f
-                        previewOrder = order
-                        draggedRowOffsetPx = 0f
-                    },
-                    onDragMove = { deltaY ->
-                        if (draggedId != null) {
-                            pointerViewportY += deltaY
-                            recomputeDrag()
-                        }
-                    },
-                    onDragEnd = {
-                        if (draggedId != null && previewOrder != order) {
-                            order = previewOrder
-                        }
-                        draggedId = null
-                    },
-                    onDragCancel = { draggedId = null }
-                )
+                }
+            }
+
+            // Floating copy of the dragged row, pinned under the finger. Never
+            // part of the LazyColumn, so it is never disposed mid-drag.
+            val active = draggedId
+            if (active != null) {
+                val item = itemsById[active]
+                if (item != null) {
+                    val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    ChannelRow(
+                        name = item.name,
+                        symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
+                        avatarLabel = if (isDirectMessage) item.avatarLabel else null,
+                        joined = item.joined || isDirectMessage,
+                        showPresence = false,
+                        interactionState = ChannelRowInteractionState.Pressed,
+                        captureLongPressAnchor = false,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = HomeListHorizontalPadding)
+                                .offset { IntOffset(0, (pointerViewportY - rowStepPx / 2f).roundToInt()) }
+                    )
+                }
             }
         }
         SlockModalFullWidthActionButton(
