@@ -1025,7 +1025,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
+    fun startKeepsPayloadAccessDefaultsWithoutHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
@@ -1066,9 +1066,11 @@ class SharedThreadStoreTest {
         assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(null, payload.subtitle)
         assertEquals("channel", payload.channelKind)
-        assertEquals(false, payload.joined)
-        assertEquals(false, payload.canSend)
-        assertEquals(false, payload.composer.enabled)
+        // fb845a19: with the durable home snapshot removed there is no local
+        // access fallback to rewrite joined/canSend — the payload keeps its
+        // route defaults.
+        assertEquals(true, payload.joined)
+        assertEquals(true, payload.canSend)
         scope.cancel()
     }
 
@@ -3466,9 +3468,13 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
-        assertEquals("all", payload.title)
-        assertEquals("General updates", payload.subtitle)
-        assertEquals(4, payload.membersCount)
+        // fb845a19 removed the durable HomeSnapshot cache: identity titles can
+        // no longer be replaced from the local home lookup, so the payload
+        // header stays blank and display resolution happens in
+        // threadHeaderDisplayTitle. Home-derived subtitle/membersCount
+        // enrichment is gone with its source.
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("repository body", payload.messages.single().body)
     }
 
