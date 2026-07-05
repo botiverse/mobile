@@ -1,25 +1,25 @@
 # Slock Visual Testing
 
-Generated: 2026-07-04 22:07:28 UTC
-Latest run: 0baa579-20260704220716
-Latest commit: 0baa579-20260704220716
-Commit subject: fix(visual): align message share selection toolbar
+Generated: 2026-07-05 06:52:14 UTC
+Latest run: 11f2525-20260705065201
+Latest commit: 11f2525-20260705065201
+Commit subject: feat(#107 consumer): drive conversation-flow translation from the local mode (#44)
 Providers: react vs android
-Summary: total 82, same 0, pass 0, basic-pass 1, different 79, missing 2
+Summary: total 82, same 0, pass 0, basic-pass 1, different 78, missing 3
 AI analysis: ready 0 / total 82, pending 82
-Visual coverage matrix: active 83 / total 101, pending 16, skipped 2
+Visual coverage matrix: active 83 / total 102, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 72, pending 2, total 75
-- Screens Parity (real-screen): active 11, pending 14, total 26
+- Components Parity (component-fixture): active 73, pending 2, total 77
+- Screens Parity (real-screen): active 10, pending 14, total 25
 
 ## Provider Coverage
 
-- react: active 84, pending 13, unsupported 0
-- android: active 82, pending 15, unsupported 0
-- harmony: active 0, pending 77, unsupported 0
+- react: active 85, pending 13, unsupported 0
+- android: active 81, pending 17, unsupported 0
+- harmony: active 0, pending 78, unsupported 0
 
 ## Pending Coverage Rows
 
@@ -36,7 +36,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.composer.as-task-selected: Real React MessageInput with As Task checked vs Android connected visual-only rendering of ThreadComposerContent seeded with seedAsTask=true. This is a focused diff for the selected As Task toggle.
 - components.thread.composer.channel-suggestions: Real React MessageInput #channel autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the channel suggestion panel open. Covers the # icon, channel name, and description row layout.
 - components.thread.composer.empty: Real React MessageInput empty state vs Android connected visual-only rendering of ThreadComposerContent with an empty seed. This case specifically protects the disabled send button color/opacity and empty placeholder treatment.
-- components.thread.composer.file-previews: Real React MessageInput pending file chips vs Android connected visual-only rendering of ThreadComposerContent with ready, uploading, and failed generic file attachment states.
+- components.thread.composer.file-previews: fixture alignment deferred — artin 2026-07-05: 例子没对齐，但也许不用做了
 - components.thread.composer.image-preview: Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.
 - components.thread.composer.member-suggestions: Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.
 - components.thread.composer.states: Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.
@@ -74,6 +74,8 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.settings.notifications.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.page.states: Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.
 - components.settings.server.profile: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
+- components.tasks.panel.states: Real React TasksPanel (server mode, list view) with shared tasksFixture.json rows covering todo / in_progress / in_review / done status sections, task numbers, and per-status InlineBadgeEditor chips.
+- components.tasks.status-menu: Real React InlineBadgeEditor status menu rendered open with all five selectable statuses (Todo / In Progress / In Review / Done / Closed) and the current status check-marked.
 - components.thread.files.list: Real React ChannelFilesPanel vs Android connected visual-only rendering of ThreadFilesContent with image, PDF, archive, download/open state, and load-more affordance.
 - components.thread.header.states: React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.
 - screens.auth.forgot-password: Missing forgot-password route parity for the auth recovery flow.
@@ -83,7 +85,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.home.saved: Existing components.home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.
 - screens.members.agent-detail.activity: Real Members route capture for the Activity tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.apps: Real Members route capture for the Apps tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
-- screens.members.agent-detail.dms: Real Members route capture for the Agent DMs tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.permissions: Real Members route capture for the Permissions tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.profile: Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.reminders: Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
@@ -104,6 +105,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 11f2525-20260705065201: react vs android, total 82, pass 0, basic-pass 1, different 78, matrix runs/11f2525-20260705065201/component-matrix.json, report runs/11f2525-20260705065201/report.html
 - 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, report runs/0baa579-20260704220716/report.html
 - 0458783-20260704203528: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0458783-20260704203528/component-matrix.json, report runs/0458783-20260704203528/report.html
 - 963d46cb1-20260703121500: react vs android, total 82, pass 0, basic-pass 3, different 78, matrix runs/963d46cb1-20260703121500/component-matrix.json, report runs/963d46cb1-20260703121500/report.html
