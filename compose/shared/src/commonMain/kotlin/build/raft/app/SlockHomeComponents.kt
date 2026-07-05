@@ -2274,7 +2274,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -2419,6 +2419,15 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (positionPrefix != null) {
+                Text(
+                    positionPrefix,
+                    style = SlockType.Button,
+                    color = SlockColor.TextMutedGrayArgb,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.widthIn(min = 22.dp).padding(end = SlockSpacing.Xs)
+                )
+            }
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
                 if (avatarLabel != null) {
                     ChannelAvatar(avatarWireValue, avatarLabel, presence, showPresence)
@@ -2546,6 +2555,14 @@ private fun SlockSidebarSortOverlay(
         }
     }
 
+    // Preview order: where things WOULD sit if the drag dropped now. Rows never
+    // physically move (that reflow was the jitter source), but their 1-based
+    // position numbers are read from this preview, so a drag visibly renumbers
+    // the affected rows (e.g. dragging 5 onto 6 shows the held row as 6 and the
+    // old 6 as 5) without any layout churn.
+    val previewOrder =
+        draggedId?.takeIf { targetIndex >= 0 }?.let { order.moveItem(it, targetIndex) } ?: order
+
     SlockUnifiedDialog(
         title = title,
         onDismiss = onDismiss,
@@ -2616,10 +2633,11 @@ private fun SlockSidebarSortOverlay(
                     if (draggedId == itemId) {
                         Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
                     } else {
-                        // 1-based position prefix so the on-device order is verifiable.
-                        val position = index + 1
+                        // Preview-order position (1-based), rendered before the row icon.
+                        val position = previewOrder.indexOf(itemId) + 1
                         ChannelRow(
-                            name = "$position. ${item.name}",
+                            name = item.name,
+                            positionPrefix = "$position",
                             symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                             avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                             joined = item.joined || isDirectMessage,
@@ -2639,9 +2657,16 @@ private fun SlockSidebarSortOverlay(
             val active = draggedId
             if (active != null && targetIndex >= 0) {
                 val bounds = visibleSortRowBounds()
+                // Direction-aware so the line matches where moveItem actually drops:
+                // dragging DOWN lands after the target row (line at its bottom),
+                // dragging UP lands before it (line at its top).
+                val targetRow = bounds.firstOrNull { it.index == targetIndex }
                 val lineY =
-                    bounds.firstOrNull { it.index == targetIndex }?.top
-                        ?: bounds.maxByOrNull { it.index }?.let { it.top + it.size }
+                    when {
+                        targetRow != null && targetIndex >= draggedStartIndex -> targetRow.top + targetRow.size
+                        targetRow != null -> targetRow.top
+                        else -> bounds.maxByOrNull { it.index }?.let { it.top + it.size }
+                    }
                 if (lineY != null) {
                     Box(
                         modifier =
@@ -2661,9 +2686,10 @@ private fun SlockSidebarSortOverlay(
                 val item = itemsById[active]
                 if (item != null) {
                     val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                    val position = (if (targetIndex >= 0) targetIndex else draggedStartIndex) + 1
+                    val position = previewOrder.indexOf(active) + 1
                     ChannelRow(
-                        name = "$position. ${item.name}",
+                        name = item.name,
+                        positionPrefix = "$position",
                         symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                         avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                         joined = item.joined || isDirectMessage,
