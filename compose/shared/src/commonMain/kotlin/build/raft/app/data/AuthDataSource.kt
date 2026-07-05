@@ -382,6 +382,16 @@ class SharedAuthDataSource(
         }
     }
 
+    suspend fun resendVerification(): SharedAuthResult<Unit> {
+        val bearer =
+            sessionStore.readSession()?.bearer()
+                ?: return SharedAuthResult.Unauthenticated
+        return when (val response = api.resendVerification(bearer)) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(Unit)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
     suspend fun currentSession(): SharedAuthResult<StoredAuthSession> =
         sessionStore.readSession()?.let { SharedAuthResult.Success(it) }
             ?: SharedAuthResult.Unauthenticated
@@ -830,6 +840,7 @@ interface SlockAuthApi {
     ): AuthApiResult<AuthLoginResponse>
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
+    suspend fun resendVerification(authorization: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
     suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
@@ -925,6 +936,16 @@ class SlockAuthApiClient(
         if (!response.isSuccessful) return response.toAuthApiFailure()
         return response.mapAuthBody(
             "auth_forgot_password_contract_mismatch",
+            AuthOkResponseDto.serializer(),
+            diagnosticsLogger
+        ) { Unit }
+    }
+
+    override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> {
+        val response = transport.resendVerification(authorization)
+        if (!response.isSuccessful) return response.toAuthApiFailure()
+        return response.mapAuthBody(
+            "auth_resend_verification_contract_mismatch",
             AuthOkResponseDto.serializer(),
             diagnosticsLogger
         ) { Unit }

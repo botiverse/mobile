@@ -292,6 +292,9 @@ class SharedKtorSlockAuthTransport internal constructor(
     override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse =
         request(path = "auth/forgot-password", method = "POST", bodyText = bodyText)
 
+    override suspend fun resendVerification(authorization: String): AuthNetworkResponse =
+        request(path = "auth/resend-verification", method = "POST", authorization = authorization)
+
     override suspend fun currentUser(authorization: String): AuthNetworkResponse =
         request(path = "auth/me", method = "GET", authorization = authorization)
 

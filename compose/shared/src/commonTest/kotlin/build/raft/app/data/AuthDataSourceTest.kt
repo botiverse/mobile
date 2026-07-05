@@ -466,6 +466,63 @@ class AuthDataSourceTest {
         assertEquals(null, store.readSession()?.selectedServerId)
     }
 
+    @Test
+    fun resendVerificationSendsBearerFromStoredSession() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "verify-token"))
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.resendVerification()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("Bearer verify-token", api.resendVerificationAuthorization)
+    }
+
+    @Test
+    fun resendVerificationWithoutSessionIsUnauthenticated() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.resendVerification()
+
+        assertEquals(SharedAuthResult.Unauthenticated, result)
+        assertEquals(null, api.resendVerificationAuthorization)
+    }
+
+    @Test
+    fun resendVerificationSurfacesRateLimitMessage() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                resendVerificationResponse =
+                    AuthNetworkResponse(429, null, """{"error":"Too many requests. Please wait."}""")
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.resendVerification()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("Too many requests. Please wait.", result.message)
+    }
+
+    @Test
+    fun resendVerificationSurfacesAlreadyVerifiedMessage() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                resendVerificationResponse =
+                    AuthNetworkResponse(400, null, """{"error":"Email already verified"}""")
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.resendVerification()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Validation, result.code)
+        assertEquals("Email already verified", result.message)
+    }
+
 
     @Test
     fun restoreSessionRefreshesUnauthorizedCurrentUserInSharedLayer() = runBlocking {
@@ -850,7 +907,9 @@ class AuthDataSourceTest {
         private val createServerResponse: AuthNetworkResponse =
             AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
         private val serversResponses: ArrayDeque<AuthNetworkResponse>? = null,
-        private val throwCurrentUser: Boolean = false
+        private val throwCurrentUser: Boolean = false,
+        private val resendVerificationResponse: AuthNetworkResponse =
+            AuthNetworkResponse(200, """{"ok":true}""")
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
@@ -867,6 +926,8 @@ class AuthDataSourceTest {
         var mobileOAuthCompleteBody: String? = null
             private set
         var currentUserAuthorization: String? = null
+            private set
+        var resendVerificationAuthorization: String? = null
             private set
         var serversAuthorization: String? = null
             private set
@@ -903,6 +964,11 @@ class AuthDataSourceTest {
         override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse {
             forgotPasswordBody = bodyText
             return AuthNetworkResponse(200, """{"ok":true,"message":"sent"}""")
+        }
+
+        override suspend fun resendVerification(authorization: String): AuthNetworkResponse {
+            resendVerificationAuthorization = authorization
+            return resendVerificationResponse
         }
 
         override suspend fun currentUser(authorization: String): AuthNetworkResponse {

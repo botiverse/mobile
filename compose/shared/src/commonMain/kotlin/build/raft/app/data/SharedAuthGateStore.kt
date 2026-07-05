@@ -92,7 +92,9 @@ class SharedAuthGateStore(
     }
 
     private fun StoredAuthSession.asGateState(): SharedAuthGateState =
-        if (selectedServerId.isNullOrBlank()) {
+        if (user.emailVerified == false) {
+            SharedAuthGateState.EmailVerificationRequired(this)
+        } else if (selectedServerId.isNullOrBlank()) {
             SharedAuthGateState.ServerRequired(this)
         } else {
             SharedAuthGateState.Ready(this)
@@ -142,6 +144,7 @@ sealed interface SharedAuthGateIntent {
 sealed interface SharedAuthGateState {
     data object Restoring : SharedAuthGateState
     data object AuthRequired : SharedAuthGateState
+    data class EmailVerificationRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class ServerRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class Ready(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
@@ -162,6 +165,7 @@ private fun SharedAuthGateState.diagnosticsName(): String =
     when (this) {
         SharedAuthGateState.Restoring -> "restoring"
         SharedAuthGateState.AuthRequired -> "auth_required"
+        is SharedAuthGateState.EmailVerificationRequired -> "email_verification_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
         is SharedAuthGateState.Error -> "error"
@@ -171,6 +175,7 @@ private fun SharedAuthGateState.hasSelectedServer(): Boolean =
     when (this) {
         is SharedAuthGateState.Ready -> !session.selectedServerId.isNullOrBlank()
         is SharedAuthGateState.ServerRequired -> !session.selectedServerId.isNullOrBlank()
+        is SharedAuthGateState.EmailVerificationRequired -> !session.selectedServerId.isNullOrBlank()
         SharedAuthGateState.AuthRequired,
         is SharedAuthGateState.Error,
         SharedAuthGateState.Restoring -> false

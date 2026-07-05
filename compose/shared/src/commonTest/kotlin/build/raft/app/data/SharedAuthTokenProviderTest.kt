@@ -205,6 +205,9 @@ class SharedAuthTokenProviderTest {
         override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
             error("not used")
 
+        override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
+            error("not used")
+
         override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
             error("not used")
 

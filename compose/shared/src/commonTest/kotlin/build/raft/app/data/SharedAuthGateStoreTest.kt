@@ -43,6 +43,46 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
+    fun restoreUnverifiedEmailMovesToEmailVerificationRequired() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val store =
+            SharedAuthGateStore(
+                restoreSession = {
+                    SharedAuthResult.Success(
+                        storedSession(selectedServerId = "server-1", emailVerified = false)
+                    )
+                },
+                scope = scope
+            )
+
+        store.accept(SharedAuthGateIntent.Restore)
+
+        val state = store.state.value
+        assertTrue(state is SharedAuthGateState.EmailVerificationRequired)
+        assertEquals("user@slock.ai", state.session.user.email)
+        scope.cancel()
+    }
+
+    @Test
+    fun restoreVerifiedEmailWithoutServerMovesToServerRequired() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val store =
+            SharedAuthGateStore(
+                restoreSession = {
+                    SharedAuthResult.Success(
+                        storedSession(selectedServerId = null, emailVerified = true)
+                    )
+                },
+                scope = scope
+            )
+
+        store.accept(SharedAuthGateIntent.Restore)
+
+        assertTrue(store.state.value is SharedAuthGateState.ServerRequired)
+        scope.cancel()
+    }
+
+    @Test
     fun unauthenticatedRestoreMovesToAuthRequired() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store =
@@ -108,9 +148,18 @@ class SharedAuthGateStoreTest {
         scope.cancel()
     }
 
-    private fun storedSession(selectedServerId: String?): StoredAuthSession =
+    private fun storedSession(
+        selectedServerId: String?,
+        emailVerified: Boolean? = null
+    ): StoredAuthSession =
         StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "user@slock.ai", displayName = "Artin"),
+            user =
+                StoredAuthUser(
+                    id = "user-1",
+                    email = "user@slock.ai",
+                    displayName = "Artin",
+                    emailVerified = emailVerified
+                ),
             accessToken = "access-token",
             refreshToken = "refresh-token",
             selectedServerId = selectedServerId,
