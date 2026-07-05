@@ -13321,8 +13321,14 @@ private val SearchSort.searchKey: String
             SearchSort.Recent -> "recent"
         }
 
-private fun ConversationSummary.searchMatches(query: String): Boolean =
-    listOf(name, subtitle.orEmpty(), channelId?.value.orEmpty(), threadId.value)
+internal fun ConversationSummary.searchMatches(query: String): Boolean =
+    listOfNotNull(
+        name,
+        if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
+        subtitle.orEmpty(),
+        channelId?.value.orEmpty(),
+        threadId.value
+    )
         .any { it.lowercase().contains(query) }
 
 private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
