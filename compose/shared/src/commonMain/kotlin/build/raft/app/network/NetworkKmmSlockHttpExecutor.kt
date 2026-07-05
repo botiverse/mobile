@@ -16,12 +16,12 @@ import kotlinx.coroutines.CancellationException
 import kotlin.concurrent.Volatile
 
 /**
- * OHOS uses the KuiklyBase NetworkKMM client (pbcurlwrapper + libcurl +
- * openssl) instead of Ktor: the Ktor CIO engine has no native TLS on OHOS
- * ("TLS sessions are not supported on Native platform"), which broke every
- * HTTPS call including login. See #Kuiklybase task #6.
+ * All platforms route HTTP through the KuiklyBase NetworkKMM client
+ * (task #12): OHOS because Ktor CIO has no native TLS there (task #6),
+ * Android/iOS so the app has one explicit network stack with pooling
+ * owned by the infra library (raft.4).
  */
-internal actual fun createPlatformSlockHttpExecutor(
+internal fun createPlatformSlockHttpExecutor(
     warningLogger: (String) -> Unit
 ): SlockHttpExecutor = NetworkKmmSlockHttpExecutor(warningLogger)
 
@@ -182,3 +182,6 @@ private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
         SlockHttpExecutorResponse(code = status, bodyText = null, errorBodyText = text ?: error?.message)
     }
 }
+
+internal fun String.sanitizeMultipartFileName(): String =
+    replace("\"", "'").replace("\r", "").replace("\n", "")

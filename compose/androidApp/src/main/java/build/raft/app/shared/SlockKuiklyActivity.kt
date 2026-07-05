@@ -94,7 +94,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.data.SlockAndroidSqlDatabaseContext
-import build.raft.app.network.SharedKtorBinaryDownloader
+import build.raft.app.network.SharedBinaryDownloader
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -1386,7 +1386,7 @@ private class SlockKuiklyImageAdapter(
                         }
                         val response =
                                 runBlocking {
-                                    SharedKtorBinaryDownloader.fetchBytes(imageLoadOption.src)
+                                    SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
                                 }
                         drawableFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
                                 ?: throw IllegalStateException("Image decode failed")
@@ -1559,7 +1559,7 @@ private class SlockKuiklyImageAdapter(
         }
         if (isWebUrl()) {
             return runBlocking {
-                SharedKtorBinaryDownloader.fetchBytes(src).bytes.toString(StandardCharsets.UTF_8)
+                SharedBinaryDownloader.fetchBytes(src).bytes.toString(StandardCharsets.UTF_8)
             }
         }
         return raw
@@ -3460,7 +3460,7 @@ internal class SlockKuiklyBridgeModule(
             val responseContentType =
                     runBlocking {
                         tempFile.outputStream().use { output ->
-                            SharedKtorBinaryDownloader.download(
+                            SharedBinaryDownloader.download(
                                 url = urlText,
                                 onStart = { totalBytes ->
                                     lastTotalBytes = totalBytes

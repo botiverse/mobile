@@ -93,10 +93,6 @@ pluginManagement {
 
     val sqldelightVersion = "2.1.0-KBA-001"
     val sqliterVersion = "1.3.3-KBA-001"
-    val ktorOhosVersion =
-        System.getenv("SLOCK_KTOR_OHOS_VERSION")
-            ?.takeIf { it.isNotBlank() }
-            ?: "2.3.7-slock-ohos-001"
     fun String?.enabledByDefault(defaultValue: Boolean): Boolean =
         when (this?.trim()?.lowercase()) {
             "1", "true", "yes", "on" -> true
@@ -104,12 +100,6 @@ pluginManagement {
             null, "" -> defaultValue
             else -> defaultValue
         }
-    val enableKtorOhosFork =
-        System.getenv("SLOCK_ENABLE_KTOR_OHOS_FORK")
-            .enabledByDefault(
-                providers.gradleProperty("slock.enableKtorOhosFork").orNull
-                    .enabledByDefault(true)
-            )
     val skipOhosLocalDependencyPrep =
         System.getenv("SLOCK_SKIP_OHOS_LOCAL_DEP_PREP")
             .enabledByDefault(
@@ -133,31 +123,6 @@ pluginManagement {
             !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
-    val ktorOhosModules =
-        listOf(
-            "ktor-io",
-            "ktor-utils",
-            "ktor-http",
-            "ktor-http-cio",
-            "ktor-network",
-            "ktor-network-tls",
-            "ktor-events",
-            "ktor-websockets",
-            "ktor-websocket-serialization",
-            "ktor-serialization",
-            "ktor-serialization-kotlinx",
-            "ktor-serialization-kotlinx-json",
-            "ktor-client-core",
-            "ktor-client-content-negotiation",
-            "ktor-client-cio"
-        )
-    val needsKtorOhos =
-        enableKtorOhosFork &&
-            ktorOhosModules.any { module ->
-                !mavenArtifactExists("io/ktor", module, ktorOhosVersion) ||
-                    !mavenArtifactExists("io/ktor", "${module}-ohosarm64", ktorOhosVersion)
-            }
-
     if (!skipOhosLocalDependencyPrep && needsStately) {
         ensureSubmodule("third_party/stately")
         runChecked(
@@ -201,14 +166,6 @@ pluginManagement {
             ":runtime:publishKotlinMultiplatformPublicationToMavenLocal",
             ":runtime:publishOhosArm64PublicationToMavenLocal",
             ":drivers:native-driver:publishOhosArm64PublicationToMavenLocal"
-        )
-    }
-
-    if (!skipOhosLocalDependencyPrep && needsKtorOhos) {
-        runChecked(
-            slockRoot,
-            "scripts/prepare_ktor_ohos_fork.sh",
-            "--publish"
         )
     }
 

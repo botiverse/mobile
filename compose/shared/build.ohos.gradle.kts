@@ -16,14 +16,6 @@ val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
-val enableKtorOhosFork =
-    providers.environmentVariable("SLOCK_ENABLE_KTOR_OHOS_FORK")
-        .map { it.enabledByDefault(true) }
-        .orElse(providers.gradleProperty("slock.enableKtorOhosFork").map { it.toBoolean() })
-        .orElse(true)
-val ktorOhosVersion =
-    providers.environmentVariable("SLOCK_KTOR_OHOS_VERSION")
-        .orElse("2.3.7-slock-ohos-001")
 val prepareTmmCommonResources by tasks.registering(Sync::class) {
     from(commonTmmResourceInputDir)
     into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
@@ -140,11 +132,9 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
-                if (enableKtorOhosFork.get()) {
-                    implementation("io.ktor:ktor-client-core:${ktorOhosVersion.get()}")
-                    implementation("io.ktor:ktor-client-content-negotiation:${ktorOhosVersion.get()}")
-                    implementation("io.ktor:ktor-serialization-kotlinx-json:${ktorOhosVersion.get()}")
-                }
+                // Unified network infra (task #12): all platforms' HTTP goes
+                // through NetworkKMM behind the SlockHttpExecutor seam.
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.4")
             }
         }
         val commonTest by getting {
@@ -162,12 +152,6 @@ kotlin {
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
-                // Unified network infra (task #6): OHOS HTTP goes through
-                // NetworkKMM (libcurl/openssl) because Ktor CIO has no native TLS.
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.4")
-                if (enableKtorOhosFork.get()) {
-                    implementation("io.ktor:ktor-client-cio:${ktorOhosVersion.get()}")
-                }
             }
         }
 

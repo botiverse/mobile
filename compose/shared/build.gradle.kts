@@ -79,19 +79,18 @@ kotlin {
                 implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")
 
                 implementation("org.jetbrains:markdown:0.7.5")
-                implementation("io.ktor:ktor-client-core:2.3.7")
-                implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
-                implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
+                // Unified network infra (task #12): all platforms' HTTP goes
+                // through NetworkKMM behind the SlockHttpExecutor seam.
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.4")
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
-                implementation("io.ktor:ktor-client-mock:2.3.7")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
             }
         }
@@ -100,7 +99,6 @@ kotlin {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
                     isChanging = true
                 }
-                implementation("io.ktor:ktor-client-okhttp:2.3.7")
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
             }
         }
@@ -119,7 +117,6 @@ kotlin {
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
-                implementation("io.ktor:ktor-client-darwin:2.3.7")
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
             }
         }

@@ -2,45 +2,77 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_SERVER_ID
-import build.raft.app.network.KtorSlockHttpExecutor
 import build.raft.app.network.MultipartFile
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.HttpRequestData
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
+import build.raft.app.network.SlockHttpExecutor
+import build.raft.app.network.SlockHttpExecutorResponse
+import build.raft.app.network.SlockRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class SharedKtorSlockNetworkClientTest {
+    private class RecordedRequest(
+        val priority: SlockRequestPriority,
+        val url: String,
+        val method: String,
+        val headers: Map<String, String>,
+        val bodyText: String?
+    )
+
+    private class RecordedMultipart(
+        val url: String,
+        val fields: Map<String, String>,
+        val files: List<MultipartFile>,
+        val headers: Map<String, String>
+    )
+
+    /**
+     * Seam fake: the client's contract with the transport is fully observable
+     * at [SlockHttpExecutor] — including the exact assembled/encoded URL the
+     * transport receives, which the old MockEngine tests only saw re-parsed.
+     */
+    private class RecordingExecutor(
+        private val respond: (url: String) -> SlockHttpExecutorResponse
+    ) : SlockHttpExecutor {
+        val requests = mutableListOf<RecordedRequest>()
+        val multiparts = mutableListOf<RecordedMultipart>()
+
+        override suspend fun execute(
+            priority: SlockRequestPriority,
+            url: String,
+            method: String,
+            headers: Map<String, String>,
+            bodyText: String?,
+            jsonBody: Boolean
+        ): SlockHttpExecutorResponse {
+            requests += RecordedRequest(priority, url, method, headers, bodyText)
+            return respond(url)
+        }
+
+        override suspend fun executeMultipart(
+            priority: SlockRequestPriority,
+            url: String,
+            fields: Map<String, String>,
+            files: List<MultipartFile>,
+            headers: Map<String, String>
+        ): SlockHttpExecutorResponse {
+            multiparts += RecordedMultipart(url, fields, files, headers)
+            return respond(url)
+        }
+    }
+
+    private fun ok(body: String = """{"ok":true}""", code: Int = 200): SlockHttpExecutorResponse =
+        SlockHttpExecutorResponse(code = code, bodyText = body, errorBodyText = null)
+
     @Test
-    fun requestUsesKtorWithAuthHeadersAndServerOverride() = runBlocking {
-        val requests = mutableListOf<HttpRequestData>()
-        val httpClient =
-            HttpClient(
-                MockEngine { request ->
-                    requests += request
-                    respond(
-                        content = """{"ok":true}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, "application/json")
-                    )
-                }
-            )
+    fun requestUsesExecutorWithAuthHeadersAndServerOverride() = runBlocking {
+        val executor = RecordingExecutor { ok() }
         val client =
             SharedKtorSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
-                executor =
-                    KtorSlockHttpExecutor(
-                        foregroundHttpClient = httpClient,
-                        visibleHttpClient = httpClient,
-                        backgroundHttpClient = httpClient
-                    )
+                executor = executor
             )
 
         val response =
@@ -54,40 +86,24 @@ class SharedKtorSlockNetworkClientTest {
             )
 
         assertEquals(200, response.code)
-        val request = requests.single()
-        assertEquals("GET", request.method.value)
-        assertEquals("/api/servers/server-override/members", request.url.encodedPath)
-        assertEquals("20", request.url.parameters["limit"])
-        assertEquals("Bearer access-token", request.headers[HttpHeaders.Authorization])
+        val request = executor.requests.single()
+        assertEquals("GET", request.method)
+        assertEquals(SlockRequestPriority.Visible, request.priority)
+        assertEquals("https://api.slock.test/api/servers/server-override/members?limit=20", request.url)
+        assertEquals("Bearer access-token", request.headers["Authorization"])
         assertEquals("server-override", request.headers[HEADER_SERVER_ID])
     }
 
     @Test
     fun requestPreservesSearchQueryThroughUrlEncoding() = runBlocking {
-        val requests = mutableListOf<HttpRequestData>()
         val logs = mutableListOf<String>()
-        val httpClient =
-            HttpClient(
-                MockEngine { request ->
-                    requests += request
-                    respond(
-                        content = """{"results":[],"hasMore":false}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, "application/json")
-                    )
-                }
-            )
+        val executor = RecordingExecutor { ok("""{"results":[],"hasMore":false}""") }
         val client =
             SharedKtorSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 warningLogger = logs::add,
-                executor =
-                    KtorSlockHttpExecutor(
-                        foregroundHttpClient = httpClient,
-                        visibleHttpClient = httpClient,
-                        backgroundHttpClient = httpClient
-                    )
+                executor = executor
             )
 
         val query = " do not C++ #tag/中文 "
@@ -99,26 +115,19 @@ class SharedKtorSlockNetworkClientTest {
             )
 
         assertEquals(200, response.code)
-        val request = requests.single()
-        assertEquals("/api/messages/search", request.url.encodedPath)
-        assertEquals(query, request.url.parameters["q"])
-        assertEquals("30", request.url.parameters["limit"])
-        assertEquals("0", request.url.parameters["offset"])
-        assertEquals("q=%20do%20not%20C%2B%2B%20%23tag%2F%E4%B8%AD%E6%96%87%20&limit=30&offset=0", request.url.encodedQuery)
+        val request = executor.requests.single()
+        assertEquals(
+            "https://api.slock.test/api/messages/search" +
+                "?q=%20do%20not%20C%2B%2B%20%23tag%2F%E4%B8%AD%E6%96%87%20&limit=30&offset=0",
+            request.url
+        )
         assertTrue(logs.any { it.contains("category=message_search") && it.contains("queryMeta=qLen=18;qWords=4;qFlags=space|plus|hash|nonAscii") })
         assertTrue(logs.none { it.contains("do not") || it.contains("中文") })
     }
 
     @Test
-    fun fileRefUploadUsesAppScopeResolverThenKtorRequest() = runBlocking {
-        val requests = mutableListOf<HttpRequestData>()
-        val httpClient =
-            HttpClient(
-                MockEngine { request ->
-                    requests += request
-                    respond("""{"ok":true}""", HttpStatusCode.Created)
-                }
-            )
+    fun fileRefUploadUsesAppScopeResolverThenMultipartRequest() = runBlocking {
+        val executor = RecordingExecutor { ok(code = 201) }
         val resolver = RecordingPlatformFileResolver()
         val file =
             MultipartFile(
@@ -133,22 +142,18 @@ class SharedKtorSlockNetworkClientTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 platformFileResolver = resolver,
-                executor =
-                    KtorSlockHttpExecutor(
-                        foregroundHttpClient = httpClient,
-                        visibleHttpClient = httpClient,
-                        backgroundHttpClient = httpClient
-                    )
+                executor = executor
             )
 
         val response = client.uploadAccountAvatar(DataRequestPriority.Foreground, file)
 
         assertEquals(201, response.code)
         assertEquals(listOf("native://avatar"), resolver.calls)
-        val request = requests.single()
-        assertEquals("POST", request.method.value)
-        assertEquals("/api/auth/me/avatar", request.url.encodedPath)
-        assertEquals("Bearer access-token", request.headers[HttpHeaders.Authorization])
+        val request = executor.multiparts.single()
+        assertEquals("https://api.slock.test/api/auth/me/avatar", request.url)
+        assertEquals("Bearer access-token", request.headers["Authorization"])
+        assertEquals(listOf("avatar"), request.files.map { it.name })
+        assertTrue(request.files.single().bytes?.isNotEmpty() == true)
     }
 
     private class RecordingPlatformFileResolver : SlockPlatformFileResolver {

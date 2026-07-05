@@ -224,8 +224,6 @@ dependencies {
     implementation(libs.gson)
     implementation("io.quiver:quiver-android-updater:0.5.0")
     implementation(libs.socket.io.client)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.okhttp)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)
     implementation(platform(libs.firebase.bom))
@@ -235,7 +233,6 @@ dependencies {
     }
     implementation(libs.bugly.diagnose.logger)
     implementation(libs.bugly.diagnose)
-    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
