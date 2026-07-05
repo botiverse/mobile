@@ -341,7 +341,7 @@ jobs:
           fi
           echo "previous release commit: '${PREV_COMMIT:-none}'"
           if [ -n "${PREV_COMMIT}" ] && git cat-file -e "${PREV_COMMIT}^{commit}" 2>/dev/null; then
-            git log --no-merges --pretty='- %s' "${PREV_COMMIT}..HEAD" | head -n 40 > changelog.txt
+            git log --no-merges --pretty='- %s' --max-count=40 "${PREV_COMMIT}..HEAD" > changelog.txt
           fi
           if [ ! -s changelog.txt ]; then
             git log --no-merges --pretty='- %s' -15 > changelog.txt
