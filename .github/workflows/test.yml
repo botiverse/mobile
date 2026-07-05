@@ -55,6 +55,19 @@ jobs:
       kuikly-sha: ${{ steps.pins.outputs.kuikly }}
       forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
     steps:
+      # The combined kuikly (android+ohos konan) + fork-deps build overflows the
+      # hosted runner's ~14GB free disk. Drop preinstalled toolchains we never
+      # touch (keep the Android SDK — the kuikly fork build needs it).
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/powershell /usr/local/graalvm \
+            /usr/local/share/chromium /usr/local/lib/node_modules
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
       - name: Checkout
         uses: actions/checkout@v5
 
