@@ -1,7 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
-#import <QuiverReport/QuiverReport.h>
+#import <Quiver/QuiverReport.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>

@@ -1,4 +1,4 @@
-import QuiverReport
+import Quiver
 import SwiftUI
 
 private enum SlockIosSharedLogBridge {
