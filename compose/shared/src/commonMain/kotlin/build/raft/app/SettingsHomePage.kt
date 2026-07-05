@@ -74,7 +74,6 @@ import build.raft.app.data.CONNECTED_APPS_ACTION_UPDATE
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.SERVER_ACTION_INVITE_CREATE
 import build.raft.app.data.SERVER_ACTION_INVITE_REVOKE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_CREATE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_REVOKE
@@ -3485,7 +3484,6 @@ private fun SettingsAppShellContent(
         onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
     }
 
-    var serverInviteEmail by remember { mutableStateOf("") }
     var serverProfileName by remember { mutableStateOf("") }
     var serverDeleteConfirmation by remember { mutableStateOf("") }
     var serverJoinLinkMaxUses by remember { mutableStateOf("") }
@@ -3829,8 +3827,6 @@ private fun SettingsAppShellContent(
                         actionState = settingsState.actionState,
                         timeContext = timeContext
                     ),
-                    inviteEmail = serverInviteEmail,
-                    onInviteEmailChange = { serverInviteEmail = it },
                     joinLinkMaxUses = serverJoinLinkMaxUses,
                     onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
                     joinLinkExpiresAt = serverJoinLinkExpiresAt,
@@ -3857,6 +3853,7 @@ private fun SettingsAppShellContent(
                     onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    showProfileCard = false,
                     onCreateJoinLink = { request ->
                         onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
                     },
@@ -4201,8 +4198,6 @@ private fun SharedSettingsServerContent(
     serverRole: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    inviteEmail: String = "",
-    onInviteEmailChange: (String) -> Unit = {},
     joinLinkMaxUses: String = "",
     onJoinLinkMaxUsesChange: (String) -> Unit = {},
     joinLinkExpiresAt: String = "",
@@ -4223,6 +4218,7 @@ private fun SharedSettingsServerContent(
     expectedServerSlug: String = "",
     deleteConfirmationName: String = "",
     onDeleteConfirmationNameChange: (String) -> Unit = {},
+    showProfileCard: Boolean = true,
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     onAction: (String, String?) -> Unit
 ) {
@@ -4230,17 +4226,19 @@ private fun SharedSettingsServerContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            SettingsServerProfileFormCard(
-                profile = serverSnapshot?.profile,
-                draftName = profileName,
-                fallbackName = payload.heroLabel,
-                fallbackSlug = expectedServerSlug,
-                role = serverRole,
-                actionState = actionState,
-                onNameChange = onProfileNameChange,
-                onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
-            )
+        if (showProfileCard) {
+            item {
+                SettingsServerProfileFormCard(
+                    profile = serverSnapshot?.profile,
+                    draftName = profileName,
+                    fallbackName = payload.heroLabel,
+                    fallbackSlug = expectedServerSlug,
+                    role = serverRole,
+                    actionState = actionState,
+                    onNameChange = onProfileNameChange,
+                    onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
+                )
+            }
         }
         payload.sections.forEach { section ->
             when (section.title) {
@@ -4260,11 +4258,8 @@ private fun SharedSettingsServerContent(
                         SettingsServerInvitesCard(
                             invites = serverSnapshot?.pendingInvites.orEmpty(),
                             section = serverSnapshot?.sections?.firstOrNull { it.key == "pending_invites" },
-                            email = inviteEmail,
                             actionState = actionState,
                             timeContext = timeContext,
-                            onEmailChange = onInviteEmailChange,
-                            onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) },
                             onAction = onAction
                         )
                     }
@@ -6804,34 +6799,12 @@ private fun SettingsServerAdminsCard(
 private fun SettingsServerInvitesCard(
     invites: List<SettingsServerInviteSnapshot>,
     section: SettingsServerSectionSnapshot?,
-    email: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     timeContext: SlockTimeContext?,
-    onEmailChange: (String) -> Unit,
-    onSubmit: () -> Unit,
     onAction: (String, String?) -> Unit
 ) {
-    val trimmedEmail = email.trim()
-    val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
-    val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
     SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = "Pending Invites") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SlockBrutalTextField(
-            label = "Email",
-            value = email,
-            placeholder = "teammate@example.com",
-            onValueChange = onEmailChange,
-            required = true,
-            enabled = !busy
-        )
-        SlockBrutalActionButton(
-            label = actionState.serverStatusFor(SERVER_ACTION_INVITE_CREATE, "Send invite"),
-            onClick = onSubmit,
-            enabled = enabled,
-            leadingIcon = SlockLucideIconName.MailPlus,
-            backgroundColor = SlockColor.BrandYellow
-        )
-        SettingsFormDivider()
         if (invites.isEmpty()) {
             SettingsFormEmptyText("No pending invites.")
         } else {
@@ -8047,46 +8020,71 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
-            listOf(
-                KuiklySharedSettingsSection(
-                    title = "Admins",
-                    rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pending Invites",
-                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Join Links",
-                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pre-join Agreement",
-                    rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "System Channels",
-                    rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Onboarding",
-                    rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Member Permissions",
-                    rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Translation",
-                    rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Sidebar Order",
-                    rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
-                )
-            )
+            settingsAdministrationSectionTitles().map { title ->
+                when (title) {
+                    "Admins" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
+                        )
+                    "System Channels" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
+                        )
+                    "Pending Invites" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
+                        )
+                    "Join Links" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
+                        )
+                    "Pre-join Agreement" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
+                        )
+                    "Onboarding" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
+                        )
+                    "Translation" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
+                        )
+                    "Member Permissions" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
+                        )
+                    "Sidebar Order" ->
+                        KuiklySharedSettingsSection(
+                            title = title,
+                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
+                        )
+                    else -> error("Unknown administration section: $title")
+                }
+            }
     )
 }
+
+internal fun settingsAdministrationSectionTitles(): List<String> =
+    listOf(
+        "Admins",
+        "System Channels",
+        "Pending Invites",
+        "Join Links",
+        "Pre-join Agreement",
+        "Onboarding",
+        "Translation",
+        "Member Permissions",
+        "Sidebar Order"
+    )
 
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
@@ -14446,7 +14444,6 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 private fun SettingsVisualServerFocusedContent(variant: String) {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
-    var inviteEmail by remember { mutableStateOf(settingsVisualFixtureValues.designerEmail) }
     var joinLinkMaxUses by remember { mutableStateOf("25") }
     var joinLinkExpiresAt by remember { mutableStateOf(settingsVisualFixtureValues.recentActivityAtIso) }
     var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
@@ -14467,8 +14464,6 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
     // always mirrors production — no duplicated card call sites.
     SharedSettingsServerContent(
         payload = serverPayload,
-        inviteEmail = inviteEmail,
-        onInviteEmailChange = { inviteEmail = it },
         joinLinkMaxUses = joinLinkMaxUses,
         onJoinLinkMaxUsesChange = { joinLinkMaxUses = it },
         joinLinkExpiresAt = joinLinkExpiresAt,

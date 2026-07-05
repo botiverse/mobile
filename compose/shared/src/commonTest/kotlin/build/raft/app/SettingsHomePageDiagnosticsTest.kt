@@ -18,6 +18,24 @@ import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
     @Test
+    fun administrationSectionsMatchReactOrder() {
+        assertEquals(
+            listOf(
+                "Admins",
+                "System Channels",
+                "Pending Invites",
+                "Join Links",
+                "Pre-join Agreement",
+                "Onboarding",
+                "Translation",
+                "Member Permissions",
+                "Sidebar Order"
+            ),
+            settingsAdministrationSectionTitles()
+        )
+    }
+
+    @Test
     fun administrationRoleOptionsMatchServerRolePolicy() {
         assertEquals(listOf("owner", "admin"), settingsAdminRoleOptions("owner", "member"))
         assertEquals(listOf("owner"), settingsAdminRoleOptions("owner", "admin"))
