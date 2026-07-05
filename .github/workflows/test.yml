@@ -232,6 +232,31 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
+      # The fork projects' settings list only CN mirrors (mirrors.tencent.com /
+      # maven.eazytec-cloud.com), which are flaky from hosted runners. Fall back
+      # to the canonical repositories without touching the pinned submodules.
+      - name: Add canonical repository fallbacks
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/init.gradle.kts <<'INIT'
+          settingsEvaluated {
+              pluginManagement {
+                  repositories {
+                      gradlePluginPortal()
+                      mavenCentral()
+                      google()
+                  }
+              }
+          }
+          allprojects {
+              repositories {
+                  mavenCentral()
+                  google()
+              }
+          }
+          INIT
+
       - name: Compose cache key
         id: keys
         shell: bash
