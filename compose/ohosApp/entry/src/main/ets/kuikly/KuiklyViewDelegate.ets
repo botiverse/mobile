@@ -6,7 +6,7 @@ import {
   KRRenderViewExportCreator
 } from '@kuikly-open/render';
 import { SlockLucideIconView } from './components/SlockLucideIconView';
-import { SlockOhosHdsTabBarView } from './components/SlockOhosHdsTabBarView';
+import { SlockNativeFloatingTabBarView } from './components/SlockNativeFloatingTabBarView';
 import { SlockKuiklyPageView } from './components/SlockKuiklyPageView';
 import { SlockSandboxWebView } from './components/SlockSandboxWebView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
@@ -18,7 +18,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
 
   getCustomRenderViewCreatorRegisterMap(): Map<string, KRRenderViewExportCreator> {
     const map: Map<string, KRRenderViewExportCreator> = new Map();
-    map.set(SlockOhosHdsTabBarView.VIEW_NAME, () => new SlockOhosHdsTabBarView());
+    map.set(SlockNativeFloatingTabBarView.VIEW_NAME, () => new SlockNativeFloatingTabBarView());
     map.set(SlockKuiklyPageView.VIEW_NAME, () => new SlockKuiklyPageView());
     map.set(SlockSandboxWebView.VIEW_NAME, () => new SlockSandboxWebView());
     return map;

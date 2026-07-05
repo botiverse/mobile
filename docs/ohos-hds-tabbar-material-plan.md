@@ -1,5 +1,13 @@
 # OHOS HDS Tabbar Material Plan
 
+> **Status (task #216):** The real HDS implementation
+> (`HdsTabs` + `barFloatingStyle({ systemMaterialEffect })`) was accidentally
+> deleted by commit `26c5e658` and replaced with a hand-drawn `Row` dock; it
+> has now been restored. For the full cross-platform tab bar design (renderer
+> seam, shared contract, and the OHOS tap-through fix) see
+> [`tabbar-architecture.md`](./tabbar-architecture.md). This file remains the
+> reference for the OHOS **material** acceptance bar specifically.
+
 ## Problem
 
 The HarmonyOS bottom tabbar is expected to use the official HDS immersive
@@ -20,8 +28,10 @@ material is active.
   `compose/ohosApp/entry/src/main/ets/pages/Index.ets` enables that renderer
   when API level is at least 20 and
   `SystemCapability.UIDesign.HDSComponent.Core` is available.
-- OHOS native view before the latest correction:
-  `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockOhosHdsTabBarView.ets`
+- OHOS native view (as of task #216 renamed to
+  `SlockNativeFloatingTabBarView.ets` to match the shared/iOS/Android naming;
+  registered view name was already `SlockNativeFloatingTabBarView`):
+  `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockNativeFloatingTabBarView.ets`
   uses `@kit.UIDesignKit` `HdsTabs` with `barOverlap(true)`,
   `barBackgroundColor(...)`, `barBackgroundBlurStyle(BlurStyle.Thin)`, and
   custom tab items.
