@@ -77,8 +77,45 @@ static void SlockQuiverHandleException(NSException *exception) {
     }
 }
 
-/// Async-signal context: only write()/snprintf/backtrace_symbols_fd. The
-/// sidecar carries just the signal name; the uploader fills defaults.
+// ---- async-signal-safe primitives (no snprintf/malloc/ObjC in handlers) ----
+
+static size_t SlockQuiverSafeStrLen(const char *text) {
+    size_t n = 0;
+    while (text[n] != '\0') n++;
+    return n;
+}
+
+static void SlockQuiverSafeAppend(char *buffer, size_t capacity, size_t *offset, const char *text) {
+    size_t n = SlockQuiverSafeStrLen(text);
+    if (*offset + n >= capacity) return;
+    for (size_t i = 0; i < n; i++) buffer[*offset + i] = text[i];
+    *offset += n;
+    buffer[*offset] = '\0';
+}
+
+static void SlockQuiverSafeAppendNumber(char *buffer, size_t capacity, size_t *offset, long long value) {
+    char digits[24];
+    int i = 0;
+    if (value <= 0) {
+        SlockQuiverSafeAppend(buffer, capacity, offset, "0");
+        return;
+    }
+    while (value > 0 && i < 20) {
+        digits[i++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    char out[24];
+    for (int j = 0; j < i; j++) out[j] = digits[i - 1 - j];
+    out[i] = '\0';
+    SlockQuiverSafeAppend(buffer, capacity, offset, out);
+}
+
+/// Async-signal context (task #76): the guaranteed record uses only
+/// async-signal-safe calls — time/open/write/close plus local char math.
+/// The meta sidecar is written FIRST so a report exists even if the
+/// best-effort stack capture at the end deadlocks in a corrupted-runtime
+/// crash; backtrace()/backtrace_symbols_fd() are not strictly safe and are
+/// deliberately last.
 static void SlockQuiverHandleSignal(int signalNumber) {
     if (gSlockQuiverCrashDir[0] == '\0') {
         signal(signalNumber, SIG_DFL);
@@ -97,30 +134,48 @@ static void SlockQuiverHandleSignal(int signalNumber) {
     }
     long long ts = (long long)time(NULL) * 1000LL;
 
+    // Meta sidecar first — the minimal guaranteed record.
+    char metaPath[640];
+    size_t off = 0;
+    SlockQuiverSafeAppend(metaPath, sizeof(metaPath), &off, gSlockQuiverCrashDir);
+    SlockQuiverSafeAppend(metaPath, sizeof(metaPath), &off, "/crash-");
+    SlockQuiverSafeAppendNumber(metaPath, sizeof(metaPath), &off, ts);
+    SlockQuiverSafeAppend(metaPath, sizeof(metaPath), &off, ".meta.json");
+    int metaFd = open(metaPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (metaFd >= 0) {
+        char meta[256];
+        off = 0;
+        SlockQuiverSafeAppend(meta, sizeof(meta), &off, "{\"exception_class\":\"");
+        SlockQuiverSafeAppend(meta, sizeof(meta), &off, name);
+        SlockQuiverSafeAppend(meta, sizeof(meta), &off, "\",\"exception_message\":\"fatal signal\",\"reason\":\"signal\",\"crash_at\":");
+        SlockQuiverSafeAppendNumber(meta, sizeof(meta), &off, ts);
+        SlockQuiverSafeAppend(meta, sizeof(meta), &off, "}");
+        write(metaFd, meta, off);
+        close(metaFd);
+    }
+
+    // Log file with a fixed header (still fully safe calls only).
     char logPath[640];
-    snprintf(logPath, sizeof(logPath), "%s/crash-%lld.txt", gSlockQuiverCrashDir, ts);
+    off = 0;
+    SlockQuiverSafeAppend(logPath, sizeof(logPath), &off, gSlockQuiverCrashDir);
+    SlockQuiverSafeAppend(logPath, sizeof(logPath), &off, "/crash-");
+    SlockQuiverSafeAppendNumber(logPath, sizeof(logPath), &off, ts);
+    SlockQuiverSafeAppend(logPath, sizeof(logPath), &off, ".txt");
     int logFd = open(logPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (logFd >= 0) {
-        char header[128];
-        int headerLen = snprintf(header, sizeof(header), "Fatal signal: %s (%d)\n\nStack:\n", name, signalNumber);
-        write(logFd, header, (size_t)headerLen);
+        char header[96];
+        off = 0;
+        SlockQuiverSafeAppend(header, sizeof(header), &off, "Fatal signal: ");
+        SlockQuiverSafeAppend(header, sizeof(header), &off, name);
+        SlockQuiverSafeAppend(header, sizeof(header), &off, "\n\nStack (best-effort):\n");
+        write(logFd, header, off);
+        // Best-effort, LAST: backtrace can touch unwind/runtime state and is
+        // not async-signal-safe; if it hangs or crashes, the record above is
+        // already on disk.
         void *frames[64];
         int frameCount = backtrace(frames, 64);
         backtrace_symbols_fd(frames, frameCount, logFd);
         close(logFd);
-    }
-
-    char metaPath[640];
-    snprintf(metaPath, sizeof(metaPath), "%s/crash-%lld.meta.json", gSlockQuiverCrashDir, ts);
-    int metaFd = open(metaPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (metaFd >= 0) {
-        char meta[256];
-        int metaLen = snprintf(meta, sizeof(meta),
-                               "{\"exception_class\":\"%s\",\"exception_message\":\"fatal signal %d\","
-                               "\"reason\":\"signal\",\"crash_at\":%lld}",
-                               name, signalNumber, ts);
-        write(metaFd, meta, (size_t)metaLen);
-        close(metaFd);
     }
 
     signal(signalNumber, SIG_DFL);
