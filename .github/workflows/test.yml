@@ -405,7 +405,9 @@ jobs:
         id: kuikly-fork
         shell: bash
         run: |
-          sha="$(git ls-tree HEAD third_party/kuikly-ui --object-only)"
+          # rev-parse (not ls-tree --object-only): the container image ships
+          # git 2.25, which predates --object-only.
+          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
           test -n "$sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
@@ -428,9 +430,9 @@ jobs:
         id: ohos-forks
         shell: bash
         run: |
-          stately="$(git ls-tree HEAD third_party/stately --object-only)"
-          sqliter="$(git ls-tree HEAD third_party/sqliter --object-only)"
-          sqldelight="$(git ls-tree HEAD third_party/sqldelight --object-only)"
+          stately="$(git rev-parse HEAD:third_party/stately)"
+          sqliter="$(git rev-parse HEAD:third_party/sqliter)"
+          sqldelight="$(git rev-parse HEAD:third_party/sqldelight)"
           test -n "$stately" && test -n "$sqliter" && test -n "$sqldelight"
           {
             echo "stately=$stately"
