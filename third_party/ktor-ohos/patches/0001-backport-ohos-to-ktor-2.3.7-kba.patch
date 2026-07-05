@@ -334,6 +334,24 @@ index 4b07b60..519c2e1 100644
 @@ -16 +16 @@ internal fun recoverStackTraceBridge(exception: Throwable, continuation: Continu
 -    @Suppress("INVISIBLE_MEMBER")
 +    @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+diff --git a/ktor-utils/ohosArm64/src/io/ktor/util/ThreadInfo.ohosArm64.kt b/ktor-utils/ohosArm64/src/io/ktor/util/ThreadInfo.ohosArm64.kt
+new file mode 100644
+index 0000000..1d9affe
+--- /dev/null
++++ b/ktor-utils/ohosArm64/src/io/ktor/util/ThreadInfo.ohosArm64.kt
+@@ -0,0 +1,12 @@
++/*
++ * Copyright 2014-2022 JetBrains s.r.o and contributors. Use of this source code is governed by the Apache 2.0 license.
++ */
++
++package io.ktor.util
++
++import platform.posix.pthread_t
++
++internal actual fun collectStack(thread: pthread_t): List<String> = emptyList()
++
++internal actual fun setSignalHandler() {
++}
 diff --git a/ktor-utils/posix/src/io/ktor/util/collections/ConcurrentMapNative.kt b/ktor-utils/posix/src/io/ktor/util/collections/ConcurrentMapNative.kt
 index bb72492..62776dc 100644
 --- a/ktor-utils/posix/src/io/ktor/util/collections/ConcurrentMapNative.kt
