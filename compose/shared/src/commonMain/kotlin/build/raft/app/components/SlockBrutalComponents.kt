@@ -56,6 +56,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -130,6 +131,11 @@ internal fun SlockAnchoredMetaChip(
     trailingIconName: SlockLucideIconName? = null,
     trailingIconSize: Dp = iconSize,
     borderWidth: Dp = SlockStroke.Thin,
+    minHeight: Dp = 20.dp,
+    horizontalPadding: Dp = 6.dp,
+    verticalPadding: Dp = 2.dp,
+    labelFontSize: TextUnit = 10.sp,
+    labelLineHeight: TextUnit = 12.sp,
     pressFeedback: Boolean = onClick != null,
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null
@@ -137,11 +143,11 @@ internal fun SlockAnchoredMetaChip(
     val geometryAnchor = remember { SlockMutableOffsetRef() }
     val chipModifier =
         modifier
-            .heightIn(min = 20.dp)
+            .heightIn(min = minHeight)
             .border(borderWidth, SlockColor.BorderBlack, RectangleShape)
             .background(color, RectangleShape)
             .slockSquareCorners()
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
                 if (anchorPlacement == SlockAnchorPlacement.Tap) {
                     base
@@ -183,7 +189,7 @@ internal fun SlockAnchoredMetaChip(
             }
             Text(
                 text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

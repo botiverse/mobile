@@ -365,7 +365,8 @@ data class TaskSummary(
     val creator: MemberProfile? = null,
     val channelName: String? = null,
     val updatedAtLabel: String,
-    val canClaim: Boolean = true
+    val canClaim: Boolean = true,
+    val description: String? = null
 )
 
 // Inbox Models

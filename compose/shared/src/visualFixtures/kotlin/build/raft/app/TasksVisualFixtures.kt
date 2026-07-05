@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 
 // Canonical /tasks/server rows for components.tasks.panel.states — same rows as
 // packages/visual-testing/shared/tasksFixture.json in the React repo, built through the
@@ -177,9 +178,16 @@ internal fun TasksStatusMenuVisualContent() {
                     SlockBaseMenuItem(id = status.name, label = tasksStatusMenuVisualLabel(status))
                 },
             selectedId = TaskStatus.InProgress.name,
+            selectedRowColor = SlockColor.SurfaceWhite,
             uppercaseLabels = false,
+            minWidth = 140.dp,
+            rowHeight = 36.dp,
+            labelFontSize = 14.sp,
+            labelLineHeight = 18.sp,
+            labelLetterSpacing = 0.sp,
+            selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
             horizontalOffset = 0.dp,
-            verticalOffset = 0.dp,
+            verticalOffset = 4.dp,
             verticalPlacement = SlockFloatingVerticalPlacement.Below,
             onDismiss = {},
             onSelect = {}
