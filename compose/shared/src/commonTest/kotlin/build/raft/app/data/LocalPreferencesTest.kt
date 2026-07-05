@@ -43,6 +43,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
+        assertEquals(TranslationModePreference.Automatic, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
@@ -66,6 +67,7 @@ class LocalPreferencesTest {
         val compact = repository.setCompactConsecutiveMessages(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
+        val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
         val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
         val restored = repository.getChatLayoutPreference()
@@ -79,11 +81,13 @@ class LocalPreferencesTest {
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
+        assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.imageAnnotationEnabled)
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)
+        assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals(
             setOf(ThreadRowAffordancePreference.Reactions, ThreadRowAffordancePreference.Saved),
             savedAction.threadRowAffordances

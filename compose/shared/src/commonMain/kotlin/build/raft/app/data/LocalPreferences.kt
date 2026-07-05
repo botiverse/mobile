@@ -131,6 +131,19 @@ enum class ThreadRowAffordancePreference(val storageKey: String) {
     }
 }
 
+enum class TranslationModePreference(val storageKey: String) {
+    Automatic("automatic"),
+    Manual("manual"),
+    Original("original");
+
+    companion object {
+        val Default: TranslationModePreference = Automatic
+
+        fun fromStorageKey(value: String?): TranslationModePreference =
+            entries.firstOrNull { it.storageKey == value } ?: Default
+    }
+}
+
 data class ChatLayoutPreferenceSnapshot(
     val myMessageAlignment: MyMessageAlignmentPreference,
     val supportedAlignments: List<MyMessageAlignmentPreference> =
@@ -142,6 +155,9 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val imageAnnotationEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
+    val translationMode: TranslationModePreference = TranslationModePreference.Default,
+    val supportedTranslationModes: List<TranslationModePreference> =
+        TranslationModePreference.entries,
     val threadRowAffordances: Set<ThreadRowAffordancePreference> =
         ThreadRowAffordancePreference.Default,
     val supportedThreadRowAffordances: List<ThreadRowAffordancePreference> =
@@ -164,6 +180,9 @@ interface ChatLayoutPreferenceStore {
     fun readActivityTaskStatusBadgesEnabledSync(): Boolean
     suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
     suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
+    fun readTranslationModeSync(): TranslationModePreference
+    suspend fun readTranslationMode(): TranslationModePreference
+    suspend fun saveTranslationMode(mode: TranslationModePreference)
     fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference>
     suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference>
     suspend fun saveThreadRowAffordances(affordances: Set<ThreadRowAffordancePreference>)
@@ -226,6 +245,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, enabled)
     }
 
+    override fun readTranslationModeSync(): TranslationModePreference =
+        TranslationModePreference.fromStorageKey(store.getString(KEY_TRANSLATION_MODE))
+
+    override suspend fun readTranslationMode(): TranslationModePreference =
+        readTranslationModeSync()
+
+    override suspend fun saveTranslationMode(mode: TranslationModePreference) {
+        store.putString(KEY_TRANSLATION_MODE, mode.storageKey)
+    }
+
     override fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference> {
         val stored = store.getString(KEY_THREAD_ROW_AFFORDANCES)
         return if (stored == null) {
@@ -257,6 +286,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
+        const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
 }
@@ -272,6 +302,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
         affordance: ThreadRowAffordancePreference,
         enabled: Boolean
@@ -288,6 +319,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
 
@@ -301,6 +333,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -315,6 +348,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -327,6 +361,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = enabled,
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -339,6 +374,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -351,6 +387,20 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
+            translationMode = store.readTranslationMode(),
+            threadRowAffordances = store.readThreadRowAffordances()
+        )
+    }
+
+    override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot {
+        store.saveTranslationMode(mode)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = mode,
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -373,6 +423,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
             threadRowAffordances = next
         )
     }

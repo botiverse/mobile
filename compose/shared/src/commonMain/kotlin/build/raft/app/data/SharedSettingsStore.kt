@@ -330,6 +330,7 @@ sealed interface SharedSettingsIntent {
     data class SetForegroundKeepAlivePreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
+    data class SetTranslationMode(val mode: String) : SharedSettingsIntent
     data class UpdateLanguageRegionPreference(
         val request: SettingsLanguageRegionPreferenceUpdateRequest
     ) : SharedSettingsIntent
@@ -731,13 +732,25 @@ class SharedSettingsDataSource(
         settingsRepository?.getBilling() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadLanguageRegion(): DataResult<SettingsLanguageRegionSnapshot> =
-        settingsRepository?.getLanguageRegionSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        settingsRepository?.getLanguageRegionSettings()?.withLocalTranslationMode()
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun updateLanguageRegionPreference(
         request: SettingsLanguageRegionPreferenceUpdateRequest
     ): DataResult<SettingsLanguageRegionSnapshot> =
-        settingsRepository?.updateLanguageRegionPreference(request)
+        settingsRepository?.updateLanguageRegionPreference(request)?.withLocalTranslationMode()
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setTranslationMode(modeKey: String): DataResult<SettingsLanguageRegionSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_translation_mode_unavailable", retryable = false))
+        val mode =
+            TranslationModePreference.entries.firstOrNull { it.storageKey == modeKey }
+                ?: return DataResult.Error(ScreenError("settings_translation_mode_unknown", retryable = false))
+        repository.setTranslationMode(mode)
+        return loadLanguageRegion()
+    }
 
     suspend fun loadAppearance(): DataResult<SettingsAppearanceSnapshot> =
         settingsRepository?.getAppearanceSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1102,6 +1115,20 @@ class SharedSettingsDataSource(
                     )
         )
     }
+
+    private suspend fun DataResult<SettingsLanguageRegionSnapshot>.withLocalTranslationMode(): DataResult<SettingsLanguageRegionSnapshot> =
+        when (this) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    data.withLocalTranslationMode(
+                        chatLayoutPreferenceRepository?.getChatLayoutPreference()?.translationMode
+                            ?: TranslationModePreference.Default
+                    )
+                )
+            is DataResult.Empty -> this
+            is DataResult.Error -> this
+            is DataResult.NoPermission -> this
+        }
 
     private fun localOnlyMobileSnapshot(): SettingsMobileSnapshot =
         SettingsMobileSnapshot(
@@ -1654,6 +1681,12 @@ class SharedSettingsStore(
                 runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {
                     dataSource.setLanguageRegionServerTranslation(intent.enabled)
                         .applyLanguageRegionActionResult(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION)
+                }
+            }
+            is SharedSettingsIntent.SetTranslationMode -> {
+                runAction(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) {
+                    dataSource.setTranslationMode(intent.mode)
+                        .applyLanguageRegionActionResult(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY)
                 }
             }
             is SharedSettingsIntent.UpdateLanguageRegionPreference -> {
@@ -2534,6 +2567,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetForegroundKeepAlivePreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
+            is SharedSettingsIntent.SetTranslationMode,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
             is SharedSettingsIntent.UpdateAppearance,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
@@ -2802,6 +2836,34 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSelectionSnapshot(): Se
                 )
             }
     )
+
+private fun SettingsLanguageRegionSnapshot.withLocalTranslationMode(
+    mode: TranslationModePreference
+): SettingsLanguageRegionSnapshot =
+    copy(
+        translationDisplay =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = mode.storageKey,
+                selectedLabel = mode.mobileLabel(),
+                statusLabel = mode.mobileLabel(),
+                detail = "Stored locally on this device. Controls whether Thread requests translations automatically, manually, or keeps messages original.",
+                options =
+                    TranslationModePreference.entries.map {
+                        SettingsMobileSelectionOptionSnapshot(
+                            key = it.storageKey,
+                            label = it.mobileLabel()
+                        )
+                    },
+                available = true
+            )
+    )
+
+private fun TranslationModePreference.mobileLabel(): String =
+    when (this) {
+        TranslationModePreference.Automatic -> "Automatic"
+        TranslationModePreference.Manual -> "Manual"
+        TranslationModePreference.Original -> "Original"
+    }
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot(): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(

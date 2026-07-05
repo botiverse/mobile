@@ -3744,6 +3744,10 @@ private fun SettingsAppShellContent(
                     },
                     onSaveLanguage = {
                         currentLanguageRegionSnapshot?.let { snapshot ->
+                            val selectedMode = languageRegionDisplayDraft.ifBlank { snapshot.translationDisplay.selectedKey }
+                            if (selectedMode != snapshot.translationDisplay.selectedKey) {
+                                onSettingsIntent(SharedSettingsIntent.SetTranslationMode(selectedMode))
+                            }
                             buildSettingsLanguageRegionPreferenceUpdateRequest(
                                 snapshot = snapshot,
                                 languageDraft = languageRegionLanguageDraft,
@@ -4639,7 +4643,7 @@ private fun SettingsLanguagePreferenceCard(
     val busy = languageBusy || displayBusy
     val currentDisplay = snapshot.translationDisplay.selectedKey
     val selectedDisplay = displayDraft.ifBlank { currentDisplay }
-    val languageDirty = selectedDisplay == "translated" && languageDraft != snapshot.browserLanguage.selectedKey
+    val languageDirty = selectedDisplay != "original" && languageDraft != snapshot.browserLanguage.selectedKey
     val displayDirty = selectedDisplay != currentDisplay
     val dirty = languageDirty || displayDirty
     val canSave =
@@ -4648,24 +4652,20 @@ private fun SettingsLanguagePreferenceCard(
             ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS, "Save")
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
-        SlockBrutalSectionLabel(label = "Message display")
-        SettingsFormDetailText("Translated asks for translated text when this server supports it. Original keeps messages in their source language.")
+        SlockBrutalSectionLabel(label = "Translation mode")
+        SettingsFormDetailText("Automatic translates supported messages. Manual keeps messages original until you choose Translate on a message. Original keeps messages in their source language.")
         SegmentedControl(
             selectedValue = selectedDisplay,
-            options =
-                listOf(
-                    SegmentedControlOption("translated", "Translated", SlockLucideIconName.Languages),
-                    SegmentedControlOption("original", "Original", SlockLucideIconName.FileText)
-                ),
+            options = snapshot.translationDisplay.toTranslationModeOptions(),
             onValueSelected = onDisplayDraftChange,
             enabled = !busy
         )
         if (!snapshot.translationDisplay.available) {
             SettingsFormDetailText(snapshot.translationDisplay.detail)
         }
-        if (selectedDisplay == "translated") {
+        if (selectedDisplay != "original") {
             SlockBrutalSectionLabel(label = "Preferred language")
-            SettingsFormDetailText("Your account language preference. Message translation uses it in servers where an owner or admin has turned translation on.")
+            SettingsFormDetailText("Used as the target language for automatic and manual translation.")
             SlockBrutalSelectField(
                 options = snapshot.browserLanguage.toSelectOptions(),
                 selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
@@ -4747,19 +4747,29 @@ internal fun buildSettingsLanguageRegionPreferenceUpdateRequest(
 ): SettingsLanguageRegionPreferenceUpdateRequest? {
     val currentDisplay = snapshot.translationDisplay.selectedKey
     val nextDisplay = displayDraft.ifBlank { currentDisplay }
-    val displayChanged = nextDisplay != currentDisplay
     val currentLanguage = snapshot.browserLanguage.selectedKey
     val nextLanguage = languageDraft.ifBlank { currentLanguage }
-    val languageChanged = nextDisplay == "translated" && nextLanguage != currentLanguage
-    if (!displayChanged && !languageChanged) return null
+    val languageChanged = nextDisplay != "original" && nextLanguage != currentLanguage
+    if (!languageChanged) return null
     return SettingsLanguageRegionPreferenceUpdateRequest(
         preferredLanguage = nextLanguage.takeIf { languageChanged && it != "other" },
-        clearPreferredLanguage = languageChanged && nextLanguage == "other",
-        preferredTranslationDisplay = nextDisplay.takeIf { displayChanged && it in SETTINGS_TRANSLATION_DISPLAY_KEYS }
+        clearPreferredLanguage = languageChanged && nextLanguage == "other"
     )
 }
 
-private val SETTINGS_TRANSLATION_DISPLAY_KEYS = setOf("translated", "original")
+private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<SegmentedControlOption> =
+    options.map { option ->
+        SegmentedControlOption(
+            value = option.key,
+            label = option.label,
+            iconName =
+                when (option.key) {
+                    "automatic" -> SlockLucideIconName.Languages
+                    "manual" -> SlockLucideIconName.Pencil
+                    else -> SlockLucideIconName.FileText
+                }
+        )
+    }
 
 private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLabel(
     actions: Set<String>,

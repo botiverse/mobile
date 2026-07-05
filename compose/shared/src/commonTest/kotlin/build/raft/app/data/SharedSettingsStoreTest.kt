@@ -326,12 +326,14 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(
                 languageRegionResult = DataResult.Content(languageRegionSnapshot())
             )
+        val chatLayoutRepository = FakeChatLayoutPreferenceRepository(translationMode = TranslationModePreference.Manual)
         val store =
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
+                        settingsRepository = repository,
+                        chatLayoutPreferenceRepository = chatLayoutRepository
                     ),
                 scope = scope
             )
@@ -339,29 +341,27 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion))
         val loaded = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
         assertEquals("Asia/Shanghai", loaded.timezone.selectedKey)
+        assertEquals("manual", loaded.translationDisplay.selectedKey)
 
         store.accept(
             SharedSettingsIntent.UpdateLanguageRegionPreference(
                 SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
             )
         )
-        store.accept(
-            SharedSettingsIntent.UpdateLanguageRegionPreference(
-                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = "original")
-            )
-        )
+        store.accept(SharedSettingsIntent.SetTranslationMode("original"))
         store.accept(SharedSettingsIntent.SetLanguageRegionServerTranslation(false))
 
         val updated = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
         assertEquals("Asia/Tokyo", updated.timezone.selectedKey)
         assertEquals("original", updated.translationDisplay.selectedKey)
         assertTrue(updated.translationDisplay.available)
+        assertEquals(TranslationModePreference.Original, chatLayoutRepository.translationMode)
         assertEquals(false, updated.serverTranslation.enabled)
         assertEquals(
             listOf(
                 "languageRegion",
                 "updateLanguageRegionPreference:timezone=Asia/Tokyo",
-                "updateLanguageRegionPreference:display=original",
+                "languageRegion",
                 "updateServerTranslation:false",
                 "languageRegion"
             ),
@@ -2892,6 +2892,7 @@ class SharedSettingsStoreTest {
         var compactConsecutiveMessages: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
+        var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
         var threadRowAffordances: Set<ThreadRowAffordancePreference> =
             ThreadRowAffordancePreference.Default
     ) : ChatLayoutPreferenceRepository {
@@ -2901,6 +2902,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
 
@@ -2913,6 +2915,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2926,6 +2929,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
 
@@ -2936,6 +2940,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2947,6 +2952,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2958,6 +2964,19 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
+                threadRowAffordances = threadRowAffordances
+            )
+        }
+
+        override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot {
+            translationMode = mode
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
         }
@@ -2977,6 +2996,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
         }
