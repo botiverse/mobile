@@ -113,6 +113,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.caverock.androidsvg.SVG
 import io.quiver.update.QuiverDeviceId
+import io.quiver.update.QuiverFeedback
 import io.quiver.update.internal.QuiverClient
 import io.quiver.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -2924,6 +2925,7 @@ internal class SlockKuiklyBridgeModule(
                 sizeBytes = bytes.size.toLong(),
                 attachmentRegistered = buglyAttachmentRegistered
         )
+        submitDiagnosticsFeedbackToQuiver(diagnosticsFile)
         SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
         return mapOf(
                 "status" to "ok",
@@ -2933,6 +2935,37 @@ internal class SlockKuiklyBridgeModule(
                 "sizeBytes" to bytes.size.toLong(),
                 "bodyBase64" to Base64.encodeToString(bytes, Base64.NO_WRAP)
         )
+    }
+
+    /**
+     * Also file the diagnostics feedback as a Quiver ticket (kind=bug) so it
+     * lands in the Quiver console alongside crashes, in addition to the
+     * existing Raft-channel upload. Best-effort and off the UI path.
+     */
+    private fun submitDiagnosticsFeedbackToQuiver(diagnosticsFile: File) {
+        val scope = (activity as? ComponentActivity)?.lifecycleScope
+            ?: CoroutineScope(Dispatchers.IO)
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                QuiverFeedback(
+                        context = appContext,
+                        baseUrl = BuildConfig.QUIVER_BASE_URL,
+                        appSlug = BuildConfig.QUIVER_APP_SLUG,
+                        versionName = BuildConfig.VERSION_NAME,
+                        versionCode = BuildConfig.VERSION_CODE.toLong(),
+                        channel = BuildConfig.QUIVER_CHANNEL,
+                ).submit(
+                        message = "In-app feedback (diagnostics attached).",
+                        kind = "bug",
+                        attachments = listOf(diagnosticsFile),
+                )
+            }.onFailure {
+                SlockDiagnosticsLogger.record(
+                        "SlockDiagnostics",
+                        "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
+                )
+            }
+        }
     }
 
     private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
