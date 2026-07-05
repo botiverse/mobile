@@ -250,6 +250,36 @@ internal enum class ThreadComposerEnterAction {
     Noop
 }
 
+internal enum class ThreadComposerSuggestionSelectionMove {
+    Up,
+    Down
+}
+
+internal fun threadComposerSuggestionSelectedIndex(
+    selectedIndex: Int,
+    itemCount: Int
+): Int =
+    if (itemCount <= 0) {
+        0
+    } else {
+        selectedIndex.coerceIn(0, itemCount - 1)
+    }
+
+internal fun threadComposerSuggestionSelectedIndexAfterMove(
+    selectedIndex: Int,
+    itemCount: Int,
+    move: ThreadComposerSuggestionSelectionMove
+): Int {
+    if (itemCount <= 0) return 0
+    val current = threadComposerSuggestionSelectedIndex(selectedIndex, itemCount)
+    return when (move) {
+        ThreadComposerSuggestionSelectionMove.Up ->
+            if (current == 0) itemCount - 1 else current - 1
+        ThreadComposerSuggestionSelectionMove.Down ->
+            if (current == itemCount - 1) 0 else current + 1
+    }
+}
+
 internal fun threadComposerEnterAction(
     trigger: KuiklyComposerSuggestionTrigger,
     panelState: ThreadComposerSuggestionPanelState,
@@ -1049,6 +1079,14 @@ internal fun ThreadComposerContent(
     if (suggestionTrigger !is KuiklyComposerSuggestionTrigger.None) {
         println("[composer] suggestions focused=" + focused + " memberCount=" + filteredMemberSuggestions.size + " channelCount=" + filteredChannelSuggestions.size + " panel=" + suggestionPanelState)
     }
+    var memberSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
+    var channelSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
+    LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredMemberSuggestions) {
+        memberSuggestionSelectedIndex = 0
+    }
+    LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredChannelSuggestions) {
+        channelSuggestionSelectedIndex = 0
+    }
     val suggestionRefreshRequest =
         remember(focused, suggestionTrigger) {
             threadComposerSuggestionRefreshRequest(
@@ -1151,8 +1189,14 @@ internal fun ThreadComposerContent(
                 isImeComposing = fieldValue.composition != null
             )
         ) {
-            ThreadComposerEnterAction.AcceptMemberSuggestion -> filteredMemberSuggestions.firstComposerMemberSuggestionCandidate()?.let(::applyMemberSuggestion)
-            ThreadComposerEnterAction.AcceptChannelSuggestion -> filteredChannelSuggestions.firstOrNull()?.let(::applyChannelSuggestion)
+            ThreadComposerEnterAction.AcceptMemberSuggestion ->
+                filteredMemberSuggestions
+                    .composerMemberSuggestionCandidateAt(memberSuggestionSelectedIndex)
+                    ?.let(::applyMemberSuggestion)
+            ThreadComposerEnterAction.AcceptChannelSuggestion ->
+                filteredChannelSuggestions
+                    .getOrNull(threadComposerSuggestionSelectedIndex(channelSuggestionSelectedIndex, filteredChannelSuggestions.size))
+                    ?.let(::applyChannelSuggestion)
             ThreadComposerEnterAction.CommitSuggestionToken -> commitSuggestionToken()
             ThreadComposerEnterAction.Send -> sendComposerMessage()
             ThreadComposerEnterAction.Noop -> Unit
@@ -1210,8 +1254,10 @@ internal fun ThreadComposerContent(
                 panelState = suggestionPanelState,
                 surface = surface,
                 memberSuggestions = filteredMemberSuggestions,
+                memberSelectedIndex = memberSuggestionSelectedIndex,
                 memberErrorCode = state.memberSuggestionsErrorCode,
                 channelSuggestions = filteredChannelSuggestions,
+                channelSelectedIndex = channelSuggestionSelectedIndex,
                 channelErrorCode = state.channelSuggestionsErrorCode,
                 agentStatusResolver = agentStatusResolver,
                 onMemberClick = { applyMemberSuggestion(it) },
@@ -1377,8 +1423,10 @@ private fun ComposerSuggestionSlot(
     panelState: ThreadComposerSuggestionPanelState,
     surface: ThreadComposerSurface,
     memberSuggestions: List<KuiklyComposerMemberItem>,
+    memberSelectedIndex: Int,
     memberErrorCode: String?,
     channelSuggestions: List<KuiklyComposerChannelItem>,
+    channelSelectedIndex: Int,
     channelErrorCode: String?,
     agentStatusResolver: SlockAgentStatusResolver,
     onMemberClick: (KuiklyComposerMemberItem) -> Unit,
@@ -1405,8 +1453,10 @@ private fun ComposerSuggestionSlot(
             panelState = panelState,
             surface = surface,
             memberSuggestions = memberSuggestions,
+            memberSelectedIndex = memberSelectedIndex,
             memberErrorCode = memberErrorCode,
             channelSuggestions = channelSuggestions,
+            channelSelectedIndex = channelSelectedIndex,
             channelErrorCode = channelErrorCode,
             agentStatusResolver = agentStatusResolver,
             onMemberClick = onMemberClick,
@@ -1454,8 +1504,10 @@ private fun ComposerSuggestionPanelContent(
     panelState: ThreadComposerSuggestionPanelState,
     surface: ThreadComposerSurface,
     memberSuggestions: List<KuiklyComposerMemberItem>,
+    memberSelectedIndex: Int,
     memberErrorCode: String?,
     channelSuggestions: List<KuiklyComposerChannelItem>,
+    channelSelectedIndex: Int,
     channelErrorCode: String?,
     agentStatusResolver: SlockAgentStatusResolver,
     onMemberClick: (KuiklyComposerMemberItem) -> Unit,
@@ -1466,6 +1518,7 @@ private fun ComposerSuggestionPanelContent(
             ComposerMemberSuggestionPanel(
                 title = surface.memberSuggestionTitle(),
                 members = memberSuggestions,
+                selectedIndex = memberSelectedIndex,
                 agentStatusResolver = agentStatusResolver,
                 onClick = onMemberClick
             )
@@ -1506,9 +1559,11 @@ private fun ComposerSuggestionPanelContent(
                 itemKey = { index -> "channel-$index-${channelSuggestions[index].name}" }
             ) { index ->
                 val channel = channelSuggestions[index]
+                val selectedIndex =
+                    threadComposerSuggestionSelectedIndex(channelSelectedIndex, channelSuggestions.size)
                 ComposerChannelSuggestionRow(
                     channel = channel,
-                    selected = index == 0,
+                    selected = index == selectedIndex,
                     onClick = { onChannelClick(channel) }
                 )
             }
@@ -1559,7 +1614,21 @@ internal fun String?.toComposerChannelMentionLabel(): String? {
 }
 
 internal fun List<KuiklyComposerMemberItem>.firstComposerMemberSuggestionCandidate(): KuiklyComposerMemberItem? =
-    firstOrNull { it.inMentionChannel } ?: firstOrNull()
+    composerMemberSuggestionCandidateAt(0)
+
+internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionCandidateAt(
+    selectedIndex: Int
+): KuiklyComposerMemberItem? {
+    if (isEmpty()) return null
+    val inChannel = filter { it.inMentionChannel }
+    val notInChannel = filterNot { it.inMentionChannel }
+    val index = threadComposerSuggestionSelectedIndex(selectedIndex, size)
+    return if (index < inChannel.size) {
+        inChannel[index]
+    } else {
+        notInChannel.getOrNull(index - inChannel.size)
+    }
+}
 
 internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
@@ -1642,11 +1711,13 @@ internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(chan
 private fun ComposerMemberSuggestionPanel(
     title: String,
     members: List<KuiklyComposerMemberItem>,
+    selectedIndex: Int,
     agentStatusResolver: SlockAgentStatusResolver,
     onClick: (KuiklyComposerMemberItem) -> Unit
 ) {
     val inChannel = members.filter { it.inMentionChannel }
     val notInChannel = members.filterNot { it.inMentionChannel }
+    val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, members.size)
     val headerIndex = inChannel.size
     val itemCount = inChannel.size + notInChannel.size + if (notInChannel.isNotEmpty()) 1 else 0
     ComposerSuggestionPanel(
@@ -1668,7 +1739,7 @@ private fun ComposerMemberSuggestionPanel(
                 ComposerMemberSuggestionRow(
                     member = member,
                     inChannel = true,
-                    selected = index == 0,
+                    selected = clampedSelectedIndex == index,
                     agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )
@@ -1684,7 +1755,7 @@ private fun ComposerMemberSuggestionPanel(
                 ComposerMemberSuggestionRow(
                     member = member,
                     inChannel = false,
-                    selected = inChannel.isEmpty() && index == headerIndex + 1,
+                    selected = clampedSelectedIndex == inChannel.size + (index - headerIndex - 1),
                     agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )

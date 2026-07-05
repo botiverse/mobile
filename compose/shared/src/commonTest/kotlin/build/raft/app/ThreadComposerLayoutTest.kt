@@ -318,6 +318,90 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionSelectedIndexCoercesToVisibleItemRange() {
+        assertEquals(0, threadComposerSuggestionSelectedIndex(selectedIndex = 3, itemCount = 0))
+        assertEquals(0, threadComposerSuggestionSelectedIndex(selectedIndex = -1, itemCount = 3))
+        assertEquals(2, threadComposerSuggestionSelectedIndex(selectedIndex = 4, itemCount = 3))
+    }
+
+    @Test
+    fun suggestionSelectedIndexMovesWithWraparound() {
+        assertEquals(
+            1,
+            threadComposerSuggestionSelectedIndexAfterMove(
+                selectedIndex = 0,
+                itemCount = 3,
+                move = ThreadComposerSuggestionSelectionMove.Down
+            )
+        )
+        assertEquals(
+            0,
+            threadComposerSuggestionSelectedIndexAfterMove(
+                selectedIndex = 1,
+                itemCount = 3,
+                move = ThreadComposerSuggestionSelectionMove.Up
+            )
+        )
+        assertEquals(
+            2,
+            threadComposerSuggestionSelectedIndexAfterMove(
+                selectedIndex = 0,
+                itemCount = 3,
+                move = ThreadComposerSuggestionSelectionMove.Up
+            )
+        )
+        assertEquals(
+            0,
+            threadComposerSuggestionSelectedIndexAfterMove(
+                selectedIndex = 2,
+                itemCount = 3,
+                move = ThreadComposerSuggestionSelectionMove.Down
+            )
+        )
+    }
+
+    @Test
+    fun selectedMemberSuggestionCandidateSkipsSectionHeader() {
+        val outside =
+            KuiklyComposerMemberItem(
+                displayName = "Outside",
+                handle = "outside",
+                inMentionChannel = false
+            )
+        val insideOne =
+            KuiklyComposerMemberItem(
+                displayName = "Inside One",
+                handle = "inside-one",
+                inMentionChannel = true
+            )
+        val insideTwo =
+            KuiklyComposerMemberItem(
+                displayName = "Inside Two",
+                handle = "inside-two",
+                inMentionChannel = true
+            )
+        val suggestions = listOf(outside, insideOne, insideTwo)
+
+        assertEquals(insideOne, suggestions.composerMemberSuggestionCandidateAt(0))
+        assertEquals(insideTwo, suggestions.composerMemberSuggestionCandidateAt(1))
+        assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(2))
+        assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(99))
+    }
+
+    @Test
+    fun selectedChannelSuggestionCandidateUsesClampedIndex() {
+        val channels =
+            listOf(
+                KuiklyComposerChannelItem(name = "general"),
+                KuiklyComposerChannelItem(name = "design")
+            )
+
+        val selectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex = 4, itemCount = channels.size)
+
+        assertEquals(KuiklyComposerChannelItem(name = "design"), channels.getOrNull(selectedIndex))
+    }
+
+    @Test
     fun enterAcceptsChannelSuggestionBeforeSendWhenItemsAreVisible() {
         assertEquals(
             ThreadComposerEnterAction.AcceptChannelSuggestion,
