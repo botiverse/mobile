@@ -150,7 +150,6 @@ data class SharedSettingsDeveloperSnapshot(
     val apiBaseUrl: String = "",
     val socketBaseUrl: String = "",
     val webUrl: String = "",
-    val sharedSocketIoTransportEnabled: Boolean = false,
     val updateCheck: SharedSettingsUpdateCheckSnapshot = SharedSettingsUpdateCheckSnapshot(),
     val options: List<SharedSettingsApiEnvironmentOption> = emptyList(),
     val feedback: String? = null
@@ -351,7 +350,6 @@ sealed interface SharedSettingsIntent {
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
-    data class SetSharedSocketIoTransport(val enabled: Boolean) : SharedSettingsIntent
     data object CheckQuiverUpdate : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
@@ -414,9 +412,6 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
         setApiEnvironment(request.key)
 
-    suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> =
-        DataResult.Error(ScreenError("settings_shared_socketio_transport_unavailable", retryable = false))
-
     suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         DataResult.Error(ScreenError("settings_quiver_update_check_unavailable", retryable = false))
 
@@ -425,9 +420,6 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_quiver_update_install_unavailable", retryable = false))
-
-    suspend fun onRealtimeTransportPreferenceChanged(enabled: Boolean): DataResult<Unit> =
-        DataResult.Content(Unit)
 
     suspend fun onApiEnvironmentChanged(
         before: SharedSettingsApiEnvironmentOption,
@@ -921,21 +913,6 @@ class SharedSettingsDataSource(
                     ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
             return applyApiEnvironmentChange(store, before, after)
         } ?: platformCapabilities.saveApiEnvironment(request)
-
-    suspend fun setSharedSocketIoTransport(enabled: Boolean): DataResult<SharedSettingsDeveloperSnapshot> =
-        apiEnvironmentStore?.let { store ->
-            val before = store.sharedSocketIoTransportEnabled()
-            val snapshot = store.setSharedSocketIoTransportEnabled(enabled)
-            if (before != enabled) {
-                when (val result = platformCapabilities.onRealtimeTransportPreferenceChanged(enabled)) {
-                    is DataResult.Content -> Unit
-                    is DataResult.Empty -> Unit
-                    is DataResult.Error -> diagnosticsLogger?.invoke("shared_socketio_preference_hook_error code=${result.error.code}")
-                    is DataResult.NoPermission -> diagnosticsLogger?.invoke("shared_socketio_preference_hook_no_permission code=${result.blocker.code}")
-                }
-            }
-            DataResult.Content(snapshot)
-        } ?: platformCapabilities.setSharedSocketIoTransport(enabled)
 
     suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         platformCapabilities.checkQuiverUpdate()
@@ -1774,12 +1751,6 @@ class SharedSettingsStore(
                         .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key)
                 }
             }
-            is SharedSettingsIntent.SetSharedSocketIoTransport -> {
-                runAction(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT) {
-                    dataSource.setSharedSocketIoTransport(intent.enabled)
-                        .applyDeveloperActionResult(DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT)
-                }
-            }
             SharedSettingsIntent.CheckQuiverUpdate -> {
                 runAction(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK) {
                     dataSource.checkQuiverUpdate()
@@ -2580,7 +2551,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
-            is SharedSettingsIntent.SetSharedSocketIoTransport,
             SharedSettingsIntent.CheckQuiverUpdate,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
@@ -2731,7 +2701,6 @@ internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
-internal const val DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT = "sharedSocketIoTransport"
 internal const val DEVELOPER_ACTION_QUIVER_UPDATE_CHECK = "quiverUpdateCheck"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"

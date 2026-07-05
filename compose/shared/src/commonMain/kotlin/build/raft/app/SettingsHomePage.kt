@@ -54,7 +54,6 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.AppLocale
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
-import build.raft.app.data.DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -4116,9 +4115,6 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
-                    onSharedSocketIoTransportChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetSharedSocketIoTransport(enabled))
-                    },
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
                 )
@@ -7247,7 +7243,6 @@ internal fun SharedSettingsDeveloperContent(
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenApiEnvironment: () -> Unit,
-    onSharedSocketIoTransportChange: (Boolean) -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -7256,7 +7251,6 @@ internal fun SharedSettingsDeveloperContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
-            DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT -> onSharedSocketIoTransportChange(value?.toBooleanStrictOrNull() ?: true)
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
@@ -8787,9 +8781,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
             state is ScreenLoadState.Loading -> "Loading"
             else -> "Open"
         }
-    val sharedTransportBusy =
-        actionState?.action == DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT && actionState.inProgress
-    val sharedTransportEnabled = this?.sharedSocketIoTransportEnabled == true
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
         title = "Developer",
@@ -8823,21 +8814,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 detail = environmentDetail,
                                 status = environmentStatus,
                                 enabled = state is ScreenLoadState.Content
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = DEVELOPER_ACTION_SHARED_SOCKET_IO_TRANSPORT,
-                                iconName = SlockLucideIconName.Activity,
-                                title = "Shared Socket.IO transport",
-                                detail = "Opt Android, iOS, and OHOS into the shared Ktor websocket-only Socket.IO pilot on the next realtime reconnect.",
-                                value = (!sharedTransportEnabled).toString(),
-                                status =
-                                    when {
-                                        sharedTransportBusy -> "Saving"
-                                        sharedTransportEnabled -> "Flag on"
-                                        else -> "Platform"
-                                    },
-                                enabled = state is ScreenLoadState.Content && !sharedTransportBusy,
-                                toggleValue = sharedTransportEnabled
                             )
                         )
                 ),

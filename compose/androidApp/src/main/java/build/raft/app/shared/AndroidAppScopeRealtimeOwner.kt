@@ -392,32 +392,6 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = false
     }
 
-    fun onRealtimeTransportPreferenceChanged(
-        context: Context,
-        enabled: Boolean
-    ) {
-        val appContext = context.applicationContext
-        val resumeSeq = realtimeRuntime?.lastSeq ?: 0L
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "realtime_transport_preference_changed shared=$enabled resumeSeq=$resumeSeq visibility=$appVisibility"
-        )
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob = null
-        val runtime = realtimeRuntime
-        if (runtime != null) {
-            runtime.disconnectForSessionEnd(GeneratedRealtimeContract.DisconnectReason.ProcessTeardown)
-            runtime.dispose()
-        } else {
-            realtimeClient?.disconnect()
-        }
-        realtimeRuntime = null
-        realtimeClient = null
-        if (appVisibility == AppVisibility.Foreground || backgroundKeepAliveEnabled) {
-            connectFromStoredSession(appContext, resumeSeq)
-        }
-    }
-
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
         val hostContext = AndroidAppScopeRealtimeHostContext.create(context.applicationContext, scope)
