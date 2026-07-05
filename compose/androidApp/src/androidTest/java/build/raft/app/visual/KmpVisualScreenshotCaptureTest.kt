@@ -726,6 +726,25 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTasksPanelStates() {
+        captureKmpComponentCase(
+            caseId = "components.tasks.panel.states",
+            pageName = "compose_tasks_panel_visual",
+            crop = TASKS_PANEL_STATES_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureTasksStatusMenu() {
+        captureKmpComponentCase(
+            caseId = "components.tasks.status-menu",
+            pageName = "compose_tasks_status_menu_visual",
+            crop = TASKS_STATUS_MENU_CROP
+        )
+    }
+
+    @Test
     fun captureMembersCreateAgentCodexDialog() {
         captureKmpComponentCase(
             caseId = "components.members.create-agent.dialog",
@@ -2007,6 +2026,23 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 360
+            )
+        // Header + toolbar + four status sections with the done card expanded measure
+        // close to the full viewport, so the crop keeps the whole 844dp height instead
+        // of a content-sized guess that could clip the Done section (task #330/#353).
+        private val TASKS_PANEL_STATES_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 844
+            )
+        private val TASKS_STATUS_MENU_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 260
             )
         private val THREAD_MESSAGE_ROW_RICH_CONTENT_CROP =
             VisualCrop(
