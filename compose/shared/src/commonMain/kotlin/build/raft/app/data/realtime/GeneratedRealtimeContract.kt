@@ -19,6 +19,14 @@ object GeneratedRealtimeContract {
         const val ServerId = "serverId"
         const val EventName = "eventName"
         const val RawPayload = "rawPayload"
+
+        val All: List<String> = listOf(
+            Action,
+            ChannelId,
+            ServerId,
+            EventName,
+            RawPayload,
+        )
     }
 
     object DisconnectReason {

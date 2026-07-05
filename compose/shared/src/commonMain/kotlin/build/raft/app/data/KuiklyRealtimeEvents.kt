@@ -1,23 +1,18 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
 
 internal class KuiklyRealtimeEvents(
-    private val pager: Pager
+    private val eventBus: SlockEventBus
 ) {
-    private val module: SlockEnhancedNotifyModule
-        get() = SlockEnhancedNotifyModule(pager)
-
-    fun addListener(onEvent: (JSONObject) -> Unit): CallbackRef =
-        module.addNotify(SlockRealtimeNotifyContract.EventName, crossProcess = true) { data ->
+    fun addListener(onEvent: (JSONObject) -> Unit): RealtimeSubscription =
+        eventBus.observe(SlockRealtimeNotifyContract.EventName, crossProcess = true) { data ->
             data?.let(onEvent)
         }
 
-    fun removeListener(callbackRef: CallbackRef) {
-        module.removeNotify(SlockRealtimeNotifyContract.EventName, callbackRef)
+    fun removeListener(subscription: RealtimeSubscription) {
+        subscription.close()
     }
 
     fun joinChannels(channelIds: List<String>) {
@@ -31,7 +26,7 @@ internal class KuiklyRealtimeEvents(
 
     fun joinChannel(channelId: String) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
-        module.postNotify(
+        eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionJoinChannel)
@@ -51,7 +46,7 @@ internal class KuiklyRealtimeEvents(
 
     fun rejoinChannel(channelId: String) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
-        module.postNotify(
+        eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRejoinChannel)
@@ -71,7 +66,7 @@ internal class KuiklyRealtimeEvents(
 
     fun leaveChannel(channelId: String) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
-        module.postNotify(
+        eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionLeaveChannel)

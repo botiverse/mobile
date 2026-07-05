@@ -1,9 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
 
 private const val NOTIFICATION_PREFERENCE_EVENT = "slock.notificationPreferenceChanged"
 private const val KEY_ENABLED = "enabled"
@@ -11,15 +8,12 @@ private const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = "foregroundKeepAliveEnable
 private const val KEY_SOURCE = "source"
 
 class KuiklyNotificationPreferenceEvents(
-    private val pager: Pager,
+    private val eventBus: SlockEventBus,
     private val source: String = "shared"
 ) {
-    private val module: NotifyModule
-        get() = pager.acquireModule(NotifyModule.MODULE_NAME)
-
-    fun addPreferenceListener(onChanged: (NotificationPreferenceSnapshot) -> Unit): CallbackRef =
-        module.addNotify(NOTIFICATION_PREFERENCE_EVENT) { data ->
-            val enabled = data?.optBoolean(KEY_ENABLED) ?: return@addNotify
+    fun addPreferenceListener(onChanged: (NotificationPreferenceSnapshot) -> Unit): RealtimeSubscription =
+        eventBus.observe(NOTIFICATION_PREFERENCE_EVENT) { data ->
+            val enabled = data?.optBoolean(KEY_ENABLED) ?: return@observe
             val foregroundKeepAliveEnabled = data.optBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED)
             onChanged(
                 NotificationPreferenceSnapshot(
@@ -29,12 +23,12 @@ class KuiklyNotificationPreferenceEvents(
             )
         }
 
-    fun removePreferenceListener(callbackRef: CallbackRef) {
-        module.removeNotify(NOTIFICATION_PREFERENCE_EVENT, callbackRef)
+    fun removePreferenceListener(subscription: RealtimeSubscription) {
+        subscription.close()
     }
 
     fun postPreferenceChanged(snapshot: NotificationPreferenceSnapshot) {
-        module.postNotify(
+        eventBus.post(
             NOTIFICATION_PREFERENCE_EVENT,
             JSONObject()
                 .put(KEY_ENABLED, snapshot.enabled)
@@ -45,7 +39,6 @@ class KuiklyNotificationPreferenceEvents(
 }
 
 fun kuiklyNotificationPreferenceRepository(
-    pager: Pager,
     events: KuiklyNotificationPreferenceEvents
 ): NotificationPreferenceRepository =
     NotifyingNotificationPreferenceRepository(

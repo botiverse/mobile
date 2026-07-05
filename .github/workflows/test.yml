@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   android:
-    name: Android shared compile
+    name: Android compile & tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -90,9 +90,18 @@ jobs:
       # Compiling the unit-test source set closes the gap where a broken
       # commonTest (or an API change that breaks tests) sailed through green
       # CI — main sources alone do not compile test code (#198 follow-up).
-      - name: Compile shared Android target and unit tests
+      # :androidApp:compileDebugKotlin gates the Android host too — #57 merged
+      # green while breaking every local assembleDebug because only :shared
+      # was compiled here (task #217 follow-up).
+      - name: Compile shared + Android host and unit tests
         working-directory: compose
-        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileDebugUnitTestKotlinAndroid --no-daemon --console=plain
+        run: |
+          ./gradlew \
+            :shared:compileDebugKotlinAndroid \
+            :shared:compileDebugUnitTestKotlinAndroid \
+            :androidApp:compileDebugKotlin \
+            --no-daemon \
+            --console=plain
 
       # Hard run gate since #215 cleared the legacy failures: the shared JVM
       # suite must pass. Reports upload on failure for diagnosis.
@@ -111,9 +120,9 @@ jobs:
           retention-days: 7
 
   ios:
-    name: iOS shared compile
+    name: iOS compile
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
@@ -169,6 +178,38 @@ jobs:
             :shared:compileTestKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain
+
+      # Swift-host gate (task #217 follow-up): the jobs above only cover the
+      # KMP side; ContentView.swift / KuiklyExpand ObjC breaks sailed through.
+      # The local kuikly pod needs the submodule worktree even on cache hit.
+      - name: Ensure kuikly fork submodule for local pod
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+
+      # shared.podspec guards against a missing framework dir; the IDE's
+      # Gradle sync normally creates the placeholder — CI must do it manually.
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain
+
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+
+      - name: Build iOS host app (simulator)
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -200
 
   ohos:
     name: OHOS shared compile

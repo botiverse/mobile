@@ -16,6 +16,7 @@ const ENHANCED_NOTIFY_KEY_EVENT_NAME = 'eventName';
 const ENHANCED_NOTIFY_KEY_DATA = 'data';
 const ENHANCED_NOTIFY_KEY_SOURCE = 'source';
 const SHARED_TRANSPORT_SINK_SERVICE = 'slockOhosRealtimeSharedTransportSink';
+const ENHANCED_NOTIFY_SINK_SERVICE = 'slockOhosEnhancedNotifySink';
 
 interface RealtimeConnectParams {
   serverId: string;
@@ -49,6 +50,18 @@ class SlockOhosRealtimeSharedTransportSink {
   }
 }
 
+class SlockOhosEnhancedNotifySink {
+  private readonly hostContext: SlockOhosRealtimeHostContext;
+
+  constructor(hostContext: SlockOhosRealtimeHostContext) {
+    this.hostContext = hostContext;
+  }
+
+  onEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
+    this.hostContext.handleSharedEnhancedNotifyEvent(eventName, eventDataJson, envelopeJson);
+  }
+}
+
 export class SlockOhosRealtimeHostContext {
   private controller?: KRNativeRenderController;
   private readonly socketIo: OhosSocketIoClient = new OhosSocketIoClient();
@@ -61,6 +74,7 @@ export class SlockOhosRealtimeHostContext {
   private enhancedNotifyCallback?: Callback<emitter.EventData>;
   private socketListenerInstalled: boolean = false;
   private sharedTransportSinkInstalled: boolean = false;
+  private enhancedNotifySinkInstalled: boolean = false;
   private sharedTransportActive: boolean = false;
   private sharedTransportConnected: boolean = false;
 
@@ -70,6 +84,7 @@ export class SlockOhosRealtimeHostContext {
 
   bootstrapRealtime(): void {
     this.installSharedTransportSink();
+    this.installEnhancedNotifySink();
     this.installSocketListener();
     this.installEnhancedNotifyBridge();
   }
@@ -169,6 +184,23 @@ export class SlockOhosRealtimeHostContext {
     this.handleSocketIoEvent(eventName, payload);
   }
 
+  handleSharedEnhancedNotifyEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
+    emitter.emit(eventName, {
+      data: {
+        eventName: eventName,
+        stringify: eventDataJson.length > 0 ? eventDataJson : '{}',
+      },
+    });
+    if (eventName !== ENHANCED_NOTIFY_EVENT_NAME) {
+      emitter.emit(ENHANCED_NOTIFY_EVENT_NAME, {
+        data: {
+          eventName: ENHANCED_NOTIFY_EVENT_NAME,
+          stringify: envelopeJson.length > 0 ? envelopeJson : '{}',
+        },
+      });
+    }
+  }
+
   private installSharedTransportSink(): void {
     if (this.sharedTransportSinkInstalled) {
       return;
@@ -179,6 +211,18 @@ export class SlockOhosRealtimeHostContext {
     );
     this.sharedTransportSinkInstalled = true;
     console.info('[SlockOhosRealtime] shared_transport_sink_registered');
+  }
+
+  private installEnhancedNotifySink(): void {
+    if (this.enhancedNotifySinkInstalled) {
+      return;
+    }
+    registerSingleServiceProvider(
+      ENHANCED_NOTIFY_SINK_SERVICE,
+      new SlockOhosEnhancedNotifySink(this)
+    );
+    this.enhancedNotifySinkInstalled = true;
+    console.info('[SlockOhosRealtime] enhanced_notify_sink_registered');
   }
 
   private installSocketListener(): void {

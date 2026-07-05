@@ -1,9 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
 
 object SlockHostNetworkNotifyContract {
     const val EventName = "slock.hostNetworkStatus"
@@ -20,18 +17,15 @@ internal data class HostNetworkStatusSignal(
 )
 
 internal class KuiklyHostNetworkEvents(
-    private val pager: Pager
+    private val eventBus: SlockEventBus
 ) {
-    private val module: NotifyModule
-        get() = pager.acquireModule(NotifyModule.MODULE_NAME)
-
-    fun addListener(onChanged: (HostNetworkStatusSignal) -> Unit): CallbackRef =
-        module.addNotify(SlockHostNetworkNotifyContract.EventName, crossProcess = true) { data ->
+    fun addListener(onChanged: (HostNetworkStatusSignal) -> Unit): RealtimeSubscription =
+        eventBus.observe(SlockHostNetworkNotifyContract.EventName, crossProcess = true) { data ->
             data?.toHostNetworkStatusSignal()?.let(onChanged)
         }
 
-    fun removeListener(callbackRef: CallbackRef) {
-        module.removeNotify(SlockHostNetworkNotifyContract.EventName, callbackRef)
+    fun removeListener(subscription: RealtimeSubscription) {
+        subscription.close()
     }
 }
 

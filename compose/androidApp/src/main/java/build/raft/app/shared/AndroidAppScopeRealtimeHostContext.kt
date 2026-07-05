@@ -19,6 +19,7 @@ import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockLocalPreferenceStore
 import build.raft.app.data.buildSystemUnreadNotificationRequest
+import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeConnectRequest
@@ -32,7 +33,6 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -92,9 +92,9 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         eventName: String,
         rawPayload: String
     ) {
-        appContext.sendKuiklyEvent(
-            SlockRealtimeNotifyContract.EventName,
-            realtimeNotifyPayload(serverId, eventName, rawPayload)
+        postAndroidAppScopeEvent(
+            eventName = SlockRealtimeNotifyContract.EventName,
+            eventData = realtimeNotifyPayload(serverId, eventName, rawPayload)
         )
     }
 

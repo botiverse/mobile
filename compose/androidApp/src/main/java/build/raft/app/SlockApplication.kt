@@ -8,6 +8,7 @@ import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import io.quiver.update.QuiverCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.warmUpSlockJsonParseDispatcher
 import com.tencent.kuiklybase.markdown.model.warmUpSlockMarkdownParseDispatcher
 import kotlinx.coroutines.runBlocking
@@ -18,6 +19,7 @@ class SlockApplication : Application() {
         SlockAndroidBuglyDiagnostics.init(this)
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
+        installAndroidAppScopeEventBus(this)
         warmUpSlockJsonParseDispatcher()
         warmUpSlockMarkdownParseDispatcher()
         AndroidAppScopeRealtimeOwner.install(this)
