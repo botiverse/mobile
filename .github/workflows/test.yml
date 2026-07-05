@@ -591,6 +591,15 @@ jobs:
         shell: bash
         run: git config --global --add safe.directory '*'
 
+      # actions/cache keys include a compression-tool "version": the ubuntu
+      # prebuild saves zstd-compressed entries, which a gzip-only client can
+      # never restore (same key, different version). The image lacks zstd.
+      - name: Install zstd for cache compatibility
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends zstd
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
