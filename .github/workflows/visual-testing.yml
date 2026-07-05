@@ -30,6 +30,10 @@ on:
         description: "botiverse/slock ref for React source + visual CLI"
         type: string
         default: "staging"
+      site_only:
+        description: "UI-only fast republish: skip ALL capture jobs, rebuild the site HTML from the images/data already on gh-pages with the latest CLI, and publish (minutes instead of a full run)"
+        type: boolean
+        default: false
 
 concurrency:
   group: visual-testing-${{ github.ref }}
@@ -40,6 +44,7 @@ permissions:
 
 jobs:
   react-capture:
+    if: ${{ !inputs.site_only }}
     name: React capture (playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -106,6 +111,7 @@ jobs:
           if-no-files-found: error
 
   android-build:
+    if: ${{ !inputs.site_only }}
     name: Android build (connected test APKs)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -281,6 +287,10 @@ jobs:
   report:
     name: Diff, report, site, publish
     needs: [react-capture, android-capture]
+    # site_only skips both capture jobs; run the report job anyway and let its
+    # steps branch. Real failures/cancellations of live capture jobs still
+    # block it.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -322,17 +332,35 @@ jobs:
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
 
       - name: Download react results
+        if: ${{ !inputs.site_only }}
         uses: actions/download-artifact@v4
         with:
           name: visual-results-react
           path: mobile/visual-testing-results/react
 
       - name: Download android results (merge shards)
+        if: ${{ !inputs.site_only }}
         uses: actions/download-artifact@v4
         with:
           pattern: visual-results-android-shard-*
           merge-multiple: true
           path: mobile/visual-testing-results/android
+
+      # UI-only republish: rebuild visual-testing-results from what is already
+      # published on gh-pages (raw react/android captures + metadata), then run
+      # the normal diff/report/site chain with the LATEST CLI. No emulators, no
+      # browsers — minutes instead of a full capture round.
+      - name: Reconstruct results from gh-pages (site_only)
+        if: ${{ inputs.site_only }}
+        working-directory: mobile
+        run: |
+          git fetch origin gh-pages --depth 1
+          git worktree add /tmp/ghpages origin/gh-pages
+          SRC=/tmp/ghpages/visual-testing/latest
+          test -d "$SRC/react" && test -d "$SRC/android" || { echo "gh-pages latest/ lacks raw captures"; exit 1; }
+          mkdir -p visual-testing-results
+          cp -R "$SRC/react" visual-testing-results/react
+          cp -R "$SRC/android" visual-testing-results/android
 
       - name: Diff / report / site
         working-directory: mobile
@@ -351,7 +379,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to gh-pages (preflight-guarded)
-        if: ${{ inputs.publish || github.event_name == 'schedule' }}
+        if: ${{ inputs.publish || inputs.site_only || github.event_name == 'schedule' }}
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
