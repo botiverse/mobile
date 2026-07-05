@@ -646,6 +646,26 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun resolveSortTargetIndexTreatsRowGapsAsTheNextRow() {
+        // Rows are laid out with spacing (Arrangement.spacedBy): 32..34 and
+        // 66..68 are gaps. A pointer inside a gap must resolve to the next row
+        // down — the old strict-containment check fell back to the LAST visible
+        // row, snapping the insertion indicator to the end whenever the finger
+        // crossed a gap (task #356 device feedback).
+        val rows =
+            listOf(
+                SlockSortRowBounds(index = 0, top = 0f, size = 32f),
+                SlockSortRowBounds(index = 1, top = 34f, size = 32f),
+                SlockSortRowBounds(index = 2, top = 68f, size = 32f),
+                SlockSortRowBounds(index = 3, top = 102f, size = 32f),
+            )
+
+        assertEquals(1, resolveSortTargetIndex(33f, rows, lastIndex = 3))
+        assertEquals(2, resolveSortTargetIndex(67f, rows, lastIndex = 3))
+        assertEquals(3, resolveSortTargetIndex(101f, rows, lastIndex = 3))
+    }
+
+    @Test
     fun resolveSortTargetIndexClampsBeyondVisibleRows() {
         // Visible window is only indices 3..4 (list scrolled); pointer above the
         // first visible row clamps to it, below the last clamps to it, and the
