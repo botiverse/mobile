@@ -275,6 +275,31 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentDetailUsesPayloadServerForTabOrderWhileRouteIsLoading() {
+        assertEquals(
+            "server-from-members",
+            memberDetailAgentPanelTabOrderServerId(
+                routeServerId = null,
+                payloadSourceServerId = " server-from-members "
+            )
+        )
+        assertEquals(
+            "server-from-route",
+            memberDetailAgentPanelTabOrderServerId(
+                routeServerId = " server-from-route ",
+                payloadSourceServerId = "server-from-members"
+            )
+        )
+        assertEquals(
+            null,
+            memberDetailAgentPanelTabOrderServerId(
+                routeServerId = null,
+                payloadSourceServerId = " "
+            )
+        )
+    }
+
+    @Test
     fun humanDetailDoesNotWaitForAgentTabOrder() {
         assertEquals(
             false,

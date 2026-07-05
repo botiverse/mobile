@@ -351,6 +351,16 @@ internal fun shouldWaitForAgentPanelTabOrderBeforeRender(
         payloadAgentPanelTabOrder.isEmpty() &&
         (!storeServerMatches || !storeLoaded)
 
+internal fun memberDetailAgentPanelTabOrderServerId(
+    routeServerId: String?,
+    payloadSourceServerId: String
+): String? =
+    routeServerId.cleanMemberDetailServerId()
+        ?: payloadSourceServerId.cleanMemberDetailServerId()
+
+private fun String?.cleanMemberDetailServerId(): String? =
+    this?.trim()?.takeIf { it.isNotBlank() }
+
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
@@ -1650,6 +1660,11 @@ private fun MemberDetailPageContent() {
             is MemberDetailRouteState.Agent -> current.server.id.value
             else -> null
         }
+    val agentPanelTabOrderServerId =
+        memberDetailAgentPanelTabOrderServerId(
+            routeServerId = statusLookupServerId,
+            payloadSourceServerId = payload.sourceServerId
+        )
     val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
         SharedComputersPickerSlice()
     )
@@ -1657,16 +1672,17 @@ private fun MemberDetailPageContent() {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
     }
-    LaunchedEffect(provider.agentPanelTabOrderStore, statusLookupServerId, payload.agentPanelTabOrder) {
+    LaunchedEffect(provider.agentPanelTabOrderStore, agentPanelTabOrderServerId, payload.agentPanelTabOrder) {
+        val serverId = agentPanelTabOrderServerId ?: return@LaunchedEffect
         provider.agentPanelTabOrderStore.bindServer(
-            serverId = statusLookupServerId,
+            serverId = serverId,
             initialOrder = payload.agentPanelTabOrder,
             source = "member_detail_bind_payload",
             logger = { message -> bridge.log(message) }
         )
     }
     val agentPanelTabOrder =
-        if (agentPanelTabOrderState.serverId == statusLookupServerId) {
+        if (agentPanelTabOrderState.serverId == agentPanelTabOrderServerId) {
             agentPanelTabOrderState.order
         } else {
             payload.agentPanelTabOrder
@@ -1676,7 +1692,7 @@ private fun MemberDetailPageContent() {
             expectedKind = expectedKind,
             initialAgentTab = initialAgentTab,
             payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
-            storeServerMatches = agentPanelTabOrderState.serverId == statusLookupServerId,
+            storeServerMatches = agentPanelTabOrderState.serverId == agentPanelTabOrderServerId,
             storeLoaded = agentPanelTabOrderState.loaded
         )
     val agentStatusResolver =
