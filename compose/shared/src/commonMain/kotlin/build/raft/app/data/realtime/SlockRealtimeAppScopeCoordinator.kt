@@ -45,7 +45,11 @@ data class SlockRealtimeAppScopeConnectDecision(
     val shouldConnect: Boolean,
     val resumeSeq: Long,
     val sessionChanged: Boolean,
-    val logMessage: String?
+    // Diagnostic string, never absent: "" means "nothing to log". Kept non-null
+    // like the sibling decision types because it crosses the KNOI bridge, where a
+    // Kotlin null map value materializes as JS `undefined` (not null) and defeats
+    // the ArkTS `!== null` guards.
+    val logMessage: String
 )
 
 data class SlockRealtimeAppScopeRoomCommandDecision(
@@ -158,7 +162,7 @@ class SlockRealtimeAppScopeEngine {
                     shouldConnect = false,
                     resumeSeq = state.lastSeq,
                     sessionChanged = false,
-                    logMessage = null
+                    logMessage = "connect_skip_active state=$currentStateLabel serverId=${serverId.value}"
                 )
             }
             val logMessage = "connect_same_session_reconnect state=$currentStateLabel serverId=${serverId.value}"
@@ -185,7 +189,9 @@ class SlockRealtimeAppScopeEngine {
             shouldConnect = true,
             resumeSeq = connectPlan.resumeSeq,
             sessionChanged = connectPlan.sessionChanged,
-            logMessage = null
+            logMessage =
+                "connect_start sessionChanged=${connectPlan.sessionChanged} " +
+                    "resumeSeq=${connectPlan.resumeSeq} serverId=${serverId.value}"
         )
     }
 
@@ -439,7 +445,7 @@ class SlockRealtimeAppScopeCoordinator(
                 forceReconnect = forceReconnect,
                 currentState = connection.state
             )
-        decision.logMessage?.let(sink::log)
+        if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
         if (!decision.shouldConnect) {
             return DataResult.Content(Unit)
         }
