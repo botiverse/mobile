@@ -1,11 +1,33 @@
-# harmony-use
+# Raft mobile use tools
 
-`harmony-use` is a small, dependency-free Python library and CLI for repeatable
-HarmonyOS/OHOS device automation from a host machine. It wraps the commands we
-repeat during Raft OHOS work: DevEco environment discovery, HDC target control,
-DevEco emulator start/stop, remote host/device connection, Hvigor
-build/install/launch flows, screenshots, UI layout dumps, and HiLog
-capture/analysis.
+This package provides small, dependency-free Python libraries and CLIs for
+repeatable Raft mobile device automation from a host machine.
+
+The platform entrypoints are intentionally separate:
+
+- `harmony-use` is HarmonyOS/OHOS only.
+- `android-use` is Android/ADB only.
+- `ios-use` is iOS/Xcode/simctl only.
+
+Only neutral lower-level helpers are shared (`device_use` command runner, SSH
+remote execution, shell quoting, and result models). Platform command semantics
+stay in the platform package so Harmony-specific behavior does not grow Android
+or iOS flags.
+
+`harmony-use` wraps the commands we repeat during Raft OHOS work: DevEco
+environment discovery, HDC target control, DevEco emulator start/stop, remote
+host/device connection, Hvigor build/install/launch flows, screenshots, UI
+layout dumps, and HiLog capture/analysis.
+
+`android-use` packages the older `scripts/slock_android_adb.py` workflow into a
+library/CLI: ADB device discovery, install/launch/intent helpers, Kuikly
+page open, diagnostics deep links, screenshots, uiautomator XML, input, logcat,
+and Kuikly profiler pulls. The old script remains as a compatibility wrapper.
+
+`ios-use` covers the repeatable Xcode/simulator operations that do not require
+extra dependencies: simctl device discovery, boot/shutdown, xcodebuild build,
+install/launch/terminate, open URL, screenshot, log capture, log analysis, and
+remote SSH wrappers.
 
 The package is intentionally not tied to a single checkout. Defaults match the
 Raft OHOS app, but every path and identifier can be overridden by CLI flags or
@@ -27,7 +49,7 @@ PYTHONPATH=tools/harmony-use/src python3 -m harmony_use --help
 
 ## Environment
 
-By default the tool looks for DevEco Studio at:
+By default `harmony-use` looks for DevEco Studio at:
 
 ```text
 /Applications/DevEco-Studio.app/Contents
@@ -42,6 +64,8 @@ Overrides:
 - `HARMONY_USE_PROJECT` for the OHOS app project directory.
 
 ## Common Commands
+
+### Harmony/OHOS
 
 Inspect host setup:
 
@@ -112,27 +136,125 @@ Raft validation:
 - NetworkKMM execution/init/internal errors (`slock_networkkmm*`)
 - TLS certificate verification failures (`CURLE_SSL*`, peer/certificate verify text)
 
+### Android
+
+Inspect ADB setup:
+
+```bash
+android-use doctor --pretty
+android-use devices --pretty
+```
+
+Install, launch, and stop:
+
+```bash
+android-use install compose/androidApp/build/outputs/apk/debug/androidApp-debug.apk --pretty
+android-use launch --pretty
+android-use stop --pretty
+android-use run-app compose/androidApp/build/outputs/apk/debug/androidApp-debug.apk --pretty
+```
+
+Open Slock/KMP surfaces:
+
+```bash
+android-use open-page compose_thread --page-data '{"channelId":"..."}' --pretty
+android-use open-diagnostics --enable-profiler --reset-scene --pretty
+android-use start-intent -a build.raft.app.diagnostics.OPEN -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity --pretty
+```
+
+Capture state and input:
+
+```bash
+android-use state --out /tmp/android-use --pretty
+android-use tap 540 1200
+android-use swipe --direction up
+android-use key BACK
+```
+
+Capture/analyze logs and profiler artifacts:
+
+```bash
+android-use logcat --duration 10 --filter-regex 'Slock|Kuikly|AndroidRuntime' --out /tmp/android-use --pretty
+android-use analyze-log /tmp/android-use/state-logcat.txt --pretty
+android-use pull-profiler --out /tmp/android-use --allow-missing --pretty
+```
+
+Remote host helpers:
+
+```bash
+android-use remote-devices builder-mac.local --pretty
+android-use remote-run builder-mac.local -- adb devices
+```
+
+### iOS
+
+Inspect Xcode/simctl setup:
+
+```bash
+ios-use doctor --pretty
+ios-use devices --pretty
+```
+
+Build, install, launch, and stop:
+
+```bash
+ios-use build --workspace compose/iosApp/iosApp.xcworkspace --scheme iosApp --pretty
+ios-use install --pretty
+ios-use launch --pretty
+ios-use terminate --pretty
+ios-use run-app --workspace compose/iosApp/iosApp.xcworkspace --scheme iosApp --pretty
+```
+
+Simulator operations:
+
+```bash
+ios-use boot --device <simulator-udid> --pretty
+ios-use shutdown --device <simulator-udid> --pretty
+ios-use open-url buildraft://diagnostics --pretty
+ios-use screenshot --out /tmp/ios-use --pretty
+```
+
+Capture/analyze logs:
+
+```bash
+ios-use log --duration 10 --predicate 'process == "iosApp"' --out /tmp/ios-use --pretty
+ios-use analyze-log /tmp/ios-use/state-ios-log.txt --pretty
+```
+
+Remote host helpers:
+
+```bash
+ios-use remote-devices builder-mac.local --pretty
+ios-use remote-run builder-mac.local -- xcrun simctl list devices
+```
+
 ## Library Sketch
 
 ```python
-from harmony_use import HarmonyConfig, HarmonyDevice
-from harmony_use import HarmonyEmulator, RemoteHost
+from android_use import AndroidConfig, AndroidDevice
+from harmony_use import HarmonyConfig, HarmonyDevice, HarmonyEmulator
+from ios_use import IosConfig, IosSimulator
 
 config = HarmonyConfig.from_defaults(project="compose/ohosApp")
 device = HarmonyDevice(config)
 print(device.devices())
 device.launch(bundle="build.raft.harmony")
 print(HarmonyEmulator(config).list().stdout)
-print(RemoteHost("builder-mac.local", config).hdc_devices().stdout)
+
+android = AndroidDevice(AndroidConfig.from_defaults())
+print(android.devices())
+
+ios = IosSimulator(IosConfig.from_defaults(workspace="compose/iosApp/iosApp.xcworkspace"))
+print(ios.devices())
 ```
 
 ## Design Notes
 
 - Commands return JSON so agents can paste concise evidence in Raft threads.
-- HDC/Hvigor commands are built from structured APIs instead of ad hoc shell
+- Platform commands are built from structured APIs instead of ad hoc shell
   snippets.
 - No credentials, signing material, or device addresses are stored in the
   package.
 - The package prefers explicit failures: missing DevEco tools, no connected
-  target, unsigned HAP, and unsupported `uitest` commands are reported as
-  actionable errors.
+  target, missing ADB/Xcode tools, unsigned HAP, missing APK/app bundles, and
+  unsupported device commands are reported as actionable errors.
