@@ -11,43 +11,39 @@ import kotlin.test.assertNull
 
 class SettingsLanguageRegionPreferenceRequestTest {
     @Test
-    fun displayOnlySaveDoesNotClearLanguage() {
+    fun modeOnlySaveDoesNotBuildAccountRequest() {
         val request =
             buildSettingsLanguageRegionPreferenceUpdateRequest(
-                snapshot = languageRegionSnapshot(language = "other", display = "translated"),
+                snapshot = languageRegionSnapshot(language = "other", display = "automatic"),
                 languageDraft = "other",
-                displayDraft = "original"
+                displayDraft = "manual"
             )
 
-        assertEquals("original", request?.preferredTranslationDisplay)
-        assertNull(request?.preferredLanguage)
-        assertFalse(request?.clearPreferredLanguage == true)
+        assertNull(request)
     }
 
     @Test
-    fun originalDisplayDoesNotSubmitHiddenLanguageDraft() {
+    fun originalModeDoesNotSubmitHiddenLanguageDraft() {
         val request =
             buildSettingsLanguageRegionPreferenceUpdateRequest(
-                snapshot = languageRegionSnapshot(language = "en", display = "translated"),
+                snapshot = languageRegionSnapshot(language = "en", display = "automatic"),
                 languageDraft = "zh",
                 displayDraft = "original"
             )
 
-        assertEquals("original", request?.preferredTranslationDisplay)
-        assertNull(request?.preferredLanguage)
-        assertFalse(request?.clearPreferredLanguage == true)
+        assertNull(request)
     }
 
     @Test
-    fun translatedDisplayCanSubmitChangedLanguageSeparately() {
+    fun automaticModeCanSubmitChangedLanguageSeparately() {
         val request =
             buildSettingsLanguageRegionPreferenceUpdateRequest(
                 snapshot = languageRegionSnapshot(language = "other", display = "original"),
                 languageDraft = "en",
-                displayDraft = "translated"
+                displayDraft = "automatic"
             )
 
-        assertEquals("translated", request?.preferredTranslationDisplay)
+        assertNull(request?.preferredTranslationDisplay)
         assertEquals("en", request?.preferredLanguage)
         assertFalse(request?.clearPreferredLanguage == true)
     }
@@ -95,7 +91,8 @@ class SettingsLanguageRegionPreferenceRequestTest {
                     detail = "",
                     options =
                         listOf(
-                            SettingsMobileSelectionOptionSnapshot("translated", "Translated"),
+                            SettingsMobileSelectionOptionSnapshot("automatic", "Automatic"),
+                            SettingsMobileSelectionOptionSnapshot("manual", "Manual"),
                             SettingsMobileSelectionOptionSnapshot("original", "Original")
                         )
                 )

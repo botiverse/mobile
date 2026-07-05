@@ -1162,13 +1162,14 @@ data class SettingsLanguageRegionSnapshot(
     val timeFormat: SettingsMobileSelectionSnapshot,
     val translationDisplay: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(
-            selectedKey = "translated",
-            selectedLabel = "Translated",
-            statusLabel = "Translated",
-            detail = "Messages display translated text when this server supports it.",
+            selectedKey = "automatic",
+            selectedLabel = "Automatic",
+            statusLabel = "Automatic",
+            detail = "Stored locally on this device.",
             options =
                 listOf(
-                    SettingsMobileSelectionOptionSnapshot("translated", "Translated"),
+                    SettingsMobileSelectionOptionSnapshot("automatic", "Automatic"),
+                    SettingsMobileSelectionOptionSnapshot("manual", "Manual"),
                     SettingsMobileSelectionOptionSnapshot("original", "Original")
                 )
         )
