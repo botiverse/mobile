@@ -415,6 +415,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.DismissMentionAction -> "DismissMentionAction"
         is SharedThreadComposerDraftIntent.BeginMentionAction -> "BeginMentionAction"
         is SharedThreadComposerDraftIntent.FinishMentionAction -> "FinishMentionAction"
+        SharedThreadComposerDraftIntent.ClearMentionActionNotice -> "ClearMentionActionNotice"
         is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
         is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
         is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
@@ -459,6 +460,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val notice: String,
         val delivered: Boolean
     ) : SharedThreadComposerDraftIntent
+    data object ClearMentionActionNotice : SharedThreadComposerDraftIntent
     data class AddUploadedAttachments(
         val attachments: List<SharedThreadComposerAttachment>,
         val replacedAttachmentIds: Set<String> = emptySet(),
@@ -602,6 +604,8 @@ internal class SharedThreadComposerDraftStore(
                     mentionActionNotice = intent.notice,
                     executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
                 )
+            SharedThreadComposerDraftIntent.ClearMentionActionNotice ->
+                current.copy(mentionActionNotice = null)
             is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
                 val fallbackReplacedAttachmentIds =
                     if (intent.replacedAttachmentIdsByUploadedId.isEmpty()) {

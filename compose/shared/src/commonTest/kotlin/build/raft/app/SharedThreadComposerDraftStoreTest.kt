@@ -934,4 +934,29 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(emptyList(), store.state.value.pendingMentionActions)
         assertEquals("delivered", store.state.value.mentionActionNotice)
     }
+
+    @Test
+    fun clearingMentionActionNoticeDoesNotRemovePendingAction() {
+        val store = SharedThreadComposerDraftStore()
+        val pending =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "outside",
+                availableActions = listOf("invite")
+            )
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionAction(
+                resolutionId = "res-1",
+                notice = "failed",
+                delivered = false
+            )
+        )
+
+        store.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
+
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertEquals(null, store.state.value.mentionActionNotice)
+    }
 }

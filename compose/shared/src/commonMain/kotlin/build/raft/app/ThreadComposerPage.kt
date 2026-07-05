@@ -6,6 +6,8 @@ import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockRaftUiBadge
+import build.raft.app.components.SlockRaftUiBadgeVariant
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
@@ -63,6 +65,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
@@ -77,6 +80,7 @@ private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
 private const val ThreadComposerAttachmentImageTileSizeDp = 64
 private const val ThreadComposerAttachmentFileTileWidthDp = 128
 private const val ThreadComposerAttachmentRowGapDp = 8
+private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
@@ -1010,6 +1014,12 @@ internal fun ThreadComposerContent(
             null -> Unit
         }
     }
+    LaunchedEffect(state.instanceId, state.mentionActionNotice) {
+        if (!state.mentionActionNotice.isNullOrBlank()) {
+            delay(ThreadComposerMentionActionNoticeDurationMillis)
+            onEvent("dismissMentionNotice", null, null, null)
+        }
+    }
     val composerEnabled = state.enabled && surface.sendChannelId != null
     val canSend =
         composerEnabled &&
@@ -1083,17 +1093,10 @@ internal fun ThreadComposerContent(
                 }
             }
             state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                Text(
-                    text = notice,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .background(SlockColor.SurfaceCream)
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                SlockRaftUiBadge(
+                    label = notice,
+                    variant = SlockRaftUiBadgeVariant.Success,
+                    uppercase = false
                 )
             }
             if (state.pendingMentionActions.isNotEmpty()) {

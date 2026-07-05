@@ -5045,6 +5045,9 @@ internal fun SharedThreadRouteContent(
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId))
                     }
                 }
+                "dismissMentionNotice" -> {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
+                }
                 "inviteMention", "notifyMention" -> {
                     val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent
                     if (resolutionId in currentDraftState.executingMentionActionIds) {
