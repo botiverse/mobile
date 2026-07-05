@@ -39,6 +39,7 @@ import kotlin.test.assertTrue
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
     private val slockInlineCodeAnnotationTag = "raft.build.markdown.inlineCode"
+    private val inlineCodePadding = "\u00A0"
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
@@ -280,7 +281,27 @@ class SlockMarkdownTest {
         assertTrue(annotated.text.contains(longCode))
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
         assertEquals(
-            listOf(" $shortCode ", " $longCode "),
+            listOf(
+                inlineCodeSegment(shortCode),
+                inlineCodeSegment(longCode)
+            ),
+            annotated.slockInlineCodeMarkerTextSegments()
+        )
+    }
+
+    @Test
+    fun inlineCodeUsesNonBreakingEdgePaddingForCommandRepro() {
+        val command = "go test ./..."
+        val body = "Run `$command` before review"
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(body)
+            )
+
+        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.text)
+        assertEquals(
+            listOf(inlineCodeSegment(command)),
             annotated.slockInlineCodeMarkerTextSegments()
         )
     }
@@ -726,7 +747,7 @@ class SlockMarkdownTest {
             .withSlockMarkdownSpanFonts(SlockType.Body)
         val expectedTagIds = tokenPlan.tagTokens().mapTo(mutableSetOf()) { it.id }
 
-        assertEquals("Ping @artin with  mimo  and bold in #markdown专修", annotated.text)
+        assertEquals("Ping @artin with ${inlineCodeSegment("mimo")} and bold in #markdown专修", annotated.text)
         assertEquals(
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.slockMarkdownClickableTags()
@@ -823,10 +844,10 @@ class SlockMarkdownTest {
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
-        assertEquals("Ping @artin for #405 and  mimo ", annotated.text)
+        assertEquals("Ping @artin for #405 and ${inlineCodeSegment("mimo")}", annotated.text)
         assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
-        assertEquals(listOf(" mimo "), annotated.slockInlineCodeMarkerTextSegments())
+        assertEquals(listOf(inlineCodeSegment("mimo")), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -846,10 +867,10 @@ class SlockMarkdownTest {
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
 
-        assertEquals("Bold text for @artin in #markdown专修 with  code ", annotated.text)
+        assertEquals("Bold text for @artin in #markdown专修 with ${inlineCodeSegment("code")}", annotated.text)
         assertEquals(setOf("slock:18", "slock:28"), annotated.slockMarkdownClickableTags())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
-        assertEquals(listOf(" code "), annotated.slockInlineCodeMarkerTextSegments())
+        assertEquals(listOf(inlineCodeSegment("code")), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -1277,4 +1298,7 @@ class SlockMarkdownTest {
         getStringAnnotations(slockInlineCodeAnnotationTag, start = 0, end = length).map { range ->
             text.substring(range.start, range.end)
         }
+
+    private fun inlineCodeSegment(code: String): String =
+        "$inlineCodePadding$code$inlineCodePadding"
 }
