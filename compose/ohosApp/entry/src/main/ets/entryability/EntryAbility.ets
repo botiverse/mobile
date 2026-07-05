@@ -8,7 +8,7 @@ import util from '@ohos.util';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
-import { setup, init } from '@kuiklybase/knoi';
+import { registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
@@ -20,6 +20,10 @@ import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
+import {
+  SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
+  SlockOhosPlatformFileReader
+} from './SlockOhosPlatformFileReader';
 import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -156,6 +160,10 @@ export default class EntryAbility extends UIAbility {
     initializeSlockOhosAppScopeMMKV(this.context);
     setup('libshared.so', BuildProfile.DEBUG);
     init();
+    registerSingleServiceProvider(
+      SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
+      new SlockOhosPlatformFileReader()
+    );
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 
