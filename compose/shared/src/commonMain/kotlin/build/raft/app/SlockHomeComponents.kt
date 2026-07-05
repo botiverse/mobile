@@ -3135,16 +3135,24 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
             }
         }
 
-    val backgroundArgb: String =
+    // Lazy: PixelAvatarFixedSpecs (generated file) constructs specs during its
+    // class init, which SlockHomeComponentsKt's own init triggers — an eager
+    // read here hits PixelAvatarKnownBackgroundArgb before it is assigned
+    // (init cycle -> NPE in every unit test touching this file).
+    val backgroundArgb: String by lazy(LazyThreadSafetyMode.NONE) {
         PixelAvatarKnownBackgroundArgb[background] ?: SlockColor.BrandYellowArgb
+    }
 
     val nativeSpanPayload: String =
         spans.joinToString(separator = ";") { span ->
             "${span.rowIndex},${span.startColumnIndex},${span.columnCount},${span.colorArgb}"
         }
 
-    val nativeCacheKey: String =
+    // Lazy for the same reason: its template reads backgroundArgb, which would
+    // force that lazy right back during the generated file's class init.
+    val nativeCacheKey: String by lazy(LazyThreadSafetyMode.NONE) {
         "$backgroundArgb|${grid.joinToString(separator = "/")}"
+    }
 }
 
 internal data class PixelAvatarSpan(
