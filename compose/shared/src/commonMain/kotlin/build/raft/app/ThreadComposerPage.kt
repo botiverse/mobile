@@ -6,8 +6,6 @@ import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockRaftUiBadge
-import build.raft.app.components.SlockRaftUiBadgeVariant
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
@@ -1245,11 +1243,7 @@ internal fun ThreadComposerContent(
                 }
             }
             state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                SlockRaftUiBadge(
-                    label = notice,
-                    variant = SlockRaftUiBadgeVariant.Success,
-                    uppercase = false
-                )
+                MentionActionNotice(notice)
             }
             if (state.pendingMentionActions.isNotEmpty()) {
                 PendingMentionActionBanner(
@@ -1969,6 +1963,30 @@ private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
         borderWidth = SlockStroke.Thin,
         pulsing = status.pulsing
     )
+}
+
+@Composable
+private fun MentionActionNotice(notice: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.TextBlack.copy(alpha = 0.04f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.35f))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = notice,
+            style = SlockType.Caption.copy(
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                color = SlockColor.TextBlack.copy(alpha = 0.7f)
+            ),
+            color = SlockColor.TextBlack.copy(alpha = 0.7f),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
