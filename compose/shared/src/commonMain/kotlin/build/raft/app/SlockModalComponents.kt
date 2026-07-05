@@ -192,7 +192,7 @@ internal fun SlockActionSheetRow(
 @Composable
 internal fun SlockModalActionButton(
     label: String,
-    icon: SlockLucideIconName,
+    icon: SlockLucideIconName? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
@@ -254,7 +254,9 @@ internal fun SlockModalFullWidthActionButton(
                 SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000", spinning = iconSpinning)
                 Text(
                     text = label,
-                    style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    // React .btn-brutal is font-bold; regular weight here made
+                    // the danger buttons visibly lighter than web (task #348).
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                     color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

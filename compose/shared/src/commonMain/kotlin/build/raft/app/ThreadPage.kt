@@ -14426,10 +14426,11 @@ private fun ThreadSettingsModal(
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(modifier = Modifier.weight(1f))
-                    SlockModalActionButton(label = "Cancel", icon = SlockLucideIconName.X, onClick = onDismiss)
+                    // React's Edit Channel form buttons carry no leading icons
+                    // (btn-brutal text-only Cancel / Save Changes) — task #348.
+                    SlockModalActionButton(label = "Cancel", onClick = onDismiss)
                     SlockModalActionButton(
                         label = "Save Changes",
-                        icon = SlockLucideIconName.Check,
                         color = SlockColor.AccentPink,
                         onClick = onDismiss
                     )
