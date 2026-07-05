@@ -277,10 +277,17 @@ jobs:
             # we size+clear here and dump after instrumentation below.
             adb logcat -G 16M
             adb logcat -c
-            # True 3x captures (task #342): pixel_6_pro panel is 1440x3120; at
-            # 480dpi that is exactly 390x845dp — the manifest viewport at
-            # density 3. Both providers then emit identical 1170px-wide
-            # captures (pixel-perfect diff pads, never rescales).
+            # True 3x captures at the manifest viewport (390x844dp), task #370.
+            # `wm density 480` alone is NOT enough: pixel_6_pro is 1440px wide,
+            # so at 480dpi the layout window is 480dp (confirmed via #90
+            # diagnostics: rootView 1440x2975), NOT 390dp. cropDp then takes the
+            # top-left 1170x2532 (390x844dp * 3), so content centered in the
+            # wider window is offset by half the difference and clipped —
+            # centered dialogs (server-danger-modal, create-channel) even fell
+            # off and failed to capture. Pinning the physical size to 1170x2532
+            # makes the layout window == the crop == React's 390dp viewport, so
+            # both top-left- and centre-anchored content align.
+            adb shell wm size 1170x2532
             adb shell wm density 480
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
