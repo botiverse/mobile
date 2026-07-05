@@ -38,6 +38,7 @@ import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
@@ -3132,6 +3133,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 },
                                 onOpenSaved = {
                                     openHomeSecondaryDestination(HomeDestinationSaved)
+                                },
+                                onOpenComputers = {
+                                    selectedTab = "settings"
+                                    retainedAppShellTabs = retainedAppShellTabs + "settings"
+                                    selectedSettingsDestination = SettingsDestinationComputers
+                                    settingsViewModel.dispatch(
+                                        SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers)
+                                    )
                                 },
                                 onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -10341,6 +10350,7 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenComputers: () -> Unit = {},
     onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
@@ -10587,6 +10597,8 @@ private fun SharedHomeScreen(
                     when {
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateInstall != null ->
                             onAppUpdateInstall()
+                        notification.id.isMachineHomeNotificationId() ->
+                            onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||
                             notification.targetId?.startsWith("https://") == true -> {
                             notification.targetId?.let(bridge::openUrl)

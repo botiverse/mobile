@@ -258,9 +258,12 @@ enum class SharedHomeNotificationIcon {
 }
 
 internal fun String.isLocalHomeNotificationId(): Boolean =
-    startsWith("machine-offline:") ||
-        startsWith("machine-outdated:") ||
+    isMachineHomeNotificationId() ||
         isAppUpdateHomeNotificationId()
+
+internal fun String.isMachineHomeNotificationId(): Boolean =
+    startsWith("machine-offline:") ||
+        startsWith("machine-outdated:")
 
 internal fun String.isAppUpdateHomeNotificationId(): Boolean =
     startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
