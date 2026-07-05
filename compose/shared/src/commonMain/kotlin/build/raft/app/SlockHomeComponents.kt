@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalPanel
+import build.raft.app.components.SlockSkeleton
+import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
@@ -130,6 +132,13 @@ private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
+// #372 React parity: the post-sign-in loading state shows skeleton rows
+// under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
+// React app) instead of a bare shell.
+private const val HomeLoadingChannelSkeletonRows = 4
+private const val HomeLoadingDirectMessageSkeletonRows = 3
+private const val HomeLoadingSkeletonLineWeight = 0.6f
+private val HomeLoadingSkeletonLineHeight = 12.dp
 private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 46.dp
@@ -632,6 +641,10 @@ internal fun SlockStructuralHomeShell(
     pinnedSortMode: String = "manual",
     hiddenDmIds: List<String> = emptyList(),
     canArchiveChannels: Boolean = false,
+    // #372 React parity: while home content is loading (session known,
+    // channels / directMessages still empty) render static skeleton rows
+    // under the CHANNELS and DIRECT MESSAGES headers instead of a bare shell.
+    showLoadingSkeletons: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -1049,6 +1062,11 @@ internal fun SlockStructuralHomeShell(
                                 )
                             }
                         }
+                        if (channelsExpanded && showLoadingSkeletons) {
+                            items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
+                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                            }
+                        }
                         if (displayedJointChannels.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
@@ -1143,6 +1161,11 @@ internal fun SlockStructuralHomeShell(
                                     onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
                                     onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
                                 )
+                            }
+                        }
+                        if (directMessagesExpanded && showLoadingSkeletons) {
+                            items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
+                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
                             }
                         }
                         item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
@@ -2565,6 +2588,33 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             }
         }
         }
+    }
+}
+
+// #372 React parity: outlined-circle + gray-bar skeleton row sized like
+// ChannelRow (same height / paddings) so the loaded conversation list
+// replaces the skeletons in place. SlockSkeleton is fully static (no
+// shimmer), which keeps visual captures deterministic.
+@Composable
+private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(ChannelRowHeight)
+                .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockSkeleton(modifier = Modifier.size(ChannelAvatarSize), variant = SlockSkeletonVariant.Circle)
+        SlockSkeleton(
+            modifier =
+                Modifier
+                    .padding(start = SidebarActionLabelGap)
+                    .weight(HomeLoadingSkeletonLineWeight)
+                    .height(HomeLoadingSkeletonLineHeight),
+            variant = SlockSkeletonVariant.Line
+        )
+        Spacer(Modifier.weight(1f - HomeLoadingSkeletonLineWeight))
     }
 }
 
