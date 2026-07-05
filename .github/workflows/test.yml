@@ -94,16 +94,14 @@ jobs:
         working-directory: compose
         run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileDebugUnitTestKotlinAndroid --no-daemon --console=plain
 
-      # #215 triage: run the suite without failing the job and publish the
-      # reports so failures can be fixed batch-by-batch from CI evidence.
-      # Flipped to a hard run-gate once the suite is green.
-      - name: Run shared unit tests (report only)
+      # Hard run gate since #215 cleared the legacy failures: the shared JVM
+      # suite must pass. Reports upload on failure for diagnosis.
+      - name: Run shared unit tests
         working-directory: compose
-        continue-on-error: true
         run: ./gradlew :shared:testDebugUnitTest --continue --no-daemon --console=plain
 
       - name: Upload unit test reports
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: shared-unit-test-reports
