@@ -80,43 +80,6 @@ static BOOL SlockBridgeBool(id value) {
     return [text isEqualToString:@"true"] || [text isEqualToString:@"1"] || [text isEqualToString:@"yes"];
 }
 
-static NSData *SlockBridgeReadPlatformFileData(NSString *fileRef, NSError **error) {
-    NSString *trimmed = SlockBridgeString(fileRef);
-    if (trimmed.length == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:@"build.raft.app.platformFile"
-                                         code:400
-                                     userInfo:@{ NSLocalizedDescriptionKey : @"Missing file ref" }];
-        }
-        return nil;
-    }
-
-    NSURL *url = [NSURL URLWithString:trimmed];
-    if (url.fileURL) {
-        BOOL securityScoped = [url startAccessingSecurityScopedResource];
-        NSData *data = [NSData dataWithContentsOfURL:url options:0 error:error];
-        if (securityScoped) {
-            [url stopAccessingSecurityScopedResource];
-        }
-        return data;
-    }
-
-    if ([trimmed hasPrefix:@"/"]) {
-        return [NSData dataWithContentsOfFile:trimmed options:0 error:error];
-    }
-
-    if (url) {
-        return [NSData dataWithContentsOfURL:url options:0 error:error];
-    }
-
-    if (error) {
-        *error = [NSError errorWithDomain:@"build.raft.app.platformFile"
-                                     code:400
-                                 userInfo:@{ NSLocalizedDescriptionKey : @"Unsupported file ref" }];
-    }
-    return nil;
-}
-
 static MMKV *SlockBridgeApiEnvironmentStore(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -681,36 +644,6 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
             @"errorBodyText" : @"Attachment picker unavailable on iOS P0 host bridge"
         });
     }
-}
-
-- (void)readPlatformFile:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (!callback) {
-        return;
-    }
-    NSError *error = nil;
-    NSData *data = SlockBridgeReadPlatformFileData(SlockBridgeString(params[@"fileRef"]), &error);
-    if (!data || data.length == 0) {
-        NSString *message = error.localizedDescription ?: @"Unable to read file";
-        SlockDiagnosticsRecord(@"warn", @"SlockPlatformFileResolver", message);
-        callback(@{
-            @"code" : @400,
-            @"errorCode" : @"attachment_read_failed",
-            @"errorBodyText" : message
-        });
-        return;
-    }
-    SlockDiagnosticsRecord(
-        @"info",
-        @"SlockPlatformFileResolver",
-        [NSString stringWithFormat:@"read fileRefPresent=true bytes=%lu", (unsigned long)data.length]
-    );
-    callback(@{
-        @"code" : @200,
-        @"bodyBase64" : [data base64EncodedStringWithOptions:0],
-        @"sizeBytes" : @(data.length)
-    });
 }
 
 - (void)socialAuth:(NSDictionary *)args {

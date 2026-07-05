@@ -271,13 +271,10 @@ internal class SlockSharedStoreProvider private constructor(
                     apiEnvironmentKeyValueStore
                 )
             val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
-            val appScopePlatformFileResolver = SlockSharedPlatformFileResolverProvider.create()
-            val platformFileResolver =
-                appScopePlatformFileResolver
-                    ?: SlockBridgePlatformFileResolver(bridge)
+            val platformFileResolver = SlockSharedPlatformFileResolverProvider.create()
             bridge.logSharedAuthDiagnostic(
                 "shared_network_file_resolver",
-                "storage_scope=" + if (appScopePlatformFileResolver == null) "bridge" else "app"
+                "storage_scope=" + if (platformFileResolver == null) "missing" else "app"
             )
             val authDataSource =
                 SharedAuthDataSource(
