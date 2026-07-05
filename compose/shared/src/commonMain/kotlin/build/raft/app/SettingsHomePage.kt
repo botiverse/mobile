@@ -2868,6 +2868,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 applySettings = { serverId, event ->
                     settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
                 },
+                applyServerMembersRefresh = { serverId, event ->
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.Agents && event.reason == "agent:deleted") {
+                        val agentId = event.subjectId?.takeIf { it.isNotBlank() }
+                            ?: event.memberId?.value?.takeIf { it.isNotBlank() }
+                        if (agentId != null) {
+                            sharedStores.serverMembersStore.markAgentDeleted(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                agentId = build.raft.app.model.MemberId(agentId)
+                            )
+                        }
+                    }
+                },
                 applyAgentActivity = { event ->
                     sharedStores.agentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)

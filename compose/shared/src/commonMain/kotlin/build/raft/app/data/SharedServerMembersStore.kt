@@ -188,6 +188,7 @@ class SharedServerMembersStore(
     private val logger: (String) -> Unit = {}
 ) {
     private val mutex = Mutex()
+    private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
@@ -278,7 +279,10 @@ class SharedServerMembersStore(
             SharedServerMembersEntry(
                 serverId = key,
                 server = snapshot.server,
-                members = snapshot.members.withServerMemberPresenceFacts(presenceFacts),
+                members =
+                    snapshot.members
+                        .filterDeletedAgents(key)
+                        .withServerMemberPresenceFacts(presenceFacts),
                 status = SharedServerMembersLoadStatus.Loaded,
                 errorCode = null
             )
@@ -300,6 +304,7 @@ class SharedServerMembersStore(
         }
         profiles
             .filter { it.id.value.trim().isNotBlank() }
+            .filterNot { it.isDeletedAgentProfile(key) }
             .forEach { profile ->
                 val profileKey = profile.id.value.trim()
                 merged[profileKey] = merged[profileKey]?.mergeSeedProfile(profile) ?: profile
@@ -389,6 +394,18 @@ class SharedServerMembersStore(
         return true
     }
 
+    fun markAgentDeleted(
+        serverId: ServerId,
+        agentId: MemberId
+    ): Boolean {
+        val serverKey = serverId.value.trim()
+        val agentKey = agentId.value.trim()
+        if (serverKey.isBlank() || agentKey.isBlank()) return false
+        val currentDeleted = deletedAgentIdsByServerId[serverKey].orEmpty()
+        deletedAgentIdsByServerId[serverKey] = currentDeleted + agentKey
+        return removeMember(serverId = ServerId(serverKey), memberId = MemberId(agentKey), memberKind = MemberKind.Agent)
+    }
+
     suspend fun deleteAgent(
         serverId: ServerId,
         agentId: MemberId,
@@ -404,8 +421,7 @@ class SharedServerMembersStore(
                 return DataResult.Error(ScreenError(code = "agent_delete_exception", retryable = true))
             }
         if (result is DataResult.Content && result.data.success) {
-            removeMember(serverId = serverId, memberId = agentId, memberKind = MemberKind.Agent)
-            refreshMembersBestEffort(serverId, reason = "agent_delete")
+            markAgentDeleted(serverId = serverId, agentId = agentId)
         }
         return result
     }
@@ -477,7 +493,6 @@ class SharedServerMembersStore(
                 patchChannelMemberSlice(serverKey, channelKey, member, inMentionChannel = true)
                 patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
             }
-            refreshChannelMembersBestEffort(serverId, request.channelId, reason = "channel_member_add")
         }
         return result
     }
@@ -515,7 +530,6 @@ class SharedServerMembersStore(
                 memberId = request.memberId.value,
                 memberKind = request.kind
             )
-            refreshChannelMembersBestEffort(serverId, request.channelId, reason = "channel_member_remove")
         }
         return result
     }
@@ -602,6 +616,7 @@ class SharedServerMembersStore(
                         result.data.copy(
                             members =
                                 result.data.members
+                                    .filterDeletedAgents(normalizedKey)
                                     .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
                         )
                     putEntry(
@@ -710,6 +725,7 @@ class SharedServerMembersStore(
                     val members =
                         result.data.members
                             .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
+                            .filterDeletedAgents(serverKey)
                             .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
                     putChannelSlice(
                         normalizedScope,
@@ -834,6 +850,7 @@ class SharedServerMembersStore(
         val current = _state.value.memberSuggestionSlices[scope] ?: return false
         val suggestion =
             listOf(member)
+                .filterDeletedAgents(serverKey)
                 .toServerMembersMemberSuggestions(localServerId = serverKey, inMentionChannel = inMentionChannel)
                 .firstOrNull()
                 ?: return false
@@ -1157,6 +1174,7 @@ class SharedServerMembersStore(
         if (serverKey.isBlank() || channelKey.isBlank() || memberKey.isBlank()) return
         val suggestion =
             listOf(member)
+                .filterDeletedAgents(serverKey)
                 .toServerMembersMemberSuggestions(localServerId = serverKey, inMentionChannel = inMentionChannel)
                 .firstOrNull()
                 ?: return
@@ -1322,6 +1340,7 @@ class SharedServerMembersStore(
         inMentionChannel: Boolean
     ) {
         val memberKey = member.id.value.trim()
+        if (member.isDeletedAgentProfile(serverKey)) return
         if (channelKey == null || memberKey.isBlank()) return
         val scope = SharedServerChannelMembersScope(serverId = serverKey, channelId = channelKey)
         val current = _state.value.channelMemberSlices[scope] ?: return
@@ -1360,6 +1379,15 @@ class SharedServerMembersStore(
             )
         )
     }
+
+    private fun List<MemberProfile>.filterDeletedAgents(serverKey: String): List<MemberProfile> {
+        val deletedAgentIds = deletedAgentIdsByServerId[serverKey].orEmpty()
+        if (deletedAgentIds.isEmpty()) return this
+        return filterNot { it.kind == MemberKind.Agent && it.id.value.trim() in deletedAgentIds }
+    }
+
+    private fun MemberProfile.isDeletedAgentProfile(serverKey: String): Boolean =
+        kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId[serverKey].orEmpty()
 }
 
 private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean =

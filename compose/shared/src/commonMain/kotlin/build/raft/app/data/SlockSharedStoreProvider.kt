@@ -391,6 +391,7 @@ internal interface RealtimeDomainEventOwner {
 internal data class RealtimeDomainEventSinks(
     val applyHomeShell: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applySettings: (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyServerMembersRefresh: (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: (MemberPresenceUpdated) -> Unit = {},
     val requestMemberDetailRefresh: () -> Unit = {},
     val joinChannel: (String) -> Unit = {},
@@ -466,6 +467,9 @@ internal class SharedRealtimeDomainEventOwner(
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
+            if (event is RealtimeRefreshRequired) {
+                activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, event)
+            }
             activeSinks?.requestMemberDetailRefresh?.invoke()
         }
         activeSinks?.emitRouteMarker?.invoke(event)
