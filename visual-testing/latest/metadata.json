@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-05T10:49:12.250Z",
-  "runId": "02e09aa-20260705104859",
-  "commit": "02e09aa-20260705104859",
-  "commitSubject": "fix(home/sort): stop insertion line snapping to the last row on row gaps (#66)",
+  "generatedAt": "2026-07-05T14:02:05.121Z",
+  "runId": "308bcdf-20260705140151",
+  "commit": "308bcdf-20260705140151",
+  "commitSubject": "fix(visual): bound idle-sync + per-case timing/timeout so one hung case can't kill a shard (#78)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
