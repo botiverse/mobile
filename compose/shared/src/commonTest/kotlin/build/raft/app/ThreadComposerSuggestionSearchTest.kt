@@ -64,6 +64,24 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun memberSearchMatchesMixedLatinChinesePinyin() {
+        val suggestions =
+            listOf(
+                KuiklyComposerMemberItem(displayName = "KMP-专家", handle = "KMP-专家"),
+                KuiklyComposerMemberItem(displayName = "KMP Developer", handle = "KMP-Developer")
+            )
+
+        assertEquals(
+            listOf("KMP-专家"),
+            filterThreadComposerMemberSuggestions("zhuanjia", suggestions).map { it.handle }
+        )
+        assertEquals(
+            listOf("KMP-专家"),
+            filterThreadComposerMemberSuggestions("kmpzhuanjia", suggestions).map { it.handle }
+        )
+    }
+
+    @Test
     fun channelNameMatchRanksAheadOfSubtitleMatch() {
         val suggestions =
             listOf(
