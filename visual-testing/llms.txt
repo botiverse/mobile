@@ -1,11 +1,11 @@
 # Slock Visual Testing
 
-Generated: 2026-07-05 15:32:48 UTC
-Latest run: e512d6b-20260705153218
-Latest commit: e512d6b-20260705153218
-Commit subject: fix(ohos): seat HDS tab dock at host bottom so it drops into the safe area (#79)
+Generated: 2026-07-05 16:19:23 UTC
+Latest run: 884d172-20260705161853
+Latest commit: 884d172-20260705161853
+Commit subject: fix(visual): remove the two remaining unbounded waitForIdleSync paths (onActivity + close) (#80)
 Providers: react vs android
-Summary: total 82, same 0, pass 0, basic-pass 6, different 71, missing 5
+Summary: total 82, same 0, pass 0, basic-pass 6, different 73, missing 3
 AI analysis: ready 0 / total 82, pending 82
 Visual coverage matrix: active 83 / total 102, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
@@ -105,6 +105,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 884d172-20260705161853: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/884d172-20260705161853/component-matrix.json, report runs/884d172-20260705161853/report.html
 - e512d6b-20260705153218: react vs android, total 82, pass 0, basic-pass 6, different 71, matrix runs/e512d6b-20260705153218/component-matrix.json, report runs/e512d6b-20260705153218/report.html
 - 308bcdf-20260705140151: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/308bcdf-20260705140151/component-matrix.json, report runs/308bcdf-20260705140151/report.html
 - 02e09aa-20260705104859: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/02e09aa-20260705104859/component-matrix.json, report runs/02e09aa-20260705104859/report.html
