@@ -2921,54 +2921,58 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         settingsViewModel
     ) {
         val callbackRef =
-            realtimeEvents.addListener { eventData ->
-                if (eventData.optString("action") == AppShellLifecycleAction) {
-                    val event = eventData.optString("event")
+            realtimeEvents.addListener { rawEventData ->
+                val eventDataSnapshot = rawEventData.toString()
+                appShellCoroutineScope.launch {
+                    val eventData = JSONObject(eventDataSnapshot)
+                    if (eventData.optString("action") == AppShellLifecycleAction) {
+                        val event = eventData.optString("event")
+                        if (
+                            eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
+                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                            latestReadySession != null
+                        ) {
+                            refreshVisibleAppShellRoute("app_lifecycle_$event")
+                            sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                        }
+                        return@launch
+                    }
+                    if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
+                        latestRealtimeAuthRefreshHandler(eventData)
+                        return@launch
+                    }
+                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
+                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
+                    val activeSession = latestReadySession
                     if (
-                        eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
-                        (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
-                        latestReadySession != null
+                        event is ServerMembershipRemoved &&
+                        event.serverId.value == activeSession?.currentServerId
                     ) {
-                        refreshVisibleAppShellRoute("app_lifecycle_$event")
-                        sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                        bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
+                        bridge.realtimeDisconnect("server_membership_removed")
+                        latestResetAppShellSessionState()
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return@launch
                     }
-                    return@addListener
-                }
-                if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
-                    latestRealtimeAuthRefreshHandler(eventData)
-                    return@addListener
-                }
-                val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@addListener
-                val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@addListener
-                val activeSession = latestReadySession
-                if (
-                    event is ServerMembershipRemoved &&
-                    event.serverId.value == activeSession?.currentServerId
-                ) {
-                    bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
-                    bridge.realtimeDisconnect("server_membership_removed")
-                    latestResetAppShellSessionState()
-                    appShellCoroutineScope.launch {
-                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                    if (
+                        event is ServerDeleted &&
+                        event.serverId.value == activeSession?.currentServerId
+                    ) {
+                        bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
+                        bridge.realtimeDisconnect("server_deleted")
+                        latestResetAppShellSessionState()
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return@launch
                     }
-                    return@addListener
+                    realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                 }
-                if (
-                    event is ServerDeleted &&
-                    event.serverId.value == activeSession?.currentServerId
-                ) {
-                    bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
-                    bridge.realtimeDisconnect("server_deleted")
-                    latestResetAppShellSessionState()
-                    appShellCoroutineScope.launch {
-                        authStore.updateSelectedServer(serverId = null, serverSlug = null)
-                        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                    }
-                    return@addListener
-                }
-                realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
     }
