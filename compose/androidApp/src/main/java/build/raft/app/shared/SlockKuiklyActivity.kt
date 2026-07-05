@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
 import android.content.ActivityNotFoundException
@@ -130,6 +131,8 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -2896,10 +2899,12 @@ internal class SlockKuiklyBridgeModule(
      * created so the settings UI can confirm.
      */
     private suspend fun submitFeedbackToQuiver(): Map<String, Any> {
+        val description = promptFeedbackDescription()
+            ?: return mapOf("status" to "cancelled")
         val diagnostics = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile() }
         val diagnosticsFile = diagnostics.file
         return runCatching {
-            QuiverFeedback(
+            val ticketId = QuiverFeedback(
                     context = appContext,
                     baseUrl = BuildConfig.QUIVER_BASE_URL,
                     appSlug = BuildConfig.QUIVER_APP_SLUG,
@@ -2907,21 +2912,65 @@ internal class SlockKuiklyBridgeModule(
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
                     channel = BuildConfig.QUIVER_CHANNEL,
             ).submit(
-                    message = "In-app feedback (diagnostics attached).",
+                    message = description,
                     kind = "bug",
                     attachments = listOf(diagnosticsFile),
             )
-            SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submitted")
-            mapOf<String, Any>("status" to "ok")
+            // Shareable reference the user can paste into the community channel.
+            val shareText = buildString {
+                append("Quiver feedback ").append(ticketId.take(8))
+                appendLine()
+                append(description)
+            }
+            withContext(Dispatchers.Main) {
+                copyText("Quiver feedback", shareText)
+                Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
+            }
+            SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
+            mapOf<String, Any>("status" to "ok", "ticketId" to ticketId, "shareText" to shareText)
         }.getOrElse {
             SlockDiagnosticsLogger.record(
                     "SlockDiagnostics",
                     "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
+            withContext(Dispatchers.Main) {
+                Toast.makeText(appContext, "Feedback failed: ${it.message ?: "unknown"}", Toast.LENGTH_LONG).show()
+            }
             mapOf<String, Any>(
                     "status" to "error",
                     "message" to (it.message ?: "feedback submission failed"),
             )
+        }
+    }
+
+    /** Native description prompt; returns null when cancelled or left blank. */
+    private suspend fun promptFeedbackDescription(): String? {
+        val host = (activity as? Activity) ?: this
+        return withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { cont ->
+                val input = EditText(host).apply {
+                    hint = "Describe your feedback"
+                    minLines = 3
+                    setPadding(48, 32, 48, 32)
+                }
+                val dialog = AlertDialog.Builder(host)
+                        .setTitle("Send feedback")
+                        .setMessage("Your message plus device diagnostics will be sent to Quiver. You'll get a copyable reference to share in the community.")
+                        .setView(input)
+                        .setPositiveButton("Send") { _, _ ->
+                            val text = input.text?.toString()?.trim().orEmpty()
+                            if (cont.isActive) cont.resume(text.ifBlank { null })
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            if (cont.isActive) cont.resume(null)
+                        }
+                        .setOnCancelListener {
+                            if (cont.isActive) cont.resume(null)
+                        }
+                        .create()
+                cont.invokeOnCancellation { runCatching { dialog.dismiss() } }
+                dialog.show()
+            }
         }
     }
 
