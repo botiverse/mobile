@@ -16,11 +16,11 @@ import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -149,30 +149,41 @@ internal fun TasksPanelVisualContent() {
 
 @Composable
 internal fun TasksStatusMenuVisualContent() {
+    // No container padding: SlockAnchoredPopover clamps content to an 8dp viewport
+    // gap inside its host, so a padded host used to shove the menu to the host's
+    // top-left (+24px/-66px vs react @3x). The chip is offset instead and the menu
+    // anchor is the chip's bottom-left in root PIXELS (SlockFloatingOverlay works in
+    // px; react's chip box is x 16dp, y 18..42dp and the menu opens 4dp below it at
+    // (16, 46)dp — task #370).
+    val density = LocalDensity.current
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(260.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(16.dp)
     ) {
         // Same trigger chip + SlockBaseMenuOverlay call SharedTasksPage opens on a
-        // status chip tap, held statically open with in_progress selected. Anchor
-        // floats are root coordinates like RaftUiControlledOpenOverlaysVisualContent
-        // (task #330/#353).
+        // status chip tap, held statically open with in_progress selected. Text
+        // params mirror the product status chip (SharedTasksPage task card) and the
+        // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
+        // the 10sp/20dp-min defaults rendered an 80x20dp chip (task #370).
         SlockAnchoredMetaChip(
             label = "In Progress",
             iconName = null,
             color = SlockColor.AccentCyan,
             onClick = {},
-            modifier = Modifier.widthIn(min = 78.dp),
+            modifier = Modifier.offset(x = 16.dp, y = 18.dp).width(98.dp).height(24.dp),
             trailingIconName = SlockLucideIconName.Pencil,
+            minHeight = 22.dp,
+            horizontalPadding = 8.dp,
+            labelFontSize = 12.sp,
+            labelLineHeight = 14.sp,
             borderWidth = SlockStroke.Default,
             anchorPlacement = SlockAnchorPlacement.BottomEnd
         )
         SlockBaseMenuOverlay(
-            anchor = Offset(16f, 44f),
+            anchor = with(density) { Offset(16.dp.toPx(), 42.dp.toPx()) },
             items =
                 TaskStatus.entries.map { status ->
                     SlockBaseMenuItem(id = status.name, label = tasksStatusMenuVisualLabel(status))
@@ -180,7 +191,10 @@ internal fun TasksStatusMenuVisualContent() {
             selectedId = TaskStatus.InProgress.name,
             selectedRowColor = SlockColor.SurfaceWhite,
             uppercaseLabels = false,
-            minWidth = 140.dp,
+            // react renders this menu at exactly its 140px min-width (content is
+            // narrower); the char-estimate in slockBaseMenuWidth overshoots to
+            // 172dp for "In Progress", so pin the width (task #370).
+            width = 140.dp,
             rowHeight = 36.dp,
             labelFontSize = 14.sp,
             labelLineHeight = 18.sp,

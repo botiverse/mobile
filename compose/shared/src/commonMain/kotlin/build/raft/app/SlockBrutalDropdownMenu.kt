@@ -93,7 +93,10 @@ internal fun SlockBrutalDropdownMenu(
             Size(
                 width = (popoverWidth + shadowOffsetDp).toPx(),
                 height =
-                    ((effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue).dp + shadowOffsetDp)
+                    // Rows + the border the rows sit inside (react content-box, see
+                    // SlockBrutalDropdownMenuSurface) + the shadow (task #370).
+                    ((effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue +
+                        SlockStroke.Default.value * 2).dp + shadowOffsetDp)
                         .toPx()
             )
         }
@@ -150,6 +153,11 @@ internal fun SlockBrutalDropdownMenuSurface(
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .slockFloatingContentClickTarget()
+                // react draws its 2px border around the rows (content-box), so the
+                // card is rows + 2*2dp tall and the rows are inset by the stroke;
+                // Compose paints the border over the content instead — pad the rows
+                // in by the stroke to match (task #370).
+                .padding(SlockStroke.Default)
         ) {
             if (items.isEmpty()) {
                 SlockBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
@@ -214,10 +222,13 @@ private fun SlockBrutalDropdownMenuRow(
         }
         Text(
             text = item.label,
+            // react menu rows are text-sm font-medium (14px/20px): measured cap
+            // heights in components.ui.menu-item.states are 14px-sized, and 12sp
+            // bold rendered visibly smaller/narrower labels (task #370).
             style = SlockType.Caption.copy(
-                fontSize = 12.sp,
-                lineHeight = 16.sp
-            ).withSlockFontWeight(FontWeight.Bold),
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            ).withSlockFontWeight(FontWeight.Medium),
             color = labelColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

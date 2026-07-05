@@ -713,7 +713,10 @@ private fun SharedTasksLoadedBodyContent(
                 selectedId = task.status.name,
                 selectedRowColor = SlockColor.SurfaceWhite,
                 uppercaseLabels = false,
-                minWidth = 140.dp,
+                // react's status menu renders at exactly its 140px min-width (the
+                // longest label "In Progress" is narrower); the char estimate in
+                // slockBaseMenuWidth overshoots to 172dp, so pin the width (#370).
+                width = 140.dp,
                 rowHeight = 36.dp,
                 labelFontSize = 14.sp,
                 labelLineHeight = 18.sp,

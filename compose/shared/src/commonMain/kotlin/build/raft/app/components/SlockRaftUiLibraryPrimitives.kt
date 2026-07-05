@@ -585,7 +585,8 @@ internal fun SlockRaftUiSelectTrigger(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     expanded: Boolean = false,
-    height: Dp = 42.dp,
+    // Keep in sync with SlockSelectTrigger's 40dp react-parity default (task #370).
+    height: Dp = 40.dp,
     onClick: () -> Unit = {}
 ) {
     SlockSelectTrigger(

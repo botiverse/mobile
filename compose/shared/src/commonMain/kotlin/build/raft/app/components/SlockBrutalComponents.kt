@@ -738,7 +738,10 @@ internal fun SlockBrutalActionButton(
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, borderColor, RectangleShape)
                     .slockSquareCorners()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    // react buttons use 12px/6px padding: with 6dp vertical padding a
+                    // 12sp/14sp-line label yields the same 28px box react renders for
+                    // minHeight-28 buttons (8dp made them 30px tall) — task #370.
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             SlockBrutalActionButtonInnerContent(
                 label = label,
@@ -793,16 +796,8 @@ private fun SegmentedControlItem(
         modifier = Modifier.height(SegmentedControlItemHeight),
         propagateMinConstraints = true
     ) {
-        if (selected) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
-                        .background(SlockColor.ShadowBlack, RectangleShape)
-                        .slockSquareCorners()
-            )
-        }
+        // No offset shadow on the selected chip: react renders the active chip flat
+        // (yellow fill + border only, no shadow-brutal) — task #370.
         Row(
             modifier =
                 Modifier
@@ -840,9 +835,11 @@ private fun SegmentedControlItem(
     }
 }
 
-private val SegmentedControlItemHeight = 28.dp
+// Chip box is 32px tall with a 12px gap between chips in react
+// (components.ui.segmented-control.states: chips y 48..144, gap 12px @3x) — task #370.
+private val SegmentedControlItemHeight = 32.dp
 private val SegmentedControlItemHorizontalPadding = 9.dp
-private val SegmentedControlItemGap = 5.dp
+private val SegmentedControlItemGap = 4.dp
 private val SegmentedControlItemContentGap = 5.dp
 
 @Composable

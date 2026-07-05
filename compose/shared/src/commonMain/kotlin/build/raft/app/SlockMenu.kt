@@ -68,6 +68,9 @@ internal fun SlockBaseMenuOverlay(
     selectedRowColor: Color = SlockColor.BrandYellow,
     uppercaseLabels: Boolean = true,
     minWidth: Dp = SlockBaseMenuMinWidth,
+    // Exact menu width (border-box, like react's fixed-width menus). When null the
+    // width is estimated from the widest label via slockBaseMenuWidth (task #370).
+    width: Dp? = null,
     rowHeight: Dp = SlockBaseMenuRowHeight,
     labelFontSize: TextUnit = 12.sp,
     labelLineHeight: TextUnit = 14.sp,
@@ -85,12 +88,15 @@ internal fun SlockBaseMenuOverlay(
     if (items.isEmpty()) return
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
-    val menuWidth = slockBaseMenuWidth(items, uppercaseLabels, minWidth)
+    val menuWidth = width ?: slockBaseMenuWidth(items, uppercaseLabels, minWidth)
     val menuSize = with(density) {
         Size(
             width = (menuWidth + shadowOffset).toPx(),
             height =
                 rowHeight.toPx() * items.size +
+                    // Rows sit inside the border (react content-box height), see the
+                    // Column's border padding below (task #370).
+                    SlockStroke.Default.toPx() * 2 +
                     SlockStroke.Default.toPx() * items.count { it.dividerBefore } +
                     shadowOffset.toPx()
         )
@@ -127,6 +133,11 @@ internal fun SlockBaseMenuOverlay(
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
                     .slockFloatingContentClickTarget()
+                    // react draws its 2px border around the rows (content-box), so
+                    // the menu is rows + 2*2dp tall and the rows are inset by the
+                    // stroke; Compose paints the border over the content instead —
+                    // pad the rows in by the stroke to match (task #370).
+                    .padding(SlockStroke.Default)
             ) {
                 items.forEach { item ->
                     if (item.dividerBefore) {
