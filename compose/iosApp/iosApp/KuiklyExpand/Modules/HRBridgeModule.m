@@ -1,7 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
-#import "SlockQuiverFeedbackClient.h"
+#import <QuiverReport/QuiverReport.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -920,11 +920,11 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
         NSString *path = SlockBridgeString(draft[@"filePath"]);
         NSArray<NSString *> *attachments = path.length > 0 ? @[ path ] : @[];
-        [SlockQuiverFeedbackClient submitWithMessage:description
-                                                kind:@"bug"
-                                     attachmentPaths:attachments
-                                              extras:nil
-                                          completion:^(NSString *ticketId, NSError *error) {
+        [QuiverReport submitFeedback:description
+                                 kind:@"bug"
+                      attachmentPaths:attachments
+                               extras:nil
+                           completion:^(NSString *ticketId, NSError *error) {
             SlockBridgeRunOnMain(^{
                 UIViewController *controller = [self slock_currentViewController];
                 if (error || ticketId.length == 0) {
