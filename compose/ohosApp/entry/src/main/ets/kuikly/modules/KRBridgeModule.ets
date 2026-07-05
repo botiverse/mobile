@@ -80,6 +80,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
+  static readonly READ_PLATFORM_FILE = "readPlatformFile";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -166,6 +167,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.THREAD_ATTACHMENT_UPLOAD: {
         this.threadAttachmentUpload(params, callback);
+        break;
+      }
+      case KRBridgeModule.READ_PLATFORM_FILE: {
+        this.readPlatformFile(params, callback);
         break;
       }
       default:
@@ -975,6 +980,39 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
     });
     return files;
+  }
+
+  private readPlatformFile(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const fileRef = (records["fileRef"] as string | undefined) ?? "";
+    if (fileRef.length === 0) {
+      callback(this.threadAttachmentError(400, "missing_file_ref", "Missing file ref"));
+      return;
+    }
+    try {
+      const file = fs.openSync(fileRef, fs.OpenMode.READ_ONLY);
+      try {
+        const stat = fs.statSync(file.fd);
+        const bodyBytes = new ArrayBuffer(stat.size);
+        fs.readSync(file.fd, bodyBytes);
+        SlockOhosDiagnostics.record("PlatformFileResolver", `read fileRefPresent=true bytes=${stat.size}`);
+        callback({
+          "code": 200,
+          "bodyBase64": new util.Base64Helper().encodeToStringSync(new Uint8Array(bodyBytes)),
+          "sizeBytes": stat.size
+        });
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const message = businessError.message ?? `${error}`;
+      SlockOhosDiagnostics.record(
+        "PlatformFileResolver",
+        `failed code=${businessError.code ?? -1} message=${message}`
+      );
+      callback(this.threadAttachmentError(400, "attachment_read_failed", message));
+    }
   }
 
   private threadPickedAttachmentFiles(files: Array<OhosPickedThreadAttachment>): Record<string, Object> {

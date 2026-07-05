@@ -1,5 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.base.BridgeModule
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+
 interface SlockPlatformFileResolver {
     suspend fun readFile(fileRef: String): SlockPlatformFileReadResult
 }
@@ -36,6 +40,40 @@ data class SlockPlatformFileReadResult(
         result = 31 * result + errorCode.hashCode()
         result = 31 * result + message.hashCode()
         return result
+    }
+}
+
+internal class SlockBridgePlatformFileResolver(
+    private val bridge: BridgeModule
+) : SlockPlatformFileResolver {
+    @OptIn(ExperimentalEncodingApi::class)
+    override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult {
+        val response =
+            bridge.readPlatformFile(fileRef)
+                ?: return SlockPlatformFileReadResult(
+                    code = 400,
+                    bytes = ByteArray(0),
+                    errorCode = "attachment_read_failed",
+                    message = "No platform file resolver response"
+                )
+        val code = response.optInt("code", if (response.optString("status") == "ok") 200 else 400)
+        val encoded = response.optString("bodyBase64").takeIf { it.isNotBlank() }
+        val bytes = encoded?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: ByteArray(0)
+        return SlockPlatformFileReadResult(
+            code = code,
+            bytes = bytes,
+            sizeBytes = response.optLong("sizeBytes", bytes.size.toLong()).takeIf { it > 0L },
+            errorCode = response.optString("errorCode")
+                .takeIf { it.isNotBlank() }
+                ?: response.optString("code")
+                    .takeIf { code !in 200..299 && it.isNotBlank() }
+                    .orEmpty(),
+            message = response.optString("errorBodyText")
+                .takeIf { it.isNotBlank() }
+                ?: response.optString("message")
+                    .takeIf { it.isNotBlank() }
+                    .orEmpty()
+        )
     }
 }
 

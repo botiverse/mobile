@@ -504,6 +504,15 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun readPlatformFile(fileRef: String): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("fileRef", fileRef)
+            callNativeMethod("readPlatformFile", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,
