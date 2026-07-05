@@ -24,6 +24,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
     private var appliedColor: String? = null
     private var appliedFill: String? = null
     private var appliedStrokeWidth: Float? = null
+    private var appliedNativeSpinning: Boolean? = null
     private var appliedNativeRotationDegrees: Float? = null
 
     override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
@@ -37,6 +38,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         color: String,
         fill: String,
         strokeWidth: Float,
+        nativeSpinning: Boolean,
         nativeRotationDegrees: Float?,
         force: Boolean = false
     ) {
@@ -46,6 +48,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
                 appliedColor == color &&
                 appliedFill == fill &&
                 appliedStrokeWidth == strokeWidth &&
+                appliedNativeSpinning == nativeSpinning &&
                 appliedNativeRotationDegrees == nativeRotationDegrees
         ) {
             return
@@ -54,12 +57,14 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         appliedColor = color
         appliedFill = fill
         appliedStrokeWidth = strokeWidth
+        appliedNativeSpinning = nativeSpinning
         appliedNativeRotationDegrees = nativeRotationDegrees
         getViewAttr().run {
             name(name)
             color(color)
             fill(fill)
             strokeWidth(strokeWidth)
+            spinning(nativeSpinning)
             nativeRotationDegrees?.let { rotationDegrees(it) }
         }
     }
@@ -92,6 +97,11 @@ internal class SlockLucideIconAttr : Attr() {
 
     fun rotationDegrees(value: Float): SlockLucideIconAttr {
         "rotationDegrees" with value
+        return this
+    }
+
+    fun spinning(value: Boolean): SlockLucideIconAttr {
+        "spinning" with value
         return this
     }
 }
@@ -158,8 +168,9 @@ internal fun SlockLucideIconByName(
     val resolvedFill = fill ?: ""
     val resolvedStrokeWidth = strokeWidth ?: 0f
     val usesNativeRotation = slockPlatformUsesNativeLucideIconRotation()
+    val nativeSpinning = usesNativeRotation && spinning
     val appliedRotationDegrees =
-        if (spinning) {
+        if (!usesNativeRotation && spinning) {
             val transition = rememberInfiniteTransition(label = "slock-icon-spin")
             val rotation by transition.animateFloat(
                 initialValue = 0f,
@@ -171,7 +182,7 @@ internal fun SlockLucideIconByName(
                 label = "slock-icon-spin-rotation"
             )
             rotation
-        } else if (rotationAnimationDurationSeconds > 0f) {
+        } else if (!spinning && rotationAnimationDurationSeconds > 0f) {
             val rotation by animateFloatAsState(
                 targetValue = rotationDegrees,
                 animationSpec = tween(durationMillis = (rotationAnimationDurationSeconds * 1000f).roundToInt()),
@@ -189,13 +200,14 @@ internal fun SlockLucideIconByName(
             modifier
         }
     val updateIconAttrs =
-        remember(name, color, resolvedFill, resolvedStrokeWidth, nativeRotationDegrees) {
+        remember(name, color, resolvedFill, resolvedStrokeWidth, nativeSpinning, nativeRotationDegrees) {
             { view: SlockLucideIconView ->
                 view.applyIconAttrs(
                     name = name,
                     color = color,
                     fill = resolvedFill,
                     strokeWidth = resolvedStrokeWidth,
+                    nativeSpinning = nativeSpinning,
                     nativeRotationDegrees = nativeRotationDegrees
                 )
             }
@@ -209,6 +221,7 @@ internal fun SlockLucideIconByName(
                 color = color,
                 fill = resolvedFill,
                 strokeWidth = resolvedStrokeWidth,
+                nativeSpinning = nativeSpinning,
                 nativeRotationDegrees = nativeRotationDegrees,
                 force = true
             )
