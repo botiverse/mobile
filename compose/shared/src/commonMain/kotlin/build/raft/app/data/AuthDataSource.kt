@@ -274,6 +274,72 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(session)
     }
 
+    suspend fun startMobileOAuthLink(
+        provider: String,
+        returnUri: String,
+        codeChallenge: String
+    ): SharedAuthResult<AuthMobileOAuthStartResponse> {
+        val normalizedProvider = provider.trim().lowercase()
+        if (normalizedProvider !in MobileOAuthProviders) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "This account provider is not available on this device."
+            )
+        }
+        if (returnUri.isBlank() || codeChallenge.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Account linking could not be prepared."
+            )
+        }
+        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        return when (
+            val response =
+                api.startMobileOAuthLink(
+                    provider = normalizedProvider,
+                    returnUri = returnUri.trim(),
+                    codeChallenge = codeChallenge.trim(),
+                    authorization = "Bearer ${session.accessToken}"
+                )
+        ) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    suspend fun completeMobileOAuthLink(
+        provider: String,
+        code: String,
+        codeVerifier: String
+    ): SharedAuthResult<AuthMobileOAuthLinkCompleteResponse> {
+        val normalizedProvider = provider.trim().lowercase()
+        if (normalizedProvider !in MobileOAuthProviders) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "This account provider is not available on this device."
+            )
+        }
+        if (code.isBlank() || codeVerifier.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Account linking did not return the required credentials."
+            )
+        }
+        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        return when (
+            val response =
+                api.completeMobileOAuthLink(
+                    provider = normalizedProvider,
+                    code = code.trim(),
+                    codeVerifier = codeVerifier.trim(),
+                    authorization = "Bearer ${session.accessToken}"
+                )
+        ) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
     private suspend fun completeSocialLoginWithBody(
         provider: String,
         body: String
@@ -828,6 +894,18 @@ interface SlockAuthApi {
         acceptLegalTerms: Boolean = false,
         authorization: String? = null
     ): AuthApiResult<AuthLoginResponse>
+    suspend fun startMobileOAuthLink(
+        provider: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthStartResponse>
+    suspend fun completeMobileOAuthLink(
+        provider: String,
+        code: String,
+        codeVerifier: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse>
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
@@ -916,6 +994,55 @@ class SlockAuthApiClient(
             it.toDomain()
         }
 
+    override suspend fun startMobileOAuthLink(
+        provider: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthStartResponse> =
+        transport.startMobileOAuthLink(
+            provider = provider,
+            bodyText =
+                authJson.encodeToString(
+                    AuthMobileOAuthLinkStartRequestBody(
+                        returnUri = returnUri,
+                        codeChallenge = codeChallenge,
+                        codeChallengeMethod = "S256"
+                    )
+                ),
+            authorization = authorization
+        ).mapAuthBody(
+            "auth_mobile_oauth_link_start_contract_mismatch",
+            AuthMobileOAuthStartResponseDto.serializer(),
+            diagnosticsLogger
+        ) {
+            it.toDomain()
+        }
+
+    override suspend fun completeMobileOAuthLink(
+        provider: String,
+        code: String,
+        codeVerifier: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
+        transport.completeMobileOAuthLink(
+            provider = provider,
+            bodyText =
+                authJson.encodeToString(
+                    AuthMobileOAuthLinkCompleteRequestBody(
+                        code = code,
+                        codeVerifier = codeVerifier
+                    )
+                ),
+            authorization = authorization
+        ).mapAuthBody(
+            "auth_mobile_oauth_link_complete_contract_mismatch",
+            AuthMobileOAuthLinkCompleteResponseDto.serializer(),
+            diagnosticsLogger
+        ) {
+            it.toDomain()
+        }
+
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
             .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
@@ -980,6 +1107,18 @@ data class AuthMobileOAuthStartResponse(
     val requestId: String,
     val returnUri: String,
     val expiresAt: String
+)
+
+data class AuthMobileOAuthIdentity(
+    val provider: String,
+    val email: String?
+)
+
+data class AuthMobileOAuthLinkCompleteResponse(
+    val provider: String,
+    val mode: String,
+    val returnUri: String,
+    val identities: List<AuthMobileOAuthIdentity>
 )
 
 data class AuthRefreshResponse(
@@ -1047,6 +1186,19 @@ data class AuthMobileOAuthCompleteRequestBody(
     val termsVersion: String? = null,
     val privacyVersion: String? = null,
     val legalAcceptanceSource: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class AuthMobileOAuthLinkStartRequestBody(
+    val returnUri: String,
+    val codeChallenge: String,
+    val codeChallengeMethod: String
+)
+
+@kotlinx.serialization.Serializable
+data class AuthMobileOAuthLinkCompleteRequestBody(
+    val code: String,
+    val codeVerifier: String
 )
 
 @kotlinx.serialization.Serializable
@@ -1205,6 +1357,36 @@ private fun AuthMobileOAuthStartResponseDto.toDomain(): AuthMobileOAuthStartResp
         requestId = requestId,
         returnUri = returnUri,
         expiresAt = expiresAt
+    )
+
+@Serializable
+private data class AuthMobileOAuthLinkIdentityDto(
+    val provider: String,
+    val providerEmail: String? = null,
+    val email: String? = null
+)
+
+@Serializable
+private data class AuthMobileOAuthLinkCompleteResponseDto(
+    val provider: String,
+    val mode: String,
+    val returnUri: String,
+    val identities: List<AuthMobileOAuthLinkIdentityDto> = emptyList()
+)
+
+private fun AuthMobileOAuthLinkCompleteResponseDto.toDomain(): AuthMobileOAuthLinkCompleteResponse =
+    AuthMobileOAuthLinkCompleteResponse(
+        provider = provider,
+        mode = mode,
+        returnUri = returnUri,
+        identities =
+            identities.map {
+                AuthMobileOAuthIdentity(
+                    provider = it.provider,
+                    email = it.providerEmail?.takeIf { email -> email.isNotBlank() }
+                        ?: it.email?.takeIf { email -> email.isNotBlank() }
+                )
+            }
     )
 
 @Serializable

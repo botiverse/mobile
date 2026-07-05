@@ -26,6 +26,24 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
+    suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "mobileOAuthLink")
+                    .put("providerId", providerId)
+            )
+        val status = response?.optString("status").orEmpty()
+        return when (status) {
+            "started", "ok" -> DataResult.Content(Unit)
+            "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            else -> {
+                val code = response?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_link_failed" }
+                DataResult.Error(ScreenError(code, retryable = true))
+            }
+        }
+    }
+
     override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
         val response = bridge.threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0

@@ -6,6 +6,7 @@ import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.data.StoredAuthUser as AuthUser
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthLoginResponse
+import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
@@ -991,6 +992,22 @@ class RealtimeRepositoryTest {
             acceptLegalTerms: Boolean,
             authorization: String?
         ): AuthApiResult<AuthLoginResponse> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun startMobileOAuthLink(
+            provider: String,
+            returnUri: String,
+            codeChallenge: String,
+            authorization: String
+        ): AuthApiResult<AuthMobileOAuthStartResponse> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun completeMobileOAuthLink(
+            provider: String,
+            code: String,
+            codeVerifier: String,
+            authorization: String
+        ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
             AuthApiResult.Failure(404)
 
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =

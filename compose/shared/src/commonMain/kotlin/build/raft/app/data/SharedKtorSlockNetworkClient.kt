@@ -286,6 +286,30 @@ class SharedKtorSlockAuthTransport internal constructor(
     override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
         request(path = "auth/mobile/oauth/complete", method = "POST", authorization = authorization, bodyText = bodyText)
 
+    override suspend fun startMobileOAuthLink(
+        provider: String,
+        bodyText: String,
+        authorization: String
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/mobile/oauth/${provider.trim().lowercase()}/link/start",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText
+        )
+
+    override suspend fun completeMobileOAuthLink(
+        provider: String,
+        bodyText: String,
+        authorization: String
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/mobile/oauth/${provider.trim().lowercase()}/link/complete",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText
+        )
+
     override suspend fun register(bodyText: String): AuthNetworkResponse =
         request(path = "auth/register", method = "POST", bodyText = bodyText)
 
