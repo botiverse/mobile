@@ -113,29 +113,63 @@ jobs:
           test -n "$kuikly"
           echo "kuikly=$kuikly" >> "$GITHUB_OUTPUT"
 
-      # os-less keys: consumed as-is by every downstream job on any OS.
-      - name: Cache kuikly fork mavenLocal artifacts (all flavors)
-        id: kuikly-cache
-        uses: actions/cache@v4
+      # The android and ohos flavors publish OVERLAPPING coordinates (the ohos
+      # pass rewrites :core/:compose common metadata), so they are built and
+      # cached as two separate entries — never mixed in one directory.
+      # os-less keys: the artifacts are jars/klibs, consumable on any OS.
+      - name: Restore kuikly fork cache (android flavor)
+        id: kuikly-android-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-all-${{ steps.pins.outputs.kuikly }}
+          key: kuikly-fork-mavenlocal-android-${{ steps.pins.outputs.kuikly }}
 
-      # Legacy key kept warm so visual-testing.yml (separate workflow, android
-      # flavor, Linux-keyed) keeps hitting without changes.
-      - name: Cache kuikly fork mavenLocal artifacts (legacy visual-testing key)
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-Linux-${{ steps.pins.outputs.kuikly }}
-
-      - name: Build kuikly fork (android + ohos)
-        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+      - name: Build kuikly fork (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git submodule sync third_party/kuikly-ui
           git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --all
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Save kuikly fork cache (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ steps.pins.outputs.kuikly }}
+
+      # Legacy key kept warm so visual-testing.yml (separate workflow, android
+      # flavor, Linux-keyed) keeps hitting without changes.
+      - name: Save kuikly fork cache (legacy visual-testing key)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-Linux-${{ steps.pins.outputs.kuikly }}
+
+      - name: Restore kuikly fork cache (ohos flavor)
+        id: kuikly-ohos-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
+
+      - name: Build kuikly fork (ohos flavor)
+        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          rm -rf ~/.m2/repository/com/tencent/kuikly-open
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --ohos-only
+
+      - name: Save kuikly fork cache (ohos flavor)
+        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
 
   # Parallel sibling of kuikly-artifacts: the stately/sqliter/sqldelight/ktor
   # fork stack. Split per artin so neither job's disk/wall-clock includes the
@@ -288,7 +322,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-all-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-android-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       # Compiling the unit-test source set closes the gap where a broken
@@ -326,7 +360,6 @@ jobs:
   ios:
     name: iOS compile
     runs-on: macos-latest
-    needs: kuikly-artifacts
     timeout-minutes: 75
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -352,12 +385,30 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
-      - name: Restore kuikly fork mavenLocal artifacts
-        uses: actions/cache/restore@v4
+      # iOS cannot consume the linux prebuild: apple-target klibs only publish
+      # from a mac host, so this job builds its own android-flavor artifacts.
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: |
+          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-all-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
-          fail-on-cache-miss: true
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+
+      - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
 
       - name: Compile shared iOS targets and unit tests
         working-directory: compose
@@ -447,7 +498,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-all-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts
@@ -517,7 +568,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-all-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts
