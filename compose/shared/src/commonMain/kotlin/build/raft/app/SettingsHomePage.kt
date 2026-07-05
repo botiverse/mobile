@@ -8859,6 +8859,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     )
                                 )
                             }
+                            add(
+                                KuiklySharedSettingsRow(
+                                    key = "feedback",
+                                    iconName = SlockLucideIconName.MessageSquare,
+                                    title = "Send feedback",
+                                    detail = "Report a problem or suggestion. Device diagnostics are attached and you get a copyable ticket reference for the community.",
+                                    status = "Send",
+                                    enabled = true
+                                )
+                            )
                             add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
                         }
                 )
