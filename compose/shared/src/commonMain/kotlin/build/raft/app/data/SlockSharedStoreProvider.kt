@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
+import build.raft.app.SharedThreadMessageStore
 import build.raft.app.slockLogInfo
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.ChannelId
@@ -53,6 +54,7 @@ internal class SlockSharedStoreProvider private constructor(
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val messageTranslationStore: SharedMessageTranslationStore,
+    val threadMessageStore: SharedThreadMessageStore,
     val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
@@ -304,6 +306,7 @@ internal class SlockSharedStoreProvider private constructor(
                         },
                         diagnosticsLogger = { message -> bridge.log("shared_message_translation $message") }
                     ),
+                threadMessageStore = SharedThreadMessageStore(),
                 foregroundReconciler =
                     SharedForegroundReconciler(
                         authStore = authStore,
