@@ -11806,12 +11806,20 @@ private fun ThreadMessageFooterMeta(
                     taskOpenEnabled -> { _ -> message.taskId?.let(onOpenTask) }
                     else -> null
                 }
+            val taskClickIdentity =
+                threadTaskStatusChipClickIdentity(
+                    message = message,
+                    selectedStatus = selectedStatus,
+                    taskStatusActionsEnabled = taskStatusActionsEnabled,
+                    taskOpenEnabled = taskOpenEnabled
+                )
             SlockAnchoredMetaChip(
                 label = label,
                 iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.color,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
+                clickIdentity = taskClickIdentity,
                 onClick = taskChipClick
             )
         }
@@ -11953,7 +11961,16 @@ private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
         SlockBaseMenuItem(id = option.key, label = option.label)
     }
 
-private fun String?.threadTaskStatusOption(): SharedTaskStatusChipMeta =
+internal fun threadTaskStatusChipClickIdentity(
+    message: KuiklyThreadMessageItem,
+    selectedStatus: SharedTaskStatusChipMeta,
+    taskStatusActionsEnabled: Boolean,
+    taskOpenEnabled: Boolean
+): String =
+    "thread-task-status:${message.id}:${message.taskId.orEmpty()}:" +
+        "${selectedStatus.key}:$taskStatusActionsEnabled:$taskOpenEnabled"
+
+internal fun String?.threadTaskStatusOption(): SharedTaskStatusChipMeta =
     sharedTaskStatusChipMetaOrDefault()
 
 internal fun KuiklyThreadMessageItem.isSystemMessage(): Boolean =

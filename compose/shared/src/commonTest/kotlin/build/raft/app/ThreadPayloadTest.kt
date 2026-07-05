@@ -4903,6 +4903,57 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTaskStatusChipClickIdentityRebindsByMessageTaskAndStatus() {
+        val todoMessage =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-1",
+                authorName = "Agent",
+                body = "task one",
+                taskId = "task-1",
+                taskStatus = "todo"
+            )
+        val doneMessage = todoMessage.copy(taskStatus = "done")
+        val otherMessage = todoMessage.copy(id = "message-2", taskId = "task-2")
+
+        val todoIdentity =
+            threadTaskStatusChipClickIdentity(
+                message = todoMessage,
+                selectedStatus = todoMessage.taskStatus.threadTaskStatusOption(),
+                taskStatusActionsEnabled = true,
+                taskOpenEnabled = true
+            )
+
+        assertNotEquals(
+            todoIdentity,
+            threadTaskStatusChipClickIdentity(
+                message = doneMessage,
+                selectedStatus = doneMessage.taskStatus.threadTaskStatusOption(),
+                taskStatusActionsEnabled = true,
+                taskOpenEnabled = true
+            )
+        )
+        assertNotEquals(
+            todoIdentity,
+            threadTaskStatusChipClickIdentity(
+                message = otherMessage,
+                selectedStatus = otherMessage.taskStatus.threadTaskStatusOption(),
+                taskStatusActionsEnabled = true,
+                taskOpenEnabled = true
+            )
+        )
+        assertNotEquals(
+            todoIdentity,
+            threadTaskStatusChipClickIdentity(
+                message = todoMessage,
+                selectedStatus = todoMessage.taskStatus.threadTaskStatusOption(),
+                taskStatusActionsEnabled = false,
+                taskOpenEnabled = true
+            )
+        )
+    }
+
+    @Test
     fun strippedTimelineActionMessageCanRecoverReplyThreadRouteMetadata() {
         val message =
             KuiklyThreadMessageItem(
