@@ -2488,17 +2488,19 @@ private fun SlockSidebarSortOverlay(
     val edgeScrollStepPx = with(density) { 10.dp.toPx() }
     val listState = rememberLazyListState()
 
-    // Content-space drag model. The LazyColumn item order stays FIXED while a
-    // row is dragged (reordering mid-gesture moves the composable to a new slot,
-    // restarting its pointerInput and killing the drag — Kuikly contract). We
-    // track the finger's viewport Y; the target index is resolved against the
-    // CURRENT visible-row layout, so after an auto-scroll the same finger Y maps
-    // to a new index and the dragged row (rendered at its stable slot + offset)
-    // stays under the finger. The reorder commits on drop.
+    // Content-space drag model. The LazyColumn item order and layout stay FIXED
+    // while a row is dragged: the list does NOT reflow. Reflowing every row each
+    // frame (the previous approach) was inherently jittery under auto-scroll —
+    // the target changed every frame, and the dragged placeholder disposing and
+    // recomposing as it scrolled off/back churned the reflow basis and shoved the
+    // list (task #356 device feedback). Instead we track the finger's viewport Y,
+    // resolve a single drop target against the current visible-row layout, draw a
+    // floating copy under the finger + an insertion line at the target, and
+    // commit the reorder once on drop.
     var draggedId by remember(items) { mutableStateOf<String?>(null) }
     var draggedStartIndex by remember(items) { mutableStateOf(0) }
     var pointerViewportY by remember(items) { mutableStateOf(0f) }
-    var previewOrder by remember(items) { mutableStateOf(order) }
+    var targetIndex by remember(items) { mutableStateOf(-1) }
 
     fun visibleSortRowBounds(): List<SlockSortRowBounds> =
         listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
@@ -2509,10 +2511,8 @@ private fun SlockSidebarSortOverlay(
         }
 
     fun recomputeDrag() {
-        val active = draggedId ?: return
-        val rows = visibleSortRowBounds()
-        val target = resolveSortTargetIndex(pointerViewportY, rows, order.lastIndex)
-        previewOrder = order.moveItem(active, target)
+        if (draggedId == null) return
+        targetIndex = resolveSortTargetIndex(pointerViewportY, visibleSortRowBounds(), order.lastIndex)
     }
 
     // Continuous auto-scroll while the finger sits in an edge zone — required
@@ -2539,7 +2539,7 @@ private fun SlockSidebarSortOverlay(
                 slockLogInfo(
                     "SlockHomeSort",
                     "autoscroll delta=$delta consumed=$consumed pointerY=$pointerViewportY " +
-                        "target=${previewOrder.indexOf(draggedId)} firstVisible=${listState.firstVisibleItemIndex}"
+                        "target=$targetIndex firstVisible=${listState.firstVisibleItemIndex}"
                 )
             }
             withFrameNanos { }
@@ -2571,7 +2571,7 @@ private fun SlockSidebarSortOverlay(
                                         draggedId = id
                                         draggedStartIndex = target
                                         pointerViewportY = pos.y
-                                        previewOrder = order
+                                        targetIndex = target
                                         slockLogInfo(
                                             "SlockHomeSort",
                                             "dragStart id=$id index=$target posY=${pos.y} size=${order.size}"
@@ -2579,18 +2579,20 @@ private fun SlockSidebarSortOverlay(
                                     }
                                 },
                                 onDragEnd = {
-                                    val changed = draggedId != null && previewOrder != order
+                                    val active = draggedId
+                                    val changed = active != null && targetIndex >= 0 && targetIndex != draggedStartIndex
                                     slockLogInfo(
                                         "SlockHomeSort",
-                                        "dragEnd changed=$changed from=${order.indexOf(draggedId)} " +
-                                            "to=${previewOrder.indexOf(draggedId)}"
+                                        "dragEnd changed=$changed from=$draggedStartIndex to=$targetIndex"
                                     )
-                                    if (changed) order = previewOrder
+                                    if (changed && active != null) order = order.moveItem(active, targetIndex)
                                     draggedId = null
+                                    targetIndex = -1
                                 },
                                 onDragCancel = {
                                     slockLogInfo("SlockHomeSort", "dragCancel id=$draggedId")
                                     draggedId = null
+                                    targetIndex = -1
                                 }
                             ) { change, dragAmount ->
                                 change.consume()
@@ -2607,44 +2609,61 @@ private fun SlockSidebarSortOverlay(
                     val itemId = order[index]
                     val item = itemsById[itemId] ?: return@items
                     val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                    // Dragged row renders as an invisible placeholder (keeps its
-                    // slot height); the visible copy is the floating overlay.
-                    // Other rows shift to open a gap at the preview position.
-                    val dragOffsetY =
-                        when {
-                            draggedId == null || draggedId == itemId -> 0f
-                            else -> {
-                                val previewIndex = previewOrder.indexOf(itemId)
-                                if (previewIndex >= 0) (previewIndex - index) * rowStepPx else 0f
-                            }
-                        }
+                    // The list never reflows during a drag. The dragged row keeps
+                    // its slot as an invisible placeholder (the visible copy is the
+                    // floating overlay); every other row stays exactly in place, so
+                    // there is no per-frame reflow to jitter under auto-scroll.
                     if (draggedId == itemId) {
                         Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
                     } else {
+                        // 1-based position prefix so the on-device order is verifiable.
+                        val position = index + 1
                         ChannelRow(
-                            name = item.name,
+                            name = "$position. ${item.name}",
                             symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                             avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                             joined = item.joined || isDirectMessage,
                             showPresence = false,
                             interactionState = ChannelRowInteractionState.Default,
                             captureLongPressAnchor = false,
-                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                            dragOffsetY = dragOffsetY
+                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                         )
                     }
                 }
             }
 
+            // Insertion line: a thin bar at the drop target, so where the row will
+            // land is explicit without reflowing the list. Drawn at the top of the
+            // visible row currently at targetIndex (or the bottom of the last
+            // visible row when the target is below the fold).
+            val active = draggedId
+            if (active != null && targetIndex >= 0) {
+                val bounds = visibleSortRowBounds()
+                val lineY =
+                    bounds.firstOrNull { it.index == targetIndex }?.top
+                        ?: bounds.maxByOrNull { it.index }?.let { it.top + it.size }
+                if (lineY != null) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = HomeListHorizontalPadding)
+                                .offset { IntOffset(0, lineY.roundToInt()) }
+                                .height(2.dp)
+                                .background(SlockColor.AccentPink)
+                    )
+                }
+            }
+
             // Floating copy of the dragged row, pinned under the finger. Never
             // part of the LazyColumn, so it is never disposed mid-drag.
-            val active = draggedId
             if (active != null) {
                 val item = itemsById[active]
                 if (item != null) {
                     val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    val position = (if (targetIndex >= 0) targetIndex else draggedStartIndex) + 1
                     ChannelRow(
-                        name = item.name,
+                        name = "$position. ${item.name}",
                         symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
                         avatarLabel = if (isDirectMessage) item.avatarLabel else null,
                         joined = item.joined || isDirectMessage,
