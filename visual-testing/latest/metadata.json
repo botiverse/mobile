@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-05T10:13:28.277Z",
-  "runId": "80be632-20260705101315",
-  "commit": "80be632-20260705101315",
-  "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures",
+  "generatedAt": "2026-07-05T10:23:24.294Z",
+  "runId": "e17a1d4-20260705102311",
+  "commit": "e17a1d4-20260705102311",
+  "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures (#64)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
