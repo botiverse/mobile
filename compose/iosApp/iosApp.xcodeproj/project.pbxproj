@@ -29,6 +29,9 @@
 		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
 		FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */; };
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
+		0DECAF000000000000000104 /* SlockQuiverDeviceId.m in Sources */ = {isa = PBXBuildFile; fileRef = 0DECAF000000000000000004 /* SlockQuiverDeviceId.m */; };
+		0DECAF000000000000000106 /* SlockQuiverFeedbackClient.m in Sources */ = {isa = PBXBuildFile; fileRef = 0DECAF000000000000000006 /* SlockQuiverFeedbackClient.m */; };
+		0DECAF000000000000000108 /* SlockQuiverCrashReporter.m in Sources */ = {isa = PBXBuildFile; fileRef = 0DECAF000000000000000008 /* SlockQuiverCrashReporter.m */; };
 		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
 		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
 /* End PBXBuildFile section */
@@ -69,6 +72,13 @@
 		FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderViewController.m; sourceTree = "<group>"; };
 		FF6B714129A2A173009349F1 /* HRBridgeModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HRBridgeModule.m; sourceTree = "<group>"; };
 		FF6B714229A2A173009349F1 /* HRBridgeModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HRBridgeModule.h; sourceTree = "<group>"; };
+		0DECAF000000000000000002 /* SlockQuiverConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockQuiverConfig.h; sourceTree = "<group>"; };
+		0DECAF000000000000000003 /* SlockQuiverDeviceId.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockQuiverDeviceId.h; sourceTree = "<group>"; };
+		0DECAF000000000000000004 /* SlockQuiverDeviceId.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockQuiverDeviceId.m; sourceTree = "<group>"; };
+		0DECAF000000000000000005 /* SlockQuiverFeedbackClient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockQuiverFeedbackClient.h; sourceTree = "<group>"; };
+		0DECAF000000000000000006 /* SlockQuiverFeedbackClient.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockQuiverFeedbackClient.m; sourceTree = "<group>"; };
+		0DECAF000000000000000007 /* SlockQuiverCrashReporter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockQuiverCrashReporter.h; sourceTree = "<group>"; };
+		0DECAF000000000000000008 /* SlockQuiverCrashReporter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockQuiverCrashReporter.m; sourceTree = "<group>"; };
 		FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderViewController.h; sourceTree = "<group>"; };
 		FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KuiklyRenderViewPage.swift; sourceTree = "<group>"; };
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -204,8 +214,23 @@
 				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
 				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
 				FF6B714029A2A173009349F1 /* Modules */,
+				0DECAF000000000000000001 /* Quiver */,
 			);
 			path = KuiklyExpand;
+			sourceTree = "<group>";
+		};
+		0DECAF000000000000000001 /* Quiver */ = {
+			isa = PBXGroup;
+			children = (
+				0DECAF000000000000000002 /* SlockQuiverConfig.h */,
+				0DECAF000000000000000003 /* SlockQuiverDeviceId.h */,
+				0DECAF000000000000000004 /* SlockQuiverDeviceId.m */,
+				0DECAF000000000000000005 /* SlockQuiverFeedbackClient.h */,
+				0DECAF000000000000000006 /* SlockQuiverFeedbackClient.m */,
+				0DECAF000000000000000007 /* SlockQuiverCrashReporter.h */,
+				0DECAF000000000000000008 /* SlockQuiverCrashReporter.m */,
+			);
+			path = Quiver;
 			sourceTree = "<group>";
 		};
 		FF6B714029A2A173009349F1 /* Modules */ = {
@@ -394,6 +419,9 @@
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
+				0DECAF000000000000000104 /* SlockQuiverDeviceId.m in Sources */,
+				0DECAF000000000000000106 /* SlockQuiverFeedbackClient.m in Sources */,
+				0DECAF000000000000000108 /* SlockQuiverCrashReporter.m in Sources */,
 				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
