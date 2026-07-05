@@ -26,8 +26,8 @@
 8. ~~Activity 动作矩阵~~ **复核后撤销（2026-07-04）**：MarkRead / MarkUnread / MarkDone / LoadMore 均已在 `SharedInboxPanel.kt` 接线（含 load-more retry 行）。竞态/角标刷新如仍可复现另行开任务。
 9. ~~Thread/Home 首屏并行加载~~ **复核后撤销（2026-07-04）**：`withSenderProfiles` 已从代码中移除，spec 关注的阻塞点已被重构解决。
 10. **File preview 文本/文档走服务端契约 → #native task #203**：mp4 已上（Android+OHOS），typed `AttachmentPreviewData` union + `/attachments/:id/preview` 迁移（worktree B/C/F）未做。
-11. **Composer `BasicTextField` 迁移 → #native task #202**：整份 spec 未动，OHOS 选区/触发正确性依赖它。
-12. **Reaction sprite atlas（#391/#397）→ #native task #204**：素材/目录已入库但设备端渲染被 revert 两次，需要稳定的 source-rect 渲染原语再落。
+11. **Composer `BasicTextField` 迁移 → #native task #202**：~~整份 spec 未动，OHOS 选区/触发正确性依赖它。~~ 07-05 关闭：前提过时（fork 7ea6b09 起三端已有完整选区同步），spec 已删除。
+12. **Reaction sprite atlas（#391/#397）→ #native task #204**：~~素材/目录已入库但设备端渲染被 revert 两次，需要稳定的 source-rect 渲染原语再落。~~ 07-05 完结：PR #28 asset-URL 修复后设备端渲染落地（artin 真机确认），PR #32 删除全部手绘 glyph，spec 已标 Implemented。
 13. **Raft UI 组件对齐（活跃大集群）**：按视觉差异优先级 #283 surface/avatar 行 → #284 progress bar → #279 form/input → #278 menu/popover/select（部分已落）→ #277 segmented；对应 visual-testing board 上 #275-#321 一批在办；`slock-visual-testing validate` 缺 cli.mjs 待恢复。
 14. **Members 细节**：外部 agent 显示态、agent-detail activity 实时 #93、create-agent runtime 模型加载 #92、profile 底部按钮 #91、`screens.members.human.profile` fixture+安卓采集。
 15. **其他单点**：Search 多选 FROM #285（要服务端配合）；TaskBoard 多列视图；Saved 行右侧图标+菜单复核；Home cached-first visible 加载（缓存目前只在 Background 优先级读）。
@@ -35,7 +35,7 @@
 ### P2 / 平台与基建
 
 16. **Fork 产物远程化（`fork-artifact-github-packages-publishing-spec.md`）→ #native task #205**：OHOS render 仍 `file:./libs/*.har`、SQLDelight 栈仍本地自动发布；CI 侧 mavenLocal 缓存（07-04 已由 CC-Wow2 落地）解决了速度，但可复现的远程发布 + `publish-fork-artifacts.yml` 仍未做。
-17. **OHOS → #native task #206**：HDS tabbar 官方材质（要升 SDK 6.1/API 23）；shared SQLDelight smoke DB（Android+OHOS 双驱动）；composer 换行菜单 Phase 2；widget 信息密度/圆角风格 #382；前台保活开关 #113。
+17. **OHOS → #native task #206**：07-05 完结关闭。已落：HDS tabbar 官方材质（#53 HdsTabs systemMaterialEffect）、widget/forms、前台保活开关 #113。两个残留并入 task #207：composer 换行菜单 Phase 2（OHOS render fork 未接，prop 目前 OHOS no-op）、SQLDelight smoke DB 双驱动（现仅 androidUnitTest JVM 驱动有测试，native 驱动 smoke 未建）。
 18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；perf marker 缺口（modal/cache/icon-batch）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
 19. **未建产品面（owner 决策）→ #native task #208**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
 20. **杂项 → #native task #207**：Bugly 后续（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
@@ -70,8 +70,8 @@
 | mobile-killed-app-push-{android,ios,ohos}-server-contract-2026-07-01 | 服务端三平台契约等 review/开工 |
 | mobile-native-push-server-requirements-2026-07-02 | 三层推送边界（Phase 1 起步点） |
 | mobile-webview-server-contract-2026-07-02 | 等 server/API owner 签认 |
-| ohos-hds-tabbar-material-plan | 依赖 SDK 6.1/API 23 |
-| ohos-sqldelight-fork | shared smoke DB 未建 |
+| ohos-hds-tabbar-material-plan | ~~依赖 SDK 6.1/API 23~~ 07-05 已落（#53 HdsTabs systemMaterialEffect，文档已带状态注） |
+| ohos-sqldelight-fork | shared smoke DB 未建（native 驱动侧；JVM 侧已有 SqlDelightComposeLocalDataStoreTest。随 #206 关闭并入 task #207 残留） |
 | thread-realtime-ingress-next-step-2026-06-27 | Thread raw listener 未移除（multi-sink） |
 | realtime-session-owner-boundary-spec | RealtimeBridgeManager 抽取、房间引用计数 |
 
