@@ -307,3 +307,174 @@ jobs:
             :shared:compileTestKotlinOhosArm64 \
             --no-daemon \
             --console=plain
+
+  # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
+  # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
+  # ships the full DevEco command-line-tools (ohpm/hvigorw/SDK/JDK17) that
+  # hosted runners cannot download (Huawei-login-gated). The hvigor build's
+  # kuikly plugin shells out to gradle to link the shared .so, so the same
+  # fork-dependency mavenLocal set as the ohos job is published first.
+  ohos-host:
+    name: OHOS host (hvigor/ArkTS) compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The workspace is provisioned by the host runner user while steps run
+      # as the container user, so git refuses it as "dubious ownership" ('*'
+      # also covers the submodule checkouts below).
+      - name: Mark workspace safe for git
+        shell: bash
+        run: git config --global --add safe.directory '*'
+
+      - name: Set up JDK 8 for Ktor toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "8"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: |
+          sha="$(git ls-tree HEAD third_party/kuikly-ui --object-only)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-host-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+
+      - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --ohos-only
+
+      - name: Resolve OHOS shared fork pins
+        id: ohos-forks
+        shell: bash
+        run: |
+          stately="$(git ls-tree HEAD third_party/stately --object-only)"
+          sqliter="$(git ls-tree HEAD third_party/sqliter --object-only)"
+          sqldelight="$(git ls-tree HEAD third_party/sqldelight --object-only)"
+          test -n "$stately" && test -n "$sqliter" && test -n "$sqldelight"
+          {
+            echo "stately=$stately"
+            echo "sqliter=$sqliter"
+            echo "sqldelight=$sqldelight"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache OHOS shared fork mavenLocal artifacts
+        id: ohos-forks-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository/co/touchlab
+            ~/.m2/repository/app/cash/sqldelight
+            ~/.m2/repository/io/ktor
+          key: ohos-host-forkdeps-mavenlocal-${{ runner.os }}-${{ steps.ohos-forks.outputs.stately }}-${{ steps.ohos-forks.outputs.sqliter }}-${{ steps.ohos-forks.outputs.sqldelight }}-${{ hashFiles('scripts/prepare_ktor_ohos_fork.sh', 'third_party/ktor-ohos/**') }}
+
+      - name: Publish OHOS shared fork dependencies
+        if: steps.ohos-forks-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
+          git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
+
+          pushd third_party/stately
+          ./gradlew --no-daemon --console=plain \
+            :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-strict:publishOhosArm64PublicationToMavenLocal \
+            :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-concurrency:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqliter
+          ./gradlew --no-daemon --console=plain \
+            :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
+            :sqliter-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqldelight
+          ./gradlew --no-daemon --console=plain \
+            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:publishMavenPublicationToMavenLocal \
+            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
+            :sqldelight-gradle-plugin:publishToMavenLocal \
+            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
+            :runtime:publishOhosArm64PublicationToMavenLocal \
+            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          scripts/prepare_ktor_ohos_fork.sh --publish
+
+      # entry/src/main/cpp links pbcurlwrapper; the runtime .so set is not
+      # committed — it is copied out of the NetworkKMM ohos-runtime artifact.
+      - name: Copy NetworkKMM OHOS runtime libs
+        working-directory: compose
+        shell: bash
+        run: |
+          ./gradlew -c settings.ohos.gradle.kts \
+            copyNetworkOhosRuntimeLibs \
+            --no-daemon --console=plain
+
+      - name: ohpm install
+        working-directory: compose/ohosApp
+        shell: bash
+        run: ohpm install --all
+
+      - name: hvigor sync
+        working-directory: compose/ohosApp
+        shell: bash
+        run: hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
+
+      - name: hvigor assembleHap (unsigned)
+        working-directory: compose/ohosApp
+        shell: bash
+        run: |
+          hvigorw --mode module \
+            -p module=entry@default -p product=default -p requiredDeviceType=phone \
+            assembleHap --analyze=normal --parallel --no-daemon
+
+      - name: Assert unsigned HAP produced
+        shell: bash
+        run: |
+          hap="compose/ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap"
+          test -f "$hap" || { echo "unsigned HAP not produced at $hap" >&2; exit 1; }
+          ls -la "$(dirname "$hap")"
