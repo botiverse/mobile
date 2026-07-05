@@ -5,7 +5,7 @@ import hilog from '@ohos.hilog';
 import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
-import { QuiverCrashUploader } from '../quiver/QuiverCrashUploader';
+import { QuiverCrashUploader } from '@oranix/quiver';
 
 const TAG: string = 'SlockOhosCrashReporter';
 const CRASH_LOG_MAX_CHARS: number = 180000;
