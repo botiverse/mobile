@@ -199,6 +199,22 @@ class SharedAuthTokenProviderTest {
         ): AuthApiResult<AuthLoginResponse> =
             error("not used")
 
+        override suspend fun startMobileOAuthLink(
+            provider: String,
+            returnUri: String,
+            codeChallenge: String,
+            authorization: String
+        ): AuthApiResult<AuthMobileOAuthStartResponse> =
+            error("not used")
+
+        override suspend fun completeMobileOAuthLink(
+            provider: String,
+            code: String,
+            codeVerifier: String,
+            authorization: String
+        ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
+            error("not used")
+
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
 

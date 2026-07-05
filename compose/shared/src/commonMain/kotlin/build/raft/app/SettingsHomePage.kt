@@ -97,6 +97,7 @@ import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthLoginResponse
+import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
@@ -3437,6 +3438,8 @@ private fun SettingsAppShellContent(
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
+    val accountLinkScope = rememberCoroutineScope()
+
     LaunchedEffect(selectedDestination) {
         when (selectedDestination) {
             SettingsDestinationApiEnvironment ->
@@ -3732,11 +3735,17 @@ private fun SettingsAppShellContent(
                         "uploadAvatar" -> onSettingsIntent(SharedSettingsIntent.RequestAccountAvatarUpload)
                         "connectProvider" ->
                             value?.takeIf { it.isNotBlank() }?.let { providerId ->
-                                onSettingsIntent(
-                                    SharedSettingsIntent.ConnectAccountProvider(
-                                        AccountProviderLinkStartRequest(providerId = providerId)
-                                    )
-                                )
+                                accountLinkScope.launch {
+                                    when (settingsCapabilities.startMobileOAuthAccountLink(providerId)) {
+                                        is DataResult.Content -> Unit
+                                        else ->
+                                            onSettingsIntent(
+                                                SharedSettingsIntent.ConnectAccountProvider(
+                                                    AccountProviderLinkStartRequest(providerId = providerId)
+                                                )
+                                            )
+                                    }
+                                }
                             }
                         "saveProfile" -> {
                             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
@@ -9364,6 +9373,22 @@ private class AuthChooseServerVisualApi(
         acceptLegalTerms: Boolean,
         authorization: String?
     ): AuthApiResult<AuthLoginResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun startMobileOAuthLink(
+        provider: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthStartResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun completeMobileOAuthLink(
+        provider: String,
+        code: String,
+        codeVerifier: String,
+        authorization: String
+    ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
         AuthApiResult.Failure(code = 400)
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =

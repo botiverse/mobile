@@ -2194,6 +2194,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                         "sendTestNotification" -> sendTestNotificationCapability()
                         "postUnreadNotification" -> postUnreadNotificationCapability(request)
+                        "mobileOAuthLink" -> return startMobileOAuthLink(request, callback)
                         else -> mapOf("status" to "error", "code" to "settings_capability_unknown")
                     }
                 }.getOrElse { throwable ->
@@ -2204,6 +2205,107 @@ internal class SlockKuiklyBridgeModule(
                     )
                 }
         callback?.invoke(result)
+    }
+
+    private fun startMobileOAuthLink(request: JSONObject, callback: KuiklyRenderCallback?) {
+        val provider = request.optString("providerId").trim().lowercase(Locale.US)
+        if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
+            callback?.invoke(
+                    mapOf(
+                            "status" to "error",
+                            "code" to "settings_mobile_oauth_link_provider_unsupported",
+                            "message" to "This account provider is not available on Android yet"
+                    )
+            )
+            return
+        }
+        val lifecycleOwner = activity as? SlockKuiklyActivity ?: appContext as? SlockKuiklyActivity
+        if (lifecycleOwner == null) {
+            callback?.invoke(
+                    mapOf(
+                            "status" to "error",
+                            "code" to "settings_mobile_oauth_link_host_unavailable",
+                            "message" to "Unable to open ${provider.socialProviderDisplayName()} account linking"
+                    )
+            )
+            return
+        }
+
+        lifecycleOwner.lifecycleScope.launch {
+            val pkce = AndroidMobileOAuth.createPkce()
+            val authDataSource =
+                    SharedAuthDataSource(
+                            api = AndroidAuthApiFactory.createAuthApi(appContext),
+                            sessionStore =
+                                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
+                            diagnosticsLogger = ::logSharedAuthDiagnostics
+                    )
+            val startResult =
+                    withContext(Dispatchers.IO) {
+                        authDataSource.startMobileOAuthLink(
+                                provider = provider,
+                                returnUri = AndroidMobileOAuth.ReturnUri,
+                                codeChallenge = pkce.codeChallenge
+                        )
+                    }
+            when (startResult) {
+                is SharedAuthResult.Success -> {
+                    AndroidMobileOAuthPendingStore(appContext).save(
+                            AndroidMobileOAuthPendingRequest(
+                                    provider = provider,
+                                    requestId = startResult.data.requestId,
+                                    codeVerifier = pkce.codeVerifier,
+                                    mode = AndroidMobileOAuth.ModeLink
+                            )
+                    )
+                    val intent =
+                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                    runCatching {
+                                appContext.startActivity(intent)
+                            }
+                            .onSuccess {
+                                callback?.invoke(mapOf("status" to "started", "code" to 202))
+                            }
+                            .onFailure { throwable ->
+                                AndroidMobileOAuthPendingStore(appContext).clear()
+                                val message =
+                                        if (throwable is ActivityNotFoundException) {
+                                            "No browser can open ${provider.socialProviderDisplayName()} account linking"
+                                        } else {
+                                            "Unable to open ${provider.socialProviderDisplayName()} account linking"
+                                        }
+                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+                                callback?.invoke(
+                                        mapOf(
+                                                "status" to "error",
+                                                "code" to "settings_mobile_oauth_link_open_failed",
+                                                "message" to message
+                                        )
+                                )
+                            }
+                }
+                is SharedAuthResult.Failure -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "error",
+                                    "code" to "settings_mobile_oauth_link_start_failed",
+                                    "message" to startResult.message
+                            )
+                    )
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "error",
+                                    "code" to "settings_mobile_oauth_link_auth_required",
+                                    "message" to "Sign in again to link ${provider.socialProviderDisplayName()}."
+                            )
+                    )
+                }
+            }
+        }
     }
 
     private fun loadSettingsStorage(
@@ -3595,7 +3697,8 @@ internal class SlockKuiklyBridgeModule(
                             AndroidMobileOAuthPendingRequest(
                                     provider = provider,
                                     requestId = startResult.data.requestId,
-                                    codeVerifier = pkce.codeVerifier
+                                    codeVerifier = pkce.codeVerifier,
+                                    mode = AndroidMobileOAuth.ModeLogin
                             )
                     )
                     val intent =

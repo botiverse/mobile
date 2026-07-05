@@ -397,6 +397,55 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun mobileOAuthLinkStartUsesProviderEndpointWithCurrentSession() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        store.saveSession(storedSession(accessToken = "current-access"))
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.startMobileOAuthLink(
+                provider = " Google ",
+                returnUri = "raft-dev://oauth/callback",
+                codeChallenge = "challenge-1"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("google", api.mobileOAuthLinkStartProvider)
+        assertEquals("Bearer current-access", api.mobileOAuthLinkStartAuthorization)
+        assertEquals(
+            """{"returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
+            api.mobileOAuthLinkStartBody
+        )
+    }
+
+    @Test
+    fun mobileOAuthLinkCompleteUsesProviderEndpointWithCurrentSession() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        store.saveSession(storedSession(accessToken = "current-access"))
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.completeMobileOAuthLink(
+                provider = "GitHub",
+                code = "handoff-1",
+                codeVerifier = "verifier-1"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("github", result.data.provider)
+        assertEquals("link", result.data.mode)
+        assertEquals(listOf(AuthMobileOAuthIdentity("github", "user@example.com")), result.data.identities)
+        assertEquals("github", api.mobileOAuthLinkCompleteProvider)
+        assertEquals("Bearer current-access", api.mobileOAuthLinkCompleteAuthorization)
+        assertEquals(
+            """{"code":"handoff-1","codeVerifier":"verifier-1"}""",
+            api.mobileOAuthLinkCompleteBody
+        )
+    }
+
+    @Test
     fun mobileOAuthCompleteMapsLegalAcceptanceRequired() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val source =
@@ -829,6 +878,16 @@ class AuthDataSourceTest {
                 200,
                 """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}"""
             ),
+        private val mobileOAuthLinkStartResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"authorizationUrl":"https://accounts.example/link","requestId":"link-request-1","returnUri":"raft-dev://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
+            ),
+        private val mobileOAuthLinkCompleteResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"provider":"github","mode":"link","returnUri":"raft-dev://oauth/callback","identities":[{"provider":"github","providerEmail":"user@example.com"}]}"""
+            ),
         private val serversResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
@@ -866,6 +925,18 @@ class AuthDataSourceTest {
             private set
         var mobileOAuthCompleteBody: String? = null
             private set
+        var mobileOAuthLinkStartProvider: String? = null
+            private set
+        var mobileOAuthLinkStartBody: String? = null
+            private set
+        var mobileOAuthLinkStartAuthorization: String? = null
+            private set
+        var mobileOAuthLinkCompleteProvider: String? = null
+            private set
+        var mobileOAuthLinkCompleteBody: String? = null
+            private set
+        var mobileOAuthLinkCompleteAuthorization: String? = null
+            private set
         var currentUserAuthorization: String? = null
             private set
         var serversAuthorization: String? = null
@@ -893,6 +964,28 @@ class AuthDataSourceTest {
         override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
             mobileOAuthCompleteBody = bodyText
             return mobileOAuthCompleteResponse
+        }
+
+        override suspend fun startMobileOAuthLink(
+            provider: String,
+            bodyText: String,
+            authorization: String
+        ): AuthNetworkResponse {
+            mobileOAuthLinkStartProvider = provider
+            mobileOAuthLinkStartBody = bodyText
+            mobileOAuthLinkStartAuthorization = authorization
+            return mobileOAuthLinkStartResponse
+        }
+
+        override suspend fun completeMobileOAuthLink(
+            provider: String,
+            bodyText: String,
+            authorization: String
+        ): AuthNetworkResponse {
+            mobileOAuthLinkCompleteProvider = provider
+            mobileOAuthLinkCompleteBody = bodyText
+            mobileOAuthLinkCompleteAuthorization = authorization
+            return mobileOAuthLinkCompleteResponse
         }
 
         override suspend fun register(bodyText: String): AuthNetworkResponse {

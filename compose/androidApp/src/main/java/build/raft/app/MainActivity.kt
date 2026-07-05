@@ -113,20 +113,52 @@ class MainActivity : ComponentActivity() {
         val pending = pendingStore.read()
         if (pending == null) {
             pendingStore.clear()
-            openLoginAfterMobileOAuthError("Sign-in request expired. Try again.")
+            openAfterMobileOAuthError("Sign-in request expired. Try again.", AndroidMobileOAuth.ModeLogin)
             return true
         }
         val providerName = pending.provider.socialProviderDisplayName()
         val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
         if (!error.isNullOrBlank()) {
             pendingStore.clear()
-            openLoginAfterMobileOAuthError(error)
+            openAfterMobileOAuthError(error, pending.mode)
             return true
         }
         val handoffCode = uri.getQueryParameter("code")
         if (handoffCode.isNullOrBlank()) {
             pendingStore.clear()
-            openLoginAfterMobileOAuthError("$providerName sign-in did not return a handoff code")
+            openAfterMobileOAuthError("$providerName did not return a handoff code", pending.mode)
+            return true
+        }
+        if (pending.mode == AndroidMobileOAuth.ModeLink) {
+            lifecycleScope.launch {
+                val result =
+                    withContext(Dispatchers.IO) {
+                        SharedAuthDataSource(
+                            api = AndroidAuthApiFactory.createAuthApi(applicationContext),
+                            sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                            diagnosticsLogger = ::logSharedAuthDiagnostics
+                        ).completeMobileOAuthLink(
+                            provider = pending.provider,
+                            code = handoffCode,
+                            codeVerifier = pending.codeVerifier
+                        )
+                    }
+                pendingStore.clear()
+                when (result) {
+                    is SharedAuthResult.Success -> {
+                        Toast.makeText(this@MainActivity, "$providerName account linked.", Toast.LENGTH_SHORT).show()
+                        openSettingsAccountAfterMobileOAuthLink()
+                    }
+                    is SharedAuthResult.Failure -> {
+                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                        openSettingsAccountAfterMobileOAuthLink()
+                    }
+                    SharedAuthResult.Unauthenticated -> {
+                        Toast.makeText(this@MainActivity, "Sign in again to link $providerName.", Toast.LENGTH_SHORT).show()
+                        openSettingsAccountAfterMobileOAuthLink()
+                    }
+                }
+            }
             return true
         }
         lifecycleScope.launch {
@@ -200,6 +232,24 @@ class MainActivity : ComponentActivity() {
         )
         finish()
     }
+
+    private fun openAfterMobileOAuthError(message: String, mode: String) {
+        if (mode == AndroidMobileOAuth.ModeLink) {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            openSettingsAccountAfterMobileOAuthLink()
+        } else {
+            openLoginAfterMobileOAuthError(message)
+        }
+    }
+
+    private fun openSettingsAccountAfterMobileOAuthLink() {
+        SlockKuiklyActivity.startAppShell(
+            this,
+            pageData = settingsAccountAppShellPageData(),
+            clearTask = true
+        )
+        finish()
+    }
 }
 
 internal enum class PostLoginDestination {
@@ -218,6 +268,13 @@ internal fun postLoginAppShellPageData(): JSONObject =
     JSONObject()
         .put("slockSuppressRestoreLanding", true)
         .put("slockAuthGateInstanceId", System.nanoTime().toString())
+
+internal fun settingsAccountAppShellPageData(): JSONObject =
+    JSONObject()
+        .put("slockSuppressRestoreLanding", true)
+        .put("slockAuthGateInstanceId", System.nanoTime().toString())
+        .put("slockInitialTab", "settings")
+        .put("slockInitialSettingsDestination", "account")
 
 internal fun mobileOAuthLoginErrorPageData(message: String): JSONObject =
     JSONObject()
