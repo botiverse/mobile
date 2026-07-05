@@ -25,6 +25,8 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 
@@ -40,6 +42,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val sharedPreferenceStore: SlockKeyValueStore,
     private val apiEnvironmentKeyValueStore: SlockKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
+    val authSessionEvents: KuiklyAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
     val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
@@ -52,6 +55,7 @@ internal class SlockSharedStoreProvider private constructor(
     val homeSavedStateCache: SharedHomeSavedStateCache,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
+    val eventBus: SlockEventBusRelay,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val messageTranslationStore: SharedMessageTranslationStore,
     val threadMessageStore: SharedThreadMessageStore,
@@ -62,9 +66,17 @@ internal class SlockSharedStoreProvider private constructor(
 ) {
     private var homeStore: SharedHomeStore? = null
     private var homeActivityStore: SharedActivityStore? = null
+    private var authSessionClearedSubscription: RealtimeSubscription? = null
+    private var authSessionClearLogger: ((String) -> Unit)? = null
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = homeStore
+
+    fun updateEventBus(nextEventBus: SlockEventBus, source: String) {
+        eventBus.update(nextEventBus)
+        authSessionEvents.updateEventBus(eventBus, source)
+        authSessionClearLogger?.let(::installAuthSessionClearNotifyBridge)
+    }
 
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -170,8 +182,40 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 
+    fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
+        authSessionClearLogger = logger
+        authSessionClearedSubscription?.let(authSessionEvents::removeSessionClearedListener)
+        val scope = CoroutineScope(EmptyCoroutineContext)
+        authSessionClearedSubscription =
+            authSessionEvents.addSessionClearedListener { signal ->
+                if (authSessionEvents.isLocalSource(signal)) {
+                    return@addSessionClearedListener
+                }
+                logger("auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                scope.launch {
+                    runCatchingPreservingCancellation {
+                        authStore.clearSessionFromSessionClearedNotify(
+                            reason = signal.reason,
+                            previousSessionFingerprint = signal.previousSessionFingerprint
+                        )
+                    }.onSuccess { applied ->
+                        logger(
+                            "auth_session_clear_notify_result result=success applied=$applied " +
+                                "source=${signal.source} reason=${signal.reason}"
+                        )
+                    }.onFailure { throwable ->
+                        logger(
+                            "auth_session_clear_notify_result result=failure source=${signal.source} " +
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
+                        )
+                    }
+                }
+            }
+    }
+
     companion object {
-        fun create(bridge: BridgeModule): SlockSharedStoreProvider {
+        fun create(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider {
+            val eventBusRelay = SlockEventBusRelay(eventBus)
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore =
@@ -180,6 +224,11 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = { message -> bridge.log("local_cache $message") }
                 )
             val tasksDataStore = SharedTasksDataStore()
+            val authSessionEvents =
+                KuiklyAuthSessionEvents(
+                    eventBus = eventBusRelay,
+                    source = source
+                )
             val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
             bridge.logSharedAuthDiagnostic(
@@ -263,6 +312,7 @@ internal class SlockSharedStoreProvider private constructor(
                 sharedPreferenceStore = sharedPreferenceStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
+                authSessionEvents = authSessionEvents,
                 authDataSource = authDataSource,
                 networkClient = networkClient,
                 localDataStore = localDataStore,
@@ -292,6 +342,7 @@ internal class SlockSharedStoreProvider private constructor(
                         diagnosticsLogger = { message -> bridge.log("shared_home_persist $message") }
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
+                eventBus = eventBusRelay,
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
                 messageTranslationStore =
                     SharedMessageTranslationStore(
@@ -501,8 +552,16 @@ internal object SlockSharedStoreRegistry {
     internal var homeActivityStore: SharedActivityStore? = null
 
     fun get(bridge: BridgeModule): SlockSharedStoreProvider {
-        provider?.let { return it }
-        return SlockSharedStoreProvider.create(bridge).also {
+        val eventBus = SlockEventBuses.appScope()
+        return get(eventBus, "shared-store-provider", bridge)
+    }
+
+    fun get(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider {
+        provider?.let {
+            it.updateEventBus(eventBus, source)
+            return it
+        }
+        return SlockSharedStoreProvider.create(eventBus, source, bridge).also {
             provider = it
         }
     }

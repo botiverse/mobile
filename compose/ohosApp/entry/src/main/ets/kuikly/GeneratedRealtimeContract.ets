@@ -16,6 +16,7 @@ class GeneratedRealtimePayloadKeyContract {
   readonly ServerId: string = "serverId";
   readonly EventName: string = "eventName";
   readonly RawPayload: string = "rawPayload";
+  readonly All: Array<string> = ["action", "channelId", "serverId", "eventName", "rawPayload"];
 }
 
 class GeneratedRealtimeDisconnectReasonContract {

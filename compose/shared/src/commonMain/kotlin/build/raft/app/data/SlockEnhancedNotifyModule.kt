@@ -1,9 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
 
 data class SlockEnhancedNotifyEvent(
     val eventName: String,
@@ -24,47 +21,54 @@ interface SlockEnhancedNotifyEventBus {
     fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription
 }
 
-object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus {
-    private val listeners = mutableListOf<(SlockEnhancedNotifyEvent) -> Unit>()
-
-    override fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription {
-        listeners += listener
-        return RealtimeSubscription {
-            listeners -= listener
-        }
-    }
-
-    fun publish(event: SlockEnhancedNotifyEvent) {
-        listeners.toList().forEach { listener ->
-            listener(event)
-        }
-    }
-}
-
-internal class SlockEnhancedNotifyModule(
-    private val pager: Pager
-) {
-    private val module: NotifyModule
-        get() = pager.acquireModule(NotifyModule.MODULE_NAME)
-
-    fun addNotify(
+interface SlockEventBus {
+    fun observe(
         eventName: String,
         crossProcess: Boolean = false,
-        callback: (JSONObject?) -> Unit
-    ): CallbackRef =
-        module.addNotify(eventName, crossProcess = crossProcess, cb = callback)
+        listener: (JSONObject?) -> Unit
+    ): RealtimeSubscription
 
-    fun removeNotify(eventName: String, callbackRef: CallbackRef) {
-        module.removeNotify(eventName, callbackRef)
-    }
-
-    fun postNotify(
+    fun post(
         eventName: String,
         eventData: JSONObject,
         crossProcess: Boolean = false,
         source: String = "shared"
+    )
+}
+
+object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
+    private val enhancedListeners = mutableListOf<(SlockEnhancedNotifyEvent) -> Unit>()
+    private val listenersByEvent = mutableMapOf<String, MutableList<(JSONObject?) -> Unit>>()
+
+    override fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription {
+        enhancedListeners += listener
+        return RealtimeSubscription {
+            enhancedListeners -= listener
+        }
+    }
+
+    override fun observe(
+        eventName: String,
+        crossProcess: Boolean,
+        listener: (JSONObject?) -> Unit
+    ): RealtimeSubscription {
+        val listeners = listenersByEvent.getOrPut(eventName) { mutableListOf() }
+        listeners += listener
+        return RealtimeSubscription {
+            listeners -= listener
+            if (listeners.isEmpty()) {
+                listenersByEvent.remove(eventName)
+            }
+        }
+    }
+
+    override fun post(
+        eventName: String,
+        eventData: JSONObject,
+        crossProcess: Boolean,
+        source: String
     ) {
-        SlockEnhancedNotifyCenter.publish(
+        publish(
             SlockEnhancedNotifyEvent(
                 eventName = eventName,
                 eventData = eventData,
@@ -72,17 +76,93 @@ internal class SlockEnhancedNotifyModule(
                 source = source
             )
         )
-        module.postNotify(eventName, eventData, crossProcess = crossProcess)
-        if (eventName != SlockEnhancedNotifyContract.EventName) {
-            module.postNotify(
-                SlockEnhancedNotifyContract.EventName,
-                JSONObject()
-                    .put(SlockEnhancedNotifyContract.KeyEventName, eventName)
-                    .put(SlockEnhancedNotifyContract.KeyData, eventData)
-                    .put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
-                    .put(SlockEnhancedNotifyContract.KeySource, source),
-                crossProcess = crossProcess
-            )
+    }
+
+    private fun publish(event: SlockEnhancedNotifyEvent) {
+        listenersByEvent[event.eventName]?.toList()?.forEach { listener ->
+            listener(event.eventData)
+        }
+        if (event.eventName != SlockEnhancedNotifyContract.EventName) {
+            listenersByEvent[SlockEnhancedNotifyContract.EventName]?.toList()?.forEach { listener ->
+                listener(event.toEnvelopeJson())
+            }
+        }
+        enhancedListeners.toList().forEach { listener ->
+            listener(event)
         }
     }
+}
+
+internal fun SlockEnhancedNotifyEvent.toEnvelopeJson(): JSONObject =
+    JSONObject()
+        .put(SlockEnhancedNotifyContract.KeyEventName, eventName)
+        .put(SlockEnhancedNotifyContract.KeyData, eventData)
+        .put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
+        .put(SlockEnhancedNotifyContract.KeySource, source)
+
+internal class SlockPlatformDispatchingEventBus(
+    private val dispatchToPlatform: (SlockEnhancedNotifyEvent) -> Unit
+) : SlockEnhancedNotifyEventBus, SlockEventBus {
+    override fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription =
+        SlockEnhancedNotifyCenter.observeNotifyEvents(listener)
+
+    override fun observe(
+        eventName: String,
+        crossProcess: Boolean,
+        listener: (JSONObject?) -> Unit
+    ): RealtimeSubscription =
+        SlockEnhancedNotifyCenter.observe(eventName, crossProcess, listener)
+
+    override fun post(
+        eventName: String,
+        eventData: JSONObject,
+        crossProcess: Boolean,
+        source: String
+    ) {
+        val event =
+            SlockEnhancedNotifyEvent(
+                eventName = eventName,
+                eventData = eventData,
+                crossProcess = crossProcess,
+                source = source
+            )
+        SlockEnhancedNotifyCenter.post(eventName, eventData, crossProcess, source)
+        dispatchToPlatform(event)
+    }
+}
+
+internal class SlockEventBusRelay(
+    initialEventBus: SlockEventBus
+) : SlockEventBus {
+    private var delegate: SlockEventBus = initialEventBus
+
+    fun update(eventBus: SlockEventBus) {
+        delegate = eventBus
+    }
+
+    override fun observe(
+        eventName: String,
+        crossProcess: Boolean,
+        listener: (JSONObject?) -> Unit
+    ): RealtimeSubscription =
+        delegate.observe(eventName, crossProcess, listener)
+
+    override fun post(
+        eventName: String,
+        eventData: JSONObject,
+        crossProcess: Boolean,
+        source: String
+    ) {
+        delegate.post(eventName, eventData, crossProcess, source)
+    }
+}
+
+internal object SlockEventBuses {
+    private val appScopeEventBus: SlockEventBus by lazy {
+        createSlockPlatformEventBus()
+    }
+
+    fun appScope(): SlockEventBus = appScopeEventBus
+
+    fun inProcess(): SlockEventBus = SlockEnhancedNotifyCenter
 }

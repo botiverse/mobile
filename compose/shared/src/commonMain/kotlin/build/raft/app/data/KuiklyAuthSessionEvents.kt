@@ -1,9 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.module.CallbackRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
 import kotlin.concurrent.Volatile
 
 private const val AUTH_SESSION_CLEARED_EVENT = "raft.authSessionCleared"
@@ -22,29 +19,34 @@ internal data class AuthSessionClearedSignal(
 )
 
 internal class KuiklyAuthSessionEvents(
-    pager: Pager,
+    eventBus: SlockEventBus,
     source: String
 ) : SlockAuthSessionClearEventSink {
-    private val currentPager: Pager = pager
-    private val currentSource: String = source
+    @Volatile
+    private var currentEventBus: SlockEventBus = eventBus
 
-    private val module: NotifyModule
-        get() = currentPager.acquireModule(NotifyModule.MODULE_NAME)
+    @Volatile
+    private var currentSource: String = source
 
-    fun addSessionClearedListener(onCleared: (AuthSessionClearedSignal) -> Unit): CallbackRef =
-        module.addNotify(AUTH_SESSION_CLEARED_EVENT, crossProcess = true) { data ->
+    fun updateEventBus(eventBus: SlockEventBus, source: String) {
+        currentEventBus = eventBus
+        currentSource = source
+    }
+
+    fun addSessionClearedListener(onCleared: (AuthSessionClearedSignal) -> Unit): RealtimeSubscription =
+        currentEventBus.observe(AUTH_SESSION_CLEARED_EVENT, crossProcess = true) { data ->
             data?.toAuthSessionClearedSignal()?.let(onCleared)
         }
 
-    fun removeSessionClearedListener(callbackRef: CallbackRef) {
-        module.removeNotify(AUTH_SESSION_CLEARED_EVENT, callbackRef)
+    fun removeSessionClearedListener(subscription: RealtimeSubscription) {
+        subscription.close()
     }
 
     fun isLocalSource(signal: AuthSessionClearedSignal): Boolean =
         signal.source == currentSource
 
     override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
-        module.postNotify(
+        currentEventBus.post(
             AUTH_SESSION_CLEARED_EVENT,
             JSONObject()
                 .put(KEY_SOURCE, currentSource)

@@ -14,6 +14,7 @@ import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedKtorSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockHostNetworkNotifyContract
+import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
@@ -22,7 +23,6 @@ import build.raft.app.data.realtime.bootstrapRealtime
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -469,19 +469,20 @@ internal object AndroidAppScopeRealtimeOwner {
             "app_scope_lifecycle event=host_network_status online=$online source=$source"
         )
         scope.launch {
-            context.applicationContext.sendKuiklyEvent(
-                SlockHostNetworkNotifyContract.EventName,
-                JSONObject()
-                    .put(
-                        SlockHostNetworkNotifyContract.KeyStatus,
-                        if (online) {
-                            SlockHostNetworkNotifyContract.StatusOnline
-                        } else {
-                            SlockHostNetworkNotifyContract.StatusOffline
-                        }
-                    )
-                    .put(SlockHostNetworkNotifyContract.KeyOnline, online)
-                    .put(SlockHostNetworkNotifyContract.KeySource, source)
+            postAndroidAppScopeEvent(
+                eventName = SlockHostNetworkNotifyContract.EventName,
+                eventData =
+                    JSONObject()
+                        .put(
+                            SlockHostNetworkNotifyContract.KeyStatus,
+                            if (online) {
+                                SlockHostNetworkNotifyContract.StatusOnline
+                            } else {
+                                SlockHostNetworkNotifyContract.StatusOffline
+                            }
+                        )
+                        .put(SlockHostNetworkNotifyContract.KeyOnline, online)
+                        .put(SlockHostNetworkNotifyContract.KeySource, source)
             )
         }
     }
