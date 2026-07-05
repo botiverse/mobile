@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "screens.settings.computer-detail",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.settings.computer-detail.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 746,
-      "dominantRatio": 0.82587796
+      "uniqueColors": 681,
+      "dominantRatio": 0.83979017
     }
   },
-  "capturedAt": "1783244982582"
+  "capturedAt": "1783265423323"
 }

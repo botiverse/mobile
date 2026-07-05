@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.progress-bar.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.progress-bar.states.png",
-  "viewport": { "width": 342, "height": 124, "density": 1 },
+  "viewport": { "width": 1026, "height": 372, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 164,
-      "dominantRatio": 0.7843567
+      "uniqueColors": 152,
+      "dominantRatio": 0.8080289
     }
   },
-  "capturedAt": "1783244790168"
+  "capturedAt": "1783264881502"
 }

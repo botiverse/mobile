@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.selection-popover.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.selection-popover.states.png",
-  "viewport": { "width": 342, "height": 252, "density": 1 },
+  "viewport": { "width": 1026, "height": 756, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 256,
-      "dominantRatio": 0.8897243
+      "uniqueColors": 249,
+      "dominantRatio": 0.9017477
     }
   },
-  "capturedAt": "1783244693468"
+  "capturedAt": "1783264683772"
 }

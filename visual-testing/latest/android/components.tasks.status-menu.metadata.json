@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.tasks.status-menu",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.tasks.status-menu.png",
-  "viewport": { "width": 342, "height": 260, "density": 1 },
+  "viewport": { "width": 1026, "height": 780, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 409,
-      "dominantRatio": 0.443511
+      "uniqueColors": 256,
+      "dominantRatio": 0.5250712
     }
   },
-  "capturedAt": "1783244825921"
+  "capturedAt": "1783265067193"
 }

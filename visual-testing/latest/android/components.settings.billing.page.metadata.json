@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.settings.billing.page",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.billing.page.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 811,
-      "dominantRatio": 0.85750395
+      "uniqueColors": 512,
+      "dominantRatio": 0.87025696
     }
   },
-  "capturedAt": "1783244732841"
+  "capturedAt": "1783264768763"
 }

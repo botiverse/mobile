@@ -1,22 +1,22 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-05T14:02:05.121Z",
-  "latestRunId": "308bcdf-20260705140151",
+  "generatedAt": "2026-07-05T15:32:48.081Z",
+  "latestRunId": "e512d6b-20260705153218",
   "latest": {
-    "runId": "308bcdf-20260705140151",
-    "commit": "308bcdf-20260705140151",
-    "commitSubject": "fix(visual): bound idle-sync + per-case timing/timeout so one hung case can't kill a shard (#78)",
-    "generatedAt": "2026-07-05T14:02:05.121Z",
+    "runId": "e512d6b-20260705153218",
+    "commit": "e512d6b-20260705153218",
+    "commitSubject": "fix(ohos): seat HDS tab dock at host bottom so it drops into the safe area (#79)",
+    "generatedAt": "2026-07-05T15:32:48.081Z",
     "baseline": "react",
     "current": "android",
     "summary": {
       "total": 82,
       "same": 0,
       "pass": 0,
-      "basic-pass": 1,
-      "different": 80,
-      "missing": 1
+      "basic-pass": 6,
+      "different": 71,
+      "missing": 5
     },
     "analysisSummary": {
       "total": 82,
@@ -63,10 +63,10 @@
         }
       }
     },
-    "href": "runs/308bcdf-20260705140151/",
-    "report": "runs/308bcdf-20260705140151/report.html",
-    "componentMatrix": "runs/308bcdf-20260705140151/component-matrix.json",
-    "llms": "runs/308bcdf-20260705140151/metadata.json"
+    "href": "runs/e512d6b-20260705153218/",
+    "report": "runs/e512d6b-20260705153218/report.html",
+    "componentMatrix": "runs/e512d6b-20260705153218/component-matrix.json",
+    "llms": "runs/e512d6b-20260705153218/metadata.json"
   },
   "componentMatrixSummary": {
     "total": 102,
@@ -109,6 +109,71 @@
     }
   },
   "runs": [
+    {
+      "runId": "e512d6b-20260705153218",
+      "commit": "e512d6b-20260705153218",
+      "commitSubject": "fix(ohos): seat HDS tab dock at host bottom so it drops into the safe area (#79)",
+      "generatedAt": "2026-07-05T15:32:48.081Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 82,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 6,
+        "different": 71,
+        "missing": 5
+      },
+      "analysisSummary": {
+        "total": 82,
+        "ready": 0,
+        "pending": 82
+      },
+      "componentMatrixSummary": {
+        "total": 102,
+        "active": 83,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 77,
+            "active": 73,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 25,
+            "active": 10,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 85,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 98
+          },
+          "android": {
+            "active": 81,
+            "pending": 17,
+            "unsupported": 0,
+            "total": 98
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 78,
+            "unsupported": 0,
+            "total": 78
+          }
+        }
+      },
+      "href": "runs/e512d6b-20260705153218/",
+      "report": "runs/e512d6b-20260705153218/report.html",
+      "componentMatrix": "runs/e512d6b-20260705153218/component-matrix.json",
+      "llms": "runs/e512d6b-20260705153218/metadata.json"
+    },
     {
       "runId": "308bcdf-20260705140151",
       "commit": "308bcdf-20260705140151",

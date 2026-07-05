@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "screens.members.agent-detail.workspace",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.members.agent-detail.workspace.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 501,
-      "dominantRatio": 0.9580113
+      "uniqueColors": 455,
+      "dominantRatio": 0.96450526
     }
   },
-  "capturedAt": "1783244976790"
+  "capturedAt": "1783265249300"
 }

@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.form-field.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.form-field.states.png",
-  "viewport": { "width": 342, "height": 226, "density": 1 },
+  "viewport": { "width": 1026, "height": 678, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 440,
-      "dominantRatio": 0.88605547
+      "uniqueColors": 499,
+      "dominantRatio": 0.9069014
     }
   },
-  "capturedAt": "1783244798070"
+  "capturedAt": "1783264821696"
 }

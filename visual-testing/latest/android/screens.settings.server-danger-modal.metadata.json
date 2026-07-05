@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "screens.settings.server-danger-modal",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.settings.server-danger-modal.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 1152,
-      "dominantRatio": 0.50869185
+      "uniqueColors": 794,
+      "dominantRatio": 0.501596
     }
   },
-  "capturedAt": "1783244653784"
+  "capturedAt": "1783264660640"
 }

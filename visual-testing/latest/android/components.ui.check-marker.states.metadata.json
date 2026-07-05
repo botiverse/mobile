@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.check-marker.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.check-marker.states.png",
-  "viewport": { "width": 342, "height": 112, "density": 1 },
+  "viewport": { "width": 1026, "height": 336, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 300,
-      "dominantRatio": 0.93538535
+      "uniqueColors": 252,
+      "dominantRatio": 0.9461385
     }
   },
-  "capturedAt": "1783244809938"
+  "capturedAt": "1783264836214"
 }

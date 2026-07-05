@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.skeleton.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.skeleton.states.png",
-  "viewport": { "width": 342, "height": 150, "density": 1 },
+  "viewport": { "width": 1026, "height": 450, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 138,
-      "dominantRatio": 0.6122027
+      "uniqueColors": 52,
+      "dominantRatio": 0.62325317
     }
   },
-  "capturedAt": "1783244836322"
+  "capturedAt": "1783265081677"
 }

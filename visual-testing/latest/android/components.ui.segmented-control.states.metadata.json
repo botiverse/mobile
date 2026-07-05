@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.segmented-control.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.segmented-control.states.png",
-  "viewport": { "width": 342, "height": 96, "density": 1 },
+  "viewport": { "width": 1026, "height": 288, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 287,
-      "dominantRatio": 0.8974476
+      "uniqueColors": 412,
+      "dominantRatio": 0.9014816
     }
   },
-  "capturedAt": "1783244632726"
+  "capturedAt": "1783264641642"
 }

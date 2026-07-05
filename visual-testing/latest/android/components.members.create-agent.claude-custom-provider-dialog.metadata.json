@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.members.create-agent.claude-custom-provider-dialog",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.create-agent.claude-custom-provider-dialog.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 522,
-      "dominantRatio": 0.8168854
+      "uniqueColors": 299,
+      "dominantRatio": 0.8026944
     }
   },
-  "capturedAt": "1783244727301"
+  "capturedAt": "1783264750505"
 }

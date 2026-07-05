@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.settings.administration.translation",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.administration.translation.png",
-  "viewport": { "width": 390, "height": 844, "density": 1 },
+  "viewport": { "width": 1170, "height": 2532, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 584,
-      "dominantRatio": 0.8855268
+      "uniqueColors": 654,
+      "dominantRatio": 0.8912015
     }
   },
-  "capturedAt": "1783244865144"
+  "capturedAt": "1783264994034"
 }

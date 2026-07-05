@@ -4,7 +4,7 @@
   "source": "kmp-shared",
   "caseId": "components.ui.attention-dot.states",
   "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.attention-dot.states.png",
-  "viewport": { "width": 342, "height": 80, "density": 1 },
+  "viewport": { "width": 1026, "height": 240, "density": 1 },
   "systemBars": "hidden",
   "crop": {
     "mode": "manual-rect",
@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 265,
-      "dominantRatio": 0.95628655
+      "uniqueColors": 259,
+      "dominantRatio": 0.96398634
     }
   },
-  "capturedAt": "1783244790001"
+  "capturedAt": "1783264911130"
 }
