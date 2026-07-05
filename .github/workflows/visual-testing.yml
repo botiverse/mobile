@@ -270,11 +270,22 @@ jobs:
           # backslash line continuations break ("Task '\' not found").
           script: |
             adb wait-for-device
+            # Per-case timing (task #362): grow the device logcat ring so the
+            # sparse VisualCapture CASE_START/CASE_END lines survive a full
+            # shard, then clear so the dump only holds this run. Each script
+            # line is a separate command (no background jobs / shared vars), so
+            # we size+clear here and dump after instrumentation below.
+            adb logcat -G 16M
+            adb logcat -c
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
-            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
             mkdir -p visual-testing-results/android
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
             adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
+            # Per-case timing + idle-wait warnings for this shard. Grep
+            # CASE_START/CASE_END to see how long every android item ran and
+            # which case (if any) stalled.
+            adb logcat -d -v time -s VisualCapture:V TestRunner:V > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
 
       - name: Upload android results
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -282,6 +293,14 @@ jobs:
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
           path: visual-testing-results/android
+          if-no-files-found: warn
+
+      - name: Upload capture logcat (per-case timing)
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-logcat-shard-${{ matrix.shard }}
+          path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
   report:
