@@ -1257,6 +1257,7 @@ private class MemberDetailRouteProvider(
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
+    val computersStore: SharedComputersStore,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
@@ -1560,6 +1561,19 @@ private fun rememberMemberDetailRouteProvider(
     val agentDetailStore = sharedStores.agentDetailStore
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = sharedStores.serverMembersStore
+    val scope = rememberCoroutineScope()
+    val computersApiClient = remember(networkClient) {
+        SlockComputersApiClient(
+            SlockComputersNetworkApi(networkClient)
+        )
+    }
+    val computersStore = remember(computersApiClient, scope) {
+        SharedComputersStore(
+            computersApiClient = computersApiClient,
+            scope = scope,
+            logger = { message -> bridge.log("member_detail_$message") }
+        )
+    }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1576,6 +1590,7 @@ private fun rememberMemberDetailRouteProvider(
         agentDetailStore,
         agentPanelTabOrderStore,
         serverMembersStore,
+        computersStore,
         agentsApiClient
     ) {
         MemberDetailRouteProvider(
@@ -1588,6 +1603,7 @@ private fun rememberMemberDetailRouteProvider(
             agentDetailStore = agentDetailStore,
             agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
+            computersStore = computersStore,
             agentsApiClient = agentsApiClient
         )
     }
@@ -1634,6 +1650,13 @@ private fun MemberDetailPageContent() {
             is MemberDetailRouteState.Agent -> current.server.id.value
             else -> null
         }
+    val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
+        SharedComputersPickerSlice()
+    )
+    LaunchedEffect(provider.computersStore, statusLookupServerId) {
+        val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+    }
     LaunchedEffect(provider.agentPanelTabOrderStore, statusLookupServerId, payload.agentPanelTabOrder) {
         provider.agentPanelTabOrderStore.bindServer(
             serverId = statusLookupServerId,
@@ -1792,6 +1815,11 @@ private fun MemberDetailPageContent() {
                 MembersDetailContent(
                     member = member,
                     agentDetailState = agentDetailState,
+                    agentMachineRuntimes =
+                        membersAgentMachineRuntimeIds(
+                            machines = computerPickerSlice.machines,
+                            machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
+                        ),
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.server.permissions.canManageSettings ||
                             detail?.summary?.creatorId == current.currentUserId
@@ -2749,6 +2777,7 @@ internal fun membersLazyItemCount(
 private fun MembersDetailContent(
     member: MemberProfile,
     agentDetailState: MembersAgentDetailLoadState,
+    agentMachineRuntimes: List<String> = emptyList(),
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     onBack: () -> Unit,
@@ -3178,6 +3207,7 @@ private fun MembersDetailContent(
                                     MembersAgentProfileTab(
                                         member = member,
                                         detail = detail,
+                                        agentMachineRuntimes = agentMachineRuntimes,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
                                         agentStatusResolver = agentStatusResolver,
@@ -4924,6 +4954,7 @@ private fun MembersAgentProfileHeader(
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
+    agentMachineRuntimes: List<String> = emptyList(),
     canManage: Boolean,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -5736,6 +5767,7 @@ private fun MembersAgentProfileTab(
             MembersAgentRuntimeConfigDialog(
                 member = member,
                 summary = summary,
+                machineRuntimeIds = agentMachineRuntimes,
                 saving = savingRuntimeConfig,
                 error = runtimeConfigError,
                 onDismiss = {
@@ -6033,6 +6065,7 @@ private fun membersMaskedEnvValue(value: String?): String =
 private fun MembersAgentRuntimeConfigDialog(
     member: MemberProfile,
     summary: AgentDetailSummary?,
+    machineRuntimeIds: List<String> = emptyList(),
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
@@ -6127,6 +6160,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             model = it
                         },
                         runtimeModelsOverride = emptyList(),
+                        machineRuntimeIds = machineRuntimeIds,
                         enabled = !saving,
                         providerMode = providerMode,
                         onProviderModeChange = { providerMode = it },
@@ -6361,7 +6395,15 @@ private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
     when (val modelConfig = model) {
         is RuntimeModelConfig.Preset -> modelConfig.id
         is RuntimeModelConfig.Custom -> modelConfig.name
-    }
+}
+
+internal fun membersAgentMachineRuntimeIds(
+    machines: List<SharedCreateAgentMachineOption>,
+    machineId: String?
+): List<String> {
+    val normalizedMachineId = machineId?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+    return machines.firstOrNull { it.id == normalizedMachineId }?.runtimes.orEmpty()
+}
 
 private fun AgentDetailSummary?.membersRuntimeEnvVarNames(): List<String> =
     if (this == null) {

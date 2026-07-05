@@ -53,4 +53,53 @@ class MembersAgentServerRoleTest {
         assertTrue(options.first { it.id == "member" }.selected)
         assertFalse(options.first { it.id == "admin" }.selected)
     }
+
+    @Test
+    fun agentRuntimeEditorUsesSelectedMachineRuntimes() {
+        val runtimes =
+            membersAgentMachineRuntimeIds(
+                machines =
+                    listOf(
+                        SharedCreateAgentMachineOption(
+                            id = "machine-1",
+                            name = "MacBook",
+                            status = "online",
+                            runtimes = listOf("codex", "claude")
+                        ),
+                        SharedCreateAgentMachineOption(
+                            id = "machine-2",
+                            name = "Linux Mini",
+                            status = "online",
+                            runtimes = listOf("pi")
+                        )
+                    ),
+                machineId = "machine-1"
+            )
+
+        assertEquals(listOf("codex", "claude"), runtimes)
+        val runtimeItems = createAgentRuntimeDropdownItems(runtimes)
+        assertTrue(runtimeItems.first { it.id == "codex" }.enabled)
+        assertTrue(runtimeItems.first { it.id == "claude" }.enabled)
+        assertFalse(runtimeItems.first { it.id == "pi" }.enabled)
+        assertEquals("Pi (not installed)", runtimeItems.first { it.id == "pi" }.label)
+    }
+
+    @Test
+    fun agentRuntimeEditorReturnsNoRuntimesForUnknownMachine() {
+        assertEquals(
+            emptyList(),
+            membersAgentMachineRuntimeIds(
+                machines =
+                    listOf(
+                        SharedCreateAgentMachineOption(
+                            id = "machine-1",
+                            name = "MacBook",
+                            status = "online",
+                            runtimes = listOf("codex")
+                        )
+                    ),
+                machineId = "missing"
+            )
+        )
+    }
 }

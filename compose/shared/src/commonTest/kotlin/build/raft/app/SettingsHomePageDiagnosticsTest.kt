@@ -18,6 +18,15 @@ import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
     @Test
+    fun administrationRoleOptionsMatchServerRolePolicy() {
+        assertEquals(listOf("owner", "admin"), settingsAdminRoleOptions("owner", "member"))
+        assertEquals(listOf("owner"), settingsAdminRoleOptions("owner", "admin"))
+        assertEquals(listOf("admin"), settingsAdminRoleOptions("admin", "member"))
+        assertEquals(emptyList(), settingsAdminRoleOptions("admin", "admin"))
+        assertEquals(emptyList(), settingsAdminRoleOptions("member", "member"))
+    }
+
+    @Test
     fun unsupportedProfilerSnapshotShowsDisabledProfilerStatus() {
         val payload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(

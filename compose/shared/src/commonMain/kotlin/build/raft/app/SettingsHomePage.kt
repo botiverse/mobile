@@ -6666,6 +6666,26 @@ private fun SettingsServerAdminsCard(
             .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     val candidates = members.filter { !it.isPrivilegedServerMember() }.sortedBy { it.name }
     val ownerCount = admins.count { it.normalizedRole() == "owner" }
+    var selectedCandidateId by remember(candidates, normalizedActorRole) {
+        mutableStateOf(candidates.firstOrNull()?.id.orEmpty())
+    }
+    val selectedCandidate = candidates.firstOrNull { it.id == selectedCandidateId }
+    val selectedRoleOptions = selectedCandidate
+        ?.let { candidate -> settingsAdminRoleOptions(normalizedActorRole, candidate.normalizedRole().ifBlank { "member" }) }
+        .orEmpty()
+    var selectedRole by remember(selectedCandidateId, normalizedActorRole, selectedRoleOptions) {
+        mutableStateOf(selectedRoleOptions.firstOrNull() ?: "admin")
+    }
+    LaunchedEffect(candidates, selectedCandidateId) {
+        if (selectedCandidateId.isBlank() || candidates.none { it.id == selectedCandidateId }) {
+            selectedCandidateId = candidates.firstOrNull()?.id.orEmpty()
+        }
+    }
+    LaunchedEffect(selectedRoleOptions, selectedRole) {
+        if (selectedRole !in selectedRoleOptions) {
+            selectedRole = selectedRoleOptions.firstOrNull() ?: "admin"
+        }
+    }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = "Owners & Admins") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
@@ -6674,30 +6694,77 @@ private fun SettingsServerAdminsCard(
                 style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
-            candidates.forEach { candidate ->
-                val targetRole = candidate.normalizedRole().ifBlank { "member" }
-                val canMakeOwner = canChangeServerMemberRole(normalizedActorRole, targetRole, "owner")
-                val canMakeAdmin = canChangeServerMemberRole(normalizedActorRole, targetRole, "admin")
-                if (canMakeOwner) {
-                    SettingsServerActionRow(
-                        title = candidate.name,
-                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
-                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Owner", candidate.id),
-                        buttonIcon = SlockLucideIconName.ShieldCheck,
-                        buttonColor = SlockColor.AccentPink,
-                        enabled = actionState?.inProgress != true,
-                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:owner") }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                SlockBrutalSelectField(
+                    options =
+                        candidates.map { candidate ->
+                            SlockBrutalSelectOption(
+                                id = candidate.id,
+                                label =
+                                    listOfNotNull(
+                                        candidate.name.takeIf { it.isNotBlank() },
+                                        candidate.detail?.takeIf { it.isNotBlank() }
+                                    ).joinToString(" · ").ifBlank { "Unknown member" }
+                            )
+                        },
+                    selectedId = selectedCandidateId,
+                    selectedLabel =
+                        selectedCandidate
+                            ?.let { candidate ->
+                                listOfNotNull(
+                                    candidate.name.takeIf { it.isNotBlank() },
+                                    candidate.detail?.takeIf { it.isNotBlank() }
+                                ).joinToString(" · ")
+                            }
+                            .orEmpty(),
+                    placeholder = "Select member...",
+                    enabled = actionState?.inProgress != true,
+                    onSelect = { option -> selectedCandidateId = option.id }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalSelectField(
+                        options =
+                            listOf(
+                                SlockBrutalSelectOption(
+                                    id = "owner",
+                                    label = "Owner",
+                                    enabled = "owner" in selectedRoleOptions
+                                ),
+                                SlockBrutalSelectOption(
+                                    id = "admin",
+                                    label = "Admin",
+                                    enabled = "admin" in selectedRoleOptions
+                                )
+                            ),
+                        selectedId = selectedRole,
+                        selectedLabel = selectedRole.replaceFirstChar { it.uppercase() },
+                        placeholder = "Role",
+                        enabled = selectedCandidate != null && selectedRoleOptions.isNotEmpty() && actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onSelect = { option -> selectedRole = option.id }
                     )
-                }
-                if (canMakeAdmin) {
-                    SettingsServerActionRow(
-                        title = candidate.name,
-                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
-                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Admin", candidate.id),
-                        buttonIcon = SlockLucideIconName.ShieldCheck,
-                        buttonColor = SlockColor.BrandYellow,
-                        enabled = actionState?.inProgress != true,
-                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:admin") }
+                    SlockBrutalActionButton(
+                        label =
+                            selectedCandidate
+                                ?.let { actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Update Role", it.id) }
+                                ?: "Update Role",
+                        onClick = {
+                            val candidateId = selectedCandidate?.id ?: return@SlockBrutalActionButton
+                            onAction(SERVER_ACTION_MEMBER_ROLE, "$candidateId:$selectedRole")
+                        },
+                        enabled =
+                            selectedCandidate != null &&
+                                selectedRole in selectedRoleOptions &&
+                                actionState?.inProgress != true,
+                        backgroundColor = SlockColor.AccentPink,
+                        minWidth = 112.dp
                     )
                 }
             }
@@ -8586,6 +8653,14 @@ private fun canChangeServerMemberRole(
         "admin" -> targetRole == "member" && nextRole == "admin"
         else -> false
     }
+
+internal fun settingsAdminRoleOptions(actorRole: String?, targetRole: String?): List<String> =
+    listOf("owner", "admin")
+        .filter { nextRole ->
+            val normalizedTargetRole = targetRole.normalizedServerRole()
+            nextRole != normalizedTargetRole &&
+                canChangeServerMemberRole(actorRole.normalizedServerRole(), normalizedTargetRole, nextRole)
+        }
 
 private fun build.raft.app.data.SharedSettingsActionState?.statusFor(action: String, fallback: String): String =
     when {
