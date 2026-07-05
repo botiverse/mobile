@@ -1,6 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
+#import "SlockQuiverFeedbackClient.h"
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -939,21 +940,8 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         return [self slock_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
-        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
-        NSString *message = SlockBridgeString(draft[@"message"]);
-        NSString *path = SlockBridgeString(draft[@"filePath"]);
-        NSMutableArray *items = [NSMutableArray array];
-        if (message.length > 0) {
-            [items addObject:message];
-        }
-        if (path.length > 0) {
-            NSURL *url = [NSURL fileURLWithPath:path];
-            if (url) {
-                [items addObject:url];
-            }
-        }
-        [self slock_shareItems:items];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_send_feedback");
+        [self slock_promptAndSubmitQuiverFeedback];
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"clearStorage"]) {
@@ -984,6 +972,80 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         UINavigationController *presentedNavigationController =
             [[UINavigationController alloc] initWithRootViewController:renderViewController];
         [controller presentViewController:presentedNavigationController animated:YES completion:nil];
+    });
+}
+
+/// Quiver feedback flow (parity with the Android host): prompt for a
+/// description, submit a kind=bug ticket with the diagnostics export
+/// attached, then copy a shareable "Quiver feedback <id>" reference to the
+/// clipboard so the user can paste it in the community.
+- (void)slock_promptAndSubmitQuiverFeedback {
+    SlockBridgeRunOnMain(^{
+        UIViewController *controller = [self slock_currentViewController];
+        if (!controller) {
+            return;
+        }
+        UIAlertController *prompt =
+            [UIAlertController alertControllerWithTitle:@"Send feedback"
+                                                message:@"Your message plus device diagnostics will be sent to Quiver. You'll get a copyable reference to share in the community."
+                                         preferredStyle:UIAlertControllerStyleAlert];
+        [prompt addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+            textField.placeholder = @"Describe your feedback";
+        }];
+        [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                   style:UIAlertActionStyleCancel
+                                                 handler:nil]];
+        __weak UIAlertController *weakPrompt = prompt;
+        [prompt addAction:[UIAlertAction actionWithTitle:@"Send"
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction *action) {
+            NSString *description = [weakPrompt.textFields.firstObject.text
+                stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if (description.length == 0) {
+                return;
+            }
+            [self slock_submitQuiverFeedbackWithDescription:description];
+        }]];
+        [controller presentViewController:prompt animated:YES completion:nil];
+    });
+}
+
+- (void)slock_submitQuiverFeedbackWithDescription:(NSString *)description {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
+        NSString *path = SlockBridgeString(draft[@"filePath"]);
+        NSArray<NSString *> *attachments = path.length > 0 ? @[ path ] : @[];
+        [SlockQuiverFeedbackClient submitWithMessage:description
+                                                kind:@"bug"
+                                     attachmentPaths:attachments
+                                              extras:nil
+                                          completion:^(NSString *ticketId, NSError *error) {
+            SlockBridgeRunOnMain(^{
+                UIViewController *controller = [self slock_currentViewController];
+                if (error || ticketId.length == 0) {
+                    SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
+                        [NSString stringWithFormat:@"quiver_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
+                    UIAlertController *failed =
+                        [UIAlertController alertControllerWithTitle:@"Feedback failed"
+                                                            message:error.localizedDescription ?: @"Unknown error"
+                                                     preferredStyle:UIAlertControllerStyleAlert];
+                    [failed addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [controller presentViewController:failed animated:YES completion:nil];
+                    return;
+                }
+                NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
+                NSString *shareText = [NSString stringWithFormat:@"Quiver feedback %@\n%@", shortId, description];
+                UIPasteboard.generalPasteboard.string = shareText;
+                SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
+                    [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);
+                UIAlertController *done =
+                    [UIAlertController alertControllerWithTitle:@"Feedback sent"
+                                                        message:@"Copied — paste it in the community."
+                                                 preferredStyle:UIAlertControllerStyleAlert];
+                [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [controller presentViewController:done animated:YES completion:nil];
+            });
+        }];
     });
 }
 
