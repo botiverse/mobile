@@ -725,7 +725,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         remember(sharedStores.localDataStore, bridge) {
             ComposeLocalWriteThrough(
                 sharedStores.localDataStore,
-                logger = { message -> bridge.logDebug("home_secondary_cache $message") }
+                logger = slockLogger("SlockHomeSecondaryCache", "home_secondary_cache", SlockLogLevel.Debug)
             )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
@@ -864,9 +864,9 @@ private fun HomeSearchRouterContent(
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
                 computersApi = SlockComputersNetworkApi(environment.networkClient),
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session) { message -> environment.bridge.log(message) }
+                    parseSlockHome(payload, session, slockLogger("SlockHomeSecondaryParse"))
                 },
-                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeViewModel: SharedHomeViewModel =
@@ -874,7 +874,7 @@ private fun HomeSearchRouterContent(
             SharedHomeViewModel(
                 authStore = environment.authStore,
                 dataSource = homeDataSource,
-                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeState by homeViewModel.state.collectAsState()
@@ -1063,7 +1063,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSavedRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = { message -> environment.bridge.log("home_secondary_saved $message") }
+                warningLogger = slockLogger("SlockHomeSecondarySaved", "home_secondary_saved", SlockLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -1071,7 +1071,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSearchRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = { message -> environment.bridge.log("home_secondary_search $message") }
+                warningLogger = slockLogger("SlockHomeSecondarySearch", "home_secondary_search", SlockLogLevel.Warn)
             )
         }
     val memberRepository =
@@ -1079,8 +1079,8 @@ private fun rememberHomeSearchSavedViewModel(
             RealMemberRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                logger = { message -> environment.bridge.log("home_secondary_member $message") },
-                warningLogger = { message -> environment.bridge.log("home_secondary_member_warning $message") }
+                logger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member"),
+                warningLogger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member_warning", SlockLogLevel.Warn)
             )
         }
     return viewModel(key = key) {
@@ -1702,7 +1702,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("app_shell_member_repository $message") }
+                logger = slockLogger("SlockAppShell", "app_shell_member_repository")
             )
         }
     val homeDataSource =
@@ -1716,9 +1716,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session) { message -> bridge.log(message) }
+                    parseSlockHome(payload, session, slockLogger("SlockHomeParse"))
                 },
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
+                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home")
             )
         }
     val channelRepository =
@@ -1726,7 +1726,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealChannelRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_channel_repository $message") }
+                warningLogger = slockLogger("SlockChannelRepository", "shared_channel_repository", SlockLogLevel.Warn)
             )
         }
     val homeReadReceiptRepository =
@@ -1734,7 +1734,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealReadReceiptRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_home_read_receipt $message") }
+                warningLogger = slockLogger("SlockReadReceipt", "shared_home_read_receipt", SlockLogLevel.Warn)
             )
         }
     val conversationRepository =
@@ -1742,14 +1742,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealConversationRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_conversation_repository $message") }
+                warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
             )
         }
     val agentsApiClient =
         remember(appShellNetworkClient) {
             SlockAgentsApiClient(
                 transport = SlockAgentsNetworkApi(appShellNetworkClient),
-                diagnosticsLogger = { message -> bridge.log("app_shell_agents_api $message") }
+                diagnosticsLogger = slockLogger("SlockAgentsApi", "app_shell_agents_api")
             )
         }
     val computersApiClient =
@@ -1761,7 +1761,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedCreateAgentCoordinator(
                 agentsApiClient = agentsApiClient,
                 computersApiClient = computersApiClient,
-                logger = { message -> bridge.log("app_shell_thread_create_agent $message") }
+                logger = slockLogger("SlockCreateAgent", "app_shell_thread_create_agent")
             )
         }
     val savedRepository =
@@ -1769,7 +1769,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSavedRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_saved_repository $message") }
+                warningLogger = slockLogger("SlockSavedRepository", "shared_saved_repository", SlockLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -1777,14 +1777,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSearchRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_search_repository $message") }
+                warningLogger = slockLogger("SlockSearchRepository", "shared_search_repository", SlockLogLevel.Warn)
             )
         }
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
                 api = NetworkSlockTasksApi(appShellNetworkClient),
-                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
+                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
@@ -1836,7 +1836,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 if (authSessionEvents.isLocalSource(signal)) {
                     return@addSessionClearedListener
                 }
-                bridge.log("shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                slockLogInfo("SlockSharedAuth", "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
                 appShellCoroutineScope.launch {
                     runCatchingPreservingCancellation {
                         authStore.clearSessionFromSessionClearedNotify(
@@ -1844,12 +1844,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             previousSessionFingerprint = signal.previousSessionFingerprint
                         )
                     }.onSuccess { applied ->
-                        bridge.log(
+                        slockLogInfo(
+                            "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
                                 "source=${signal.source} reason=${signal.reason}"
                         )
                     }.onFailure { throwable ->
-                        bridge.log(
+                        slockLogWarn(
+                            "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
                                 "reason=${signal.reason} error=${throwable.message.orEmpty()}"
                         )
@@ -1865,8 +1867,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealInboxRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_home_activity $message") },
-                warningLogger = { message -> bridge.log("shared_home_activity_warning $message") }
+                logger = slockLogger("SlockHomeActivity", "shared_home_activity"),
+                warningLogger = slockLogger("SlockHomeActivity", "shared_home_activity_warning", SlockLogLevel.Warn)
             )
         }
     val homeSidebarOrderRepository =
@@ -1874,8 +1876,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSettingsRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_home_sidebar_order $message") },
-                warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
+                logger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order"),
+                warningLogger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order_warning", SlockLogLevel.Warn)
             )
         }
     val homeStore =
@@ -1889,7 +1891,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         ) {
             sharedStores.getOrCreateHomeStore(
                 dataSource = homeDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
+                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
@@ -1914,7 +1916,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                diagnosticsLogger = { message -> bridge.log("shared_home_activity $message") }
+                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity")
             )
         }
     val appShellComputersStore =
@@ -1922,7 +1924,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedComputersStore(
                 computersApiClient = computersApiClient,
                 scope = appShellCoroutineScope,
-                logger = { message -> bridge.log("app_shell_$message") }
+                logger = slockLogger("SlockComputers", "app_shell")
             )
         }
     var notificationPreferenceSnapshot by remember {
@@ -1933,8 +1935,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             RealSettingsRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_settings_repository $message") },
-                warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") },
+                logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
+                warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
                 channelRepository = channelRepository
             )
         }
@@ -1951,7 +1953,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
+                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
     var authGateMessage by remember { mutableStateOf<String?>(null) }
@@ -2011,7 +2013,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 serverMembersStore = sharedStores.serverMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
-                diagnosticsLogger = { message -> bridge.log("shared_home_search_saved $message") }
+                diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }
     val homeShellStore =
@@ -2029,7 +2031,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 dispatchActivity = homeActivityStore::dispatch,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
                 resetActivity = homeActivityStore::reset,
-                diagnosticsLogger = { message -> bridge.log("shared_home_shell $message") },
+                diagnosticsLogger = slockLogger("SlockHomeShell", "shared_home_shell"),
                 scope = appShellCoroutineScope
             )
         }
@@ -2061,7 +2063,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 authStore = authStore,
                 dataSource = tasksDataSource,
                 sharedTasksDataStore = sharedStores.tasksDataStore,
-                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
+                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }
     val tasksState by tasksViewModel.state.collectAsState()
@@ -2070,7 +2072,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         viewModel(key = "shared-settings") {
             SharedSettingsViewModel(
                 settingsDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
+                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
     val settingsState by settingsViewModel.state.collectAsState()
@@ -2906,7 +2908,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                 },
-                log = { message -> bridge.log(message) }
+                log = slockLogger("SlockRealtimeDomain")
             )
         sharedStores.realtimeDomainEventOwner.registerSinks(sinks)
         onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
@@ -2952,14 +2954,22 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         latestRealtimeAuthRefreshHandler(eventData)
                         return@launch
                     }
-                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
+                    val event =
+                        decodeSharedShellRealtimeEvent(
+                            eventData,
+                            realtimeEventMapper,
+                            slockLogger("SlockRealtimeDecode")
+                        ) ?: return@launch
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
                     val activeSession = latestReadySession
                     if (
                         event is ServerMembershipRemoved &&
                         event.serverId.value == activeSession?.currentServerId
                     ) {
-                        bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
+                        slockLogWarn(
+                            "SlockRealtimeDomain",
+                            "shared_realtime_server_membership_removed serverId=${event.serverId.value}"
+                        )
                         bridge.realtimeDisconnect("server_membership_removed")
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
@@ -2972,7 +2982,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         event is ServerDeleted &&
                         event.serverId.value == activeSession?.currentServerId
                     ) {
-                        bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
+                        slockLogWarn(
+                            "SlockRealtimeDomain",
+                            "shared_realtime_server_deleted serverId=${event.serverId.value}"
+                        )
                         bridge.realtimeDisconnect("server_deleted")
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
@@ -9776,11 +9789,11 @@ private fun SharedMembersScreen(
             is DataResult.Content -> result.data.agentPanelTabOrder
             is DataResult.Empty -> null
             is DataResult.Error -> {
-                bridge.log("shared_members_agent_tab_order_load_failed code=${result.error.code}")
+                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_failed code=${result.error.code}")
                 null
             }
             is DataResult.NoPermission -> {
-                bridge.log("shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
+                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
                 null
             }
         }
@@ -9789,7 +9802,7 @@ private fun SharedMembersScreen(
         agentPanelTabOrderStore.bindServer(
             serverId = currentServerId,
             source = "shared_members_bind_server",
-            logger = { message -> bridge.log(message) }
+            logger = slockLogger("SlockAgentPanelTabOrder")
         )
     }
     LaunchedEffect(
@@ -9806,7 +9819,7 @@ private fun SharedMembersScreen(
                 serverId = currentServerId,
                 order = order,
                 source = "shared_members_sidebar_order_get",
-                logger = { message -> bridge.log(message) }
+                logger = slockLogger("SlockAgentPanelTabOrder")
             )
         }
     }
@@ -10049,7 +10062,7 @@ private fun SharedMembersScreen(
                                             serverId = serverId,
                                             order = order,
                                             source = "shared_members_detail_open_preload",
-                                            logger = { message -> bridge.log(message) }
+                                            logger = slockLogger("SlockAgentPanelTabOrder")
                                         )
                                     }
                                     ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }

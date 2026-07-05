@@ -50,6 +50,21 @@ const SLOCK_FONTS: SlockFontResource[] = [
 ];
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
+const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
+
+class SlockOhosSharedLogSink {
+  record(level: string, tag: string, message: string): void {
+    SlockOhosDiagnostics.record(tag, message, Date.now(), this.normalizeLevel(level));
+  }
+
+  private normalizeLevel(level: string): string {
+    const normalized = level.trim().toLowerCase();
+    if (normalized === 'debug' || normalized === 'info' || normalized === 'warn' || normalized === 'error') {
+      return normalized;
+    }
+    return 'info';
+  }
+}
 
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
@@ -163,6 +178,10 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
       new SlockOhosPlatformFileReader()
+    );
+    registerSingleServiceProvider(
+      SLOCK_SHARED_LOG_SINK_SERVICE,
+      new SlockOhosSharedLogSink()
     );
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }

@@ -17,6 +17,9 @@ class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SlockAndroidBuglyDiagnostics.init(this)
+        installSlockPlatformLogSink { level, tag, message ->
+            SlockAndroidBuglyDiagnostics.recordLog(level, tag, message)
+        }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidAppScopeEventBus(this)
