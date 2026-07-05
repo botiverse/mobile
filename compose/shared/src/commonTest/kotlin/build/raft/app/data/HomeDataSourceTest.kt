@@ -18,11 +18,12 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HomeDataSourceTest {
     @Test
-    fun loadHomeFetchesApiAndWritesLocalSnapshot() = runBlocking {
+    fun loadHomeFetchesApiWithoutWritingLocalHomeSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val writeThrough = ComposeLocalWriteThrough(localStore)
         val source =
@@ -42,7 +43,9 @@ class HomeDataSourceTest {
         val result = source.loadHome()
 
         assertEquals(1, (result as DataResult.Content).data.channels.size)
-        assertEquals(1, localStore.readHome(ServerId("server-1"))?.channels?.size)
+        // loadHome no longer writes a durable home snapshot: the home blob cache
+        // was removed in fb845a19 ("fix(home): remove home snapshot blob cache").
+        assertNull(localStore.readHome(ServerId("server-1")))
     }
 
     @Test
@@ -262,17 +265,20 @@ class HomeDataSourceTest {
         assertFalse(patch.changed)
         assertEquals(0, memberRepository.getMembersCalls)
         assertEquals(emptyList(), patch.directMessages)
-        val cached = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
-        assertEquals(MemberId("agent-1"), cached[0].presenceMemberId)
+        // The local home snapshot cache is gone (fb845a19): loadHome does not
+        // write it and writeHomeSnapshot is a no-op that reports false.
+        assertNull(localStore.readHome(ServerId("server-1")))
 
-        source.writeHomeSnapshot(patch.snapshot, source = "test_agent_dm_status_refresh")
+        assertFalse(source.writeHomeSnapshot(patch.snapshot, source = "test_agent_dm_status_refresh"))
 
-        val cachedAfterWrite = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
-        assertEquals(MemberId("agent-1"), cachedAfterWrite[0].presenceMemberId)
+        assertNull(localStore.readHome(ServerId("server-1")))
     }
 
     @Test
-    fun backgroundLoadCanUseCachedHomeWithoutNetwork() = runBlocking {
+    fun backgroundLoadFetchesNetworkWithoutCachedHomeShortCircuit() = runBlocking {
+        // The cached-home short circuit for background loads was removed together
+        // with the home snapshot blob cache (fb845a19 "fix(home): remove home
+        // snapshot blob cache"): background loads now always fetch the network.
         val serverId = ServerId("server-1")
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(serverId))
@@ -282,17 +288,19 @@ class HomeDataSourceTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = api,
                 localWriteThrough = ComposeLocalWriteThrough(localStore),
-                parseHome = { _, _ -> error("cached background read should not parse network") }
+                parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Background)
 
-        assertEquals(0, api.calls)
+        assertEquals(4, api.calls)
         assertEquals("general", (result as DataResult.Content).data.channels.single().name)
     }
 
     @Test
-    fun cachedHomeReadUsesLocalSnapshotWithoutNetwork() = runBlocking {
+    fun cachedHomeReadReturnsEmptyWithoutNetwork() = runBlocking {
+        // readCachedHome always reports Empty(NoChannels) since the home snapshot
+        // blob cache was removed (fb845a19); it must still never hit the network.
         val serverId = ServerId("server-1")
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(serverId))
@@ -308,7 +316,8 @@ class HomeDataSourceTest {
         val result = source.readCachedHome(serverId)
 
         assertEquals(0, api.calls)
-        assertEquals("general", (result as DataResult.Content).data.channels.single().name)
+        assertTrue(result is DataResult.Empty)
+        assertEquals(EmptyReason.NoChannels, (result as DataResult.Empty).reason)
     }
 
     @Test

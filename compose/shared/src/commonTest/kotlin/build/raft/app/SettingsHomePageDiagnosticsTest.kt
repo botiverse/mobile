@@ -252,10 +252,10 @@ class SettingsHomePageDiagnosticsTest {
 
         val actionRows = payload.sections.first { it.title == "Actions" }.rows.associateBy { it.key }
 
-        assertTrue(actionRows.getValue("copyLogs").enabled)
-        assertEquals("Copy", actionRows.getValue("copyLogs").status)
+        // Copy + share were merged into a single export action (83eba80f).
+        assertFalse("copyLogs" in actionRows)
         assertTrue(actionRows.getValue("shareLogs").enabled)
-        assertEquals("Share", actionRows.getValue("shareLogs").status)
+        assertEquals("Export", actionRows.getValue("shareLogs").status)
         assertTrue(actionRows.getValue("feedback").enabled)
         assertFalse("clearLogs" in actionRows)
     }

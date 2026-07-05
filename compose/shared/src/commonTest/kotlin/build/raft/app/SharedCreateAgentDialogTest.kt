@@ -17,7 +17,7 @@ class SharedCreateAgentDialogTest {
 
         assertTrue(items.isNotEmpty())
         assertEquals(
-            listOf("claude", "codex", "antigravity", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
+            listOf("claude", "codex", "antigravity", "kimi-sdk", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
             items.map { it.id }
         )
         assertFalse(items.any { it.custom })
@@ -31,7 +31,7 @@ class SharedCreateAgentDialogTest {
             )
 
         assertEquals(
-            listOf("claude", "codex", "antigravity", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
+            listOf("claude", "codex", "antigravity", "kimi-sdk", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
             items.map { it.id }
         )
         assertEquals("Claude Code", items.first { it.id == "claude" }.label)

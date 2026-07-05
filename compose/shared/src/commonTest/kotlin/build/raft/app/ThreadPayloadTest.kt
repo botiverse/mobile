@@ -789,7 +789,9 @@ class ThreadPayloadTest {
 
         assertEquals("visual-thread-message-row", payload.instanceId)
         assertEquals("channel-design", payload.streamChannelId)
-        assertFalse(payload.showReplyActions)
+        // 5041e36f aligned the default fixture with the React provider seed's
+        // rich row metadata: reply actions on, 5 replies (2 unread), 1 reaction.
+        assertTrue(payload.showReplyActions)
         assertFalse(payload.showTaskOpenActions)
         assertFalse(message.isOwn)
         assertEquals("agent-cindy", message.authorId)
@@ -798,10 +800,12 @@ class ThreadPayloadTest {
         assertEquals("Captured the Android visual artifact for #product:f8e569cb and queued React parity.", message.body)
         assertEquals("thread-msg-agent-reply", message.threadChannelId)
         assertEquals(null, message.taskNumber)
-        assertEquals(0, message.replyCount)
+        assertEquals(5, message.replyCount)
+        assertEquals(2, message.unreadReplyCount)
+        assertEquals("reply-agent-visual-2", message.firstUnreadReplyMessageId)
         assertEquals(1, message.reactions.size)
         assertEquals("👍", message.reactions.single().emoji)
-        assertEquals(2, message.reactions.single().count)
+        assertEquals(1, message.reactions.single().count)
         assertFalse(message.reactions.single().selected)
     }
 

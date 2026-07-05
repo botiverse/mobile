@@ -48,14 +48,14 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.Administration,
                 SharedSettingsDestination.ConnectedApps,
                 SharedSettingsDestination.Computers,
-                SharedSettingsDestination.About,
-                SharedSettingsDestination.Developer
+                SharedSettingsDestination.About
             ),
             home.items.map { it.destination }
         )
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Diagnostics })
+        // Developer is no longer a home nav item — it is hidden behind header taps (035d4b96).
+        assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Developer })
         assertEquals("Version, diagnostics, feedback", home.items.first { it.destination == SharedSettingsDestination.About }.subtitle)
-        assertEquals("API server, diagnostics, route launcher", home.items.first { it.destination == SharedSettingsDestination.Developer }.subtitle)
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Router && it.productVisible })
         scope.cancel()
     }
@@ -1534,7 +1534,9 @@ class SharedSettingsStoreTest {
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
         assertEquals(false, diagnostics.profiler.supported)
-        assertEquals(listOf("about", "about", "diagnostics"), capabilities.calls)
+        // Opening About also fetches the quiver update status and the developer
+        // snapshot (48631ed3: refresh update notices periodically).
+        assertEquals(listOf("about", "quiverUpdateStatus", "developer", "about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1792,7 +1794,9 @@ class SharedSettingsStoreTest {
         assertEquals("Artin", about.signedInUserLabel)
         assertEquals("Slock Community", about.selectedServerLabel)
         assertEquals("Signed in", about.sessionStatusLabel)
-        assertEquals(listOf("about"), capabilities.calls)
+        // Opening About also fetches the quiver update status and the developer
+        // snapshot (48631ed3: refresh update notices periodically).
+        assertEquals(listOf("about", "quiverUpdateStatus", "developer"), capabilities.calls)
         scope.cancel()
     }
 
