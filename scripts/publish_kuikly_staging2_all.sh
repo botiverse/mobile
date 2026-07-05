@@ -172,6 +172,11 @@ echo "==> Kuikly checkout: ${KUIKLY_SHA} (${KUIKLY_DESCRIBE})"
 
 publish_maven_local
 refresh_ios_pods
+
+# Some platform publish steps may run auxiliary tooling inside the Kuikly
+# checkout. Reassert the requested ref before naming and building the HAR so
+# local test refs do not accidentally publish a freshly fetched branch head.
+checkout_kuikly_ref
 refresh_ohos_har
 
 echo "==> Kuikly all-platform local publish complete."
