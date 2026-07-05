@@ -1655,7 +1655,13 @@ internal fun resolveSortTargetIndex(
         when {
             pointerY <= first.top -> first.index
             pointerY >= last.top + last.size -> last.index
-            else -> (sorted.firstOrNull { pointerY >= it.top && pointerY < it.top + it.size }?.index ?: last.index)
+            // Rows are laid out with spacing between them: a pointer inside the
+            // gap between two rows belongs to the next row down. "First row whose
+            // bottom edge is below the pointer" covers both cases; the old
+            // strict-containment check missed the gaps and fell back to the last
+            // visible row, snapping the insertion indicator to the end whenever
+            // the finger crossed a gap (task #356 device feedback).
+            else -> sorted.first { pointerY < it.top + it.size }.index
         }
     return raw.coerceIn(0, lastIndex)
 }
