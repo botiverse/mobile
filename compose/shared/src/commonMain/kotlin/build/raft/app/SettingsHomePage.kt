@@ -208,8 +208,10 @@ import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.resolveHomeConversationSummary
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSavedStateCache
 import build.raft.app.data.SharedHomeSearchPanelState
@@ -319,7 +321,9 @@ import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
+import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
@@ -2481,7 +2485,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
             return@LaunchedEffect
         }
-        val conversation = homeState.notificationThreadConversation(launchRequest)
+        val conversation = homeState.notificationThreadLaunchIdentity(launchRequest)
         if (conversation == null) {
             consumedNotificationLaunchKey = launchKey
             bridge.logWarn(
@@ -2502,7 +2506,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "threadId=${conversation.threadId.value} focusedMessageId=$anchorMessageId"
         )
         openHomeConversation(
-            conversation = conversation.toThreadLaunchConversationIdentity(),
+            conversation = conversation,
             source = "notification",
             anchorMessageId = anchorMessageId
         )
@@ -13615,21 +13619,72 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
 
-private fun SharedHomeState.notificationThreadConversation(
+private fun SharedHomeState.notificationThreadLaunchIdentity(
     request: AppShellNotificationThreadLaunchRequest
-): ConversationSummary? {
+): ThreadLaunchConversationIdentity? {
     val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
-    return snapshot.resolveHomeConversationSummary(
-        listOfNotNull(
-            request.threadId,
-            request.channelId,
-            request.parentMessageId,
-            request.parentChannelId
-        )
+    val projection =
+        snapshot
+            .toSharedConversationDirectoryState()
+            .resolveNotificationThreadProjection(request)
+            ?: return null
+    return projection.toThreadLaunchConversationIdentity()
+}
+
+private fun SharedConversationDirectoryState.resolveNotificationThreadProjection(
+    request: AppShellNotificationThreadLaunchRequest
+): SharedConversationDirectoryProjection? =
+    listOfNotNull(
+        request.threadId,
+        request.channelId,
+        request.parentMessageId,
+        request.parentChannelId
+    ).firstNotNullOfOrNull { id -> resolve(id) }
+
+private fun SharedConversationDirectoryProjection.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
+    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+    val streamChannel = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    val normalizedChannelKind = channelKind.takeIf { it.isNotBlank() }
+    val thread =
+        if (isReplyThread && parentChannel != null && parentMessage != null) {
+            ThreadConversation(
+                parentChannelId = parentChannel,
+                parentMessageId = parentMessage,
+                streamChannelId = streamChannel,
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = normalizedChannelKind?.takeUnless { it == "thread" }
+            )
+        } else {
+            null
+        }
+    val routeChannelId =
+        if (isReplyThread) {
+            parentChannel
+        } else {
+            streamChannel ?: ChannelId(canonicalChannelId)
+        }
+    return ThreadLaunchConversationIdentity(
+        threadId =
+            if (isReplyThread && parentChannel != null && parentMessage != null) {
+                threadIdentity(parentChannel, parentMessage)
+            } else {
+                ThreadId(canonicalChannelId)
+            },
+        channelId = routeChannelId,
+        channelType = normalizedChannelKind,
+        thread = thread,
+        kind =
+            when (surfaceKind) {
+                KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+                KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
+                else -> if (channelKind.equals("joint", ignoreCase = true)) ConversationKind.Joint else ConversationKind.Channel
+            }
     )
 }
 
-private fun ConversationSummary.notificationAnchorMessageId(
+private fun ThreadLaunchConversationIdentity.notificationAnchorMessageId(
     request: AppShellNotificationThreadLaunchRequest
 ): String =
     if (
