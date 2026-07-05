@@ -7,6 +7,7 @@ const kColor = 'color';
 const kFill = 'fill';
 const kStrokeWidth = 'strokeWidth';
 const kFrame = 'frame';
+const kRotationDegrees = 'rotationDegrees';
 
 @Observed
 export class SlockLucideIconView extends KuiklyRenderBaseView {
@@ -20,6 +21,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconRenderY: number = 0;
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
+  iconRotationDegrees: number = 0;
   renderRevision: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
@@ -47,6 +49,9 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
         return true;
       case kStrokeWidth:
         this.updateStrokeWidth(propValue);
+        return true;
+      case kRotationDegrees:
+        this.updateIconRotationDegrees(propValue);
         return true;
       case kFrame:
         this.applyFrame(propValue);
@@ -129,6 +134,15 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     return true;
   }
 
+  private updateIconRotationDegrees(value: KRAny | KuiklyRenderCallback): boolean {
+    const nextRotationDegrees = normalizeRotationDegrees(value);
+    if (Math.abs(this.iconRotationDegrees - nextRotationDegrees) < 0.01) {
+      return false;
+    }
+    this.iconRotationDegrees = nextRotationDegrees;
+    return true;
+  }
+
   private updateRenderSize(width: number, height: number): boolean {
     const sizeChanged = this.iconRenderWidth !== width || this.iconRenderHeight !== height;
     if (!sizeChanged) {
@@ -194,6 +208,7 @@ export struct SlockLucideIcon {
       .alignContent(Alignment.Center)
       .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY })
       .size({ width: this.renderView.iconRenderWidth, height: this.renderView.iconRenderHeight })
+      .rotate({ angle: this.renderView.iconRotationDegrees })
       .alignSelf(ItemAlign.Start)
   }
 }
@@ -230,6 +245,17 @@ function normalizeStrokeWidth(value: KRAny | KuiklyRenderCallback): number {
   if (typeof value === 'string') {
     const parsed = Number(value);
     return parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeRotationDegrees(value: KRAny | KuiklyRenderCallback): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
 }

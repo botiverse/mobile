@@ -24,6 +24,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
     private var appliedColor: String? = null
     private var appliedFill: String? = null
     private var appliedStrokeWidth: Float? = null
+    private var appliedNativeRotationDegrees: Float? = null
 
     override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
 
@@ -36,6 +37,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         color: String,
         fill: String,
         strokeWidth: Float,
+        nativeRotationDegrees: Float?,
         force: Boolean = false
     ) {
         if (
@@ -43,7 +45,8 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
                 appliedName == name &&
                 appliedColor == color &&
                 appliedFill == fill &&
-                appliedStrokeWidth == strokeWidth
+                appliedStrokeWidth == strokeWidth &&
+                appliedNativeRotationDegrees == nativeRotationDegrees
         ) {
             return
         }
@@ -51,11 +54,13 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         appliedColor = color
         appliedFill = fill
         appliedStrokeWidth = strokeWidth
+        appliedNativeRotationDegrees = nativeRotationDegrees
         getViewAttr().run {
             name(name)
             color(color)
             fill(fill)
             strokeWidth(strokeWidth)
+            nativeRotationDegrees?.let { rotationDegrees(it) }
         }
     }
 
@@ -82,6 +87,11 @@ internal class SlockLucideIconAttr : Attr() {
 
     fun strokeWidth(value: Float): SlockLucideIconAttr {
         "strokeWidth" with value
+        return this
+    }
+
+    fun rotationDegrees(value: Float): SlockLucideIconAttr {
+        "rotationDegrees" with value
         return this
     }
 }
@@ -147,6 +157,7 @@ internal fun SlockLucideIconByName(
 ) {
     val resolvedFill = fill ?: ""
     val resolvedStrokeWidth = strokeWidth ?: 0f
+    val usesNativeRotation = slockPlatformUsesNativeLucideIconRotation()
     val appliedRotationDegrees =
         if (spinning) {
             val transition = rememberInfiniteTransition(label = "slock-icon-spin")
@@ -170,20 +181,22 @@ internal fun SlockLucideIconByName(
         } else {
             rotationDegrees
         }
+    val nativeRotationDegrees = if (usesNativeRotation) appliedRotationDegrees else null
     val iconModifier =
-        if (spinning || appliedRotationDegrees != 0f) {
+        if (!usesNativeRotation && (spinning || appliedRotationDegrees != 0f)) {
             modifier.graphicsLayer(rotationZ = appliedRotationDegrees)
         } else {
             modifier
         }
     val updateIconAttrs =
-        remember(name, color, resolvedFill, resolvedStrokeWidth) {
+        remember(name, color, resolvedFill, resolvedStrokeWidth, nativeRotationDegrees) {
             { view: SlockLucideIconView ->
                 view.applyIconAttrs(
                     name = name,
                     color = color,
                     fill = resolvedFill,
-                    strokeWidth = resolvedStrokeWidth
+                    strokeWidth = resolvedStrokeWidth,
+                    nativeRotationDegrees = nativeRotationDegrees
                 )
             }
         }
@@ -196,6 +209,7 @@ internal fun SlockLucideIconByName(
                 color = color,
                 fill = resolvedFill,
                 strokeWidth = resolvedStrokeWidth,
+                nativeRotationDegrees = nativeRotationDegrees,
                 force = true
             )
         },
