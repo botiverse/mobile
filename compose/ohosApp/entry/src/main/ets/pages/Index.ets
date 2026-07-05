@@ -70,7 +70,13 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .expandSafeArea([SafeAreaType.KEYBOARD])
+    // Extend the app background into the bottom navigation/system safe area so
+    // the nav-indicator strip is painted by the app (SurfaceWhite) instead of
+    // showing a disconnected system-painted band below the floating dock. Only
+    // the bottom edge is expanded; the top status-bar inset stays handled by
+    // the shared side's safeAreaTop padding. Interactive content is still kept
+    // clear of the indicator by the shared bottomSafeArea padding.
+    .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
   }
 
   onPageShow(): void {
