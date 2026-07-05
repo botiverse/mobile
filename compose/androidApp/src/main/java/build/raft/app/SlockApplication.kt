@@ -5,7 +5,7 @@ import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
-import build.raft.app.core.data.diagnostics.SlockCrashReporter
+import io.quiver.update.QuiverCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.warmUpSlockJsonParseDispatcher
@@ -33,6 +33,16 @@ class SlockApplication : Application() {
                 selectedServerSlug = session.selectedServerSlug
             )
         }
-        SlockCrashReporter.install(this)
+        QuiverCrash.install(
+            context = this,
+            baseUrl = BuildConfig.QUIVER_BASE_URL,
+            appSlug = BuildConfig.QUIVER_APP_SLUG,
+            versionName = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE.toLong(),
+            channel = BuildConfig.QUIVER_CHANNEL,
+            extraContext = {
+                SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(this)
+            }
+        )
     }
 }
