@@ -101,6 +101,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -140,6 +141,40 @@ private class ConcurrentTestLogBuffer {
 }
 
 class SharedThreadStoreTest {
+    @Test
+    fun sharedThreadMessageStoreDeduplicatesConcurrentMessageFetches() = runBlocking {
+        val store = SharedThreadMessageStore()
+        val parentChannel = ChannelId("channel-1")
+        val parentMessageId = MessageId("m1")
+        val firstFetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        var fetchCount = 0
+        val first =
+            async {
+                store.getOrFetch(parentChannel, parentMessageId) {
+                    fetchCount += 1
+                    firstFetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+                }
+            }
+        firstFetchStarted.await()
+        val second =
+            async {
+                store.getOrFetch(parentChannel, parentMessageId) {
+                    fetchCount += 1
+                    message(threadId = "channel-1", id = "m1", seq = 1, body = "duplicate fetch")
+                }
+            }
+
+        releaseFetch.complete(Unit)
+
+        assertEquals("parent body", first.await()?.body)
+        assertEquals("parent body", second.await()?.body)
+        assertEquals(1, fetchCount)
+        assertEquals("parent body", store.get(parentChannel, parentMessageId)?.body)
+    }
+
     @Test
     fun threadRouteIdentitySeparatesUnresolvedReplyParentFromResolvedTimeline() {
         val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
