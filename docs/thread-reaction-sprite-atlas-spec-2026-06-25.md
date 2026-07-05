@@ -2,8 +2,15 @@
 
 Date: 2026-06-25
 Owner: Android/App integration + KMP Thread
-Status: Draft
-Task: #391
+Status: Implemented (2026-07-05, task #204 closed)
+Task: #391 → #204
+
+> **Resolved (2026-07-05, task #204):** device-side atlas rendering landed and
+> was device-confirmed by artin — the asset-URL fix (PR #28) unblocked it, and
+> PR #32 (29b17b5d) deleted the legacy hand-drawn Canvas glyphs entirely:
+> known reactions draw from the atlas, everything else falls back to plain
+> text emoji, matching React's ReactionGlyph. The "stable source-rect
+> primitive re-land" framing below is historical.
 
 > **Update (2026-07-04, task #335):** the source contract below is superseded.
 > The web repo now defines reactions canonically in
