@@ -5214,12 +5214,7 @@ private fun MembersAgentProfileTab(
         val currentConfig = summary.toMembersRuntimeConfig(member)
         val currentStatus = AgentStatus.fromWireValue(summary?.status)
         val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
-        val restartMode =
-            when {
-                !activeAgent -> null
-                nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
-                else -> AgentResetMode.Restart
-            }
+        val restartMode = membersRuntimeConfigResetMode(currentConfig, nextConfig, activeAgent)
         scope.launch {
             savingRuntimeConfig = true
             runtimeConfigError = null
@@ -6068,9 +6063,12 @@ private fun MembersAgentRuntimeConfigDialog(
     var envVarEntries by remember(initialConfig) {
         mutableStateOf(initialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
+    var pendingRuntimeSwitchConfig by remember(initialConfig) { mutableStateOf<RuntimeConfig?>(null) }
     var advancedOpen by remember(initialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
+    val currentStatus = AgentStatus.fromWireValue(summary?.status)
+    val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
     val providerUrlInvalid =
         runtime == "claude" &&
@@ -6184,22 +6182,157 @@ private fun MembersAgentRuntimeConfigDialog(
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
-                        onSave(
-                            buildRuntimeConfig(
-                                runtime = runtime,
-                                model = if (customModelMode) customModelName else model,
-                                customModelMode = customModelMode,
-                                customModelName = customModelName.takeIf { customModelMode },
-                                providerMode = providerMode,
-                                providerApiUrl = providerApiUrl,
-                                providerApiKey = providerApiKey,
-                                fastMode = fastMode,
-                                reasoningEffort = reasoningEffort,
-                                envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                                command = command
-                            )
+                        val nextConfig = buildRuntimeConfig(
+                            runtime = runtime,
+                            model = if (customModelMode) customModelName else model,
+                            customModelMode = customModelMode,
+                            customModelName = customModelName.takeIf { customModelMode },
+                            providerMode = providerMode,
+                            providerApiUrl = providerApiUrl,
+                            providerApiKey = providerApiKey,
+                            fastMode = fastMode,
+                            reasoningEffort = reasoningEffort,
+                            envVars = envVarEntries.toMembersRuntimeEnvVars(),
+                            command = command
                         )
+                        if (membersRuntimeConfigSwitchConfirmation(initialConfig, nextConfig, activeAgent) != null) {
+                            pendingRuntimeSwitchConfig = nextConfig
+                        } else {
+                            onSave(nextConfig)
+                        }
                     }
+                )
+            }
+        }
+    }
+
+    pendingRuntimeSwitchConfig?.let { pendingConfig ->
+        membersRuntimeConfigSwitchConfirmation(initialConfig, pendingConfig, activeAgent)?.let { confirmation ->
+            MembersRuntimeConfigSwitchConfirmationDialog(
+                confirmation = confirmation,
+                onConfirm = {
+                    pendingRuntimeSwitchConfig = null
+                    onSave(pendingConfig)
+                },
+                onCancel = {
+                    if (!saving) {
+                        pendingRuntimeSwitchConfig = null
+                    }
+                }
+            )
+        } ?: run {
+            pendingRuntimeSwitchConfig = null
+        }
+    }
+}
+
+internal data class MembersRuntimeConfigSwitchConfirmation(
+    val title: String,
+    val message: String,
+    val confirmLabel: String
+)
+
+internal fun membersRuntimeConfigResetMode(
+    currentConfig: RuntimeConfig,
+    nextConfig: RuntimeConfig,
+    activeAgent: Boolean
+): AgentResetMode? =
+    when {
+        nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
+        activeAgent -> AgentResetMode.Restart
+        else -> null
+    }
+
+internal fun membersRuntimeConfigSwitchConfirmation(
+    currentConfig: RuntimeConfig,
+    nextConfig: RuntimeConfig,
+    activeAgent: Boolean
+): MembersRuntimeConfigSwitchConfirmation? {
+    if (nextConfig.runtime == currentConfig.runtime) return null
+
+    val fromRuntimeLabel = getRuntimeDisplayName(currentConfig.runtime)
+    val nextRuntimeLabel = getRuntimeDisplayName(nextConfig.runtime)
+    val nextModelLabel = getModelLabel(nextConfig.runtime, nextConfig.toMembersRuntimeModelValue())
+    val reasoningCopy =
+        if (supportsRuntimeReasoningEffort(nextConfig.runtime)) {
+            val label = nextConfig.reasoningEffort?.toMembersDisplayLabel() ?: "Default"
+            if (activeAgent) " with $label reasoning" else " and $label reasoning"
+        } else {
+            ""
+        }
+    val modeCopy =
+        if (supportsRuntimeFastMode(nextConfig.runtime) && nextConfig.mode is RuntimeModeConfig.Fast) {
+            " in fast mode"
+        } else {
+            ""
+        }
+    val message =
+        if (activeAgent) {
+            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will reset the current runtime session. " +
+                "The next launch will use model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
+        } else {
+            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will apply on the next start with a fresh runtime session. " +
+                "The agent will launch with model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
+        }
+    return MembersRuntimeConfigSwitchConfirmation(
+        title = "Switch Runtime Config",
+        message = message,
+        confirmLabel = if (activeAgent) "Reset Runtime Session" else "Save Runtime Change"
+    )
+}
+
+@Composable
+private fun MembersRuntimeConfigSwitchConfirmationDialog(
+    confirmation: MembersRuntimeConfigSwitchConfirmation,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = confirmation.title,
+        maxWidth = 420.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        onDismiss = onCancel
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Info,
+                    modifier = Modifier.size(18.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+                Text(
+                    text = confirmation.message,
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = "Cancel",
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    onClick = onCancel
+                )
+                SlockBrutalActionButton(
+                    label = confirmation.confirmLabel,
+                    backgroundColor = SlockColor.AccentOrange,
+                    onClick = onConfirm
                 )
             }
         }
