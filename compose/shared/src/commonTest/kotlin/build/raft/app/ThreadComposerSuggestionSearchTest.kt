@@ -78,6 +78,20 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun legacyRawContainsStillMatchesSymbolQueries() {
+        val suggestions =
+            listOf(
+                KuiklyComposerChannelItem(name = "general"),
+                KuiklyComposerChannelItem(name = "c++")
+            )
+
+        assertEquals(
+            listOf("c++"),
+            filterThreadComposerChannelSuggestions("++", suggestions).map { it.name }
+        )
+    }
+
+    @Test
     fun blankQueryKeepsOriginalOrder() {
         val suggestions =
             listOf(
