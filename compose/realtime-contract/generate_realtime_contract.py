@@ -107,6 +107,14 @@ def generate_kotlin(contract):
         kt_const("ServerId", contract["payloadKeys"]["serverId"]),
         kt_const("EventName", contract["payloadKeys"]["eventName"]),
         kt_const("RawPayload", contract["payloadKeys"]["rawPayload"]),
+        "",
+        "        val All: List<String> = listOf(",
+        "            Action,",
+        "            ChannelId,",
+        "            ServerId,",
+        "            EventName,",
+        "            RawPayload,",
+        "        )",
         "    }",
         "",
         "    object DisconnectReason {",
@@ -211,6 +219,11 @@ def generate_arkts(contract):
     ]
     for key, name in [("action", "Action"), ("channelId", "ChannelId"), ("serverId", "ServerId"), ("eventName", "EventName"), ("rawPayload", "RawPayload")]:
         lines.append(f"  readonly {name}: string = {ark_string(contract['payloadKeys'][key])};")
+    payload_key_values = ", ".join(
+        ark_string(contract["payloadKeys"][key])
+        for key in ["action", "channelId", "serverId", "eventName", "rawPayload"]
+    )
+    lines.append(f"  readonly All: Array<string> = [{payload_key_values}];")
     lines += [
         "}",
         "",
@@ -306,6 +319,7 @@ def generate_swift(contract):
     ]
     for key in ["action", "channelId", "serverId", "eventName", "rawPayload"]:
         lines.append(f"        static let {key} = {swift_string(contract['payloadKeys'][key])}")
+    lines.append("        static let all: [String] = [PayloadKey.action, PayloadKey.channelId, PayloadKey.serverId, PayloadKey.eventName, PayloadKey.rawPayload]")
     lines += [
         "    }",
         "",

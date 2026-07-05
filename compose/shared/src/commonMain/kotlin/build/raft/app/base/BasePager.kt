@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IModuleCreator
 import com.tencent.kuikly.core.pager.Pager
@@ -22,7 +21,6 @@ internal abstract class BasePager : ComposeContainer() {
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
-        externalModules[NotifyModule.MODULE_NAME] = NotifyModule()
         return externalModules
     }
 
@@ -42,9 +40,6 @@ internal abstract class BasePager : ComposeContainer() {
     private fun registerSlockExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = BridgeModule()
-        })
-        registerModule(NotifyModule.MODULE_NAME, object : IModuleCreator {
-            override fun createModule(): Module = NotifyModule()
         })
     }
 

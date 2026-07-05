@@ -86,6 +86,8 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.installAndroidAppScopeEventBus
+import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
@@ -110,7 +112,6 @@ import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
 import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
 import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
-import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.caverock.androidsvg.SVG
 import io.quiver.update.QuiverDeviceId
 import io.quiver.update.QuiverFeedback
@@ -751,12 +752,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 applicationContext,
                 source = "app_shell_lifecycle_$event"
         )
-        applicationContext.sendKuiklyEvent(
-                SlockRealtimeNotifyContract.EventName,
-                JSONObject()
-                        .put("action", "appLifecycle")
-                        .put("event", event)
-                        .put("pageName", pageName)
+        postAndroidAppScopeEvent(
+                eventName = SlockRealtimeNotifyContract.EventName,
+                eventData =
+                        JSONObject()
+                                .put("action", "appLifecycle")
+                                .put("event", event)
+                                .put("pageName", pageName)
         )
     }
 
@@ -1027,6 +1029,7 @@ internal object SlockKuiklyAdapters {
     fun init(context: Context) {
         installAndroidAppScopeSharedKeyValueStores(context)
         installAndroidAppScopePlatformFileResolver(context)
+        installAndroidAppScopeEventBus(context)
         SlockAndroidSqlDatabaseContext.init(context)
         if (initialized) {
             return
@@ -2737,9 +2740,9 @@ internal class SlockKuiklyBridgeModule(
             )
 
     private fun emitQuiverUpdateStatusEvent() {
-        appContext.sendKuiklyEvent(
-                SLOCK_APP_UPDATE_EVENT,
-                JSONObject().put("source", "android")
+        postAndroidAppScopeEvent(
+                eventName = SLOCK_APP_UPDATE_EVENT,
+                eventData = JSONObject().put("source", "android")
         )
     }
 
@@ -3437,7 +3440,10 @@ internal class SlockKuiklyBridgeModule(
         progress.forEach { (key, value) ->
             payload.put(key, value)
         }
-        appContext.sendKuiklyEvent(ATTACHMENT_DOWNLOAD_EVENT_NAME, payload)
+        postAndroidAppScopeEvent(
+                eventName = ATTACHMENT_DOWNLOAD_EVENT_NAME,
+                eventData = payload
+        )
     }
 
     private fun Long.downloadBytesPerSecondSince(startedAt: Long, now: Long): Long? {

@@ -78,7 +78,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.DeclarativeBaseView
 import com.tencent.kuikly.core.base.ViewRef
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
@@ -203,8 +202,8 @@ internal class ComposeSlockFilePreviewPage : build.raft.app.base.BasePager() {
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val notifyModule = remember(pager.pagerId) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val eventBus = sharedStores.eventBus
     val networkClient = sharedStores.networkClient
     val threadApi =
         remember(networkClient) {
@@ -254,12 +253,12 @@ private fun SlockFilePreviewStandalonePageContent() {
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
-    DisposableEffect(notifyModule) {
-        val callbackRef =
-            notifyModule.addNotify(SlockFilePreviewAttachmentDownloadEvent) { data ->
-                val progress = data?.toBridgeAttachmentDownloadProgress() ?: return@addNotify
-                val currentDownloadId = activeDownloadId ?: return@addNotify
-                if (progress.downloadId != currentDownloadId) return@addNotify
+    DisposableEffect(eventBus) {
+        val subscription =
+            eventBus.observe(SlockFilePreviewAttachmentDownloadEvent) { data ->
+                val progress = data?.toBridgeAttachmentDownloadProgress() ?: return@observe
+                val currentDownloadId = activeDownloadId ?: return@observe
+                if (progress.downloadId != currentDownloadId) return@observe
                 downloadProgress = progress
                 when (progress.status) {
                     "paused" -> downloadStatus = "paused"
@@ -275,9 +274,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                         activeDownloadId = null
                     }
                 }
-            }
+        }
         onDispose {
-            notifyModule.removeNotify(SlockFilePreviewAttachmentDownloadEvent, callbackRef)
+            subscription.close()
         }
     }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
@@ -437,7 +436,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun postComposerImageResult(fileRef: String, previewUri: String?) {
         if (payload.composerImageActionId.isBlank() || fileRef.isBlank()) return
-        notifyModule.postNotify(
+        eventBus.post(
             SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
             JSONObject().apply {
                 put("threadKey", payload.composerImageThreadKey)

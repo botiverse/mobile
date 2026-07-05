@@ -16,6 +16,7 @@ import build.raft.app.base.bridgeModule
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
+import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
@@ -28,6 +29,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SlockEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -199,7 +201,6 @@ import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
-import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -1777,6 +1778,7 @@ private fun ThreadPageScreen() {
         serverMembersStore = sharedStores.serverMembersStore,
         conversationIdentityProvider = sharedStores.conversationIdentityProvider,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
+        eventBus = sharedStores.eventBus,
         onBack = {
             routerModule.closePage()
         },
@@ -2416,6 +2418,7 @@ internal fun SharedThreadRouteContent(
     serverMembersStore: SharedServerMembersStore? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    eventBus: SlockEventBus,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
@@ -2426,11 +2429,11 @@ internal fun SharedThreadRouteContent(
     onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?, String?) -> Unit = { _, _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val notifyModule = remember(pager) { pager.acquireModule<NotifyModule>(NotifyModule.MODULE_NAME) }
-    val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
     val realtimeDomainEventOwner = remember(bridge) { SlockSharedStoreRegistry.get(bridge).realtimeDomainEventOwner }
     val foregroundReconciler = remember(bridge) { SlockSharedStoreRegistry.get(bridge).foregroundReconciler }
+    val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
+    val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val initialRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -3879,12 +3882,12 @@ internal fun SharedThreadRouteContent(
             uploadJob.start()
         }
     }
-    DisposableEffect(notifyModule, threadInstanceKey) {
-        val callbackRef =
-            notifyModule.addNotify(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
-                val eventData = data ?: return@addNotify
-                if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@addNotify
-                val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@addNotify
+    DisposableEffect(eventBus, threadInstanceKey) {
+        val subscription =
+            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+                val eventData = data ?: return@observe
+                if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@observe
+                val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@observe
                 val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
                 val file =
                     PlatformFile(
@@ -3899,7 +3902,7 @@ internal fun SharedThreadRouteContent(
                 uploadComposerAttachmentFiles(listOf(file), replaceAttachmentId = replaceAttachmentId)
             }
         onDispose {
-            notifyModule.removeNotify(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, callbackRef)
+            subscription.close()
         }
     }
     LaunchedEffect(

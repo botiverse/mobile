@@ -1813,20 +1813,21 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
             )
         }
-    val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
-    val appUpdateEvents = remember(pager) { KuiklyAppUpdateEvents(pager) }
-    val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
-    val hostNetworkEvents = remember(pager) { KuiklyHostNetworkEvents(pager) }
+    val eventBus = sharedStores.eventBus
+    val notificationPreferenceEvents = remember(eventBus) { KuiklyNotificationPreferenceEvents(eventBus) }
+    val appUpdateEvents = remember(eventBus) { KuiklyAppUpdateEvents(eventBus) }
+    val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
+    val hostNetworkEvents = remember(eventBus) { KuiklyHostNetworkEvents(eventBus) }
     val authSessionEvents =
-        remember(pager.pagerId) {
+        remember(eventBus, pager.pagerId) {
             KuiklyAuthSessionEvents(
-                pager = pager,
+                eventBus = eventBus,
                 source = "app-shell:${pager.pagerId}"
             )
         }
     val notificationPreferenceRepository =
-        remember(pager, notificationPreferenceEvents) {
-            kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
+        remember(notificationPreferenceEvents) {
+            kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
     val appShellCoroutineScope = rememberCoroutineScope()

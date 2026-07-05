@@ -17,6 +17,7 @@ enum GeneratedRealtimeContract {
         static let serverId = "serverId"
         static let eventName = "eventName"
         static let rawPayload = "rawPayload"
+        static let all: [String] = [PayloadKey.action, PayloadKey.channelId, PayloadKey.serverId, PayloadKey.eventName, PayloadKey.rawPayload]
     }
 
     enum DisconnectReason {
