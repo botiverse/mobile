@@ -5,6 +5,7 @@ import hilog from '@ohos.hilog';
 import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
+import { QuiverCrashUploader } from '../quiver/QuiverCrashUploader';
 
 const TAG: string = 'SlockOhosCrashReporter';
 const CRASH_LOG_MAX_CHARS: number = 180000;
@@ -32,6 +33,13 @@ export class SlockOhosCrashReporter {
     };
     errorManager.on('error', observer);
     SlockOhosDiagnostics.record(TAG, 'crash_reporter_installed');
+    // Store-then-send: upload any crashes captured in previous sessions to
+    // Quiver, off the launch critical path.
+    setTimeout(() => {
+      QuiverCrashUploader.uploadPending(context).catch((error: Error) => {
+        hilog.warn(0x0000, TAG, 'quiver crash upload pass failed: %{public}s', String(error));
+      });
+    }, 3000);
   }
 
   private static captureCrash(
@@ -41,7 +49,19 @@ export class SlockOhosCrashReporter {
   ): void {
     const crashLog = SlockOhosCrashReporter.buildCrashLog(context, reason, errorText).slice(0, CRASH_LOG_MAX_CHARS);
     try {
-      SlockOhosCrashReporter.writeCrashLog(context, crashLog);
+      const crashPath = SlockOhosCrashReporter.writeCrashLog(context, crashLog);
+      QuiverCrashUploader.enforceRetention(context);
+      const firstLine = errorText.split('\n')[0] ?? '';
+      const exceptionClass = firstLine.split(':')[0]?.trim() ?? 'OhosCrash';
+      const exceptionMessage = firstLine.slice(exceptionClass.length + 1).trim();
+      const frameLine = errorText.split('\n').find((line: string): boolean => line.trim().startsWith('at ')) ?? '';
+      QuiverCrashUploader.writeMeta(crashPath, {
+        exception_class: exceptionClass.length > 0 ? exceptionClass : 'OhosCrash',
+        exception_message: exceptionMessage,
+        top_frame: frameLine.trim().replace(/^at\s+/, ''),
+        reason: reason,
+        crash_at: Date.now(),
+      });
     } catch (error) {
       hilog.error(0x0000, TAG, 'Failed to write crash log: %{public}s', SlockOhosCrashReporter.safeString(error));
     }
@@ -92,7 +112,7 @@ export class SlockOhosCrashReporter {
     return lines.join('\n');
   }
 
-  private static writeCrashLog(context: common.UIAbilityContext, crashLog: string): void {
+  private static writeCrashLog(context: common.UIAbilityContext, crashLog: string): string {
     const crashDir = `${context.filesDir}/crashes`;
     fs.mkdirSync(crashDir, true);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -104,6 +124,7 @@ export class SlockOhosCrashReporter {
       fs.closeSync(file);
     }
     hilog.error(0x0000, TAG, 'Crash log written to: %{public}s', crashPath);
+    return crashPath;
   }
 
   private static errorToText(error: Error): string {
