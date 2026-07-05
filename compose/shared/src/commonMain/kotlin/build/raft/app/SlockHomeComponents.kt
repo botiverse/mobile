@@ -2423,7 +2423,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                 Text(
                     positionPrefix,
                     style = SlockType.Button,
-                    color = SlockColor.TextMutedGrayArgb,
+                    color = SlockColor.TextMutedGray,
                     textAlign = TextAlign.End,
                     modifier = Modifier.widthIn(min = 22.dp).padding(end = SlockSpacing.Xs)
                 )
