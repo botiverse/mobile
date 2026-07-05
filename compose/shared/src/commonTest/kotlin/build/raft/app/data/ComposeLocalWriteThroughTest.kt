@@ -243,7 +243,7 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun realtimeMessageUpdatesCachedThreadAndHomePreview() = runBlocking {
+    fun realtimeMessageUpdatesCachedThreadWithoutTouchingHomeRows() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         val channel = channel()
@@ -263,13 +263,16 @@ class ComposeLocalWriteThroughTest {
 
         val thread = store.readThread(ThreadId("channel-1"))
         assertEquals(listOf("old", "new"), thread?.messages?.map { it.id.value })
+        // Realtime home-row merges moved into SharedHomeStore (ac50c376) and the
+        // durable home snapshot blob was removed (fb845a19): the local
+        // write-through no longer patches cached home previews or unread counts.
         val homeChannel = store.readHome(serverId)?.channels?.single()
-        assertEquals("new body", homeChannel?.lastMessagePreview)
-        assertEquals(1, homeChannel?.unreadCount)
+        assertNull(homeChannel?.lastMessagePreview)
+        assertEquals(0, homeChannel?.unreadCount)
     }
 
     @Test
-    fun syncResumeCountsOnlyNewNonSelfMessagesForHomeUnread() = runBlocking {
+    fun syncResumeMergesThreadMessagesWithoutTouchingHomeUnread() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         val channel = channel().copy(lastMessageId = MessageId("old"))
@@ -298,12 +301,18 @@ class ComposeLocalWriteThroughTest {
             )
         )
 
+        val cachedThread = store.readThread(ThreadId("channel-1"))
+        assertEquals(listOf("old", "new-1", "new-2", "new-3"), cachedThread?.messages?.map { it.id.value })
+        assertEquals(4, cachedThread?.lastSeq)
+        // Sync-resume no longer projects previews or unread counts onto cached
+        // home rows: realtime home merges live in SharedHomeStore (ac50c376) and
+        // the durable home snapshot blob was removed (fb845a19).
         val cached = store.readHome(serverId)
         val homeChannel = cached?.channels?.single()
-        assertEquals("latest", homeChannel?.lastMessagePreview)
-        assertEquals(2, homeChannel?.unreadCount)
-        assertEquals(2, cached?.unreadTotal)
-        assertEquals("new-1", homeChannel?.firstUnreadMessageId?.value)
+        assertNull(homeChannel?.lastMessagePreview)
+        assertEquals(0, homeChannel?.unreadCount)
+        assertEquals(0, cached?.unreadTotal)
+        assertNull(homeChannel?.firstUnreadMessageId)
     }
 
     @Test
@@ -314,15 +323,21 @@ class ComposeLocalWriteThroughTest {
         val otherMember = member.copy(id = MemberId("member-2"), displayName = "Cindy", handle = "cindy")
         store.writeHome(home(channels = listOf(channel)))
 
-        writer.writeRealtimeEvent(
-            serverId,
-            MessageNew(message("new", "channel-1", "channel-1", seq = 2, body = "visible", author = otherMember)),
-            activeConversationId = "channel-1"
-        )
+        val wrote =
+            writer.writeRealtimeEvent(
+                serverId,
+                MessageNew(message("new", "channel-1", "channel-1", seq = 2, body = "visible", author = otherMember)),
+                activeConversationId = "channel-1"
+            )
 
+        // The write-through no longer projects realtime previews onto cached
+        // home rows (ac50c376 moved home merges into SharedHomeStore, fb845a19
+        // removed the durable home snapshot blob), and with no cached thread
+        // snapshot there is nothing to merge at all.
+        assertEquals(false, wrote)
         val cached = store.readHome(serverId)
         val homeChannel = cached?.channels?.single()
-        assertEquals("visible", homeChannel?.lastMessagePreview)
+        assertNull(homeChannel?.lastMessagePreview)
         assertEquals(0, homeChannel?.unreadCount)
         assertEquals(false, homeChannel?.unreadCountKnown)
         assertEquals(0, cached?.unreadTotal)
@@ -589,13 +604,16 @@ class ComposeLocalWriteThroughTest {
         val channel = cached?.channels?.single()
         assertEquals(0, channel?.unreadCount)
         assertEquals(true, channel?.unreadCountKnown)
-        assertEquals(0, channel?.mentionCount)
+        // Mention counts are no longer cleared by the local unread clear: they
+        // are owned by the activity persist slice since b3971efd ("fix(activity):
+        // persist cached counts through mvi").
+        assertEquals(1, channel?.mentionCount)
         assertEquals(null, channel?.firstUnreadMessageId)
         assertEquals(0, cached?.unreadTotal)
     }
 
     @Test
-    fun clearServerUnreadUpdatesCachedHomeRowsAndUnreadSnapshot() = runBlocking {
+    fun clearServerUnreadClearsUnreadSnapshotWithoutTouchingHomeRows() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         store.writeUnread(
@@ -644,15 +662,21 @@ class ComposeLocalWriteThroughTest {
         val cached = store.readHome(serverId)
         assertEquals(emptyMap(), unread?.unreadCounts)
         assertEquals(0, unread?.totalUnreadCount)
-        assertEquals(0, cached?.unreadTotal)
-        assertTrue(cached?.channels.orEmpty().all { it.unreadCount == 0 && it.mentionCount == 0 })
-        assertTrue(cached?.directMessages.orEmpty().all { it.unreadCount == 0 && it.mentionCount == 0 })
-        assertTrue(cached?.channels.orEmpty().all { it.firstUnreadMessageId == null })
-        assertTrue(cached?.directMessages.orEmpty().all { it.firstUnreadMessageId == null })
+        // Cached home rows are no longer patched by the write-through: the home
+        // snapshot blob cache was removed in fb845a19 ("fix(home): remove home
+        // snapshot blob cache"); home rows converge through SharedHomeStore.
+        assertEquals(5, cached?.unreadTotal)
+        val cachedChannel = cached?.channels?.single()
+        assertEquals(3, cachedChannel?.unreadCount)
+        assertEquals(1, cachedChannel?.mentionCount)
+        assertEquals(MessageId("message-1"), cachedChannel?.firstUnreadMessageId)
+        val cachedDm = cached?.directMessages?.single()
+        assertEquals(2, cachedDm?.unreadCount)
+        assertEquals(MessageId("message-2"), cachedDm?.firstUnreadMessageId)
     }
 
     @Test
-    fun writeUnreadCountsOnlyReplacesMatchingHomeRows() = runBlocking {
+    fun writeUnreadCountsStoresUnreadSnapshotWithoutTouchingHomeRows() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         store.writeHome(
@@ -677,12 +701,18 @@ class ComposeLocalWriteThroughTest {
             source = "test_unread"
         )
 
+        // The unread snapshot is stored, but cached home rows are left untouched:
+        // home-row unread projection moved out of the write-through when the home
+        // snapshot blob cache was removed (fb845a19).
+        val unread = store.readUnread(serverId)
+        assertEquals(mapOf(ChannelId("channel-1") to 3), unread?.unreadCounts)
+        assertEquals(3, unread?.totalUnreadCount)
         val cached = store.readHome(serverId)
         val after = cached?.channels.orEmpty()
-        assertEquals(3, after[0].unreadCount)
+        assertEquals(0, after[0].unreadCount)
         assertEquals(0, after[1].unreadCount)
-        assertEquals(3, cached?.unreadTotal)
-        assertTrue(before[0] !== after[0])
+        assertEquals(0, cached?.unreadTotal)
+        assertTrue(before[0] === after[0])
         assertTrue(before[1] === after[1])
     }
 

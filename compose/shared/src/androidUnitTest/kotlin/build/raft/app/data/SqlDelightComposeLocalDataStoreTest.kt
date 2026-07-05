@@ -28,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class SqlDelightComposeLocalDataStoreTest {
     @Test
@@ -360,9 +361,12 @@ class SqlDelightComposeLocalDataStoreTest {
             )
         )
 
-        val restored = assertNotNull(store.readHome(serverId))
-        assertEquals("general", restored.channels.single().name)
-        assertEquals("Codex Agent", restored.directMessages.single().name)
+        // writeHome is a no-op since the durable home snapshot blob was removed
+        // (fb845a19 "fix(home): remove home snapshot blob cache"): nothing is
+        // persisted or readable back, and no directory rows or aliases appear.
+        assertNull(store.readHome(serverId))
+        assertNull(store.readThread(ThreadId("channel-1")))
+        assertNull(store.readThread(ThreadId("dm-1")))
         assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
     }
 
@@ -412,8 +416,13 @@ class SqlDelightComposeLocalDataStoreTest {
             source = "messages_channel"
         )
 
-        val restored = assertNotNull(store.readHome(serverId))
-        assertEquals("raft-mobile", restored.channels.single().name)
+        // The home snapshot blob cache was removed (fb845a19), so the earlier
+        // writeHome persisted nothing; the write-through thread refresh caches
+        // the thread but never writes conversation-directory rows (6358200b
+        // "fix(directory): keep channel metadata out of sqldelight").
+        assertNull(store.readHome(serverId))
+        val cachedThread = assertNotNull(store.readThread(ThreadId("joint-1")))
+        assertEquals("joint-1", cachedThread.conversation.name)
         assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
     }
 
@@ -452,8 +461,11 @@ class SqlDelightComposeLocalDataStoreTest {
             )
         )
 
-        val restored = assertNotNull(store.readHome(serverId))
-        assertEquals("general", restored.channels.single().name)
+        // writeHome is a no-op since the durable home snapshot blob was removed
+        // (fb845a19): reply-thread metadata on a home channel row can no longer
+        // leak thread aliases or conversation-directory rows into SQLDelight.
+        assertNull(store.readHome(serverId))
+        assertNull(store.readThread(ThreadId("reply-thread-1")))
         assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
     }
 

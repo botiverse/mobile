@@ -1025,7 +1025,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
+    fun startKeepsPayloadAccessDefaultsWithoutHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
@@ -1062,12 +1062,15 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertEquals("loading", payload.status)
-        assertEquals("Channel", payload.title)
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(null, payload.subtitle)
         assertEquals("channel", payload.channelKind)
-        assertEquals(false, payload.joined)
-        assertEquals(false, payload.canSend)
-        assertEquals(false, payload.composer.enabled)
+        // fb845a19: with the durable home snapshot removed there is no local
+        // access fallback to rewrite joined/canSend — the payload keeps its
+        // route defaults.
+        assertEquals(true, payload.joined)
+        assertEquals(true, payload.canSend)
         scope.cancel()
     }
 
@@ -1087,7 +1090,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
-        assertEquals(listOf(30, 30, 30), api.channelMessageLimits)
+        assertEquals(listOf(50, 50, 50), api.channelMessageLimits)
         assertEquals(emptyList(), api.syncLimits)
         scope.cancel()
     }
@@ -1862,19 +1865,20 @@ class SharedThreadStoreTest {
     fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val serverMembers =
+            listOf(
+                member("u1", "Artin"),
+                MemberProfile(
+                    id = MemberId("agent-2"),
+                    displayName = "Cindy",
+                    handle = "cindy",
+                    kind = MemberKind.Agent,
+                    presence = Presence.Active
+                )
+            )
         val memberRepository =
             FakeMemberRepository(
-                serverMembers =
-                    listOf(
-                        member("u1", "Artin"),
-                        MemberProfile(
-                            id = MemberId("agent-2"),
-                            displayName = "Cindy",
-                            handle = "cindy",
-                            kind = MemberKind.Agent,
-                            presence = Presence.Active
-                        )
-                    ),
+                serverMembers = serverMembers,
                 channelMembers =
                     listOf(
                         member("u1", "Artin"),
@@ -1887,11 +1891,19 @@ class SharedThreadStoreTest {
                         )
                     )
             )
+        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        serverMembersStore.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                members = serverMembers
+            )
+        )
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                memberRepository = memberRepository
+                memberRepository = memberRepository,
+                serverMembersStore = serverMembersStore
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2228,16 +2240,25 @@ class SharedThreadStoreTest {
 
     @Test
     fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
+        val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
         val memberRepository =
             FakeMemberRepository(
-                serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc")),
+                serverMembers = serverMembers,
                 channelMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
             )
+        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        serverMembersStore.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                members = serverMembers
+            )
+        )
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                memberRepository = memberRepository
+                memberRepository = memberRepository,
+                serverMembersStore = serverMembersStore
             )
 
         val result = dataSource.removeChannelMember(basePayload(), "u2", "human")
@@ -2254,16 +2275,25 @@ class SharedThreadStoreTest {
     @Test
     fun startHydratesThreadMembersInBackgroundAfterRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
         val memberRepository =
             FakeMemberRepository(
-                serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc")),
+                serverMembers = serverMembers,
                 channelMembers = listOf(member("u1", "Artin"))
             )
+        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        serverMembersStore.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                members = serverMembers
+            )
+        )
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                memberRepository = memberRepository
+                memberRepository = memberRepository,
+                serverMembersStore = serverMembersStore
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2636,7 +2666,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun secondarySenderProfileRefreshPatchesAndPersistsAgentAvatar() = runBlocking {
+    fun secondaryRefreshDoesNotFetchOrPatchSenderProfileAvatars() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val memberRepository =
@@ -2663,12 +2693,12 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        assertTrue(memberRepository.serverMemberRequests.contains(ServerId("server-1")))
+        assertEquals(emptyList(), memberRepository.serverMemberRequests)
         val message = store.state.value.payload.messages.single()
         assertEquals("Product-UX-Designer", message.authorName)
-        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.avatarWireValue)
         assertNull(localStore.readThread(ThreadId("channel-1")))
-        assertEquals("pixel:tree", dataSource.cachedPayload("channel-1")?.messages?.single()?.avatarWireValue)
+        assertEquals(null, dataSource.cachedPayload("channel-1")?.messages?.single()?.avatarWireValue)
         scope.cancel()
     }
 
@@ -2750,12 +2780,12 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(emptyList(), memberRepository.serverMemberRequests)
         assertEquals("agent task parent", payload.originMessage?.body)
-        assertEquals("pixel:robot", payload.originMessage?.avatarWireValue)
-        assertEquals(null, payload.originMessage?.gravatarHash)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.originMessage?.avatarWireValue)
+        assertEquals("agent-hash", payload.originMessage?.gravatarHash)
     }
 
     @Test
-    fun taskReplyThreadPayloadResolvesParentChannelNameFromHomeSnapshot() = runBlocking {
+    fun taskReplyThreadPayloadFallsBackToStreamChannelNameWithoutHomeSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -2823,7 +2853,12 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
-        assertEquals("#general", payload.subtitle)
+        // fb845a19 removed the durable HomeSnapshot blob cache, so the parent
+        // channel name can no longer be resolved from the local store here —
+        // the subtitle falls back to the thread's own channel name; live
+        // parent resolution happens through the runtime conversation
+        // identity provider instead.
+        assertEquals("#thread-m1", payload.subtitle)
     }
 
     @Test
@@ -3172,8 +3207,8 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
         val message = payload.messages.single()
-        assertEquals("pixel:robot", message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", message.avatarWireValue)
+        assertEquals("agent-hash", message.gravatarHash)
         assertEquals(emptyList(), memberRepository.serverMemberRequests)
     }
 
@@ -3391,7 +3426,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadUsesHomeHeaderWhenRepositorySnapshotTitleIsIdentity() = runBlocking {
+    fun fetchThreadPayloadLeavesHeaderBlankWhenRepositorySnapshotTitleIsIdentity() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -3433,9 +3468,13 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
-        assertEquals("all", payload.title)
-        assertEquals("General updates", payload.subtitle)
-        assertEquals(4, payload.membersCount)
+        // fb845a19 removed the durable HomeSnapshot cache: identity titles can
+        // no longer be replaced from the local home lookup, so the payload
+        // header stays blank and display resolution happens in
+        // threadHeaderDisplayTitle. Home-derived subtitle/membersCount
+        // enrichment is gone with its source.
+        assertEquals("", payload.title)
+        assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("repository body", payload.messages.single().body)
     }
 
@@ -3927,7 +3966,8 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", payload.composer.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("m1", payload.parentMessageId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("", payload.title)
+        assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
@@ -3965,7 +4005,8 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("m1", payload.parentMessageId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("", payload.title)
+        assertEquals(ThreadReplyPageTitle, threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
