@@ -53,7 +53,7 @@
 | 文档 | 摘要/剩余 |
 | --- | --- |
 | bugly-capability-audit-2026-06-24 | OHOS user-context、feedback/upload 拆分、Android uniqueId |
-| composer-basictextfield-migration-spec | 整体未实施（OHOS 正确性依赖） |
+| composer-basictextfield-migration-spec | ~~整体未实施（OHOS 正确性依赖）~~ 07-05 已删除：前提过时——composer 实际走 BasicTextField(TextFieldValue)，fork 7ea6b09 起三端（含 OHOS C++）已有完整双向选区同步（上游 #1342），task #202 关闭 |
 | fork-artifact-github-packages-publishing-spec | OHOS HAR/SQLDelight 远程发布 + workflow 未落 |
 | im-composer-baseline-contract-2026-07-03 | send-operation 生命周期/typed 状态未建 |
 | im-core-cross-platform-fixture-matrix-2026-07-03 | case id 与各层测试未建 |
