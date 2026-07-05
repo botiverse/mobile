@@ -38,13 +38,13 @@ environment variables.
 From this repository:
 
 ```bash
-python3 -m pip install ./tools/harmony-use
+python3 -m pip install ./tools/mobile-use
 ```
 
 For one-off use without installing:
 
 ```bash
-PYTHONPATH=tools/harmony-use/src python3 -m harmony_use --help
+PYTHONPATH=tools/mobile-use/src python3 -m harmony_use --help
 ```
 
 ## Environment
@@ -176,8 +176,14 @@ Capture/analyze logs and profiler artifacts:
 ```bash
 android-use logcat --duration 10 --filter-regex 'Slock|Kuikly|AndroidRuntime' --out /tmp/android-use --pretty
 android-use analyze-log /tmp/android-use/state-logcat.txt --pretty
+android-use analyze-log /tmp/android-use/state-logcat.txt --trim-last-start --trim-out /tmp/android-use/last-start-logcat.txt --pretty
 android-use pull-profiler --out /tmp/android-use --allow-missing --pretty
 ```
+
+`analyze-log` counts app launches from ActivityTaskManager/ActivityManager
+logcat markers for the configured Android package. Pass `--trim-last-start` to
+analyze only the final app-start window; pass `--trim-out` to write that
+last-start window to a separate file.
 
 Remote host helpers:
 

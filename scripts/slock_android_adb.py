@@ -9,7 +9,7 @@ from pathlib import Path
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    src = repo_root / "tools" / "harmony-use" / "src"
+    src = repo_root / "tools" / "mobile-use" / "src"
     if src.exists():
         sys.path.insert(0, str(src))
     from android_use.cli import main as android_use_main

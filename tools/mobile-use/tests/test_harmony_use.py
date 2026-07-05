@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
 from android_use.adb import direction_to_swipe as android_direction_to_swipe
@@ -88,6 +90,44 @@ class HarmonyUseTest(unittest.TestCase):
         )
         self.assertTrue(analysis["has_network_failure"])
         self.assertTrue(analysis["has_crash"])
+
+    def test_android_logcat_counts_and_trims_to_last_launch(self) -> None:
+        text = "\n".join(
+            [
+                "07-05 10:00:00.000 I ActivityTaskManager: START u0 {cmp=build.raft.dev/.MainActivity}",
+                "07-05 10:00:01.000 E AndroidRuntime: old crash before relaunch",
+                "07-05 10:02:00.000 I ActivityTaskManager: START u0 {cmp=build.raft.dev/.MainActivity}",
+                "07-05 10:02:01.000 E SlockSharedAuth: slock_auth_ktor_failed reason=SSLHandshakeException",
+            ]
+        )
+        analysis = analyze_logcat_text(text, package="build.raft.dev", trim_last_start=True)
+        self.assertEqual(2, analysis["launch_count"])
+        self.assertEqual(2, analysis["analyzed_line_count"])
+        self.assertEqual(0, analysis["crash_count"])
+        self.assertEqual(1, analysis["network_failure_count"])
+
+    def test_android_logcat_writes_trimmed_last_launch_window(self) -> None:
+        text = "\n".join(
+            [
+                "07-05 10:00:00.000 I ActivityTaskManager: START u0 {cmp=build.raft.dev/.MainActivity}",
+                "old line",
+                "07-05 10:02:00.000 I ActivityManager: Start proc 1234:build.raft.dev/u0a123",
+                "new line",
+            ]
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            trim_out = Path(temp_dir) / "last-start.txt"
+            analysis = analyze_logcat_text(
+                text,
+                package="build.raft.dev",
+                trim_last_start=True,
+                trim_out=trim_out,
+            )
+            self.assertEqual(str(trim_out), analysis["trimmed_path"])
+            self.assertEqual(
+                "07-05 10:02:00.000 I ActivityManager: Start proc 1234:build.raft.dev/u0a123\nnew line\n",
+                trim_out.read_text(encoding="utf-8"),
+            )
 
     def test_android_extra_normalization(self) -> None:
         class Args:

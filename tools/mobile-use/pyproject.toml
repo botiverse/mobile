@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "harmony-use"
+name = "mobile-use"
 version = "0.1.0"
 description = "Small Python libraries and CLIs for Raft mobile device automation."
 readme = "README.md"

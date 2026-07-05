@@ -1,0 +1,100 @@
+---
+name: mobile-use
+description: Use when controlling or auditing Raft mobile apps from command line across Android, iOS, and Harmony/OHOS with the repo-local mobile-use package. Covers android-use, ios-use, harmony-use, screenshots/layout capture, log capture/analysis, launch trimming, profiler pulls, and remote host wrappers.
+---
+
+# Mobile Use
+
+Use `tools/mobile-use` as the standard repo-local package for repeatable mobile
+device automation. It installs three platform-specific CLIs and keeps shared
+bottom helpers in one package:
+
+- `android-use` for ADB, Android app launch/control, logcat, screenshots, UI XML,
+  diagnostics intents, and Kuikly profiler artifacts.
+- `ios-use` for Xcode/simctl build/install/launch, simulator control,
+  screenshots, logs, and remote wrappers.
+- `harmony-use` for DevEco/HDC/Hvigor, OHOS install/launch, emulator control,
+  screenshots/layout, HiLog analysis, and remote wrappers.
+
+## Setup
+
+From the repository root:
+
+```bash
+python3 -m pip install ./tools/mobile-use
+```
+
+For one-off use without installing:
+
+```bash
+PYTHONPATH=tools/mobile-use/src python3 -m android_use --help
+PYTHONPATH=tools/mobile-use/src python3 -m ios_use --help
+PYTHONPATH=tools/mobile-use/src python3 -m harmony_use --help
+```
+
+## Android Audit Flow
+
+Prefer app-owned entry points over fragile visual navigation:
+
+```bash
+android-use devices --pretty
+android-use launch --pretty
+android-use open-diagnostics --enable-profiler --reset-scene --pretty
+android-use open-page compose_thread --page-data '{"channelId":"<id>"}' --pretty
+android-use state --out artifacts/android --prefix thread --pretty
+```
+
+Capture and analyze logcat:
+
+```bash
+android-use logcat --duration 10 \
+  --filter-regex 'Slock|Kuikly|AndroidRuntime|ActivityTaskManager|ActivityManager' \
+  --out artifacts/android --prefix thread --pretty
+
+android-use analyze-log artifacts/android/thread-logcat.txt \
+  --trim-last-start \
+  --trim-out artifacts/android/thread-last-start-logcat.txt \
+  --pretty
+```
+
+`analyze-log` reports total lines, analyzed lines, launch count, last launch
+marker, network failures, crashes, render signals, and optional trimmed output
+path. It detects app starts from `ActivityTaskManager START`,
+`ActivityManager Start proc`, `Displayed`, and `wm_on_resume_called` markers for
+the configured Android package.
+
+Pull Kuikly profiler artifacts:
+
+```bash
+android-use pull-profiler --out artifacts/android --allow-missing --pretty
+```
+
+The legacy `scripts/slock_android_adb.py` remains a compatibility wrapper around
+`android-use`; prefer `android-use` directly for new automation.
+
+## iOS Flow
+
+```bash
+ios-use devices --pretty
+ios-use build --workspace compose/iosApp/iosApp.xcworkspace --scheme iosApp --pretty
+ios-use install --pretty
+ios-use launch --pretty
+ios-use screenshot --out artifacts/ios --pretty
+ios-use log --duration 10 --predicate 'process == "iosApp"' --out artifacts/ios --pretty
+ios-use analyze-log artifacts/ios/state-ios-log.txt --pretty
+```
+
+## Harmony/OHOS Flow
+
+```bash
+harmony-use doctor --pretty
+harmony-use devices --pretty
+harmony-use build-hap --project compose/ohosApp --pretty
+harmony-use install --project compose/ohosApp --pretty
+harmony-use launch --bundle build.raft.harmony --pretty
+harmony-use hilog --bundle build.raft.harmony --duration 20 --out artifacts/ohos --pretty
+harmony-use analyze-log artifacts/ohos/state-hilog.txt --pretty
+```
+
+HiLog analysis groups old Ktor/CIO TLS stub regressions, NetworkKMM failures,
+and TLS certificate verification failures.

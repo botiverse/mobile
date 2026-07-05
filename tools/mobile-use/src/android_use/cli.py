@@ -129,6 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = add(sub, "analyze-log", cmd_analyze_log, "Analyze an exported logcat file")
     analyze.add_argument("path")
+    analyze.add_argument("--trim-last-start", action="store_true", help="Analyze only from the last detected app launch")
+    analyze.add_argument("--trim-out", default=None, help="Write the last-start log window to this path")
 
     profiler = add(sub, "pull-profiler", cmd_pull_profiler, "Pull Kuikly profiler files via run-as", aliases=["pull_profiler"])
     add_artifact_args(profiler)
@@ -284,7 +286,12 @@ def cmd_logcat(args: argparse.Namespace, config: AndroidConfig) -> dict[str, obj
 
 
 def cmd_analyze_log(args: argparse.Namespace, config: AndroidConfig) -> dict[str, object]:
-    return analyze_logcat_file(Path(args.path).expanduser())
+    return analyze_logcat_file(
+        Path(args.path).expanduser(),
+        package=config.package,
+        trim_last_start=args.trim_last_start,
+        trim_out=Path(args.trim_out).expanduser() if args.trim_out else None,
+    )
 
 
 def cmd_pull_profiler(args: argparse.Namespace, config: AndroidConfig) -> dict[str, object]:
