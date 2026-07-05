@@ -11,6 +11,7 @@ import android.util.Log
 import android.app.Activity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
@@ -48,7 +49,15 @@ class KmpVisualScreenshotCaptureTest {
 
             override fun starting(description: Description) {
                 startUptimeMs = SystemClock.uptimeMillis()
-                Log.i(VISUAL_LOG_TAG, "CASE_START ${description.methodName}")
+                // Log the display/viewport condition up front (task #367): a
+                // case that later renders blank should carry the exact
+                // width/height/density it ran under, so a CI-only failure can be
+                // told apart from a geometry difference.
+                val dm = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
+                Log.i(
+                    VISUAL_LOG_TAG,
+                    "CASE_START ${description.methodName} display=${dm.widthPixels}x${dm.heightPixels} densityDpi=${dm.densityDpi}"
+                )
                 recordTiming("START ${description.methodName}")
             }
 
@@ -1707,6 +1716,7 @@ class KmpVisualScreenshotCaptureTest {
         imageFile.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
+        val diagnostics = collectDiagnosticsJson(context)
         val metadataFile = File(outputDir, "$caseId.failure.json")
         metadataFile.writeText(
             """
@@ -1728,6 +1738,7 @@ class KmpVisualScreenshotCaptureTest {
                 "dominantRatio": ${stats.dominantRatio},
                 "errors": ${JSONArray(problems)}
               },
+              "diagnostics": $diagnostics,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
@@ -1745,6 +1756,7 @@ class KmpVisualScreenshotCaptureTest {
         captureMethod: String
     ): String {
         val stats = bitmap.visualStats()
+        val diagnostics = collectDiagnosticsJson(context)
         return """
             {
               "provider": "android",
@@ -1768,9 +1780,61 @@ class KmpVisualScreenshotCaptureTest {
                   "dominantRatio": ${stats.dominantRatio}
                 }
               },
+              "diagnostics": $diagnostics,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
+    }
+
+    // Capture-environment diagnostics (task #367). A case can render blank in
+    // one environment (e.g. CI's software-GPU headless emulator) while passing
+    // in another with identical geometry — so record the display/GPU/layout
+    // condition each capture ran under. The view-tree counts distinguish
+    // "content never laid out" (data/fixture problem: laidOut≈0) from "content
+    // laid out but drawn blank" (renderer/GPU problem: laidOut>0 yet the bitmap
+    // is one color). Emitted into both metadata.json and failure.json.
+    private fun collectDiagnosticsJson(context: Context): String {
+        val dm = context.resources.displayMetrics
+        var rootWidth = 0
+        var rootHeight = 0
+        var hardwareAccelerated = false
+        val counts = IntArray(3) // total, laidOut (w>0 && h>0), visibleContentLeaf
+        try {
+            onActivityNoIdle { activity ->
+                val root = activity.window.decorView.rootView
+                rootWidth = root.width
+                rootHeight = root.height
+                hardwareAccelerated = root.isHardwareAccelerated
+                summarizeViewTree(root, counts)
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "collectDiagnostics failed: ${t.message}")
+        }
+        return """
+            {
+                "displayWidthPx": ${dm.widthPixels},
+                "displayHeightPx": ${dm.heightPixels},
+                "densityDpi": ${dm.densityDpi},
+                "rootWidthPx": $rootWidth,
+                "rootHeightPx": $rootHeight,
+                "hardwareAccelerated": $hardwareAccelerated,
+                "totalViews": ${counts[0]},
+                "laidOutViews": ${counts[1]},
+                "visibleContentLeafViews": ${counts[2]}
+            }
+        """.trimIndent()
+    }
+
+    private fun summarizeViewTree(view: View, counts: IntArray) {
+        if (counts[0] >= DIAGNOSTICS_MAX_VIEWS) return
+        counts[0]++
+        val laidOut = view.width > 0 && view.height > 0
+        if (laidOut) counts[1]++
+        if (view !is ViewGroup) {
+            if (laidOut && view.visibility == View.VISIBLE) counts[2]++
+        } else {
+            for (i in 0 until view.childCount) summarizeViewTree(view.getChildAt(i), counts)
+        }
     }
 
     private fun visualOutputDir(context: Context): File =
@@ -2244,6 +2308,9 @@ class KmpVisualScreenshotCaptureTest {
 
         // Shard-scoped per-case timing log carried in the results artifact.
         private const val CAPTURE_TIMING_FILE = "_capture-timing.log"
+
+        // Cap the diagnostics view-tree walk so it never dominates a capture.
+        private const val DIAGNOSTICS_MAX_VIEWS = 2_000
 
         // Ceiling for a single idle-sync. Healthy cases idle in well under a
         // second; an animating/never-idle screen would otherwise block forever.
