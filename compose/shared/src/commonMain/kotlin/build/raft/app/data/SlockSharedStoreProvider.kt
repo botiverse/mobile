@@ -3,7 +3,10 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
+import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
+import build.raft.app.SlockPixelAvatarRuntime
+import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import build.raft.app.model.AgentCreated
@@ -305,6 +308,20 @@ internal class SlockSharedStoreProvider private constructor(
                     warningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network"),
                     platformFileResolver = platformFileResolver
                 )
+            // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
+            // synchronously (before first render), then fire-and-forget a refresh from the
+            // deployed WEB app origin (webUrl, not the API base URL) — the same canonical
+            // pixelAvatars.json the generator consumes. Bad data never crashes rendering;
+            // the generated bundled table stays the fallback.
+            val pixelAvatarStore = KeyValuePixelAvatarStore(sharedPreferenceStore)
+            SlockPixelAvatarRuntime.applyRuntimeJson(pixelAvatarStore.readJson(), source = "cache")
+            CoroutineScope(SupervisorJob()).launch {
+                refreshPixelAvatarsFromWeb(
+                    networkClient = networkClient,
+                    store = pixelAvatarStore,
+                    webBaseUrl = apiEnvironmentStore.current().webUrl
+                )
+            }
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository =

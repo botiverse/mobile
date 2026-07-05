@@ -8,7 +8,7 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalTone
-import build.raft.app.PixelAvatarDefaultKey
+import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
@@ -4759,7 +4759,7 @@ private fun MembersAgentAvatarChoiceGrid(
     val activePixelKey = if (activeCustomAvatar) {
         null
     } else {
-        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarDefaultKey)
+        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarActiveDefaultKey)
     }
     @OptIn(ExperimentalLayoutApi::class)
     FlowRow(
@@ -4792,12 +4792,12 @@ private fun MembersAgentAvatarChoiceGrid(
             }
         }
         MembersAgentAvatarPickerCell(
-            wireValue = "pixel:$PixelAvatarDefaultKey",
-            fallbackLabel = PixelAvatarDefaultKey,
-            active = activePixelKey == PixelAvatarDefaultKey,
+            wireValue = "pixel:$PixelAvatarActiveDefaultKey",
+            fallbackLabel = PixelAvatarActiveDefaultKey,
+            active = activePixelKey == PixelAvatarActiveDefaultKey,
             onClick = onClear
         )
-        PixelAvatarPickerKeys.filter { it != PixelAvatarDefaultKey }.forEach { key ->
+        PixelAvatarPickerKeys.filter { it != PixelAvatarActiveDefaultKey }.forEach { key ->
             MembersAgentAvatarPickerCell(
                 wireValue = "pixel:$key",
                 fallbackLabel = key,
