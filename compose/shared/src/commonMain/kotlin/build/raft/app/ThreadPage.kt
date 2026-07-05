@@ -1704,6 +1704,7 @@ private fun ThreadPageScreen() {
             memberRepository,
             sharedStores.serverMembersStore,
             channelRepository,
+            sharedStores.threadMessageStore,
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
@@ -1719,6 +1720,7 @@ private fun ThreadPageScreen() {
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
+                messageStore = sharedStores.threadMessageStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
