@@ -407,11 +407,14 @@ internal fun UiSelectionPopoverVisualContent() {
 
 @Composable
 internal fun UiMenuItemVisualContent() {
+    // 181dp matches react's content-sized element (543px @3x). The remaining
+    // in-image diff is the genuine ~1.25dp/row height delta of the menu rows vs
+    // react, to be fixed in the component later (task #370).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
-                .height(176.dp)
+                .height(181.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
@@ -501,11 +504,14 @@ internal fun UiSectionHeaderVisualContent() {
 
 @Composable
 internal fun UiSurfaceListItemVisualContent() {
+    // 182dp matches the react capture's pinned element height; content is
+    // top-aligned so any blank slack at the bottom exposes real row spacing
+    // diffs instead of hiding them behind a shorter canvas (task #370).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
-                .height(168.dp)
+                .height(182.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {

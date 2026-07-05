@@ -113,7 +113,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.navigation.tabbar.states",
             pageName = "compose_bottom_tabbar_visual",
-            crop = FULL_VIEWPORT_CROP
+            crop = NAVIGATION_TABBAR_CROP
         )
     }
 
@@ -607,7 +607,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
                     .put("visualFixture", "default"),
-            crop = FULL_VIEWPORT_CROP
+            crop = THREAD_MESSAGE_ROW_CROP
         )
     }
 
@@ -620,7 +620,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-deleted-human")
                     .put("visualFixture", "deleted_human"),
-            crop = FULL_VIEWPORT_CROP
+            crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP
         )
     }
 
@@ -1919,12 +1919,25 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 620
             )
+        // React's element is 120dp tall (1170x360px @3x) because it includes the
+        // Chat/Tasks/Files mode-tab strip below the 62dp header; the fixture
+        // renders both on a 120dp canvas (task #370).
         private val THREAD_HEADER_COMPONENT_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 62
+                heightDp = 120
+            )
+        // React captures the tab bar element at full page width: 1170x159px @3x
+        // = 390x53dp. The fixture renders the bar flush at the window origin, so
+        // the crop starts at (0,0) (task #370).
+        private val NAVIGATION_TABBAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 53
             )
         private val THREAD_REACTION_ATLAS_CROP =
             VisualCrop(
@@ -2045,12 +2058,15 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 252
             )
+        // React's content-sized element measures 543px @3x = 181dp; the
+        // remaining in-image diff is the genuine ~1.25dp/row menu-row height
+        // delta vs react, to be fixed in the component later (task #370).
         private val UI_MENU_ITEM_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 176
+                heightDp = 181
             )
         private val UI_SELECT_CROP =
             VisualCrop(
@@ -2073,12 +2089,15 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 88
             )
+        // React pins this element at 182dp; fixture canvas matches so the
+        // top-aligned content's bottom slack exposes real spacing diffs
+        // (task #370).
         private val UI_SURFACE_LIST_ITEM_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 168
+                heightDp = 182
             )
         private val UI_AVATAR_LIST_ROW_CROP =
             VisualCrop(
@@ -2285,6 +2304,26 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 260
+            )
+        // React's measured element rect is x=16,y=16,374x108dp (deleted-human
+        // 374x109dp) — the row card inside the fixture's SlockSpacing.Md (16dp)
+        // padding, from the paired validation run's metadata. The android
+        // fixture is the same 390dp-wide Column with 16dp padding, so cropping
+        // the identical rect makes both providers emit 374dp-wide images
+        // (task #370).
+        private val THREAD_MESSAGE_ROW_CROP =
+            VisualCrop(
+                leftDp = 16,
+                topDp = 16,
+                widthDp = 374,
+                heightDp = 108
+            )
+        private val THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP =
+            VisualCrop(
+                leftDp = 16,
+                topDp = 16,
+                widthDp = 374,
+                heightDp = 109
             )
         private val THREAD_MESSAGE_ROW_RICH_CONTENT_CROP =
             VisualCrop(

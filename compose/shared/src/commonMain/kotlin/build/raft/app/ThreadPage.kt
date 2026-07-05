@@ -2082,7 +2082,14 @@ internal fun ThreadHeaderVisualScreen() {
             showOpenInChannelAction = false
         )
     }
-    Box(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite)) {
+    // React's thread-header element includes the Chat/Tasks/Files mode-tab strip
+    // that the real page renders via SlockTabbedScaffold directly below
+    // ThreadPageHeader, so the fixture renders the same SlockTopTabBar row with
+    // the thread tab specs (Chat selected). The explicit 120dp canvas matches the
+    // react element height (1170x360px @3x = 390x120dp); the header+tabs measure
+    // 62+32=94dp, so the white slack at the bottom exposes the real height delta
+    // (task #370).
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
             applyTopSafeArea = false,
@@ -2092,6 +2099,12 @@ internal fun ThreadHeaderVisualScreen() {
             onOpenSearch = {},
             onShowMembers = {},
             onShowSettings = {}
+        )
+        SlockTopTabBar(
+            items = KuiklyThreadTab.entries.map { it.toSlockTabSpec().toTopTabBarItem() },
+            selectedKey = KuiklyThreadTab.Chat.toString(),
+            onSelectedKeyChange = {},
+            itemKeyPrefix = "thread-tab"
         )
     }
 }
