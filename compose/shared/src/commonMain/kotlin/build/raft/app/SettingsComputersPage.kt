@@ -5,6 +5,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
@@ -12,6 +13,9 @@ import build.raft.app.data.SettingsComputerRenameRequest
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedComputersIntent
+import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
@@ -35,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -70,6 +75,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
@@ -270,6 +276,55 @@ private fun SettingsComputerDetailScreen() {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    val serverId = currentServerId.orEmpty()
+    val computersSlice by environment.computersStore
+        .computerPickerSliceFlow(serverId)
+        .collectAsState(SharedComputersPickerSlice())
+    val createAgentScope = rememberCoroutineScope()
+    var createAgentForComputerOpen by remember(computerId) { mutableStateOf(false) }
+    var createAgentSubmitting by remember { mutableStateOf(false) }
+    var createAgentError by remember { mutableStateOf<String?>(null) }
+    var createAgentRuntimeModels by remember(serverId) {
+        mutableStateOf<Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>>>(emptyMap())
+    }
+    var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
+        mutableStateOf<Set<Pair<String, String>>>(emptySet())
+    }
+    val loadCreateAgentMachines: () -> Unit = {
+        if (serverId.isNotBlank()) {
+            environment.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+        } else {
+            bridge.log("settings_computer_detail_create_agent_skip reason=missing_server_id computerId=$computerId")
+        }
+    }
+    LaunchedEffect(createAgentForComputerOpen, serverId) {
+        if (createAgentForComputerOpen) {
+            loadCreateAgentMachines()
+        }
+    }
+    val loadCreateAgentRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
+        val key = machineId.trim() to runtime.trim()
+        if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
+            // no-op: the dialog keeps using the static runtime catalog fallback
+        } else if (!force && (key in createAgentRuntimeModels || key in createAgentRuntimeModelLoadsInFlight)) {
+            // no-op: cached or already loading
+        } else {
+            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight + key
+            createAgentScope.launch {
+                when (val result = environment.createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
+                    is DataResult.Content -> {
+                        createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
+                    }
+                    is DataResult.Empty -> Unit
+                    is DataResult.Error ->
+                        bridge.log("create_agent_runtime_models_failed source=settings_computer_detail code=${result.error.code}")
+                    is DataResult.NoPermission ->
+                        bridge.log("create_agent_runtime_models_blocked source=settings_computer_detail code=${result.blocker.code}")
+                }
+                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight - key
+            }
+        }
+    }
     LaunchedEffect(computerId) {
         bridge.log("settings_computer_detail_open instanceId=${launchPayload.instanceId} computerId=$computerId")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenComputer(computerId))
@@ -292,10 +347,60 @@ private fun SettingsComputerDetailScreen() {
                 settingsState = settingsState,
                 dispatch = settingsViewModel::dispatch,
                 fallbackEvent = { fallbackAction, fallbackItem ->
-                    bridge.log("settings_computer_detail_unsupported_action action=$fallbackAction itemId=${fallbackItem.orEmpty()}")
+                    if (fallbackAction == "createAgentForComputer") {
+                        createAgentError = null
+                        createAgentForComputerOpen = true
+                        loadCreateAgentMachines()
+                    } else {
+                        bridge.log("settings_computer_detail_unsupported_action action=$fallbackAction itemId=${fallbackItem.orEmpty()}")
+                    }
                 }
             )
         }
+    }
+    if (createAgentForComputerOpen) {
+        SharedCreateAgentDialog(
+            submitting = createAgentSubmitting,
+            errorMessage = createAgentError,
+            requiredComputer = computerId,
+            machines = computersSlice.machines,
+            machinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
+            machinesErrorMessage = computersSlice.errorCode?.let { "Failed to load computers: $it" },
+            runtimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+            runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+            onRuntimeModelsRequest = loadCreateAgentRuntimeModels,
+            currentAgentCount = settingsState.computerDetail.toComputerDetailPayload(computerId, timeContext).agents.size,
+            onDismiss = {
+                if (!createAgentSubmitting) {
+                    createAgentForComputerOpen = false
+                    createAgentError = null
+                }
+            },
+            onSubmit = { request ->
+                createAgentSubmitting = true
+                createAgentError = null
+                createAgentScope.launch {
+                    val result = environment.createAgentCoordinator.createAgent(request.toCreateAgentRequest())
+                    createAgentSubmitting = false
+                    when (result) {
+                        is DataResult.Content -> {
+                            createAgentForComputerOpen = false
+                            createAgentError = null
+                            settingsViewModel.dispatch(SharedSettingsIntent.OpenComputer(computerId))
+                        }
+                        is DataResult.Empty -> {
+                            createAgentError = "Empty response"
+                        }
+                        is DataResult.Error -> {
+                            createAgentError = "Failed to create agent: ${result.error.code}"
+                        }
+                        is DataResult.NoPermission -> {
+                            createAgentError = "You do not have permission to create agents."
+                        }
+                    }
+                }
+            }
+        )
     }
 }
 
