@@ -1,9 +1,9 @@
 # Slock Visual Testing
 
-Generated: 2026-07-05 10:23:24 UTC
-Latest run: e17a1d4-20260705102311
-Latest commit: e17a1d4-20260705102311
-Commit subject: ci(visual): site_only fast republish — rebuild site from gh-pages captures (#64)
+Generated: 2026-07-05 10:49:12 UTC
+Latest run: 02e09aa-20260705104859
+Latest commit: 02e09aa-20260705104859
+Commit subject: fix(home/sort): stop insertion line snapping to the last row on row gaps (#66)
 Providers: react vs android
 Summary: total 82, same 0, pass 0, basic-pass 1, different 80, missing 1
 AI analysis: ready 0 / total 82, pending 82
@@ -105,6 +105,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 02e09aa-20260705104859: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/02e09aa-20260705104859/component-matrix.json, report runs/02e09aa-20260705104859/report.html
 - e17a1d4-20260705102311: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/e17a1d4-20260705102311/component-matrix.json, report runs/e17a1d4-20260705102311/report.html
 - 80be632-20260705101315: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/80be632-20260705101315/component-matrix.json, report runs/80be632-20260705101315/report.html
 - 7ca6a69-20260705095113: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/7ca6a69-20260705095113/component-matrix.json, report runs/7ca6a69-20260705095113/report.html

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-05T10:23:24.294Z",
-  "latestRunId": "e17a1d4-20260705102311",
+  "generatedAt": "2026-07-05T10:49:12.250Z",
+  "latestRunId": "02e09aa-20260705104859",
   "latest": {
-    "runId": "e17a1d4-20260705102311",
-    "commit": "e17a1d4-20260705102311",
-    "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures (#64)",
-    "generatedAt": "2026-07-05T10:23:24.294Z",
+    "runId": "02e09aa-20260705104859",
+    "commit": "02e09aa-20260705104859",
+    "commitSubject": "fix(home/sort): stop insertion line snapping to the last row on row gaps (#66)",
+    "generatedAt": "2026-07-05T10:49:12.250Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -63,14 +63,10 @@
         }
       }
     },
-    "href": "runs/e17a1d4-20260705102311/",
-    "report": "runs/e17a1d4-20260705102311/report.html",
-    "componentMatrix": "runs/e17a1d4-20260705102311/component-matrix.json",
-    "llms": "runs/e17a1d4-20260705102311/metadata.json",
-    "raftUiReport": "latest/raft-ui/",
-    "raftUi": {
-      "href": "latest/raft-ui/"
-    }
+    "href": "runs/02e09aa-20260705104859/",
+    "report": "runs/02e09aa-20260705104859/report.html",
+    "componentMatrix": "runs/02e09aa-20260705104859/component-matrix.json",
+    "llms": "runs/02e09aa-20260705104859/metadata.json"
   },
   "componentMatrixSummary": {
     "total": 102,
@@ -113,6 +109,71 @@
     }
   },
   "runs": [
+    {
+      "runId": "02e09aa-20260705104859",
+      "commit": "02e09aa-20260705104859",
+      "commitSubject": "fix(home/sort): stop insertion line snapping to the last row on row gaps (#66)",
+      "generatedAt": "2026-07-05T10:49:12.250Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 82,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 1,
+        "different": 80,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 82,
+        "ready": 0,
+        "pending": 82
+      },
+      "componentMatrixSummary": {
+        "total": 102,
+        "active": 83,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 77,
+            "active": 73,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 25,
+            "active": 10,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 85,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 98
+          },
+          "android": {
+            "active": 81,
+            "pending": 17,
+            "unsupported": 0,
+            "total": 98
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 78,
+            "unsupported": 0,
+            "total": 78
+          }
+        }
+      },
+      "href": "runs/02e09aa-20260705104859/",
+      "report": "runs/02e09aa-20260705104859/report.html",
+      "componentMatrix": "runs/02e09aa-20260705104859/component-matrix.json",
+      "llms": "runs/02e09aa-20260705104859/metadata.json"
+    },
     {
       "runId": "e17a1d4-20260705102311",
       "commit": "e17a1d4-20260705102311",
@@ -2116,7 +2177,5 @@
       "componentMatrix": "runs/1c6dce5ad-20260701171619/component-matrix.json",
       "llms": "runs/1c6dce5ad-20260701171619/metadata.json"
     }
-  ],
-  "latestRaftUiReport": "latest/raft-ui/",
-  "raftUiReport": "latest/raft-ui/"
+  ]
 }

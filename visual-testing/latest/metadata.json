@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-05T10:23:24.294Z",
-  "runId": "e17a1d4-20260705102311",
-  "commit": "e17a1d4-20260705102311",
-  "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures (#64)",
+  "generatedAt": "2026-07-05T10:49:12.250Z",
+  "runId": "02e09aa-20260705104859",
+  "commit": "02e09aa-20260705104859",
+  "commitSubject": "fix(home/sort): stop insertion line snapping to the last row on row gaps (#66)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -5184,6 +5184,5 @@
       "comparison": null
     }
   ],
-  "report": "latest/report.html",
-  "raftUiReport": "latest/raft-ui/"
+  "report": "latest/report.html"
 }
