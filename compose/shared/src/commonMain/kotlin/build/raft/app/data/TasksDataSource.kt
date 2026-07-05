@@ -549,7 +549,8 @@ internal fun TaskWireDto.toTaskSummary(): TaskSummary {
         creator = memberFrom(createdByType, createdById, createdByName),
         channelName = channelName,
         updatedAtLabel = (updatedAt ?: createdAt ?: claimedAt ?: completedAt).orEmpty(),
-        canClaim = true
+        canClaim = true,
+        description = description?.trim()?.takeIf { it.isNotBlank() }
     )
 }
 

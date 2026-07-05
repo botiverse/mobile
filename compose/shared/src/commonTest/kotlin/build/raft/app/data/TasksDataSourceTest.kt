@@ -133,6 +133,49 @@ class TasksDataSourceTest {
         assertEquals("channel_tasks", blocker.requiredCapability)
     }
 
+    @Test
+    fun taskWireMappingPreservesTrimmedDescription() = runBlocking {
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    listBody =
+                        """
+                        {
+                          "tasks": [
+                            {
+                              "id": "task-1",
+                              "channelId": "channel-1",
+                              "taskNumber": 1,
+                              "title": "Task #1: canonical",
+                              "description": "  Align the visual fixture copy.  ",
+                              "status": "todo",
+                              "createdByType": "user",
+                              "createdById": "user-1"
+                            },
+                            {
+                              "id": "task-2",
+                              "channelId": "channel-1",
+                              "taskNumber": 2,
+                              "title": "Task #2: blank description",
+                              "description": "   ",
+                              "status": "done",
+                              "createdByType": "user",
+                              "createdById": "user-1"
+                            }
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val snapshot = assertIs<DataResult.Content<TaskSnapshot>>(
+            client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible)
+        ).data
+
+        assertEquals("Align the visual fixture copy.", snapshot.tasks[0].description)
+        assertEquals(null, snapshot.tasks[1].description)
+    }
+
     private class RecordingTasksApi(
         private val listResponse: HomeNetworkResponse? = null,
         private val listBody: String =

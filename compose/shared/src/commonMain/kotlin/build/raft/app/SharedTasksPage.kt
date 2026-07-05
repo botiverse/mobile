@@ -74,7 +74,6 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -712,9 +711,16 @@ private fun SharedTasksLoadedBodyContent(
                     SlockBaseMenuItem(id = next.name, label = next.label)
                 },
                 selectedId = task.status.name,
+                selectedRowColor = SlockColor.SurfaceWhite,
                 uppercaseLabels = false,
+                minWidth = 140.dp,
+                rowHeight = 36.dp,
+                labelFontSize = 14.sp,
+                labelLineHeight = 18.sp,
+                labelLetterSpacing = 0.sp,
+                selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
                 horizontalOffset = 0.dp,
-                verticalOffset = 0.dp,
+                verticalOffset = 4.dp,
                 verticalPlacement = SlockFloatingVerticalPlacement.Below,
                 onDismiss = { statusMenuTask = null },
                 onSelect = { id ->
@@ -1062,19 +1068,18 @@ private fun BoardSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        // Rotate chevron to encode collapse direction; mirrors the React `rotate-[-90deg]`.
-        SlockLucideIcon(
-            "chevron-down",
-            modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
-            color = "#FF000000"
-        )
         SharedTasksStatusLabel(status)
         Text(
             text = count.toString(),
             style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
             color = SlockColor.TextBlack.copy(alpha = 0.5f),
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f)
+            maxLines = 1
+        )
+        Spacer(Modifier.weight(1f))
+        SlockLucideIcon(
+            "chevron-down",
+            modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
+            color = "#FF000000"
         )
     }
 }
@@ -1095,7 +1100,7 @@ private fun SharedTaskCard(
     val rootPos = remember { SlockMutableOffsetRef() }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
-    val description: String? = null // TaskSummary doesn't carry a description today; placeholder for forward-compat.
+    val description = task.description?.takeIf { it.isNotBlank() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1215,6 +1220,10 @@ private fun SharedTaskCard(
                     onClick = if (updating) null else onStatusBadgeClick,
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
                     trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
+                    minHeight = 22.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 14.sp,
                     borderWidth = SlockStroke.Default,
                     anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
