@@ -53,12 +53,13 @@ class AgentRuntimeConfigTest {
     // ── Runtimes / models ──
 
     @Test
-    fun runtimesContainCanonicalNine() {
+    fun runtimesContainCanonicalTen() {
         val ids = RUNTIMES.map { it.id }
         assertTrue("claude" in ids)
         assertTrue("codex" in ids)
         assertTrue("opencode" in ids)
-        assertEquals(9, ids.size)
+        assertTrue("kimi-sdk" in ids)
+        assertEquals(10, ids.size)
     }
 
     @Test

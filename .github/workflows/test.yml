@@ -94,6 +94,22 @@ jobs:
         working-directory: compose
         run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileDebugUnitTestKotlinAndroid --no-daemon --console=plain
 
+      # Hard run gate since #215 cleared the legacy failures: the shared JVM
+      # suite must pass. Reports upload on failure for diagnosis.
+      - name: Run shared unit tests
+        working-directory: compose
+        run: ./gradlew :shared:testDebugUnitTest --continue --no-daemon --console=plain
+
+      - name: Upload unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-unit-test-reports
+          path: |
+            compose/shared/build/reports/tests/testDebugUnitTest/
+            compose/shared/build/test-results/testDebugUnitTest/
+          retention-days: 7
+
   ios:
     name: iOS shared compile
     runs-on: macos-latest

@@ -714,6 +714,9 @@ class SharedHomeSearchSavedStoreTest {
             latestActivityMessageId = MessageId(messageId),
             latestActivityPreview = "Preview",
             latestActivitySenderName = "User One",
+            // Channel-kind rows anchor on lastMessageId per the React row anchor
+            // contract (85cf746c); saved unsave resolves the message id from it.
+            lastMessageId = MessageId(messageId),
             participantIds = listOf(MemberId("user-1"))
         )
 

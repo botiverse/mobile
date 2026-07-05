@@ -453,7 +453,8 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(listOf("downgrade"), downgrade.data.notices.map { it.key })
         assertEquals("warning", downgrade.data.notices.single().tone)
         assertEquals(listOf("Agents over limit", "Computers over limit", "Channels over limit"), downgrade.data.notices.single().rows.map { it.label })
-        assertTrue(downgrade.data.currentPlan.excludedFeatures.contains("Joint Channels"))
+        // Feature label casing aligned with the web billing fixture (e33a9e30).
+        assertTrue(downgrade.data.currentPlan.excludedFeatures.contains("Joint channels"))
 
         assertTrue(founder is DataResult.Content)
         assertEquals("Founder", founder.data.currentPlan.planName)
