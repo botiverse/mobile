@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Slock Visual Testing",
-  "generatedAt": "2026-07-05T09:51:26.231Z",
-  "latestRunId": "7ca6a69-20260705095113",
+  "generatedAt": "2026-07-05T10:13:28.277Z",
+  "latestRunId": "80be632-20260705101315",
   "latest": {
-    "runId": "7ca6a69-20260705095113",
-    "commit": "7ca6a69-20260705095113",
-    "commitSubject": "fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)",
-    "generatedAt": "2026-07-05T09:51:26.231Z",
+    "runId": "80be632-20260705101315",
+    "commit": "80be632-20260705101315",
+    "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures",
+    "generatedAt": "2026-07-05T10:13:28.277Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -63,10 +63,10 @@
         }
       }
     },
-    "href": "runs/7ca6a69-20260705095113/",
-    "report": "runs/7ca6a69-20260705095113/report.html",
-    "componentMatrix": "runs/7ca6a69-20260705095113/component-matrix.json",
-    "llms": "runs/7ca6a69-20260705095113/metadata.json",
+    "href": "runs/80be632-20260705101315/",
+    "report": "runs/80be632-20260705101315/report.html",
+    "componentMatrix": "runs/80be632-20260705101315/component-matrix.json",
+    "llms": "runs/80be632-20260705101315/metadata.json",
     "raftUiReport": "latest/raft-ui/",
     "raftUi": {
       "href": "latest/raft-ui/"
@@ -113,6 +113,75 @@
     }
   },
   "runs": [
+    {
+      "runId": "80be632-20260705101315",
+      "commit": "80be632-20260705101315",
+      "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures",
+      "generatedAt": "2026-07-05T10:13:28.277Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 82,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 1,
+        "different": 80,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 82,
+        "ready": 0,
+        "pending": 82
+      },
+      "componentMatrixSummary": {
+        "total": 102,
+        "active": 83,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 77,
+            "active": 73,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 25,
+            "active": 10,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 85,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 98
+          },
+          "android": {
+            "active": 81,
+            "pending": 17,
+            "unsupported": 0,
+            "total": 98
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 78,
+            "unsupported": 0,
+            "total": 78
+          }
+        }
+      },
+      "href": "runs/80be632-20260705101315/",
+      "report": "runs/80be632-20260705101315/report.html",
+      "componentMatrix": "runs/80be632-20260705101315/component-matrix.json",
+      "llms": "runs/80be632-20260705101315/metadata.json",
+      "raftUiReport": "latest/raft-ui/",
+      "raftUi": {
+        "href": "latest/raft-ui/"
+      }
+    },
     {
       "runId": "7ca6a69-20260705095113",
       "commit": "7ca6a69-20260705095113",

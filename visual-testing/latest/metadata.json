@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-05T09:51:26.231Z",
-  "runId": "7ca6a69-20260705095113",
-  "commit": "7ca6a69-20260705095113",
-  "commitSubject": "fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)",
+  "generatedAt": "2026-07-05T10:13:28.277Z",
+  "runId": "80be632-20260705101315",
+  "commit": "80be632-20260705101315",
+  "commitSubject": "ci(visual): site_only fast republish — rebuild site from gh-pages captures",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",

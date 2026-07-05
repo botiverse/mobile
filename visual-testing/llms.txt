@@ -1,9 +1,9 @@
 # Slock Visual Testing
 
-Generated: 2026-07-05 09:51:26 UTC
-Latest run: 7ca6a69-20260705095113
-Latest commit: 7ca6a69-20260705095113
-Commit subject: fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)
+Generated: 2026-07-05 10:13:28 UTC
+Latest run: 80be632-20260705101315
+Latest commit: 80be632-20260705101315
+Commit subject: ci(visual): site_only fast republish — rebuild site from gh-pages captures
 Providers: react vs android
 Summary: total 82, same 0, pass 0, basic-pass 1, different 80, missing 1
 AI analysis: ready 0 / total 82, pending 82
@@ -105,6 +105,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 80be632-20260705101315: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/80be632-20260705101315/component-matrix.json, report runs/80be632-20260705101315/report.html
 - 7ca6a69-20260705095113: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/7ca6a69-20260705095113/component-matrix.json, report runs/7ca6a69-20260705095113/report.html
 - 11f2525-20260705065201: react vs android, total 82, pass 0, basic-pass 1, different 78, matrix runs/11f2525-20260705065201/component-matrix.json, report runs/11f2525-20260705065201/report.html
 - 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, report runs/0baa579-20260704220716/report.html
