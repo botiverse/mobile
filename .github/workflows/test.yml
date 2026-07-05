@@ -549,6 +549,23 @@ jobs:
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}
           fail-on-cache-miss: true
 
+      # The prebuild saves caches on ubuntu, and actions/cache extracts to the
+      # absolute paths recorded at save time (/home/runner/.m2). On this
+      # runner's different home layout that directory is not mavenLocal —
+      # relocate the artifacts to where Gradle will actually look.
+      - name: Relocate restored mavenLocal caches
+        shell: bash
+        run: |
+          src="/home/runner/.m2/repository"
+          dst="$HOME/.m2/repository"
+          if [ -d "$src" ] && [ "$src" != "$dst" ]; then
+            mkdir -p "$HOME/.m2"
+            cp -a "$src" "$HOME/.m2/"
+            echo "relocated $(find "$dst" -maxdepth 3 -mindepth 3 -type d | wc -l) artifact roots"
+          else
+            echo "no relocation needed"
+          fi
+
       - name: Compile shared OHOS target and unit tests
         working-directory: compose
         env:
@@ -580,6 +597,9 @@ jobs:
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
       SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+      # In the container the JVM's user.home (passwd) differs from $HOME —
+      # pin it so Gradle's mavenLocal matches the relocated cache.
+      GRADLE_OPTS: "-Duser.home=/github/home"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -627,6 +647,23 @@ jobs:
             ~/.m2/repository/io/ktor
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}
           fail-on-cache-miss: true
+
+      # The prebuild saves caches on ubuntu, and actions/cache extracts to the
+      # absolute paths recorded at save time (/home/runner/.m2). On this
+      # runner's different home layout that directory is not mavenLocal —
+      # relocate the artifacts to where Gradle will actually look.
+      - name: Relocate restored mavenLocal caches
+        shell: bash
+        run: |
+          src="/home/runner/.m2/repository"
+          dst="$HOME/.m2/repository"
+          if [ -d "$src" ] && [ "$src" != "$dst" ]; then
+            mkdir -p "$HOME/.m2"
+            cp -a "$src" "$HOME/.m2/"
+            echo "relocated $(find "$dst" -maxdepth 3 -mindepth 3 -type d | wc -l) artifact roots"
+          else
+            echo "no relocation needed"
+          fi
 
       # entry/src/main/cpp links pbcurlwrapper; the runtime .so set is not
       # committed — it is copied out of the NetworkKMM ohos-runtime artifact.
