@@ -260,7 +260,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          profile: pixel_6
+          profile: pixel_6_pro
           ram-size: 4096M
           cores: 2
           emulator-boot-timeout: 1200
@@ -277,6 +277,11 @@ jobs:
             # we size+clear here and dump after instrumentation below.
             adb logcat -G 16M
             adb logcat -c
+            # True 3x captures (task #342): pixel_6_pro panel is 1440x3120; at
+            # 480dpi that is exactly 390x845dp — the manifest viewport at
+            # density 3. Both providers then emit identical 1170px-wide
+            # captures (pixel-perfect diff pads, never rescales).
+            adb shell wm density 480
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
             mkdir -p visual-testing-results/android

@@ -1399,7 +1399,11 @@ class KmpVisualScreenshotCaptureTest {
             val screenshot = captureActivityScreenshot(scenario, caseId)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
-            val normalized = cropped.normalizeToDpPixels(context)
+            // Task #342: keep native device pixels (emulator pinned to 480dpi
+            // = exactly 3x, matching React's deviceScaleFactor 3) instead of
+            // downsampling to 1x dp pixels — the downsample blurred every
+            // android capture and hid sub-dp diffs.
+            val normalized = cropped
             val stats = normalized.visualStats()
             val problems = visualValidationProblems(normalized, stats)
             if (problems.isEmpty()) {
@@ -1563,14 +1567,6 @@ class KmpVisualScreenshotCaptureTest {
         val cropWidth = desiredWidth.coerceAtMost(width - left)
         val cropHeight = desiredHeight.coerceAtMost(height - top)
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
-    }
-
-    private fun Bitmap.normalizeToDpPixels(context: Context): Bitmap {
-        val density = context.resources.displayMetrics.density
-        val targetWidth = (width / density).roundToInt().coerceAtLeast(1)
-        val targetHeight = (height / density).roundToInt().coerceAtLeast(1)
-        if (targetWidth == width && targetHeight == height) return this
-        return Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
     }
 
     private fun validateCropBounds(caseId: String, screenshot: Bitmap, crop: VisualCrop) {
