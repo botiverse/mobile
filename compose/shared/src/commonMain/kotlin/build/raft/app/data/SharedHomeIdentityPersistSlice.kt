@@ -133,7 +133,7 @@ private fun SharedHomeContentState.homeSessionOrNull(): StoredAuthSession? =
         is SharedHomeContentState.Content -> session
         is SharedHomeContentState.Empty -> session
         is SharedHomeContentState.Loading -> session
-        is SharedHomeContentState.Error -> null
+        is SharedHomeContentState.Error -> session
     }
 
 private fun SharedHomeContentState.homeServerIdOrNull(): ServerId? =
@@ -141,5 +141,5 @@ private fun SharedHomeContentState.homeServerIdOrNull(): ServerId? =
         is SharedHomeContentState.Content -> snapshot.server.id
         is SharedHomeContentState.Empty -> session.currentServerId?.let(::ServerId)
         is SharedHomeContentState.Loading -> session?.currentServerId?.let(::ServerId)
-        is SharedHomeContentState.Error -> null
+        is SharedHomeContentState.Error -> session?.currentServerId?.let(::ServerId)
     }

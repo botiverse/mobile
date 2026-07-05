@@ -156,6 +156,29 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun homeErrorWithSessionKeepsServerIdentityForRecoveryShell() {
+        val fixture = fixture(homeState = errorHomeStateForServer("server-1"))
+
+        fixture.homeState.value = homeStateForServer("server-2")
+
+        assertEquals(
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ClearSummary,
+                SharedActivityIntent.Refresh
+            ),
+            fixture.activityIntents
+        )
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(
+                SharedHomeSearchSavedIntent.ClearSavedSummary,
+                SharedHomeSearchSavedIntent.RefreshSaved
+            ),
+            fixture.searchSavedIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun homeServerChangeRefreshesActivitySummaryBeforeSavedSummarySettles() {
         val fixture = fixture(homeState = homeStateForServer("server-1"))
 
@@ -338,6 +361,11 @@ class SharedHomeShellStoreTest {
     private fun loadingHomeStateForServer(serverId: String): SharedHomeState =
         SharedHomeState(
             content = SharedHomeContentState.Loading(sessionForServer(serverId))
+        )
+
+    private fun errorHomeStateForServer(serverId: String): SharedHomeState =
+        SharedHomeState(
+            content = SharedHomeContentState.Error("home_network", sessionForServer(serverId))
         )
 
     private fun homeStateForServer(

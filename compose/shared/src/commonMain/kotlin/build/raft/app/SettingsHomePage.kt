@@ -1561,7 +1561,7 @@ private fun sharedHomeContentRenderSummary(content: SharedHomeContentState): Str
         is SharedHomeContentState.Empty ->
             "Empty(session=${content.session.currentServerId ?: "_"})"
         is SharedHomeContentState.Error ->
-            "Error(${content.code})"
+            "Error(${content.code},session=${content.session?.currentServerId ?: "_"})"
         is SharedHomeContentState.Content -> {
             val snapshot = content.snapshot
             "Content(server=${snapshot.server.id.value},channels=${snapshot.channels.size}," +
@@ -1575,9 +1575,40 @@ private fun sharedHomeRenderBranch(content: SharedHomeContentState): String =
         is SharedHomeContentState.Loading ->
             if (content.session != null) "loading_session_shell" else "loading_centered"
         is SharedHomeContentState.Empty -> "empty_session_shell"
-        is SharedHomeContentState.Error -> "error_${content.code}"
+        is SharedHomeContentState.Error ->
+            if (content.session != null) "error_session_shell_${content.code}" else "error_${content.code}"
         is SharedHomeContentState.Content -> "content"
     }
+
+private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
+    SlockHomeInlineError(
+        title =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() -> "Session expired"
+                code.contains("permission", ignoreCase = true) -> "Home is unavailable"
+                code.contains("timeout", ignoreCase = true) -> "Connection timed out"
+                code.contains("offline", ignoreCase = true) -> "You are offline"
+                code.contains("network", ignoreCase = true) -> "Could not refresh Home"
+                else -> "Could not load Home"
+            },
+        detail =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() ->
+                    "Sign out and sign in again, or switch to another available server."
+                code.contains("permission", ignoreCase = true) ->
+                    "You can still switch servers or open account actions while this server recovers."
+                code.contains("timeout", ignoreCase = true) ->
+                    "The server did not respond in time. Retry, or switch servers if another workspace is available."
+                code.contains("offline", ignoreCase = true) ->
+                    "Check your connection, then retry. Server switch and account actions remain available."
+                code.contains("network", ignoreCase = true) ->
+                    "The current server could not be reached. Retry, or switch servers if another workspace is available."
+                else ->
+                    "Retry Home refresh, or use server switch and account actions to recover."
+            },
+        code = code,
+        actionLabel = "Retry"
+    )
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
@@ -10422,13 +10453,34 @@ private fun SharedHomeScreen(
                 onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
-            PageErrorContent(
-                title = "Home",
-                subtitle = "Workspace",
-                iconName = SlockLucideIconName.House,
-                message = "Could not load home",
-                code = current.code
-            )
+            if (current.session != null) {
+                SharedHomeSessionShell(
+                    session = current.session,
+                    serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverUnreadCounts = state.serverUnreadCounts,
+                    prefersChineseCommunity = prefersChineseCommunity,
+                    bottomContentPadding = bottomContentPadding,
+                    inlineError = sharedHomeErrorDisplay(current.code),
+                    onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
+                    onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                    onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerSelected = { serverId ->
+                        onSelectedConversationCleared()
+                        onIntent(SharedHomeIntent.SelectServer(serverId))
+                    },
+                    onCreateServerClick = onOpenServerSelection,
+                    onCreateChannelClick = onCreateChannel
+                )
+            } else {
+                val error = sharedHomeErrorDisplay(current.code)
+                PageErrorContent(
+                    title = "Home",
+                    subtitle = "Workspace",
+                    iconName = SlockLucideIconName.House,
+                    message = error.title,
+                    code = current.code
+                )
+            }
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             val agentStatusResolver =
@@ -13346,6 +13398,8 @@ private fun SharedHomeSessionShell(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    inlineError: SlockHomeInlineError? = null,
+    onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
@@ -13359,11 +13413,13 @@ private fun SharedHomeSessionShell(
         servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
         channels = emptyList(),
         directMessages = emptyList(),
+        inlineError = inlineError,
         serverSwitcherExpanded = serverSwitcherExpanded,
         prefersChineseCommunity = prefersChineseCommunity,
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
+        onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
