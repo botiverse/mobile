@@ -67,7 +67,7 @@ contract, defined in `SlockTabBar.kt` (`SlockNativeFloatingTabBar` /
 
 Native implementations:
 
-- OHOS: `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockOhosHdsTabBarView.ets`
+- OHOS: `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockNativeFloatingTabBarView.ets`
   registered in `KuiklyViewDelegate.ets` under the shared view name. Uses
   `@kit.UIDesignKit` `HdsTabs` + `barFloatingStyle({ systemMaterialEffect })`
   for the native adaptive-material floating dock.
@@ -125,6 +125,11 @@ Different platforms need different tap containment:
   hand-drawn `Row` dock (flat `#CCFFFFFF` fill, no system material) — this is
   why OHOS stopped looking like a native HDS tab bar. It was restored under
   task #216.
+- Also under task #216 the OHOS ArkTS file/class/struct were renamed from
+  `SlockOhosHdsTabBar*` to `SlockNativeFloatingTabBar*` so all three platforms
+  share both the registered view name **and** the class name. The registered
+  view name (`SlockNativeFloatingTabBarView`) was already consistent before the
+  rename; only the OHOS symbol names were out of step.
 - Do not "fix" OHOS tap-through by bumping `zIndex`; see the hit-testing
   section. The blocker is the correct mechanism.
 - Any change to the OHOS pill geometry (`kDockHeight` / `kDockBottomMargin` /

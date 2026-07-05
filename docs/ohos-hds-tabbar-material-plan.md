@@ -28,8 +28,10 @@ material is active.
   `compose/ohosApp/entry/src/main/ets/pages/Index.ets` enables that renderer
   when API level is at least 20 and
   `SystemCapability.UIDesign.HDSComponent.Core` is available.
-- OHOS native view before the latest correction:
-  `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockOhosHdsTabBarView.ets`
+- OHOS native view (as of task #216 renamed to
+  `SlockNativeFloatingTabBarView.ets` to match the shared/iOS/Android naming;
+  registered view name was already `SlockNativeFloatingTabBarView`):
+  `compose/ohosApp/entry/src/main/ets/kuikly/components/SlockNativeFloatingTabBarView.ets`
   uses `@kit.UIDesignKit` `HdsTabs` with `barOverlap(true)`,
   `barBackgroundColor(...)`, `barBackgroundBlurStyle(BlurStyle.Thin)`, and
   custom tab items.

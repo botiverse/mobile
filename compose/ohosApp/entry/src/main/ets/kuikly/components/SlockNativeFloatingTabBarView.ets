@@ -52,7 +52,7 @@ interface SlockHdsTabItem {
 }
 
 @Observed
-export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
+export class SlockNativeFloatingTabBarView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockNativeFloatingTabBarView';
   controller: HdsTabsController = new HdsTabsController();
   keysText: string = '';
@@ -67,7 +67,7 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     const uiContext = this.getUIContext() as UIContext;
     return new ComponentContent<KuiklyRenderBaseView>(
       uiContext,
-      wrapBuilder<[KuiklyRenderBaseView]>(createSlockOhosHdsTabBarView),
+      wrapBuilder<[KuiklyRenderBaseView]>(createSlockNativeFloatingTabBarView),
       this
     );
   }
@@ -161,8 +161,8 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
 }
 
 @Component
-export struct SlockOhosHdsTabBar {
-  @ObjectLink renderView: SlockOhosHdsTabBarView;
+export struct SlockNativeFloatingTabBar {
+  @ObjectLink renderView: SlockNativeFloatingTabBarView;
 
   private itemColor(item: SlockHdsTabItem, index: number): ResourceColor {
     if (!item.enabled) {
@@ -296,6 +296,6 @@ function normalizeIconName(value: string): string {
 }
 
 @Builder
-function createSlockOhosHdsTabBarView(view: KuiklyRenderBaseView) {
-  SlockOhosHdsTabBar({ renderView: view as SlockOhosHdsTabBarView });
+function createSlockNativeFloatingTabBarView(view: KuiklyRenderBaseView) {
+  SlockNativeFloatingTabBar({ renderView: view as SlockNativeFloatingTabBarView });
 }
