@@ -10,7 +10,8 @@
 static NSUInteger const SlockQuiverMaxStoredCrashes = 5;
 
 // Signal handlers cannot allocate; the crash directory path is captured as a
-// C string at install time and file names are built with snprintf.
+// C string at install time and file names are assembled with the safe
+// append helpers below.
 static char gSlockQuiverCrashDir[512] = {0};
 static NSUncaughtExceptionHandler *gSlockQuiverPreviousExceptionHandler = NULL;
 
