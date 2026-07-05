@@ -220,7 +220,7 @@ export class SlockOhosRealtimeHostContext {
       forceReconnect,
       this.connectionStateName()
     );
-    if (decision.logMessage !== null && decision.logMessage.length > 0) {
+    if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
     if (decision.sessionChanged) {
@@ -301,7 +301,7 @@ export class SlockOhosRealtimeHostContext {
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
-    if (!decision.shouldFanOut || decision.serverId === null) {
+    if (!decision.shouldFanOut) {
       return;
     }
     this.sendRealtimeNotify({
@@ -324,14 +324,14 @@ export class SlockOhosRealtimeHostContext {
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
-    if (decision.channelId !== null && decision.channelId.length > 0) {
+    if (decision.channelId.length > 0) {
       if (decision.joinedChannelAction === 'join') {
         this.joinedChannels.add(decision.channelId);
       } else if (decision.joinedChannelAction === 'leave') {
         this.joinedChannels.delete(decision.channelId);
       }
     }
-    if (!decision.shouldEmit || decision.eventName === null || decision.payload === null) {
+    if (!decision.shouldEmit) {
       return;
     }
     this.emitRoomCommand(decision.eventName, decision.payload);

@@ -4,21 +4,29 @@ export interface SlockRealtimeConnectDecision {
   shouldConnect: boolean;
   resumeSeq: number;
   sessionChanged: boolean;
-  logMessage: string | null;
+  // Always a string ("" = nothing to log). The Kotlin side never sends null:
+  // KNOI marshals a Kotlin null map value to `undefined`, which a `!== null`
+  // guard misses, so `.length` on it would throw.
+  logMessage: string;
 }
 
 export interface SlockRealtimeRoomCommandDecision {
   shouldEmit: boolean;
-  eventName: string | null;
-  payload: string | null;
-  channelId: string | null;
+  // Non-null strings ("" = absent). null must not cross the KNOI bridge (it
+  // arrives as `undefined`); validity is gated by the authoritative `shouldEmit`
+  // boolean, so these are guaranteed real strings whenever shouldEmit is true.
+  eventName: string;
+  payload: string;
+  // "" = no channel; presence-gated by length below.
+  channelId: string;
   joinedChannelAction: string;
   logMessage: string;
 }
 
 export interface SlockRealtimeRawDecision {
   shouldFanOut: boolean;
-  serverId: string | null;
+  // "" = absent; validity gated by the authoritative `shouldFanOut` boolean.
+  serverId: string;
   eventName: string;
   rawPayload: string;
   logMessage: string;

@@ -10,4 +10,11 @@ plugins {
     kotlin("plugin.compose").version("2.0.21-KBA-010").apply(false)
     id("com.tencent.kuiklybase.resource.generator").version("0.1.0-raft.1").apply(false)
     id("com.tencent.kuiklybase.knoi.plugin").version("0.0.4").apply(false)
+    // Syncs libpbcurlwrapper/libopenssl/libc++_shared runtime .so files for the
+    // NetworkKMM OHOS transport (task #6): ./gradlew copyNetworkOhosRuntimeLibs
+    id("com.tencent.kuiklybase.network.ohos-runtime").version("0.1.0-raft.2")
+}
+
+networkOhosRuntime {
+    outputDir.set(layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a"))
 }

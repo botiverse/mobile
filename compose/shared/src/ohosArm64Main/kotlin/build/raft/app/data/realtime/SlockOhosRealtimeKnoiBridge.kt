@@ -107,9 +107,13 @@ private fun SlockRealtimeAppScopeConnectDecision.toKnoiMap(): Map<String, Any?> 
 private fun SlockRealtimeAppScopeRoomCommandDecision.toKnoiMap(): Map<String, Any?> =
     mapOf(
         "shouldEmit" to shouldEmit,
-        "eventName" to eventName,
-        "payload" to payload,
-        "channelId" to channelId?.value,
+        // KNOI turns a Kotlin null map value into JS `undefined`, which the ArkTS
+        // `=== null`/`!== null` guards can't catch. Never send null across the
+        // bridge: model "absent" as "" in-band. Validity of eventName/payload is
+        // gated by shouldEmit; channelId is a presence+length gate for join/leave.
+        "eventName" to eventName.orEmpty(),
+        "payload" to payload.orEmpty(),
+        "channelId" to channelId?.value.orEmpty(),
         "joinedChannelAction" to joinedChannelAction,
         "logMessage" to logMessage
     )
@@ -117,7 +121,7 @@ private fun SlockRealtimeAppScopeRoomCommandDecision.toKnoiMap(): Map<String, An
 private fun SlockRealtimeAppScopeRawDecision.toKnoiMap(): Map<String, Any?> =
     mapOf(
         "shouldFanOut" to shouldFanOut,
-        "serverId" to serverId?.value,
+        "serverId" to serverId?.value.orEmpty(),
         "eventName" to eventName,
         "rawPayload" to rawPayload,
         "logMessage" to logMessage

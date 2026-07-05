@@ -162,6 +162,9 @@ kotlin {
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
+                // Unified network infra (task #6): OHOS HTTP goes through
+                // NetworkKMM (libcurl/openssl) because Ktor CIO has no native TLS.
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.2")
                 if (enableKtorOhosFork.get()) {
                     implementation("io.ktor:ktor-client-cio:${ktorOhosVersion.get()}")
                 }

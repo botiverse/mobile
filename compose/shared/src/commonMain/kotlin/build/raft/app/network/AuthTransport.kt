@@ -18,3 +18,4 @@ interface AuthTokenProvider {
 }
 
 const val HEADER_SERVER_ID: String = "X-Server-Id"
+const val HEADER_AUTHORIZATION: String = "Authorization"
