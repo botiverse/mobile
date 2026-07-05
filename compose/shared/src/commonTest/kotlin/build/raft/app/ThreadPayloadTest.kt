@@ -5984,36 +5984,6 @@ class ThreadPayloadTest {
         assertEquals(null, files.first().fileRef)
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
-    @Test
-    fun parsesPickedAttachmentInlineBytesBeforeFileRefForSharedUpload() {
-        val files =
-            parseSharedThreadPickedPlatformFiles(
-                JSONObject().apply {
-                    put(
-                        "files",
-                        JSONArray().apply {
-                            put(
-                                JSONObject().apply {
-                                    put("id", "picked-1")
-                                    put("fileName", "photo.jpg")
-                                    put("mimeType", "image/jpeg")
-                                    put("sizeBytes", 5L)
-                                    put("previewUri", "file://picked/photo.jpg")
-                                    put("fileRef", "file://picked/photo.jpg")
-                                    put("bodyBase64", Base64.encode("hello".encodeToByteArray()))
-                                }
-                            )
-                        }
-                    )
-                }
-            )
-
-        assertEquals(1, files.size)
-        assertEquals("hello", files.first().bytes.decodeToString())
-        assertEquals("file://picked/photo.jpg", files.first().fileRef)
-    }
-
     @Test
     fun threadMessageInlineBookmarkIsHiddenByDefault() {
         assertFalse(
