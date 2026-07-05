@@ -105,6 +105,13 @@ harmony-use hilog --bundle build.raft.harmony --duration 20 --out /tmp/harmony-u
 harmony-use analyze-log "/path/to/HiLog.txt" --pretty
 ```
 
+`analyze-log` groups the OHOS auth/network failures we repeatedly need during
+Raft validation:
+
+- old Ktor/CIO native TLS stub regressions (`TLS_sessions_are_not_supported_on_Native_platform`)
+- NetworkKMM execution/init/internal errors (`slock_networkkmm*`)
+- TLS certificate verification failures (`CURLE_SSL*`, peer/certificate verify text)
+
 ## Library Sketch
 
 ```python

@@ -28,6 +28,20 @@ class HarmonyUseTest(unittest.TestCase):
         self.assertEqual(1, analysis["network_failure_count"])
         self.assertEqual(1, analysis["slock_auth_count"])
 
+    def test_hilog_analysis_detects_networkkmm_and_tls_verify_failures(self) -> None:
+        text = "\n".join(
+            [
+                "07-05 E slock_networkkmm_failed method=POST path=auth/login reason=NetworkKMMError",
+                "07-05 E slock_networkkmm_init_failed detail=VBTransportInitHelper missing",
+                "07-05 E slock_networkkmm tag=pbcurl error=CURLE_SSL_CACERT SSL certificate problem: peer verify failed",
+            ]
+        )
+        analysis = analyze_hilog_text(text)
+        self.assertTrue(analysis["networkkmm_failure"])
+        self.assertTrue(analysis["tls_verify_failure"])
+        self.assertEqual(3, analysis["network_failure_count"])
+        self.assertEqual(1, analysis["tls_verify_failure_count"])
+
     def test_shell_join_quotes_remote_command_parts(self) -> None:
         self.assertEqual("hdc tconn 192.168.50.129:5555", shell_join(["hdc", "tconn", "192.168.50.129:5555"]))
         self.assertEqual("'hello world'", shell_join(["hello world"]))
