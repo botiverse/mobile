@@ -76,12 +76,14 @@ class SharedMessageTranslationStoreTest {
         api: FakeMessageTranslationApi,
         scope: CoroutineScope,
         authStore: SlockAuthSessionStore = FakeAuthSessionStore(),
+        translationMode: () -> TranslationModePreference = { TranslationModePreference.Automatic },
         fallbackLanguage: () -> String? = { null }
     ): SharedMessageTranslationStore =
         SharedMessageTranslationStore(
             authStore = authStore,
             api = api,
             scope = scope,
+            translationMode = translationMode,
             fallbackLanguage = fallbackLanguage
         )
 
@@ -97,7 +99,7 @@ class SharedMessageTranslationStoreTest {
         assertTrue(settings.loaded)
         assertEquals(TestServerId, settings.serverId)
         assertTrue(settings.available)
-        assertEquals("translated", settings.preferredTranslationDisplay)
+        assertEquals(TranslationModePreference.Automatic, settings.translationMode)
         assertEquals("en", settings.effectiveLanguage)
         scope.cancel()
     }
@@ -197,12 +199,10 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun autoModeRespectsDisplayAndAutoTranslationPreferences() = runBlocking {
+    fun manualModeDoesNotAutoTranslate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi(
-            accountBody = """{"id":"user-1","email":"user@example.com","name":"User One","preferredLanguage":"en","autoTranslationEnabled":true,"preferredTranslationDisplay":"original"}"""
-        )
-        val store = store(api, scope)
+        val api = FakeMessageTranslationApi()
+        val store = store(api, scope, translationMode = { TranslationModePreference.Manual })
         store.ensureSettingsLoaded()
 
         store.requestAutoTranslations(listOf(candidate()))
@@ -212,13 +212,26 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun manualTranslationBypassesDisplayPreferenceAndUsesManualMode() = runBlocking {
+    fun originalModeBlocksEvenExplicitTranslateNow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeMessageTranslationApi()
+        val store = store(api, scope, translationMode = { TranslationModePreference.Original })
+        store.ensureSettingsLoaded()
+
+        store.requestAutoTranslations(listOf(candidate()))
+        store.translateNow(candidate())
+
+        assertTrue(api.batchCalls.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun manualModeTranslateNowUsesManualBatchMode() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi(
-            accountBody = """{"id":"user-1","email":"user@example.com","name":"User One","preferredLanguage":"en","autoTranslationEnabled":false,"preferredTranslationDisplay":"original"}""",
             batchResponses = mutableListOf(HomeNetworkResponse(200, translatedResultBody("m1", "Hello")))
         )
-        val store = store(api, scope)
+        val store = store(api, scope, translationMode = { TranslationModePreference.Manual })
         store.ensureSettingsLoaded()
 
         store.translateNow(candidate())

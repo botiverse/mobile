@@ -24,8 +24,10 @@ data class SharedMessageTranslationSettings(
     val serverId: String? = null,
     val serverTranslationEnabled: Boolean = false,
     val providerAvailable: Boolean = false,
-    val autoTranslationEnabled: Boolean = true,
-    val preferredTranslationDisplay: String = "translated",
+    // Client-local translation mode (settings.translationMode, MMKV-backed):
+    // the single decision signal for the conversation flow. Server
+    // availability below stays the hard capability gate.
+    val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val effectiveLanguage: String? = null,
 ) {
     val available: Boolean
@@ -73,6 +75,7 @@ class SharedMessageTranslationStore internal constructor(
     private val authStore: SlockAuthSessionStore,
     private val api: SlockMessageTranslationApi,
     private val scope: CoroutineScope,
+    private val translationMode: () -> TranslationModePreference = { TranslationModePreference.Default },
     private val fallbackLanguage: () -> String? = { null },
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
@@ -117,8 +120,7 @@ class SharedMessageTranslationStore internal constructor(
                     serverId = serverId,
                     serverTranslationEnabled = serverTranslation?.translationEnabled ?: false,
                     providerAvailable = serverTranslation?.translationAvailable ?: false,
-                    autoTranslationEnabled = account?.autoTranslationEnabled ?: true,
-                    preferredTranslationDisplay = account?.preferredTranslationDisplay ?: "translated",
+                    translationMode = translationMode(),
                     effectiveLanguage = account?.preferredLanguage ?: normalizedFallbackLanguage(),
                 )
             updateState { state ->
@@ -126,7 +128,7 @@ class SharedMessageTranslationStore internal constructor(
             }
             diagnosticsLogger(
                 "message_translation_settings_loaded server=$serverId available=${nextSettings.available} " +
-                    "display=${nextSettings.preferredTranslationDisplay} language=${nextSettings.effectiveLanguage.orEmpty()}"
+                    "mode=${nextSettings.translationMode.storageKey} language=${nextSettings.effectiveLanguage.orEmpty()}"
             )
         }
     }
@@ -134,8 +136,7 @@ class SharedMessageTranslationStore internal constructor(
     fun requestAutoTranslations(candidates: List<SharedMessageTranslationCandidate>) {
         val settings = _state.value.settings
         if (!settings.available) return
-        if (!settings.autoTranslationEnabled) return
-        if (settings.preferredTranslationDisplay != "translated") return
+        if (settings.translationMode != TranslationModePreference.Automatic) return
         requestTranslations(candidates, force = false)
     }
 
@@ -153,6 +154,7 @@ class SharedMessageTranslationStore internal constructor(
      * batch. Either way the message flips to showing the translation.
      */
     fun translateNow(candidate: SharedMessageTranslationCandidate) {
+        if (_state.value.settings.translationMode == TranslationModePreference.Original) return
         val entry = _state.value.entries[candidate.messageId]
         val hasFreshTranslation =
             entry?.status == SharedMessageTranslationStatus.Translated &&

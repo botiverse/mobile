@@ -4,20 +4,22 @@ import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
+import build.raft.app.data.TranslationModePreference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private fun availableSettings(display: String = "translated"): SharedMessageTranslationSettings =
+private fun availableSettings(
+    mode: TranslationModePreference = TranslationModePreference.Automatic
+): SharedMessageTranslationSettings =
     SharedMessageTranslationSettings(
         loaded = true,
         serverId = "server-1",
         serverTranslationEnabled = true,
         providerAvailable = true,
-        autoTranslationEnabled = true,
-        preferredTranslationDisplay = display,
+        translationMode = mode,
         effectiveLanguage = "en"
     )
 
@@ -82,16 +84,25 @@ class ThreadMessageTranslationUiTest {
     }
 
     @Test
-    fun originalDisplayPreferenceDefaultsToOriginal() {
+    fun originalModeMakesMessagesIneligible() {
+        assertNull(
+            resolveThreadMessageTranslationUi(
+                message(),
+                state(translatedEntry(), settings = availableSettings(mode = TranslationModePreference.Original))
+            )
+        )
+    }
+
+    @Test
+    fun manualModeStillRendersEntries() {
         val ui =
             resolveThreadMessageTranslationUi(
                 message(),
-                state(translatedEntry(), settings = availableSettings(display = "original"))
+                state(translatedEntry(), settings = availableSettings(mode = TranslationModePreference.Manual))
             )
 
         checkNotNull(ui)
-        assertNull(ui.displayBody)
-        assertTrue(ui.showOriginal)
+        assertEquals("Hello", ui.displayBody)
     }
 
     @Test

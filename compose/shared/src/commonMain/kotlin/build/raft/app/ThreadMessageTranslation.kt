@@ -5,6 +5,7 @@ import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
+import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.clickable
@@ -62,6 +63,7 @@ internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTran
 
 internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
     settings.available &&
+        settings.translationMode != TranslationModePreference.Original &&
         settings.effectiveLanguage != null &&
         !isSystemMessage() &&
         !isOwn &&
@@ -80,8 +82,11 @@ internal fun resolveThreadMessageTranslationUi(
         return null
     }
     if (entry.isSilentTranslationEntry()) return null
-    val showOriginal =
-        entry.showOriginal ?: (translationState.settings.preferredTranslationDisplay == "original")
+    // With the local translation mode as the single signal there is no
+    // account-level "prefer original" display anymore: entries only exist in
+    // Automatic/Manual modes, where the translation is shown unless the user
+    // toggled this message back to the original.
+    val showOriginal = entry.showOriginal ?: false
     val translatedBody =
         entry.translatedContent?.takeIf {
             entry.status == SharedMessageTranslationStatus.Translated && !showOriginal
