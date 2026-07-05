@@ -355,6 +355,14 @@ jobs:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
 
+      # Pixel avatar drift gate (task #352): mobile's generated
+      # SlockPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
+      - name: Check pixel avatar drift
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: node scripts/generate_pixel_avatars.mjs --check
+
       - name: Download react results
         if: ${{ !inputs.site_only }}
         uses: actions/download-artifact@v4
