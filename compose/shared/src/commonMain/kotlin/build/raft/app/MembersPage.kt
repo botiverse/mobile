@@ -1182,6 +1182,7 @@ internal fun MembersPageContent() {
     MembersRouteContent(
         payload = membersPayload,
         refreshing = membersRefreshing,
+        onBack = { bridge.closePage() },
         onRefresh = refreshMembers,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
@@ -1770,12 +1771,7 @@ private fun MemberDetailPageContent() {
 
     when (val current = routeState) {
         MemberDetailRouteState.Loading ->
-            Box(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockCenteredLoading()
-            }
+            MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
         is MemberDetailRouteState.Error ->
             MemberDetailErrorPageShell(
                 title = "Could not load member",
@@ -2069,10 +2065,39 @@ private fun MemberDetailVisualSeedContent(
 }
 
 @Composable
+private fun MemberDetailLoadingPageShell(
+    onBack: () -> Unit
+) {
+    MemberDetailRoutePageShell(onBack = onBack) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockCenteredLoading()
+        }
+    }
+}
+
+@Composable
 private fun MemberDetailErrorPageShell(
     title: String,
     detail: String,
     onBack: () -> Unit
+) {
+    MemberDetailRoutePageShell(onBack = onBack) {
+        SlockEmptyState(
+            title = title,
+            detail = detail,
+            iconName = SlockLucideIconName.TriangleAlert,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+private fun MemberDetailRoutePageShell(
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
@@ -2089,12 +2114,9 @@ private fun MemberDetailErrorPageShell(
                 )
             }
         )
-        SlockEmptyState(
-            title = title,
-            detail = detail,
-            iconName = SlockLucideIconName.TriangleAlert,
-            modifier = Modifier.fillMaxSize()
-        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            content()
+        }
     }
 }
 
@@ -2410,6 +2432,7 @@ private fun JSONObject.optStringArray(key: String): List<String> =
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
     refreshing: Boolean = false,
+    onBack: (() -> Unit)? = null,
     onAddHuman: () -> Unit,
     onOpenMemberDetail: (MemberProfile) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -2454,6 +2477,7 @@ internal fun MembersRouteContent(
     MembersListContent(
         payload = payload,
         refreshing = refreshing,
+        onBack = onBack,
         onRefresh = onRefresh,
         onAddHuman = onAddHuman,
         onOpenMember = onOpenMemberDetail,
@@ -2485,6 +2509,7 @@ internal fun MembersRouteContent(
 internal fun MembersListContent(
     payload: KuiklyMembersPayload,
     refreshing: Boolean = false,
+    onBack: (() -> Unit)? = null,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -2570,7 +2595,7 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = payload.title, refreshing = refreshing)
+        MembersPageHeader(title = payload.title, refreshing = refreshing, onBack = onBack)
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -8107,13 +8132,26 @@ private fun MembersDetailField(label: String, value: String) {
 @Composable
 private fun MembersPageHeader(
     title: String,
-    refreshing: Boolean = false
+    refreshing: Boolean = false,
+    onBack: (() -> Unit)? = null
 ) {
     SlockTopPageHeader(
         title = title,
         subtitle = null,
         iconName = SlockLucideIconName.Users,
-        refreshing = refreshing
+        refreshing = refreshing,
+        leadingContent = if (onBack != null) {
+            {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = onBack,
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        } else {
+            null
+        }
     )
 }
 
