@@ -6,7 +6,10 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 private val authJson = Json {
@@ -27,7 +30,11 @@ class SharedAuthDataSource(
         transport: SlockAuthTransport,
         sessionStore: SlockAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {}
-    ) : this(api = SlockAuthApiClient(transport), sessionStore = sessionStore, diagnosticsLogger = diagnosticsLogger)
+    ) : this(
+        api = SlockAuthApiClient(transport, diagnosticsLogger),
+        sessionStore = sessionStore,
+        diagnosticsLogger = diagnosticsLogger
+    )
 
     fun logDiagnostics(message: String) {
         diagnosticsLogger(message)
@@ -448,12 +455,15 @@ class SharedAuthDataSource(
                             is SharedAuthResult.Failure ->
                                 if (refreshedCurrent.isRecoverableRestoreFailure()) {
                                     diagnosticsLogger(
-                                        "auth_restore_result result=success source=cached_after_refresh_current_user_failure recoverableCode=${refreshedCurrent.code}"
+                                        "auth_restore_result result=success source=cached_after_refresh_current_user_failure " +
+                                            "recoverableCode=${refreshedCurrent.code} " +
+                                            "recoverableMessage=${refreshedCurrent.message.authDiagnosticsToken()}"
                                     )
                                     SharedAuthResult.Success(updated)
                                 } else {
                                     diagnosticsLogger(
-                                        "auth_restore_result result=failure source=refresh_current_user code=${refreshedCurrent.code}"
+                                        "auth_restore_result result=failure source=refresh_current_user " +
+                                            "code=${refreshedCurrent.code} message=${refreshedCurrent.message.authDiagnosticsToken()}"
                                     )
                                     refreshedCurrent
                                 }
@@ -462,11 +472,15 @@ class SharedAuthDataSource(
                     is SharedAuthResult.Failure ->
                         if (refreshed.isRecoverableRestoreFailure()) {
                             diagnosticsLogger(
-                                "auth_restore_result result=success source=cached_after_refresh_failure recoverableCode=${refreshed.code}"
+                                "auth_restore_result result=success source=cached_after_refresh_failure " +
+                                    "recoverableCode=${refreshed.code} recoverableMessage=${refreshed.message.authDiagnosticsToken()}"
                             )
                             SharedAuthResult.Success(session)
                         } else {
-                            diagnosticsLogger("auth_restore_result result=failure source=refresh code=${refreshed.code}")
+                            diagnosticsLogger(
+                                "auth_restore_result result=failure source=refresh " +
+                                    "code=${refreshed.code} message=${refreshed.message.authDiagnosticsToken()}"
+                            )
                             refreshed
                         }
                     SharedAuthResult.Unauthenticated -> {
@@ -478,11 +492,15 @@ class SharedAuthDataSource(
             is SharedAuthResult.Failure ->
                 if (current.isRecoverableRestoreFailure()) {
                     diagnosticsLogger(
-                        "auth_restore_result result=success source=cached_after_current_user_failure recoverableCode=${current.code}"
+                        "auth_restore_result result=success source=cached_after_current_user_failure " +
+                            "recoverableCode=${current.code} recoverableMessage=${current.message.authDiagnosticsToken()}"
                     )
                     SharedAuthResult.Success(session)
                 } else {
-                    diagnosticsLogger("auth_restore_result result=failure source=current_user code=${current.code}")
+                    diagnosticsLogger(
+                        "auth_restore_result result=failure source=current_user " +
+                            "code=${current.code} message=${current.message.authDiagnosticsToken()}"
+                    )
                     current
                 }
         }
@@ -701,6 +719,7 @@ class SharedAuthDataSource(
 }
 
 private val MobileOAuthProviders = setOf("google", "github")
+private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
 
 private suspend fun StoredAuthSession.withValidatedServerSelection(
     servers: List<StoredAuthServer>,
@@ -728,7 +747,9 @@ private suspend fun StoredAuthSession.rememberSelectedServer(serverSelectionMemo
 }
 
 private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
-    code == SharedAuthErrorCode.Network || code == SharedAuthErrorCode.Server
+    code == SharedAuthErrorCode.Network ||
+        code == SharedAuthErrorCode.Server ||
+        (code == SharedAuthErrorCode.Unknown && message == AUTH_ME_CONTRACT_MISMATCH)
 
 private fun loginStageFailure(stage: String, detail: String? = null): SharedAuthResult.Failure =
     SharedAuthResult.Failure(
@@ -764,6 +785,20 @@ private fun String?.authErrorDiagnostics(): String {
     val error = parsed["error"]?.jsonPrimitive?.content?.authDiagnosticsToken() ?: "none"
     val code = parsed["code"]?.jsonPrimitive?.content?.authDiagnosticsToken() ?: "none"
     return "errorKeys=$keys error=$error serverCode=$code"
+}
+
+private fun String.authBodyDiagnostics(): String {
+    val bytes = encodeToByteArray().size
+    val element = runCatching { authJson.decodeFromString(JsonElement.serializer(), this) }.getOrNull()
+        ?: return "bodyShape=unparseable bodyBytes=$bytes bodyKeys=none"
+    return when (element) {
+        is JsonObject -> {
+            val keys = element.keys.sorted().joinToString("|").ifBlank { "empty" }.authDiagnosticsToken()
+            "bodyShape=object bodyBytes=$bytes bodyKeys=$keys"
+        }
+        is JsonArray -> "bodyShape=array bodyBytes=$bytes bodyKeys=none"
+        is JsonPrimitive -> "bodyShape=primitive bodyBytes=$bytes bodyKeys=none"
+    }
 }
 
 /**
@@ -803,18 +838,23 @@ interface SlockAuthApi {
 }
 
 class SlockAuthApiClient(
-    private val transport: SlockAuthTransport
+    private val transport: SlockAuthTransport,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockAuthApi {
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
-            .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
+            .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
 
     override suspend fun completeSocialLogin(
         provider: String,
         bodyText: String
     ): AuthApiResult<AuthSocialCompleteResponse> =
         transport.completeSocialLogin(provider, bodyText)
-            .mapAuthBody("auth_social_complete_contract_mismatch", AuthSocialCompleteResponseDto.serializer()) {
+            .mapAuthBody(
+                "auth_social_complete_contract_mismatch",
+                AuthSocialCompleteResponseDto.serializer(),
+                diagnosticsLogger
+            ) {
                 it.toDomain()
             }
 
@@ -840,7 +880,11 @@ class SlockAuthApiClient(
                 )
             ),
             authorization = authorization
-        ).mapAuthBody("auth_mobile_oauth_start_contract_mismatch", AuthMobileOAuthStartResponseDto.serializer()) {
+        ).mapAuthBody(
+            "auth_mobile_oauth_start_contract_mismatch",
+            AuthMobileOAuthStartResponseDto.serializer(),
+            diagnosticsLogger
+        ) {
             it.toDomain()
         }
 
@@ -864,27 +908,37 @@ class SlockAuthApiClient(
                 )
             ),
             authorization = authorization
-        ).mapAuthBody("auth_mobile_oauth_complete_contract_mismatch", AuthLoginResponseDto.serializer()) {
+        ).mapAuthBody(
+            "auth_mobile_oauth_complete_contract_mismatch",
+            AuthLoginResponseDto.serializer(),
+            diagnosticsLogger
+        ) {
             it.toDomain()
         }
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
-            .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
+            .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
 
     override suspend fun forgotPassword(email: String): AuthApiResult<Unit> {
         val response = transport.forgotPassword(authJson.encodeToString(AuthForgotPasswordRequestBody(email = email)))
         if (!response.isSuccessful) return response.toAuthApiFailure()
-        return response.mapAuthBody("auth_forgot_password_contract_mismatch", AuthOkResponseDto.serializer()) { Unit }
+        return response.mapAuthBody(
+            "auth_forgot_password_contract_mismatch",
+            AuthOkResponseDto.serializer(),
+            diagnosticsLogger
+        ) { Unit }
     }
 
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         transport.currentUser(authorization)
-            .mapAuthBody("auth_me_contract_mismatch", StoredAuthUser.serializer()) { it }
+            .mapAuthBody(AUTH_ME_CONTRACT_MISMATCH, StoredAuthUser.serializer(), diagnosticsLogger) { it }
 
     override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> =
         transport.refresh(authJson.encodeToString(AuthRefreshRequestBody(refreshToken = refreshToken)))
-            .mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer()) { it.toDomain() }
+            .mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer(), diagnosticsLogger) {
+                it.toDomain()
+            }
 
     override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
         val response = transport.logout(authJson.encodeToString(AuthLogoutRequestBody(refreshToken = refreshToken)))
@@ -894,11 +948,11 @@ class SlockAuthApiClient(
 
     override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
         transport.servers(authorization)
-            .mapAuthBody("servers_list_contract_mismatch", ListSerializer(StoredAuthServer.serializer())) { it }
+            .mapAuthBody("servers_list_contract_mismatch", ListSerializer(StoredAuthServer.serializer()), diagnosticsLogger) { it }
 
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
         transport.createServer(authorization, bodyText)
-            .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer()) { it }
+            .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer(), diagnosticsLogger) { it }
 }
 
 sealed interface AuthApiResult<out T> {
@@ -1093,14 +1147,21 @@ private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
 private inline fun <Wire, T> AuthNetworkResponse.mapAuthBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
+    diagnosticsLogger: (String) -> Unit = {},
     crossinline transform: (Wire) -> T,
 ): AuthApiResult<T> {
     if (!isSuccessful) return toAuthApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode)
+        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode).also {
+            diagnosticsLogger("auth_contract_mismatch contract=$contractCode http=$code bodyShape=missing bodyBytes=0")
+        }
     val wire = try {
         authJson.decodeFromString(serializer, body)
-    } catch (_: SerializationException) {
+    } catch (error: SerializationException) {
+        diagnosticsLogger(
+            "auth_contract_mismatch contract=$contractCode http=$code " +
+                "${body.authBodyDiagnostics()} errorType=${error.safeDiagnosticsType()}"
+        )
         return AuthApiResult.Failure(code = code, contractCode = contractCode)
     }
     return AuthApiResult.Success(transform(wire))

@@ -545,6 +545,51 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun restoreSessionKeepsCachedSessionWhenCurrentUserContractDrifts() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(
+                                        200,
+                                        """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"}}"""
+                                    )
+                                )
+                            )
+                    ),
+                sessionStore = store,
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("access-token", result.data.accessToken)
+        assertEquals("server-1", result.data.currentServerId)
+        assertEquals("user-1", store.readSession()?.user?.id)
+        assertTrue(
+            logs.any {
+                it.contains("source=cached_after_current_user_failure") &&
+                    it.contains("recoverableCode=Unknown") &&
+                    it.contains("recoverableMessage=auth_me_contract_mismatch")
+            }
+        )
+        assertTrue(
+            logs.any {
+                it.contains("auth_contract_mismatch contract=auth_me_contract_mismatch") &&
+                    it.contains("http=200") &&
+                    it.contains("bodyShape=object") &&
+                    it.contains("bodyKeys=user")
+            }
+        )
+    }
+
+    @Test
     fun restoreSessionKeepsCachedSessionWhenRefreshServerUnavailable() = runBlocking {
         val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "expired-token"))
         val source =
