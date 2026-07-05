@@ -84,12 +84,19 @@ private val SlockOhosHdsDockBottomMargin = 26.dp
 private val SlockOhosHdsDockSideMargin = 18.dp
 internal const val SlockAppBottomTabBarHostZIndex = SlockFloatingOverlayHostZIndex
 
-// The native OHOS dock lives at the top 92dp of the host; the pill sits
-// [top+10 .. top+66]. Custom native (ForwardArkTS) views are hit-test
+// The native OHOS dock lives in the 92dp dock band of the host; the pill sits
+// [band top+10 .. band top+66]. Custom native (ForwardArkTS) views are hit-test
 // transparent, so taps over the pill fall through to the content list unless
 // a Compose blocker in the same subtree consumes them first.
 internal fun slockOhosHdsDockBlockerTopOffset(): Dp =
     SlockOhosHdsBottomTabBarHostHeight - SlockOhosHdsDockBottomMargin - SlockOhosHdsDockBarHeight
+
+// When the dock band is seated at the host bottom (OHOS immersive, where the
+// app now paints into the bottom safe area), the pill sits a fixed
+// SlockOhosHdsDockBottomMargin above the host bottom regardless of safe-area
+// height. The tap blocker (height = dock bar height) is bottom-anchored and
+// lifted by that margin so it still covers exactly the pill rect.
+internal fun slockOhosHdsDockBlockerBottomOffset(): Dp = SlockOhosHdsDockBottomMargin
 
 internal fun slockOhosHdsDockBlockerHeight(): Dp = SlockOhosHdsDockBarHeight
 
@@ -246,12 +253,16 @@ internal fun SlockAppBottomTabBarHost(
         SlockAppTabBarRenderer.OhosHdsImmersive -> {
             // OHOS custom native views are hit-test transparent, so the dock
             // needs a Compose blocker under the pill to stop tap-through.
+            // The OHOS host now paints into the bottom safe area (see Index.ets
+            // expandSafeArea), so seat the dock band at the host bottom instead
+            // of leaving the safe area as empty space below it.
             SlockNativeFloatingBottomTabBarHost(
                 items = items,
                 onSelect = onSelect,
                 modifier = hostModifier,
                 bottomSafeArea = bottomSafeArea,
-                containDockTaps = true
+                containDockTaps = true,
+                seatDockAtHostBottom = true
             )
             return
         }
@@ -289,8 +300,14 @@ private fun SlockNativeFloatingBottomTabBarHost(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp,
-    containDockTaps: Boolean = false
+    containDockTaps: Boolean = false,
+    seatDockAtHostBottom: Boolean = false
 ) {
+    // The dock band is a fixed 92dp. By default it sits at the top of the host
+    // and the bottom safe area is empty space below it. When the host already
+    // paints into the safe area (OHOS immersive), seat the band at the host
+    // bottom so the pill drops by one safe-area height instead of floating high.
+    val dockBandAlignment = if (seatDockAtHostBottom) Alignment.BottomCenter else Alignment.TopCenter
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -298,13 +315,23 @@ private fun SlockNativeFloatingBottomTabBarHost(
     ) {
         // Drawn first (lower z) so it sits under the native dock. Sized to the
         // pill rect only — margins stay tap-through, matching iOS pointInside.
+        // The blocker tracks the dock band: top-anchored when the band is at the
+        // top, bottom-anchored when the band is seated at the host bottom.
         if (containDockTaps) {
+            val blockerModifier = if (seatDockAtHostBottom) {
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = -slockOhosHdsDockBlockerBottomOffset())
+            } else {
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = slockOhosHdsDockBlockerTopOffset())
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(slockOhosHdsDockBlockerHeight())
-                    .align(Alignment.TopCenter)
-                    .offset(y = slockOhosHdsDockBlockerTopOffset())
+                    .then(blockerModifier)
                     .padding(horizontal = slockOhosHdsDockBlockerSideMargin())
                     .clickable(onClick = {})
             )
@@ -316,7 +343,7 @@ private fun SlockNativeFloatingBottomTabBarHost(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SlockOhosHdsBottomTabBarHostHeight)
-                .align(Alignment.TopCenter)
+                .align(dockBandAlignment)
         )
     }
 }
