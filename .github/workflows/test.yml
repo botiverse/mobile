@@ -378,6 +378,23 @@ jobs:
         shell: bash
         run: git config --global --add safe.directory '*'
 
+      # The kuikly fork build configures its android library projects even for
+      # --ohos-only publishing, so gradle needs an SDK location (macos runners
+      # ship one preinstalled; this container does not).
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /opt/android-sdk/cmdline-tools
+          wget -q -O /tmp/clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/clt.zip -d /opt/android-sdk/cmdline-tools
+          mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+          yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null
+          echo "ANDROID_HOME=/opt/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/opt/android-sdk" >> "$GITHUB_ENV"
+
       - name: Set up JDK 8 for Ktor toolchain
         uses: actions/setup-java@v5
         with:
