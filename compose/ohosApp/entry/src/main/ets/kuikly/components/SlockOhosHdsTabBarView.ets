@@ -1,6 +1,28 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
 import { ComponentContent } from '@kit.ArkUI';
 import { fileUri } from '@kit.CoreFileKit';
+import { DividerMode, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
+import { hdsMaterial } from '@hms.hds.hdsMaterial';
+
+// Real HuaweiDesign (HDS) floating tab bar. This is the "微博 dock" form
+// artin referenced from the Kuikly demo: HdsTabs with barFloatingStyle +
+// systemMaterialEffect gives the native adaptive-material (frosted) dock.
+//
+// Registered under VIEW_NAME 'SlockNativeFloatingTabBarView' — the shared
+// SlockAppBottomTabBarHost seam and iOS/Android renderers use the same view
+// name and the same props/event contract (keysText/labelsText/iconsText/
+// enabledText/selectedKey/bottomSafeArea + 'select' event). Only the native
+// rendering differs per platform.
+//
+// NOTE: this view is only ever instantiated when Index.ets selects the
+// 'ohosHdsImmersive' renderer, which it gates on
+// canIUse('SystemCapability.UIDesign.HDSComponent.Core'); on devices without
+// HDS the shared side falls back to the Compose tab bar and this ArkTS view
+// is never created.
+//
+// A previous "align tab dock" change (26c5e658) replaced this HDS
+// implementation with a hand-drawn Row dock, which is why OHOS stopped
+// looking like a native HDS tab bar. This restores the HDS path.
 
 const kKeysText = 'keysText';
 const kLabelsText = 'labelsText';
@@ -13,14 +35,14 @@ const kSeparator = '\u001F';
 
 const kDockHeight = 56;
 const kDockSideMargin = 18;
+const kDockBottomMargin = 26;
 const kDockHostHeight = 92;
+const kAnimationDuration = 240;
 const kItemHeight = 40;
 const kIconSize = 17;
-const kDockCornerRadius = 28;
-const kDockBorderColor = '#66FFFFFF';
-const kDockBackgroundColor = '#CCFFFFFF';
-const kDockShadowColor = '#26000000';
-const kSelectedItemBackground = '#24FFD440';
+const kGradientMaskColor = '#66F1F3F5';
+const kGradientMaskHeight = 92;
+const kBottomBarPosition: BarPosition = BarPosition.End;
 
 interface SlockHdsTabItem {
   key: string;
@@ -32,6 +54,7 @@ interface SlockHdsTabItem {
 @Observed
 export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockNativeFloatingTabBarView';
+  controller: HdsTabsController = new HdsTabsController();
   keysText: string = '';
   labelsText: string = '';
   iconsText: string = '';
@@ -65,6 +88,7 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
         return true;
       case kSelectedKey:
         this.selectedKey = normalizeText(propValue);
+        this.controller.changeIndex(this.selectedIndex());
         return true;
       case kBottomSafeArea:
         this.bottomSafeArea = normalizeNumber(propValue);
@@ -102,6 +126,13 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     return index >= 0 ? index : 0;
   }
 
+  syncControllerIndex(index: number) {
+    const selectedIndex = this.selectedIndex();
+    if (index !== selectedIndex) {
+      this.controller.changeIndex(selectedIndex);
+    }
+  }
+
   selectIndex(index: number) {
     const items = this.items();
     if (index < 0 || index >= items.length) {
@@ -109,9 +140,11 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     }
     const item = items[index];
     if (!item.enabled) {
+      this.controller.changeIndex(this.selectedIndex());
       return;
     }
     this.selectedKey = item.key;
+    this.controller.changeIndex(index);
     this.selectCallback?.({
       key: item.key,
       index: index,
@@ -150,35 +183,53 @@ export struct SlockOhosHdsTabBar {
   }
 
   build() {
-    Stack({ alignContent: Alignment.Center }) {
-      Row() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      HdsTabs({
+        index: this.renderView.selectedIndex(),
+        controller: this.renderView.controller,
+        barPosition: kBottomBarPosition,
+      }) {
         ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
-          this.tabBarItem(item, index)
+          TabContent() {
+            Column() {
+              Blank()
+                .width('100%')
+                .height(1)
+            }
+          }
+          .tabBar(this.tabBarItem(item, index))
         }, (item: SlockHdsTabItem) => item.key)
       }
+      .vertical(false)
+      .barMode(BarMode.Fixed)
+      .scrollable(false)
+      .animationDuration(kAnimationDuration)
+      .barHeight(kDockHeight)
+      .barOverlap(true)
+      .barFloatingStyle({
+        barSideMargin: kDockSideMargin,
+        barBottomMargin: kDockBottomMargin,
+        adaptToHandedness: true,
+        gradientMask: {
+          maskColor: kGradientMaskColor,
+          maskHeight: kGradientMaskHeight,
+        },
+        thermoCtrl: true,
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.ADAPTIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE,
+        },
+      })
+      .onChange((index: number) => {
+        this.renderView.syncControllerIndex(index);
+      })
+      .onTabBarClick((index: number) => {
+        this.renderView.selectIndex(index);
+      })
+      .divider({ mode: DividerMode.NONE })
       .width('100%')
-      .height(`${kDockHeight}vp`)
-      .margin({
-        left: kDockSideMargin,
-        right: kDockSideMargin,
-      })
-      .padding({
-        left: 8,
-        right: 8,
-        top: 8,
-        bottom: 8,
-      })
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .borderRadius(kDockCornerRadius)
-      .border({ width: 1, color: kDockBorderColor })
-      .backgroundColor(kDockBackgroundColor)
-      .shadow({
-        radius: 18,
-        color: kDockShadowColor,
-        offsetX: 0,
-        offsetY: 8,
-      })
+      .height(`${kDockHostHeight}vp`)
+      .backgroundColor('#00FFFFFF')
     }
     .width('100%')
     .height(`${kDockHostHeight}vp`)
@@ -202,12 +253,12 @@ export struct SlockOhosHdsTabBar {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
-    .layoutWeight(1)
+    .width('100%')
     .height(kItemHeight)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(16)
-    .backgroundColor(this.renderView.selectedIndex() === index ? kSelectedItemBackground : '#00FFFFFF')
+    .backgroundColor('#00FFFFFF')
     .onClick(() => {
       this.renderView.selectIndex(index);
     })

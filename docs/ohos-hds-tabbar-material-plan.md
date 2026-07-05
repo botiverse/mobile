@@ -1,5 +1,13 @@
 # OHOS HDS Tabbar Material Plan
 
+> **Status (task #216):** The real HDS implementation
+> (`HdsTabs` + `barFloatingStyle({ systemMaterialEffect })`) was accidentally
+> deleted by commit `26c5e658` and replaced with a hand-drawn `Row` dock; it
+> has now been restored. For the full cross-platform tab bar design (renderer
+> seam, shared contract, and the OHOS tap-through fix) see
+> [`tabbar-architecture.md`](./tabbar-architecture.md). This file remains the
+> reference for the OHOS **material** acceptance bar specifically.
+
 ## Problem
 
 The HarmonyOS bottom tabbar is expected to use the official HDS immersive
