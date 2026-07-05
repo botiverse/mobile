@@ -239,6 +239,8 @@ private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
+private const val ThreadComposerMentionActionFadeDelayMs = 450L
+private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 internal const val ThreadInitialMarkdownPreparseMessageCount = 80
@@ -5062,7 +5064,13 @@ internal fun SharedThreadRouteContent(
                         currentDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
                             ?: return@ThreadPageContent
                     val verb = if (action == "inviteMention") "add" else "notify"
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction(resolutionId))
+                    val localState = if (verb == "add") "added" else "notified"
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.BeginMentionAction(
+                            resolutionId = resolutionId,
+                            state = localState
+                        )
+                    )
                     coroutineScope.launch {
                         val result =
                             runCatchingPreservingCancellation {
@@ -5086,11 +5094,22 @@ internal fun SharedThreadRouteContent(
                             SharedThreadComposerDraftIntent.FinishMentionAction(
                                 resolutionId = resolutionId,
                                 notice = notice,
-                                delivered = delivered
+                                delivered = delivered,
+                                state = localState
                             )
                         )
                         if (delivered && verb == "add") {
                             refreshComposerMemberSuggestionsAfterMembershipMutation()
+                        }
+                        if (delivered) {
+                            delay(ThreadComposerMentionActionFadeDelayMs)
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.MarkMentionActionRemoving(resolutionId)
+                            )
+                            delay(ThreadComposerMentionActionRemoveDelayMs - ThreadComposerMentionActionFadeDelayMs)
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.RemoveMentionAction(resolutionId)
+                            )
                         }
                     }
                 }
@@ -6993,7 +7012,10 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         statusLabel = statusLabel,
         pendingMentionActions = draftState.pendingMentionActions,
         mentionActionNotice = draftState.mentionActionNotice,
+        mentionActionStates = draftState.mentionActionStates,
+        removingMentionActionIds = draftState.removingMentionActionIds.toList(),
         executingMentionActionIds = draftState.executingMentionActionIds.toList(),
+        executingMentionActionStates = draftState.executingMentionActionStates,
         streamChannelId = resolvedAuxiliaryThreadId,
         enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
     )

@@ -31,7 +31,10 @@ internal data class SharedThreadComposerDraftState(
     val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
-    val executingMentionActionIds: Set<String> = emptySet()
+    val mentionActionStates: Map<String, String> = emptyMap(),
+    val removingMentionActionIds: Set<String> = emptySet(),
+    val executingMentionActionIds: Set<String> = emptySet(),
+    val executingMentionActionStates: Map<String, String> = emptyMap()
 )
 
 internal data class SharedThreadComposerPersistedDraft(
@@ -416,6 +419,8 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.BeginMentionAction -> "BeginMentionAction"
         is SharedThreadComposerDraftIntent.FinishMentionAction -> "FinishMentionAction"
         SharedThreadComposerDraftIntent.ClearMentionActionNotice -> "ClearMentionActionNotice"
+        is SharedThreadComposerDraftIntent.MarkMentionActionRemoving -> "MarkMentionActionRemoving"
+        is SharedThreadComposerDraftIntent.RemoveMentionAction -> "RemoveMentionAction"
         is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
         is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
         is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
@@ -454,13 +459,19 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
     ) : SharedThreadComposerDraftIntent
     data class DismissMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
-    data class BeginMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
+    data class BeginMentionAction(
+        val resolutionId: String,
+        val state: String
+    ) : SharedThreadComposerDraftIntent
     data class FinishMentionAction(
         val resolutionId: String,
         val notice: String,
-        val delivered: Boolean
+        val delivered: Boolean,
+        val state: String
     ) : SharedThreadComposerDraftIntent
     data object ClearMentionActionNotice : SharedThreadComposerDraftIntent
+    data class MarkMentionActionRemoving(val resolutionId: String) : SharedThreadComposerDraftIntent
+    data class RemoveMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
     data class AddUploadedAttachments(
         val attachments: List<SharedThreadComposerAttachment>,
         val replacedAttachmentIds: Set<String> = emptySet(),
@@ -533,7 +544,10 @@ internal class SharedThreadComposerDraftStore(
                     removedAttachmentIds = emptySet(),
                     uploadedAttachments = emptyList(),
                     mentionActionNotice = null,
-                    executingMentionActionIds = emptySet()
+                    mentionActionStates = emptyMap(),
+                    removingMentionActionIds = emptySet(),
+                    executingMentionActionIds = emptySet(),
+                    executingMentionActionStates = emptyMap()
                 )
             is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
                 current.copy(
@@ -554,7 +568,10 @@ internal class SharedThreadComposerDraftStore(
                     removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                     mentionActionNotice = null,
-                    executingMentionActionIds = emptySet()
+                    mentionActionStates = emptyMap(),
+                    removingMentionActionIds = emptySet(),
+                    executingMentionActionIds = emptySet(),
+                    executingMentionActionStates = emptyMap()
                 )
             }
             is SharedThreadComposerDraftIntent.CompleteSend -> {
@@ -569,7 +586,10 @@ internal class SharedThreadComposerDraftStore(
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                     pendingMentionActions = intent.pendingMentionActions,
                     mentionActionNotice = null,
-                    executingMentionActionIds = emptySet()
+                    mentionActionStates = emptyMap(),
+                    removingMentionActionIds = emptySet(),
+                    executingMentionActionIds = emptySet(),
+                    executingMentionActionStates = emptyMap()
                 )
             }
             is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
@@ -577,35 +597,59 @@ internal class SharedThreadComposerDraftStore(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = intent.pendingMentionActions,
                     mentionActionNotice = null,
-                    executingMentionActionIds = emptySet()
+                    mentionActionStates = emptyMap(),
+                    removingMentionActionIds = emptySet(),
+                    executingMentionActionIds = emptySet(),
+                    executingMentionActionStates = emptyMap()
                 )
             is SharedThreadComposerDraftIntent.DismissMentionAction ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
                     mentionActionNotice = null,
-                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
+                    mentionActionStates = current.mentionActionStates - intent.resolutionId,
+                    removingMentionActionIds = current.removingMentionActionIds - intent.resolutionId,
+                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId,
+                    executingMentionActionStates = current.executingMentionActionStates - intent.resolutionId
                 )
             is SharedThreadComposerDraftIntent.BeginMentionAction ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     mentionActionNotice = null,
-                    executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId
+                    executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId,
+                    executingMentionActionStates = current.executingMentionActionStates + (intent.resolutionId to intent.state)
                 )
             is SharedThreadComposerDraftIntent.FinishMentionAction ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
-                    pendingMentionActions =
+                    pendingMentionActions = current.pendingMentionActions,
+                    mentionActionNotice = if (intent.delivered) null else intent.notice,
+                    mentionActionStates =
                         if (intent.delivered) {
-                            current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId }
+                            current.mentionActionStates + (intent.resolutionId to intent.state)
                         } else {
-                            current.pendingMentionActions
+                            current.mentionActionStates - intent.resolutionId
                         },
-                    mentionActionNotice = intent.notice,
-                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
+                    removingMentionActionIds = current.removingMentionActionIds - intent.resolutionId,
+                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId,
+                    executingMentionActionStates = current.executingMentionActionStates - intent.resolutionId
                 )
             SharedThreadComposerDraftIntent.ClearMentionActionNotice ->
                 current.copy(mentionActionNotice = null)
+            is SharedThreadComposerDraftIntent.MarkMentionActionRemoving ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    removingMentionActionIds = current.removingMentionActionIds + intent.resolutionId
+                )
+            is SharedThreadComposerDraftIntent.RemoveMentionAction ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
+                    mentionActionStates = current.mentionActionStates - intent.resolutionId,
+                    removingMentionActionIds = current.removingMentionActionIds - intent.resolutionId,
+                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId,
+                    executingMentionActionStates = current.executingMentionActionStates - intent.resolutionId
+                )
             is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
                 val fallbackReplacedAttachmentIds =
                     if (intent.replacedAttachmentIdsByUploadedId.isEmpty()) {

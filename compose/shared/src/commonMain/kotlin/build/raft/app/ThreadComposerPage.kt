@@ -114,6 +114,9 @@ private val threadComposerContentPayloadKeys =
         "pendingAttachments",
         "pendingMentionActions",
         "mentionActionNotice",
+        "mentionActionStates",
+        "removingMentionActionIds",
+        "executingMentionActionStates",
         "memberSuggestions",
         "channelSuggestions",
         "hookLabels"
@@ -135,7 +138,10 @@ internal data class KuiklyThreadComposerPayload(
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
+    val mentionActionStates: Map<String, String> = emptyMap(),
+    val removingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionIds: List<String> = emptyList(),
+    val executingMentionActionStates: Map<String, String> = emptyMap(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
     val suggestionsOpen: Boolean = false,
@@ -214,7 +220,10 @@ internal data class ThreadComposerUiState(
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
+    val mentionActionStates: Map<String, String> = emptyMap(),
+    val removingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionIds: List<String> = emptyList(),
+    val executingMentionActionStates: Map<String, String> = emptyMap(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val memberSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val memberSuggestionsErrorCode: String? = null,
@@ -867,7 +876,10 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         pendingAttachments = pendingAttachments,
         pendingMentionActions = pendingMentionActions,
         mentionActionNotice = mentionActionNotice,
+        mentionActionStates = mentionActionStates,
+        removingMentionActionIds = removingMentionActionIds,
         executingMentionActionIds = executingMentionActionIds,
+        executingMentionActionStates = executingMentionActionStates,
         memberSuggestions = memberSuggestions,
         channelSuggestions = channelSuggestions,
         suggestionsOpen = suggestionsOpen,
@@ -1244,7 +1256,10 @@ internal fun ThreadComposerContent(
                     actions = state.pendingMentionActions,
                     memberSuggestions = state.memberSuggestions,
                     channelLabel = surface.mentionScopeChannelLabel(),
+                    actionStates = state.mentionActionStates,
+                    removingIds = state.removingMentionActionIds.toSet(),
                     executingIds = state.executingMentionActionIds.toSet(),
+                    executingStates = state.executingMentionActionStates,
                     onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
                     onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
@@ -1691,8 +1706,17 @@ private fun String?.normalizedPendingMentionTargetHandle(): String? =
         ?.takeIf { it.isNotBlank() }
         ?.lowercase()
 
-internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(channelLabel: String): String {
+internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(
+    channelLabel: String,
+    localState: String? = null
+): String {
     val target = targetLabel()
+    if (localState == "added") {
+        return "$target was added to $channelLabel"
+    }
+    if (localState == "notified") {
+        return "Notified $target once - still not in $channelLabel"
+    }
     val actionHint =
         when {
             supportsMentionAction("invite") && supportsMentionAction("notify") ->
@@ -1952,7 +1976,10 @@ private fun PendingMentionActionBanner(
     actions: List<KuiklyPendingMentionActionItem>,
     memberSuggestions: List<KuiklyComposerMemberItem>,
     channelLabel: String,
+    actionStates: Map<String, String>,
+    removingIds: Set<String>,
     executingIds: Set<String>,
+    executingStates: Map<String, String>,
     onInvite: (String) -> Unit,
     onNotify: (String) -> Unit,
     onDismiss: (String) -> Unit
@@ -1975,6 +2002,9 @@ private fun PendingMentionActionBanner(
                     targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
                     channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
                     executing = action.resolutionId in executingIds,
+                    localState = actionStates[action.resolutionId],
+                    removing = action.resolutionId in removingIds,
+                    executingState = executingStates[action.resolutionId],
                     onInvite = { onInvite(action.resolutionId) },
                     onNotify = { onNotify(action.resolutionId) },
                     onDismiss = { onDismiss(action.resolutionId) }
@@ -1990,6 +2020,9 @@ private fun PendingMentionActionRow(
     targetSuggestion: KuiklyComposerMemberItem?,
     channelLabel: String,
     executing: Boolean,
+    localState: String?,
+    removing: Boolean,
+    executingState: String?,
     onInvite: () -> Unit,
     onNotify: () -> Unit,
     onDismiss: () -> Unit
@@ -2002,8 +2035,10 @@ private fun PendingMentionActionRow(
                 ?.takeIf { it.isNotBlank() }
             ?: action.targetInitial()
     val targetAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue
-    val canInvite = action.supportsMentionAction("invite")
-    val canNotify = action.supportsMentionAction("notify")
+    val canInvite = action.supportsMentionAction("invite") && localState == null
+    val canNotify = action.supportsMentionAction("notify") && localState == null
+    val contentColor = if (removing) SlockColor.TextBlack.copy(alpha = 0.45f) else SlockColor.TextBlack
+    val mutedColor = if (removing) SlockColor.TextMutedGray.copy(alpha = 0.45f) else SlockColor.TextMutedGray
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2013,7 +2048,11 @@ private fun PendingMentionActionRow(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
+            SlockLucideIcon(
+                SlockLucideIconName.UserMinus,
+                modifier = Modifier.size(15.dp),
+                color = if (removing) "#777777" else SlockColor.TextMutedGrayArgb
+            )
             SlockAvatar(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
@@ -2025,14 +2064,14 @@ private fun PendingMentionActionRow(
                 Text(
                     text = targetLabel,
                     style = SlockType.Button.copy(fontSize = 12.sp),
-                    color = SlockColor.TextBlack,
+                    color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = action.pendingMentionActionDescription(channelLabel),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    text = action.pendingMentionActionDescription(channelLabel, localState),
+                    style = SlockType.Caption.copy(color = mutedColor),
+                    color = mutedColor,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2043,17 +2082,31 @@ private fun PendingMentionActionRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (canInvite) {
+            if (localState == "added") {
                 ComposerTextChip(
-                    if (executing) "Adding" else "Add",
+                    "✓ Added",
+                    variant = ComposerTextChipVariant.Disabled,
+                    enabled = false,
+                    onClick = {}
+                )
+            } else if (canInvite) {
+                ComposerTextChip(
+                    if (executingState == "added") "Adding" else "Add",
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
                     onClick = onInvite
                 )
             }
-            if (canNotify) {
+            if (localState == "notified") {
                 ComposerTextChip(
-                    if (executing) "Notifying" else "Notify",
+                    "✓ Notified",
+                    variant = ComposerTextChipVariant.Disabled,
+                    enabled = false,
+                    onClick = {}
+                )
+            } else if (canNotify) {
+                ComposerTextChip(
+                    if (executingState == "notified") "Notifying" else "Notify",
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
                     onClick = onNotify
@@ -2591,6 +2644,7 @@ private fun ComposerSendButton(
 private enum class ComposerTextChipVariant {
     Pink,
     White,
+    Disabled,
     MutedText
 }
 
@@ -2611,6 +2665,22 @@ private fun ComposerTextChip(
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             style = SlockType.Caption.copy(color = mutedColor),
             color = mutedColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
+
+    if (variant == ComposerTextChipVariant.Disabled) {
+        Text(
+            text = text,
+            modifier =
+                Modifier
+                    .background(SlockColor.TextBlack.copy(alpha = 0.04f))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
+            color = SlockColor.TextBlack.copy(alpha = 0.4f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
