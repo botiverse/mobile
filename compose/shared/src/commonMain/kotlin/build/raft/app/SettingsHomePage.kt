@@ -10598,6 +10598,7 @@ private fun SharedHomeScreen(
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
+                    loadingSkeletons = true,
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                     onServerSelected = { serverId ->
@@ -13575,6 +13576,10 @@ private fun SharedHomeSessionShell(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    // #372: true only for the Loading-with-session branch — renders
+    // skeleton rows under the CHANNELS / DIRECT MESSAGES headers so the
+    // post-sign-in transition matches the React app instead of a bare shell.
+    loadingSkeletons: Boolean = false,
     inlineError: SlockHomeInlineError? = null,
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
@@ -13590,6 +13595,7 @@ private fun SharedHomeSessionShell(
         servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
         channels = emptyList(),
         directMessages = emptyList(),
+        showLoadingSkeletons = loadingSkeletons,
         inlineError = inlineError,
         serverSwitcherExpanded = serverSwitcherExpanded,
         prefersChineseCommunity = prefersChineseCommunity,

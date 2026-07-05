@@ -1,7 +1,9 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
 import build.raft.app.base.BasePager
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
@@ -10,6 +12,43 @@ internal class ComposeHomeTitlebarVisualPage : BasePager() {
         super.willInit()
         setContent { HomeTitlebarVisualScreen() }
     }
+}
+
+// #372 screens.home.loading: pins the post-sign-in Loading-with-session home
+// state (session restored, channels / directMessages not yet fetched). This
+// renders exactly what SharedHomeSessionShell renders for
+// SharedHomeContentState.Loading — empty conversation lists plus the loading
+// skeleton rows — with `showBottomBar = true` standing in for the app-shell
+// bottom tab bar that hosts the home page in production (React shows it
+// during loading too). The skeleton primitives are static (no shimmer), so
+// the capture settles deterministically.
+@Page("compose_home_loading_visual", supportInLocal = true)
+internal class ComposeHomeLoadingVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeLoadingVisualContent() }
+    }
+}
+
+@Composable
+private fun HomeLoadingVisualContent() {
+    SlockStructuralHomeShell(
+        currentServerName = VisualFixtureData.Server.NAME,
+        currentServerId = VisualFixtureData.Server.ID,
+        servers =
+            listOf(
+                SlockServerSwitcherItem(
+                    id = VisualFixtureData.Server.ID,
+                    name = VisualFixtureData.Server.NAME,
+                    slug = VisualFixtureData.Server.SLUG
+                )
+            ),
+        channels = emptyList(),
+        directMessages = emptyList(),
+        showLoadingSkeletons = true,
+        showBottomBar = true,
+        outerPadding = 0.dp
+    )
 }
 
 @Page("compose_home_notification_center_visual", supportInLocal = true)

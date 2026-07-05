@@ -813,6 +813,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeLoadingScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.home.loading",
+            pageName = "compose_home_loading_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureTasksPanelStates() {
         captureKmpComponentCase(
             caseId = "components.tasks.panel.states",
