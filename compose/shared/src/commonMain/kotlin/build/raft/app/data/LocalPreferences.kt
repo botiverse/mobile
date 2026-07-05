@@ -137,7 +137,7 @@ enum class TranslationModePreference(val storageKey: String) {
     Original("original");
 
     companion object {
-        val Default: TranslationModePreference = Automatic
+        val Default: TranslationModePreference = Manual
 
         fun fromStorageKey(value: String?): TranslationModePreference =
             entries.firstOrNull { it.storageKey == value } ?: Default

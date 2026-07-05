@@ -1162,9 +1162,9 @@ data class SettingsLanguageRegionSnapshot(
     val timeFormat: SettingsMobileSelectionSnapshot,
     val translationDisplay: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(
-            selectedKey = "automatic",
-            selectedLabel = "Automatic",
-            statusLabel = "Automatic",
+            selectedKey = "manual",
+            selectedLabel = "Manual",
+            statusLabel = "Manual",
             detail = "Stored locally on this device.",
             options =
                 listOf(
