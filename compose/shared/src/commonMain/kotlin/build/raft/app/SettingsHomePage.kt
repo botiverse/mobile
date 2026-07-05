@@ -4533,14 +4533,9 @@ private fun SettingsConnectedAppsContent(
                 }
             is ScreenLoadState.Content -> {
                 item {
-                    SegmentedControl(
+                    SettingsConnectedAppsTabControl(
                         selectedValue = selectedTab,
-                        options =
-                            listOf(
-                                SegmentedControlOption("marketplace", "Marketplace", SlockLucideIconName.Store),
-                                SegmentedControlOption("installed", "Installed", SlockLucideIconName.CircleCheck),
-                                SegmentedControlOption("myapps", "My Apps", SlockLucideIconName.KeyRound)
-                            ),
+                        snapshot = snapshot,
                         onValueSelected = onSelectedTabChange
                     )
                 }
@@ -4628,6 +4623,39 @@ private fun SettingsConnectedAppsContent(
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
+}
+
+@Composable
+private fun SettingsConnectedAppsTabControl(
+    selectedValue: String,
+    snapshot: SettingsConnectedAppsSnapshot?,
+    onValueSelected: (String) -> Unit
+) {
+    SettingsSegmentedControlField(
+        selectedValue = selectedValue,
+        options =
+            listOf(
+                SegmentedControlOption(
+                    value = "marketplace",
+                    label = "Marketplace",
+                    iconName = SlockLucideIconName.Store,
+                    count = snapshot?.let { it.builtIn.size + it.marketplace.size }
+                ),
+                SegmentedControlOption(
+                    value = "installed",
+                    label = "Installed",
+                    iconName = SlockLucideIconName.CircleCheck,
+                    count = snapshot?.installed?.size
+                ),
+                SegmentedControlOption(
+                    value = "myapps",
+                    label = "My Apps",
+                    iconName = SlockLucideIconName.KeyRound,
+                    count = snapshot?.registered?.size
+                )
+            ),
+        onValueSelected = onValueSelected
+    )
 }
 
 @Composable
@@ -4723,9 +4751,9 @@ private fun SettingsLanguagePreferenceCard(
             ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS, "Save")
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
-        SlockBrutalSectionLabel(label = "Translation mode")
-        SettingsFormDetailText("Automatic translates supported messages. Manual keeps messages original until you choose Translate on a message. Original keeps messages in their source language.")
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            label = "Translation mode",
+            detail = "Automatic translates supported messages. Manual keeps messages original until you choose Translate on a message. Original keeps messages in their source language.",
             selectedValue = selectedDisplay,
             options = snapshot.translationDisplay.toTranslationModeOptions(),
             onValueSelected = onDisplayDraftChange,
@@ -4782,9 +4810,9 @@ private fun SettingsDateTimePreferenceCard(
             onSelect = { onTimezoneDraftChange(it.id) },
             enabled = snapshot.timezone.available && !busy
         )
-        SlockBrutalSectionLabel(label = "Time format")
-        SettingsFormDetailText("Display only. Does not affect agent behavior.")
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            label = "Time format",
+            detail = "Display only. Does not affect agent behavior.",
             selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
             options =
                 listOf(
@@ -4881,8 +4909,8 @@ private fun SettingsServerTranslationPreferenceCard(
 ) {
     val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
     SettingsFormSectionCard(iconName = SlockLucideIconName.Wand, title = "Workspace translation") {
-        SettingsFormDetailText(snapshot.serverTranslation.detail)
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = snapshot.serverTranslation.detail,
             selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
             options =
                 listOf(
@@ -4961,8 +4989,8 @@ private fun SettingsAppearanceFontSizeCard(
         onSubmit()
     }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = "Message font size") {
-        SettingsFormDetailText(snapshot.messageBodyFontSize.detail)
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
             options =
                 snapshot.messageBodyFontSize.options.map {
@@ -5081,8 +5109,8 @@ private fun SettingsMessageAlignmentCard(
     val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
     SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = "My message alignment") {
-        SettingsFormDetailText(snapshot.messageAlignmentPreference.detail)
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = snapshot.messageAlignmentPreference.detail,
             selectedValue = selectedKey.ifBlank { "left" },
             options =
                 listOf(
@@ -5393,10 +5421,8 @@ private fun SettingsPushStatusCard(
     onTest: () -> Unit
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Show system notifications") {
-        SettingsFormDetailText(
-            "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build."
-        )
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build.",
             selectedValue = if (notificationPreferenceSnapshot.enabled) "enabled" else "disabled",
             options =
                 listOf(
@@ -5407,10 +5433,8 @@ private fun SettingsPushStatusCard(
             enabled = !preferenceBusy
         )
         SettingsFormDivider()
-        SettingsFormDetailText(
-            "Keep realtime connected while the app is backgrounded without posting a persistent service notification. The OS may still limit long background sessions."
-        )
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = "Keep realtime connected while the app is backgrounded without posting a persistent service notification. The OS may still limit long background sessions.",
             selectedValue = if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) "enabled" else "disabled",
             options =
                 listOf(
@@ -5452,8 +5476,8 @@ private fun SettingsServerMuteCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
     SettingsFormSectionCard(iconName = SlockLucideIconName.VolumeX, title = "Workspace mute") {
-        SettingsFormDetailText(snapshot.muteServer.detail)
-        SegmentedControl(
+        SettingsSegmentedControlField(
+            detail = snapshot.muteServer.detail,
             selectedValue = if (snapshot.muteServer.enabled) "muted" else "unmuted",
             options =
                 listOf(
@@ -6652,6 +6676,28 @@ private fun SettingsFormSectionCard(
 }
 
 @Composable
+private fun SettingsSegmentedControlField(
+    selectedValue: String,
+    options: List<SegmentedControlOption>,
+    onValueSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    detail: String? = null,
+    enabled: Boolean = true
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        label?.takeIf { it.isNotBlank() }?.let { SlockBrutalSectionLabel(label = it) }
+        detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        SegmentedControl(
+            selectedValue = selectedValue,
+            options = options,
+            onValueSelected = onValueSelected,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
 private fun SettingsServerActionRow(
     title: String,
     detail: String,
@@ -6968,7 +7014,7 @@ private fun SettingsServerAgreementCard(
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
     SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = "Pre-join Agreement") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SegmentedControl(
+        SettingsSegmentedControlField(
             selectedValue = if (enabled) "enabled" else "disabled",
             options = listOf(
                 SegmentedControlOption("enabled", "Required", SlockLucideIconName.CircleCheck),
@@ -7090,7 +7136,7 @@ private fun SettingsServerOnboardingCard(
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        SegmentedControl(
+        SettingsSegmentedControlField(
             selectedValue = if (greetingEnabled) "yes" else "no",
             options = listOf(
                 SegmentedControlOption("yes", "Yes", SlockLucideIconName.MessageCircle),
@@ -7128,7 +7174,7 @@ private fun SettingsServerMemberPermissionsCard(
     val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
     SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = "Member Permissions") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SegmentedControl(
+        SettingsSegmentedControlField(
             selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
             options = listOf(
                 SegmentedControlOption("hidden", "Hide Humans", SlockLucideIconName.EyeOff),
