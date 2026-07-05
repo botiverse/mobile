@@ -6,6 +6,9 @@ import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockRaftUiBanner
+import build.raft.app.components.SlockRaftUiBannerSize
+import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeProviderMode
 import build.raft.app.model.RUNTIME_MODELS
@@ -95,7 +98,7 @@ internal fun CreateAgentDialogVisualContent() {
     ) {
         SharedCreateAgentDialog(
             submitting = false,
-            errorMessage = null,
+            errorMessage = params.optString("errorMessage").takeIf { it.isNotBlank() },
             initialName = params.optString("name").ifBlank { "Product-QA-Bot" },
             initialDescription = "Watches release screenshots and reports visual regressions before merge.",
             initialRuntime = runtime,
@@ -573,6 +576,15 @@ internal fun SharedCreateAgentDialog(
                 if (atLimit) {
                     item(key = "plan-limit") { PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents) }
                 }
+                errorMessage?.takeIf { !atLimit && it.isNotBlank() }?.let { error ->
+                    item(key = "submit-error") {
+                        SlockRaftUiBanner(
+                            status = SlockRaftUiBannerStatus.Warning,
+                            description = error,
+                            size = SlockRaftUiBannerSize.Medium
+                        )
+                    }
+                }
                 if (showMachinePicker) {
                     item(key = "machine-picker") {
                         MachinePicker(
@@ -694,20 +706,6 @@ internal fun SharedCreateAgentDialog(
                             onCommandChange = { command = it },
                             advancedOpen = advancedOpen,
                             onAdvancedOpenChange = { advancedOpen = it }
-                        )
-                    }
-                }
-                errorMessage?.takeIf { it.isNotBlank() }?.let { error ->
-                    item(key = "submit-error") {
-                        Text(
-                            text = error,
-                            style =
-                                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp,
-                                    color = SlockColor.AccentRed
-                                ),
-                            color = SlockColor.AccentRed
                         )
                     }
                 }
