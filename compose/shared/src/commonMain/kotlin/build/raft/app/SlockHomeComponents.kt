@@ -2510,6 +2510,22 @@ private fun SlockSidebarSortOverlay(
     var draggedStartIndex by remember(items) { mutableStateOf(0) }
     var pointerViewportY by remember(items) { mutableStateOf(0f) }
     var targetIndex by remember(items) { mutableStateOf(-1) }
+    // Debounced copy of targetIndex that drives the live position numbers. The
+    // raw target changes every frame under auto-scroll, which made the numbers
+    // flicker wildly (device feedback: "dragging 6 kept becoming 13"). Numbers
+    // only renumber after the target has been stable for a beat; the insertion
+    // line and the actual drop keep using the raw, immediate target.
+    var settledTargetIndex by remember(items) { mutableStateOf(-1) }
+    LaunchedEffect(draggedId, targetIndex) {
+        if (draggedId == null) {
+            settledTargetIndex = -1
+        } else if (settledTargetIndex < 0) {
+            settledTargetIndex = targetIndex
+        } else if (targetIndex != settledTargetIndex) {
+            delay(200)
+            settledTargetIndex = targetIndex
+        }
+    }
 
     fun visibleSortRowBounds(): List<SlockSortRowBounds> =
         listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
@@ -2555,13 +2571,15 @@ private fun SlockSidebarSortOverlay(
         }
     }
 
-    // Preview order: where things WOULD sit if the drag dropped now. Rows never
-    // physically move (that reflow was the jitter source), but their 1-based
-    // position numbers are read from this preview, so a drag visibly renumbers
-    // the affected rows (e.g. dragging 5 onto 6 shows the held row as 6 and the
-    // old 6 as 5) without any layout churn.
-    val previewOrder =
-        draggedId?.takeIf { targetIndex >= 0 }?.let { order.moveItem(it, targetIndex) } ?: order
+    // Live position numbers from the SETTLED preview: where each row would sit
+    // if the drag dropped at the debounced target. O(n) rebuild only when the
+    // settled target moves (not per frame), O(1) lookup per row.
+    val previewPositionById: Map<String, Int> =
+        draggedId?.takeIf { settledTargetIndex >= 0 }?.let { active ->
+            order.moveItem(active, settledTargetIndex)
+                .withIndex()
+                .associate { (i, id) -> id to i + 1 }
+        } ?: emptyMap()
 
     SlockUnifiedDialog(
         title = title,
@@ -2633,8 +2651,10 @@ private fun SlockSidebarSortOverlay(
                     if (draggedId == itemId) {
                         Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
                     } else {
-                        // Preview-order position (1-based), rendered before the row icon.
-                        val position = previewOrder.indexOf(itemId) + 1
+                        // 1-based position before the row icon: live from the settled
+                        // preview during a drag (debounced, so no frantic jumping),
+                        // fixed slot index otherwise.
+                        val position = previewPositionById[itemId] ?: (index + 1)
                         ChannelRow(
                             name = item.name,
                             positionPrefix = "$position",
@@ -2686,7 +2706,8 @@ private fun SlockSidebarSortOverlay(
                 val item = itemsById[active]
                 if (item != null) {
                     val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
-                    val position = previewOrder.indexOf(active) + 1
+                    // Held row shows its settled landing position (debounced target).
+                    val position = previewPositionById[active] ?: (draggedStartIndex + 1)
                     ChannelRow(
                         name = item.name,
                         positionPrefix = "$position",
