@@ -2369,6 +2369,23 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
             return
         }
+        is SharedAuthGateState.EmailVerificationRequired -> {
+            AppShellEmailVerificationGateContent(
+                session = gate.session,
+                authDataSource = authDataSource,
+                onRefresh = {
+                    authGateMessage = null
+                    authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                },
+                onSignOut = {
+                    authGateMessage = null
+                    bridge.realtimeDisconnect("logout")
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                    resetAppShellSessionState()
+                }
+            )
+            return
+        }
         is SharedAuthGateState.Error -> {
             AppShellAuthErrorContent(
                 message = gate.message,
@@ -9443,6 +9460,9 @@ private class AuthChooseServerVisualApi(
     override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
         AuthApiResult.Failure(code = 400)
 
+    override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
+        AuthApiResult.Failure(code = 400)
+
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         AuthApiResult.Success(user)
 
@@ -9814,6 +9834,111 @@ private fun AppShellAuthErrorContent(
         AuthError(message)
         AuthActionButton(text = "Retry", onClick = onRetry, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Sign In", onClick = onSignIn, tone = AuthButtonTone.White)
+    }
+}
+
+@Composable
+private fun AppShellEmailVerificationGateContent(
+    session: StoredAuthSession,
+    authDataSource: SharedAuthDataSource,
+    onRefresh: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    var loading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var sentMessage by remember { mutableStateOf<String?>(null) }
+    var pendingResendNonce by remember { mutableStateOf(0) }
+    var pendingSignOut by remember { mutableStateOf(false) }
+    val accountEmail = session.user.email.takeIf { it.isNotBlank() }
+
+    LaunchedEffect(pendingResendNonce) {
+        if (pendingResendNonce == 0) return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation { authDataSource.resendVerification() }
+                .getOrElse {
+                    SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "Could not send the verification email. Try again."
+                    )
+                }
+        loading = false
+        when (result) {
+            is SharedAuthResult.Success -> {
+                errorMessage = null
+                sentMessage = "Verification email sent. Check your inbox, then refresh."
+                authDataSource.logDiagnostics("auth_resend_verification_result result=success")
+            }
+            is SharedAuthResult.Failure -> {
+                sentMessage = null
+                errorMessage = result.message
+                authDataSource.logDiagnostics("auth_resend_verification_result result=failure code=${result.code}")
+            }
+            SharedAuthResult.Unauthenticated -> {
+                sentMessage = null
+                errorMessage = "Your session needs to be refreshed. Sign out and sign in again."
+                authDataSource.logDiagnostics("auth_resend_verification_result result=unauthenticated")
+            }
+        }
+    }
+
+    LaunchedEffect(pendingSignOut) {
+        if (!pendingSignOut) return@LaunchedEffect
+        authDataSource.logout()
+        pendingSignOut = false
+        loading = false
+        onSignOut()
+    }
+
+    AuthScaffold {
+        AuthLogoBadge("RAFT")
+        Text(
+            text = "Verify your email",
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text =
+                if (accountEmail != null) {
+                    "We sent a verification link to $accountEmail. Verify your email to unlock Raft, then refresh."
+                } else {
+                    "Verify your email to unlock Raft. Resend the verification link, then refresh."
+                },
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center
+        )
+        AuthFormColumn {
+            sentMessage?.let { AuthSuccessNotice(title = "Email sent", detail = it) }
+            AuthError(errorMessage)
+            AuthActionButton(
+                text = "Resend verification email",
+                onClick = {
+                    loading = true
+                    errorMessage = null
+                    sentMessage = null
+                    pendingResendNonce += 1
+                },
+                tone = AuthButtonTone.Pink,
+                enabled = !loading,
+                loading = loading
+            )
+            AuthActionButton(
+                text = "I've verified — refresh",
+                onClick = onRefresh,
+                tone = AuthButtonTone.White,
+                enabled = !loading
+            )
+            SlockLinkButton(
+                text = "Sign out",
+                enabled = !loading,
+                onClick = {
+                    loading = true
+                    errorMessage = null
+                    sentMessage = null
+                    pendingSignOut = true
+                }
+            )
+        }
     }
 }
 
@@ -13719,6 +13844,7 @@ private fun SharedAuthGateState.authGateDiagnosticsName(): String =
     when (this) {
         SharedAuthGateState.Restoring -> "restoring"
         SharedAuthGateState.AuthRequired -> "auth_required"
+        is SharedAuthGateState.EmailVerificationRequired -> "email_verification_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
         is SharedAuthGateState.Error -> "error"
