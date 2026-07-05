@@ -2914,6 +2914,7 @@ internal class SlockKuiklyBridgeModule(
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
                     channel = BuildConfig.QUIVER_CHANNEL,
+                    clientKey = BuildConfig.QUIVER_CLIENT_KEY,
             ).submit(
                     message = description,
                     kind = "bug",
