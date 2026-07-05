@@ -1017,13 +1017,18 @@ internal fun LoginContent(
                 keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
             )
             AuthError(errorMessage)
+            // React parity (LoginPage.tsx): Sign In stays full pink + black text
+            // even with an empty form (validation happens on submit) and only
+            // dims to the 50%-alpha look while busy — gating enabled on
+            // canSubmit sent the button into the generic disabled palette
+            // (#FFD8E5 + white text = unreadable white-on-white, task #372).
             AuthActionButton(
                 text = if (submitting) "Signing in…" else "Sign In",
                 onClick = submitCurrentDraft,
-                tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
-                enabled = canSubmit,
+                tone = AuthButtonTone.Pink,
+                enabled = !formBusy,
                 loading = submitting,
-                preserveDisabledVisual = submitting
+                preserveDisabledVisual = true
             )
             if (visibleSocialProviders.isNotEmpty()) {
                 AuthDivider()
@@ -1155,7 +1160,9 @@ internal fun RegisterContent(
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,
-                preserveDisabledVisual = submitting,
+                // Disabled renders as the react disabled:opacity-50 look (50%-alpha
+                // pink + black) instead of the white-on-white generic palette.
+                preserveDisabledVisual = true,
                 variant = AuthActionButtonVariant.Large
             )
             AuthInlineAction("Already have an account?", "Sign In") { onBackToSignIn() }
@@ -1218,7 +1225,7 @@ internal fun ForgotPasswordContent(
                 tone = AuthButtonTone.Pink,
                 enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
-                preserveDisabledVisual = sending
+                preserveDisabledVisual = true
             )
             AuthTextLink("Back to Sign In") { onBackToSignIn() }
         }
@@ -1263,7 +1270,7 @@ private fun AuthLegalAcceptanceContent(
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit && accepted && !submitting,
                 loading = submitting,
-                preserveDisabledVisual = submitting,
+                preserveDisabledVisual = true,
                 variant = AuthActionButtonVariant.Large
             )
             AuthTextLink("Back to Sign In") { onBackToSignIn() }
