@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-05T16:19:23.807Z",
-  "runId": "884d172-20260705161853",
-  "commit": "884d172-20260705161853",
-  "commitSubject": "fix(visual): remove the two remaining unbounded waitForIdleSync paths (onActivity + close) (#80)",
+  "generatedAt": "2026-07-05T16:41:22.592Z",
+  "runId": "8c4406b-20260705164052",
+  "commit": "8c4406b-20260705164052",
+  "commitSubject": "feat(settings): Send feedback entry on the About page (#87)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
