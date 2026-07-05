@@ -280,6 +280,13 @@ export class SlockOhosBuglyDiagnostics {
     }
   }
 
+  /** Build the diagnostics feedback archive and return its path (for Quiver upload). */
+  static async prepareFeedbackArchivePath(context: common.UIAbilityContext): Promise<string> {
+    const summaryText = SlockOhosBuglyDiagnostics.exportDiagnosticsText(context);
+    const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context, summaryText);
+    return SlockOhosBuglyDiagnostics.writeFeedbackArchive(context, diagnosticFilePath);
+  }
+
   static exportDiagnosticsText(context: common.UIAbilityContext): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
     SlockOhosBuglyDiagnostics.recordDiagnosticsEnvironment(context, bundleInfo);
