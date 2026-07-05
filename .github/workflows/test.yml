@@ -277,10 +277,15 @@ jobs:
             ~/.m2/repository/io/ktor
           key: ${{ steps.keys.outputs.forkdeps }}
 
+      # Retried: the KBA artifacts resolve only from CN mirrors
+      # (mirrors.tencent.com), whose reachability from hosted runners is
+      # flaky — every fork-deps failure so far has been this. Once one run
+      # succeeds, the os-less cache keeps everyone warm until pins change.
       - name: Publish shared fork dependencies
         if: steps.forkdeps-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          attempt() {
           git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
           git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
 
@@ -313,6 +318,14 @@ jobs:
           popd
 
           scripts/prepare_ktor_ohos_fork.sh --publish
+          }
+          for i in 1 2 3; do
+            if attempt; then exit 0; fi
+            echo "fork-deps publish attempt $i failed; retrying in $((i*30))s" >&2
+            sleep $((i*30))
+          done
+          echo "fork-deps publish failed after 3 attempts" >&2
+          exit 1
 
   android:
     name: Android compile & tests
