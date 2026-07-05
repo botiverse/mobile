@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harmony-use"
+version = "0.1.0"
+description = "Small Python library and CLI for HarmonyOS/OHOS device automation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Raft Mobile", email = "raft-mobile-codex-kuikly-kmp@mail.build" }
+]
+dependencies = []
+
+[project.scripts]
+harmony-use = "harmony_use.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
